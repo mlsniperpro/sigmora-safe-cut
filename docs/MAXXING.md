@@ -52,7 +52,7 @@ Other deadlines in the same window: Build With AI Oct 27 00:00 · OpenCV Oct 27 
 
 | When (EAT) | Cloud agents (parallel) | Owner / Claude (local) |
 |---|---|---|
-| **Now → Oct 25** | none (no code before kickoff) | **O1 footage + labels**, O2 Modal account, O3 cloud environment, O4 creator pilot list, O5 domain choice |
+| **Now → Oct 25** | **Wave 0, docs only:** PRE-A + PRE-B (no code before kickoff) | **O1 footage + labels**, O2 Modal account, O3 cloud environment, O4 creator pilot list, O5 domain choice |
 | Oct 26 19:00 | — | Kickoff. Claude reads the official rules and updates §1. Owner: accept the rules, get the API key (O6), make the repo public (O7) |
 | **Oct 26 20:00** | **Wave A:** WP0 (scaffold, contracts, live probes) + WP6 (web shell on mock JSON) | Claude merges WP0 as soon as it's green |
 | **Oct 27 morning** | **Wave B:** WP1 track · WP2 scout+speech · WP3 decide+guard · WP4 render+audit+receipt · WP7 eval harness | Claude merges as green; integration smoke test on hero clip 1 |
@@ -81,7 +81,7 @@ Other deadlines in the same window: Build With AI Oct 27 00:00 · OpenCV Oct 27 
 ## 6. Launching the cloud agents
 
 ```bash
-claude --cloud "Read AGENTS.md, docs/MAXXING.md and docs/ARCHITECTURE.md, then execute docs/work-packages/WP<N>.md exactly. Check the time first: no code before 2026-10-26 16:00 UTC. Work on the branch the WP names, commit and push after every green step, run the checks AGENTS.md lists before each push, and open a PR with the evidence the WP asks for. If a prerequisite is missing, add BLOCKED.md to the PR and stop."
+claude --cloud "Read AGENTS.md, docs/MAXXING.md and docs/ARCHITECTURE.md, then execute docs/work-packages/<WP>.md exactly (<WP> = PRE-A, PRE-B, WP0 … WP8). Check the time first: no code before 2026-10-26 16:00 UTC. Work on the branch the WP names, commit and push after every green step, run the checks AGENTS.md lists before each push, and open a PR with the evidence the WP asks for. If a prerequisite is missing, add BLOCKED.md to the PR and stop."
 ```
 
 **Cloud environment** (claude.ai/code, this repo):
@@ -91,6 +91,7 @@ claude --cloud "Read AGENTS.md, docs/MAXXING.md and docs/ARCHITECTURE.md, then e
 
 | Wave | WPs | Branch | Start |
 |---|---|---|---|
+| 0 (docs only) | PRE-A (API notes, prompt specs, infra research), PRE-B (labelling guide, UI spec, storyboard, pilots, rules checklist) | `pre-a-research`, `pre-b-product` | **NOW** (allowed before kickoff: documents only) |
 | A | WP0, WP6 | `wp0-foundation`, `wp6-web` | Oct 26 20:00 EAT |
 | B | WP1, WP2, WP3, WP4, WP7 | `wp1-track`, `wp2-scout`, `wp3-decide`, `wp4-render-audit`, `wp7-eval` | after WP0 merges |
 | C | WP5 | `wp5-service` | Oct 29 (or earlier against stubs) |

@@ -6,7 +6,7 @@ You have access to **this repo only**. Everything you need is in `docs/`. Read i
 
 ## Hard rules
 
-1. **No product code before Oct 26 12:00 ET (16:00 UTC).** Before then only docs are allowed in this repo. Check the time (`date -u`) before writing any code. If it's earlier, stop and report.
+1. **No product code before Oct 26 12:00 ET (16:00 UTC).** Before then only docs are allowed in this repo. Check the time (`date -u`) before writing any code. If it's earlier, stop and report. **Exception: the PRE-A and PRE-B work packages are docs-only and run before kickoff.** They must not add any executable code, config or scaffolding.
 2. **Your work package is your scope.** Work on the branch named in your WP and touch only the paths it owns. If you need a change in another WP's paths, write it under "Requests for other WPs" in your PR description; don't make the change yourself.
 3. **Data contracts are law.** The JSON files that pass between pipeline stages are defined in `docs/ARCHITECTURE.md` §3 and implemented as pydantic models in `safecut/contracts.py` (WP0). Don't change a contract without updating both, and note the change in your PR.
 4. **The repo will be public**, and the event waiver says nothing submitted is confidential. Never commit keys, tokens, real footage of non-consenting people, customer data, or raw API responses for real-public clips. Consented hero clips and their API responses are allowed (fixtures).
