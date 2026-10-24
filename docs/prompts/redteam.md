@@ -55,7 +55,7 @@ Mapping: a frame with an empty `findings` list → `audit.json.redteam[{frame, f
 
 ## Leak decision (WP4, deterministic)
 - **Every finding is a leak** unless its box overlaps (IoU > 0.3) the *visible* region of an approved kept-clear item on that frame **and** its kind matches (a face finding on an approved participant's face). `confidence` doesn't filter: a `low` finding is still a leak (fail closed). It's logged so the eval can measure the red-team's false-positive rate.
-- Text findings on a redacted region (the model claims to read through a block) → a leak **and** a redaction-strength bug flag. Raise the mosaic coarseness for that item.
+- Text findings on a redacted region (the model claims to read through a block) → a leak **and** a `redaction_too_weak` flag. That item is re-rendered as `solid` (DESIGN §2.7), not just a coarser mosaic, because a model that read through one mosaic can read through the next.
 - Patch: a new hidden track from the box, ±`temporal.extend`, densified by a SAM point prompt from its centre if available. Re-render the affected segment, then **re-audit only the patched frames** (pass 2). After pass 2, anything left is `unresolved` → publishing blocked → `needs_you`.
 
 ## Failure handling

@@ -11,7 +11,7 @@ Give each SAM track (identified only by the number drawn on it) a role: `partici
    - the **frame number burned in** on a black bar **added above** the frame (`F 000090`), so it never covers content. The sent image is `W × (H + bar_h)`, and the 0–1000 grid refers to that whole image (API-NOTES §5);
    - the image sent at its prepared size (≤1280 px long edge). Note its exact `W×H`.
 2. `scene.json` (summary, participants by description, children).
-3. `transcript.json` turns, with times converted to frame ranges using `job.json.times`: `[S2 frames 12–93] "Hi, I'm Amina…"`.
+3. `transcript.json` turns, with times converted to prepared frames as `clamp(floor(t × job.fps), 0, job.frames − 1)` (turn times are on the prepared clock, API-NOTES §5b): `[S2 frames 12–93] "Hi, I'm Amina…"`.
 4. The list of track IDs present per keyframe (so the model can't invent IDs, and so absence is explicit).
 
 Message order (stable prefix for caching): system → user `[input_text: role definitions + scene + transcript] [image F90] [image F120] … [input_text: vote-specific phrasing v{k} + the track list per frame]`. Only the final text block differs between votes.
@@ -88,8 +88,8 @@ WP2 inlines the `missed` item schema from `miss-loop.md`; strict mode needs it f
 Only `missed[].point` carries coordinates. They're on the **0–1000 grid of the image sent**, which includes the frame-number bar. Convert with the single rule in API-NOTES §5: clamp, scale by the **sent** image size, subtract the bar offset, floor, then clamp to the frame.
 
 ## Failure handling
-- A failed call → that vote = `unsure` for every track (so nothing can reach 3/3). Retry each call once.
-- Schema failure → retry once at the same effort, then treat it as failed.
+- A failed call (after the transport retries in API-NOTES §10.2) → that vote = `unsure` for every track, so nothing can reach 3/3.
+- Schema failure on a complete response → one re-ask at the same effort (API-NOTES §10.6), then treat it as failed.
 - More than 50 keyframes → windows. A track spanning windows must get 3/3 in **every** window where it appears.
 - Too many labels in a frame (crowd) → the guard's crowd fallback handles it. The role pass still runs, but crowd frames can't count as evidence frames.
 

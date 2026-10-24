@@ -60,7 +60,7 @@ Give tracks whose three role votes disagreed one more careful look, with the dis
 There's deliberately no rule that yields `keep`. A creator who accepts a `participant` suggestion is the only way a disputed track is shown. **Decided:** `suggested_role` (nullable) is added to `roles.json.tracks[]`, because the review card needs it to show the suggestion. WP0 implements it in `contracts.py`.
 
 ## Failure handling
-- One attempt plus one retry on a transient error. Escalation is never re-run (DESIGN: "once").
+- At `max` effort the transport policy allows 2 attempts in total (API-NOTES §10.2). Escalation as a stage is never re-run (DESIGN: "once").
 - Cited frames are validated as in the role pass. Invalid citations → `unsure`.
 - Budget guard: if the remaining job budget is below the estimated cost (API-NOTES §9), skip escalation; every disputed track becomes `needs_you`.
 

@@ -78,7 +78,7 @@ Grammar (normative summary):
   - `parse_responses_stream(events, video_segmentation_format())` takes OpenAI-SDK events or plain dicts. Use it under `async with` and call `final_result()`.
   - The direct parser is `video_segmentation_format().create_parser()` → `.push(chunk)` / `.finish(CompletedOutcome())`.
   - Converters: `decode_mask_to_raster`, `decode_mask_to_rle` (exact COCO compressed RLE), `decode_mask_to_svg_path`. There's also an object-prompt text builder.
-  - Results: `.records` (box/mask records with `object_id`, `frame.frame_index`, `left/top/right/bottom`, `mask.encoding/width/height`), `.outcome.status`, `.diagnostics` (severity `error` = data dropped).
+  - Results (`final_result()` of a parsed stream, or `.result` of the direct parser's `ParserFinish`): `.records` (box/mask records with `object_id`, `frame.frame_index`, `left/top/right/bottom`, `mask.encoding/width/height`), `.outcome.status`, `.diagnostics` (severity `error` = data dropped).
 - TypeScript: `@meta-sam/parser` 0.1.0 (npm). Also `@meta-sam/react`, `/video` and `/graphics` in the same monorepo.
 - **Consequence for WP1:** no hand-written stream parser is needed. Depend on `meta-sam-parser` and use `decode_mask_to_rle` for `tracks.json` masks.
 
@@ -101,7 +101,7 @@ Grammar (normative summary):
 ## 2. Files API **[GH-cookbook]**, **[DESIGN]**
 Docs: [file-handling](https://dev.meta.ai/docs/file-handling)
 - Upload: `POST /v1/files`, multipart, `purpose=user_data` → `{"id":"file-…"}`. OpenAI SDK: `client.files.create(file=(name, bytes, mime), purpose="user_data")`.
-- `expires_after` (DESIGN uses `{"anchor":"created_at","seconds":3600}`, OpenAI-style). The cookbook doesn't set it. **WP0 confirms it's accepted.**
+- `expires_after` (DESIGN uses `{"anchor":"created_at","seconds":3600}`, OpenAI-style; as multipart form fields: `expires_after[anchor]=created_at`, `expires_after[seconds]=3600`). The cookbook doesn't set it. **WP0 confirms it's accepted.** Safe Cut sends **21,600 s (6 h)**, above the 2 h job limit (DESIGN's 3600 could expire mid-job). It's only a backstop: Safe Cut deletes explicitly (§10.4).
 - Size: **up to 1 GiB** via the Files API; **50 MB** per inline (base64) image. **[GH-cookbook]**
 - Retrieve: `GET /v1/files/{id}`. Delete: `DELETE /v1/files/{id}` (AGENTS.md rule 6: always delete after use). Neither appears in the cookbook; it's assumed from OpenAI compatibility.
 
@@ -141,7 +141,7 @@ Docs: [reasoning](https://dev.meta.ai/docs/reasoning) (the cookbook links an old
 | *(superseded)* `muse-spark-1.3` | the cookbook says "`xhigh` maps to the same strength as `high`"; a third-party report says `max` → 400 | [GH-cookbook] `06_reasoning_tokens` (written before the change); [3P] inspect_ai #5222. Third-party coverage says `max` reached the public API on 2026-09-04, two days after launch, which explains the 400 report |
 
 **Decided:** the effort levels in the specs follow the live page, so escalation keeps DESIGN's **`max`** on Spark (`docs/prompts/escalation.md`). WP0's probe f confirms `max` on both models, and `config.py` validates effort per model. A 400 on an effort value is never silently downgraded. Two checks, both explicit:
-- **At service start**, the API makes one minimal call for each configured `(model, effort)` pair (the same 1-token probe `/healthz` uses, ARCHITECTURE §5) and **refuses to start** on a 400. Static validation in `config.py` alone can't catch a server-side change.
+- **At service start**, the API makes one minimal call for each configured `(model, effort)` pair (the **startup probe** of §10.7, which is separate from `/healthz`) and **refuses to start** on a 400. Static validation in `config.py` alone can't catch a server-side change.
 - **Mid-job** (the setting changed after boot), the escalation call counts as failed: every disputed track stays `unsure` + `needs_you` (escalation.md, rule 3), the error is logged as `config_error`, and `/healthz` reports degraded.
 
 ARCHITECTURE §4 stays as written.
@@ -189,7 +189,7 @@ Docs: [speech-to-text](https://dev.meta.ai/docs/speech-to-text) · [api-referenc
 - `turns` is present only in speech modes. `speaker` appears only in `DIARIZATION` and is a **bare letter** (`"A"`, not `speaker_a`).
 - `endMs` is used by the cookbook's caption recipe (`07_sam/03…/build-demo-data.py`).
 - "Diarization covers non-overlapping speech." Overlapping talk is a known gap.
-- **Mapping to `transcript.json` (decided):** speaker letters map to `S1`, `S2`, … in order of first appearance (`"A"` → `"S1"` if A speaks first). That keeps the ARCHITECTURE §3.3 contract and the spark-1.2 fallback on one label scheme. `startMs/1000` → `start`, `endMs/1000` → `end`, and `transcript` → `text`.
+- **Mapping to `transcript.json` (decided):** speaker letters map to `S1`, `S2`, … in order of first appearance (`"A"` → `"S1"` if A speaks first). That keeps the ARCHITECTURE §3.3 contract and the spark-1.2 fallback on one label scheme. `startMs/1000` → `start`, `endMs/1000` → `end`, and `transcript` → `text`. The WAV is extracted from `prepared.mp4`, so the times are on the **prepared clock** (§5b).
 
 ### 4.3 Limits and errors
 - One-shot: **≤10 min of audio or ≤32 MB**, whichever comes first. 413 = body too big; 400 = too long (after decode) or malformed.
@@ -211,26 +211,44 @@ Docs: [features/image-understanding](https://dev.meta.ai/docs/features/image-und
   2. to sent-image pixels: `x_img = floor(vx / 1000 × (W − 1))`, `y_img = floor(vy / 1000 × (H + bar_h − 1))`;
   3. to frame pixels: `x = x_img`, `y = y_img − bar_h`;
   4. **point:** if `y < 0` (it's in the bar), drop it; otherwise it's valid, since it's in-bounds by construction.
-     **box:** map both corners, then clamp to `[0, W−1] × [0, H−1]`. If the clamped box is under 2 px in either dimension (e.g. wholly inside the bar, or a hairline), a **red-team** box becomes a 32×32 px box centred on the clamped centre and clamped to the frame (fail closed: it still gets patched); a **miss-loop** box is discarded and its point kept.
+     **box:** Safe Cut pixel boxes are **half-open** `[x1, y1, x2, y2)`, the same convention as the parser's normalised `left/top/right/bottom` (§1.4). Map the top-left corner with steps 2–3. For the bottom-right corner, map the same way and then add 1 (`x2 = x2_img + 1`, `y2 = y2_img + 1 − bar_h`). Clamp to `[0, W] × [0, H]`. If the clamped box is under 2 px in either dimension (e.g. wholly inside the bar, or a hairline), a **red-team** box becomes a 32×32 px box centred on `((x1+x2) div 2, (y1+y2) div 2)` and clamped to the frame (fail closed: it still gets patched); a **miss-loop** box is discarded and its point kept. When a half-open box goes into a SAM object prompt, it's sent as inclusive `x2 − 1`, `y2 − 1`; `meta_sam_parser.build_object_prompt(PromptBox(left, top, right, bottom))` does this conversion. Test vectors: §11.2.
   `floor` matches the SAM protocol's "round down to whole pixels" **[GH-sam]**. Whether the model's grid means `/1000·W` or `/1000·(W−1)` is undocumented (under 1.3 px apart at 1280); WP0 probe g checks it on a synthetic image with a known dot. WP2 implements this rule once and property-tests it: outputs are in-bounds, monotone in the input, and the round trip from frame pixels is within 1 px.
 - Exact point JSON (`{"x","y"}` vs `[x,y]` vs `<point>` text) is only defined by **our** schema, because we ask for points via `text.format`. The grid convention is the model's trained prior, so the prompt must state it explicitly (see `docs/prompts/role-pass.md`).
 - Note: SAM object prompts (§1.3) need **pixel** coordinates with `w`/`h`, so convert the 0–1000 points before sending.
 
 ---
 
-## 5b. Time and frame axes (`job.json` `times`), the definition every WP uses
-PRE-A owns this definition, and PRE-B's `docs/labeling/LABEL-FORMAT.md` follows it. It extends ARCHITECTURE §3.1 without changing any field.
+## 5b. Time and frame axes, the definition every WP uses
+PRE-A owns this definition. It matches PR #2 (`docs/labeling/LABEL-FORMAT.md` §2, `docs/UI-SPEC.md` §3.6 at `1f9c5ac`) and DESIGN §2.1's existing `PreparedClip.times` ("source-second timestamps per frame"). No contract field changes.
 
-- **Source timeline.** `t = 0` is the presentation time of the **first decoded source frame**: its PTS, after the container's edit list is applied, is subtracted from every timestamp.
-- **No trim in Safe Cut.** `prepare` processes the whole upload (≤60 s, ARCHITECTURE §5), and creators trim before uploading (PR #2's `docs/UI-SPEC.md` §2: "Trim it and try again"). The prepared clip therefore covers the whole source. DESIGN §3's Sigmora `prepare.ts` does trim, so **WP1's port drops the trim**. If WP1 keeps it, `source_offset_s` (below) becomes mandatory in the same PR.
-- **`times[i]`** is the presentation time, in seconds on that source timeline, of **prepared frame `i`**. It's a list of `frames` floats, strictly increasing, with `times[0] = 0.0`. If prepare resamples the frame rate (a VFR source to CFR, or a lower fps), `times[i]` is output frame `i`'s PTS, which ffmpeg places on the source timeline.
-- **The prepared MP4 is encoded with exactly these timestamps** (first PTS = 0). So the same list maps every axis:
-  - player → frame: the frame on screen at media time `m` is the **last** one whose timestamp has been reached, so `i = max{ i : times[i] ≤ m + 0.001 }` (binary search; the 1 ms tolerance absorbs float error). With rVFC, `metadata.mediaTime` equals `times[i]` exactly. With the `currentTime` fallback, nearest-rounding would put the overlay one frame ahead;
-  - frame → display time: `times[i]`, shown as `m:ss` (UI-SPEC);
-  - label → frame: a CVAT label on source frame `k` sits at `t_k = PTS_k − PTS_0`, the frame's **own** timestamp. `k / fps` is correct only for a constant-frame-rate source; for a variable-frame-rate phone clip, ffprobe's *average* fps drifts by several frames late in the clip. WP7 reads the per-frame PTS list from the source file with ffprobe; it doesn't need to be stored in the label JSON. Its prepared frame is `argmin_i |times[i] − t_k|`;
-  - prepared → SAM proxy: the proxy (§9, ≤10 fps) is encoded from the prepared clip at a constant `sam_fps`, starting at `t = 0`, so proxy frame `j` sits at `j / sam_fps`. Then `j = clamp(round(times[i] × sam_fps), 0, sam_frames − 1)`, and back, `i = argmin_i |times[i] − j / sam_fps|`.
-- **If trimming is ever added:** `job.json` gains `source_offset_s` (the source time of prepared frame 0). That's a contract change, made in both ARCHITECTURE §3.1 and `contracts.py` (AGENTS rule 3). `times` would then stay relative to the prepared start, and source time = `times[i] + source_offset_s`. With today's offset of 0, every mapping above is unchanged.
-- WP1 implements these as one module (`frame_of_time`, `time_of_frame`, `to_proxy`, `from_proxy`) and property-tests it: every output is in bounds; every map is monotone; **proxy → prepared → proxy is exact** whenever the prepared fps ≥ `sam_fps` (always, for a ≤10 fps proxy); and prepared → proxy → prepared lands within half a proxy frame duration in time, since several prepared frames share one proxy frame, so it isn't the identity.
+**Decided (2026-10-24):** the prepared clip has a **constant frame rate**, and `times` holds **source seconds**. *Rejected:* a variable-frame-rate prepared clip carrying `times` as its own PTS (this file's earlier draft). It makes the player, SAM proxy and render maps depend on a per-frame list, while a constant-rate clip keeps them as one fixed slot rule (below), and the existing Sigmora prepare already works this way.
+
+**Two clocks:**
+
+| Clock | Origin | Unit | Used by |
+|---|---|---|---|
+| **Prepared clock** | prepared frame 0 = 0.0 s | `t_p = i / job.fps` | player, overlay, SAM proxy, render, **transcript turn times**, every UI time display |
+| **Source clock** | first decoded source frame (its PTS, after the container's edit list, is subtracted) | `job.times[i]`, seconds | mapping CVAT labels (source frames) onto prepared frames; the receipt's "source time" |
+
+**`prepare` (WP1), exactly:**
+1. `job.fps = min(30, round(source average fps))`. The output is constant frame rate at `job.fps`, H.264, `+faststart`, ≤1280 px long edge (DESIGN §2.1).
+2. **Frame selection is ffmpeg's `fps` filter** (default `round=near`). Verified on 2026-10-24 with ffmpeg 6.1.1 by matching per-frame checksums before and after the filter (vectors T1–T6). The rule: give source frame `k` the output slot `s_k = round_half_up(t_k × job.fps)`, where `t_k` is its source-clock time. **Output frame `n` shows the last source frame with `s_k ≤ n`.** Earlier frames in the same slot are dropped, and an empty slot repeats the previous frame. **`times[n] = t_k` of that frame.** WP1 computes `times` from the ffprobe per-frame PTS list with this rule, and its test checks the rule against ffmpeg's own output on a synthetic VFR clip (the bundled imageio-ffmpeg binary, whose version is recorded in the test).
+3. Consequences a builder must not "fix":
+   - `times` is **non-decreasing, not strictly increasing** (a gap repeats a frame);
+   - `times[0]` is the time of the last source frame in slot 0, which **may be > 0** (T6c: 0.04);
+   - **`job.frames` is the number of frames ffmpeg actually wrote, read back with ffprobe**, never computed from duration × fps (the last source frame can fall in a slot ffmpeg doesn't emit at end of stream);
+   - with no trim (Safe Cut v1), `times` starts within half a frame of 0.
+   Request to PRE-B (PR #2): UI-SPEC §8 item 6 says to validate that `times` is *strictly* increasing. Validate **non-decreasing** instead, or every VFR phone clip is rejected.
+4. Audio is muxed in sync on the prepared clock. The ASR input WAV is extracted **from `prepared.mp4`**, so `transcript.json` turn times (`startMs / 1000`) are prepared-clock seconds. To convert a turn time to a prepared frame: `clamp(floor(t × job.fps), 0, job.frames − 1)`.
+
+**Mappings (one module in WP1: `prepared_time`, `source_time`, `prepared_frame_of_source_time`, `to_proxy`, `from_proxy`):**
+- **player → prepared frame** (PR #2's formula, UI-SPEC §3.6): `i = clamp(floor(mediaTime × job.fps + 0.25), 0, job.frames − 1)`.
+- **prepared frame → display time:** `i / job.fps` on the prepared clock (m:ss).
+- **label (source frame `k`) ↔ prepared:** label frame `k` is at `t_k = PTS_k − PTS_0` (equal to `k / source_fps` only for constant-frame-rate sources). **Decided: map prepared → label.** For each prepared frame `i`, its ground truth is the label state at source time `times[i]` (the source frame the viewer actually sees, interpolated between label keyframes exactly as the labels are). Every prepared frame then has ground truth, including repeated ones, and labels on dropped source frames are never sampled, which is right because no viewer sees them. *Rejected:* label → nearest prepared frame (LABEL-FORMAT §2's current text). It leaves repeated prepared frames without ground truth and samples dropped frames. Request to PRE-B: adopt this direction in LABEL-FORMAT §2.
+- **SAM proxy** (§9: `sam_proxy.mp4`, encoded from `prepared.mp4` with the `fps` filter at **`sam_fps_eff = min(SAFECUT_SAM_FPS, job.fps)`** (`SAFECUT_SAM_FPS` defaults to 8, a request to WP0 for `config.py`; never upsample, because a proxy above the clip's own rate only repeats frames and bills them); frame count read back with ffprobe as `sam_frames`). The same rule as step 2, verified against ffmpeg for all 240 proxy frames of a 900-frame clip:
+  - `from_proxy(j) = max{ i < job.frames : round_half_up(i × sam_fps / job.fps) ≤ j }`, the prepared frame that proxy frame `j` actually shows. **SAM detections on proxy frame `j` belong to prepared frame `from_proxy(j)`**, and prepared frames in between are filled by interpolating box corners linearly between those anchors (WP1's densify);
+  - `to_proxy(f) = argmin_j |from_proxy(j) − f|`, ties → the smaller `j`. That's the proxy frame to put an object prompt on for prepared frame `f`. Precompute `from_proxy` as an array of length `sam_frames`, then answer with a binary search.
+- **Property tests (WP1):** every output is in bounds and every map is monotone; `to_proxy(from_proxy(j)) == j` for every `j`; and `|from_proxy(to_proxy(f)) − f| ≤ ceil(job.fps / sam_fps_eff)`. Both were checked by brute force for `job.fps` ∈ {6, 10, 15, 24, 25, 30}, `sam_fps` ∈ {6, 8, 10} and every clip length from 5 to 1,800 frames, using the rule above with `sam_frames = round(job.frames × sam_fps_eff / job.fps)`; the maximum observed was always one below the bound (3 at 30 → 8 fps). Tests use the **read-back** `sam_frames`. The vectors are in §11.3.
 
 ## 6. Pricing and rate limits (per 1M tokens unless stated)
 
@@ -337,3 +355,191 @@ The pilot estimate was $8.30 before the effort-level correction moved escalation
 - Prompt iteration on 3 dev clips is cheap, but 3 clips is a thin tuning set. Iterating on hero clips too (consented, in the bucket) costs ≈ $0.43 per clip per iteration.
 
 Every figure above is a model to be replaced by measured `cost.jsonl` from WP0's probes. None of it may appear in the README (AGENTS rule 9).
+
+---
+
+## 10. Client implementation spec (WP0 builds `safecut/meta/` from this)
+
+Everything here is either sourced (tagged) or a **decision** for the build. WP0's probes may change values marked *(probe)*; nothing else should need guessing.
+
+### 10.1 Transport and limits
+| Setting | Value | Why / source |
+|---|---|---|
+| Base URL | `https://api.meta.ai/v1` (env `SAFECUT_META_BASE_URL`, default this) | [GH-cookbook] |
+| Auth | header `Authorization: Bearer $MODEL_API_KEY`; the key is never logged, and logs redact the header | [GH-cookbook]; AGENTS rule 6 |
+| HTTP client | one shared `httpx.AsyncClient` per process, HTTP/1.1, `limits=Limits(max_connections=16)` | decision: bounded resources |
+| Concurrency | per job ≤ 4 SAM streams + ≤ 3 Responses calls in flight; per process ≤ 8 Meta requests in flight (an `asyncio.Semaphore` each) | decision: 3,000 RPM / 4M TPM ([SNIP] §3.7) is far above this; the bound is memory and the per-job cap |
+| Connect timeout | 10 s | decision |
+| SAM stream | read idle 90 s (no SSE event); total ≤ 600 s per request | decision *(probe: measured latency)*; [3P] Reka ≈0.4 s/frame → ~96 s for 240 frames |
+| Responses (stream) | read idle 300 s (`medium`), 600 s (`max`, which reasons silently before output); total ≤ 900 s | decision *(probe)*; [3P] reasoning precedes output (§3.5) |
+| ASR one-shot | total 180 s for ≤60 s of audio (upload + transcription) | decision; [GH-cookbook] uses 300 s for up to 10 min |
+| Files upload | total `30 s + size_MB × 2 s` | decision |
+| Job wall clock (WP5) | 2 h, then the job is cancelled and its files deleted | decision; must stay below the 6 h file expiry (§10.4) |
+| Files delete | total 15 s | decision |
+
+### 10.2 Retries (one policy, `safecut/meta/retry.py`)
+- **Retry on:** HTTP 429, 500, 502, 503, 504, connect or read timeouts, connection resets, and a stream that ends with no terminal event (SAM `IncompleteOutcome(reason="eof")`). **Never retry:** 400, 401, 403, 413, 422, refusals, a server-declared `status: "incomplete"`, or a schema-invalid but complete response (that gets one *re-ask*, §10.6, not a transport retry). A 404 is retried only as `MetaFileGone` (re-upload, §10.4). [GH-cookbook] `09_error_handling`.
+- **Attempts** (the only retry counts in the repo; prompt specs refer here): Responses at `none`…`high`, ASR and Files: **4** in total. Responses at `xhigh`/`max`: **2** in total (each attempt can cost ≈ $0.23, C4). **SAM: 2** in total, because every attempt re-bills the frames. A schema re-ask is one extra call on top of these, and only after a complete response.
+- **Backoff:** `min(30, 1.0 × 2^(attempt−1)) + uniform(0, 1)` seconds (attempt 1 → 1–2 s, 2 → 2–3 s, 3 → 4–5 s). If the response has a `Retry-After` header (seconds or HTTP-date), wait `max(that, backoff)`. Whether Meta sends it is unknown *(probe)*.
+- **Throttle before a 429:** read `x-ratelimit-remaining-requests` and `x-ratelimit-remaining-tokens` [GH-cookbook]. When either is below 5% of its `x-ratelimit-limit-*`, delay new requests by 1 s and log `throttled`.
+- **Circuit breaker:** counts **calls** that failed after exhausting their attempts, not individual attempts. Five such failures within 60 s open the breaker for 60 s. Then it's half-open: one trial call is allowed; success closes it, failure re-opens it for 60 s. While it's open, calls fail fast with `MetaUnavailable`. A hide-critical stage that fails transiently sends the job to **`retry_later`** (rules below the typed-error table). `/healthz` reports degraded while the breaker is open.
+- **Cost accounting (honest numbers, AGENTS rule 9):**
+  - Before each attempt, **reserve** its pre-call estimate (§10.5) against the job and daily caps.
+  - On success, replace the reservation with the actual cost from `usage`, logged `estimated: false`.
+  - On a failure where the request was **rejected before processing** (any non-200 HTTP status received **before the first stream event**, which covers 429, other 4xx and an immediate 5xx, or a connect error), release the reservation and log `usd: 0`. Assumption: Meta doesn't bill requests that error before producing output. WP0 checks this against the console's billing after the probes.
+  - On a failure **after** the request was accepted (read timeout or stream drop **after** the first event), billing is unknown. Keep the reservation as a charge against the **caps**, and log it with `estimated: true`.
+  - Reported figures (receipt `cost_usd`, README cost per minute, eval cost) sum **only `estimated: false` lines**. The receipt shows the estimated total as a separate line, "possibly billed: $x". So the caps are conservative and the reported numbers are measured.
+
+### 10.3 Typed errors (`safecut/meta/errors.py`)
+| Exception | Raised on | Pipeline effect |
+|---|---|---|
+| `MetaAuthError` | 401, 403 | stop the job; `/healthz` red; never retried |
+| `MetaConfigError` | 404 on the model or path (not on a file), or a 400 naming `model`, `reasoning`, `text.format` or an unsupported param | stop the service at the startup probe (§3.4); mid-job → the stage fails closed and `config_error` is logged |
+| `MetaFileGone` | 404 whose error `param` or `message` names the request's `file_id` | re-upload the file from the job directory once (§10.4), update `files.json`, repeat the call; a second 404 → `MetaBadRequest` |
+| `MetaBadRequest` | any other 400 / 413 / 422 | the stage fails closed; the request shape is logged (without media or the key) |
+| `MetaRateLimited` | 429 after the last attempt | the stage fails closed; a hide-critical stage → job `retry_later` |
+| `MetaUnavailable` | 5xx or timeout after the last attempt, or the breaker is open | the stage fails closed; a hide-critical stage → job `retry_later` |
+| `MetaRefusal` | a refusal part or event (§3.6, [GH-sam]) | the stage fails closed; logged |
+| `MetaIncomplete` | the server declares `status: "incomplete"` (e.g. `incomplete_details.reason: "max_output_tokens"`), or a SAM stream still ends without a terminal event after its last attempt (S7), or the parser reports an `error` diagnostic (S5) | the stage fails closed; not retried |
+| `BudgetExceeded` | the pre-call estimate exceeds the remaining `SAFECUT_JOB_USD_CAP` or `SAFECUT_DAILY_USD_CAP` | the call isn't made; the stage fails closed with reason `budget` |
+
+"Fails closed" means: for a stage that could only *add* keep evidence (role pass, escalation, scene pass, speech), the job continues with everything hidden and `needs_you` (docs/prompts/README.md rule 3). For a stage that's needed to *hide* (SAM base sweep, render, audit), the job can't be published. It goes to **`retry_later`** when the cause is transient (`MetaUnavailable`, `MetaRateLimited`, or an eof `MetaIncomplete`); WP5 re-queues it once after 5 min. Otherwise it goes to **`failed`**: `MetaAuthError`, `MetaConfigError`, `MetaBadRequest`, `MetaRefusal`, `BudgetExceeded`, and a **non-eof** `MetaIncomplete` (a server-declared incomplete, or a parser `error` diagnostic, S5), which is deterministic, so re-running wouldn't help. A failed audit sets `unresolved > 0`.
+
+### 10.4 Files: idempotency and cleanup
+- No idempotency key is documented for any endpoint, so idempotency is done **client-side through the job directory**:
+  - before uploading, compute `sha256(file)`; if `jobs/<id>/files.json` already maps that hash to a live `file_id`, reuse it;
+  - write `{sha256, file_id, created_at, purpose}` to `files.json` **before** the first use;
+  - on job end (success, failure or cancel), `DELETE /v1/files/{id}` for every entry. A 404 on delete counts as deleted. Then set `deleted_at`;
+  - an hourly sweeper (the WP5 cron) deletes anything in any `files.json` older than **6 h** that has no `deleted_at`. Upload with **`expires_after` 21,600 s (6 h)** as the backstop. That's well above WP5's per-job wall-clock limit of 2 h (a job running longer is cancelled), so a live job never loses its file. If one does anyway, `MetaFileGone` re-uploads it.
+- A retried Responses call is a new response. Stage outputs are checkpointed in the job directory, so a re-run stage replays its saved response (`SAFECUT_REPLAY=1`) instead of calling again.
+
+### 10.5 Pre-call cost estimate and `cost.jsonl`
+Prices live in `safecut/config.py` as a dated table (the §6 values, `price_table_date = "2026-10-24"`, re-read on Oct 26).
+
+| Call | Pre-call estimate (worst case, checked against the remaining caps) | `units` logged after the call | `usd` |
+|---|---|---|---|
+| Responses | `POST /v1/responses/input_tokens` count [GH-cookbook] × `P_in` + `max_output_tokens` × `P_out` | `{"input": in, "cached": c, "output": out, "reasoning": r}` from `usage` (`input_tokens`, `input_tokens_details.cached_tokens`, `output_tokens`, `output_tokens_details.reasoning_tokens`) | `(in − c) × P_in + c × P_cached + out × P_out` (reasoning is already inside `out`) |
+| SAM video | `frames_uploaded × $0.0002` | `{"frames": frames_uploaded}` (worst case: every uploaded frame billed; replace it with `usage` if SAM reports any) *(probe)* | `frames × 0.20 / 1000` |
+| ASR | `ceil(duration_s) × $0.00005` | `{"audio_s": floor(audioDurationMs / 1000)}` | `audio_s × 0.18 / 3600` (billing rounds down to whole seconds, [SNIP]) |
+| Files | 0 | `{"bytes": n}` | 0 (no file price documented) |
+
+- `max_output_tokens`: `medium` calls 16,000; `max` calls 48,000. These bound the worst case (an escalation call at most `17k × P_in + 48k × P_out` ≈ $0.23). A response cut off by this limit is `MetaIncomplete`.
+- `cost.jsonl` line: `{"ts", "job_id", "stage", "model", "attempt", "units", "usd", "estimated": bool, "request_id"}`. `request_id` is the response's `id` (or `x-request-id` if present). This extends ARCHITECTURE §3.10 with `job_id`, `attempt` and `estimated`; WP0 adds them to the contract.
+
+### 10.6 Request and response shapes
+**SAM video** (one request per concept or per object-prompt batch):
+```json
+{"model": "sam-3.1", "stream": true, "store": false,
+ "metadata": {"include_confidence": "true"},
+ "input": [{"type": "message", "role": "user", "content": [
+   {"type": "input_text", "text": "face"},
+   {"type": "input_video", "file_id": "file-abc123"}]}]}
+```
+- `store: false` follows AGENTS rule 6. Whether `sam-3.1` accepts it is unverified *(probe)*. If it's rejected, the receipt's `data_handling` reports `store` per model truthfully. Never claim `store:false` for a call that didn't send it.
+- **Don't send `metadata.mask_encoding`.** It isn't in the protocol file. The parser decodes both encodings, and the lossless default needs no request key.
+- Object prompts replace the noun phrase text with `build_object_prompt(...)` output, plus `metadata.propagation_direction: "both"`.
+- Parse the stream with `parse_responses_stream(events, video_segmentation_format())`. The result's `.records` give box and mask records (from the direct parser, use `finish(...).result.records`); `.outcome.status` is `completed` or `incomplete`; `.diagnostics` with severity `error` means data was dropped, so treat the request as `MetaIncomplete` (fail closed) and log the lines.
+
+**Muse Spark / Wonder** (role pass shown; the other passes differ only in content, schema name and effort):
+```json
+{"model": "muse-spark-1.3", "stream": true, "store": false,
+ "reasoning": {"effort": "medium"}, "max_output_tokens": 16000,
+ "input": [
+   {"role": "system", "content": [{"type": "input_text", "text": "<system prompt>"}]},
+   {"role": "user", "content": [
+     {"type": "input_text", "text": "<role definitions + scene + transcript>"},
+     {"type": "input_image", "image_url": "data:image/jpeg;base64,<F90>"},
+     {"type": "input_text", "text": "<vote phrasing k + labels per frame>"}]}],
+ "text": {"format": {"type": "json_schema", "name": "role_pass", "strict": true, "schema": {"…": "…"}}}}
+```
+- Images go **only** in the user message (a system message with an image → 400) [GH-cookbook]. They're JPEG at quality 90, sent at the prepared resolution plus a `bar_h = 40 px` frame-number bar (§5), ≤50 images per request.
+- Don't send `temperature`, `stop`, `n`, `logprobs`, `logit_bias`, `response_format` or `truncation` (all 400 or unverified, §3.6). `temperature` is unverified *(probe)*.
+- The output is in `response.completed` → `response.output[]`: take the `type: "message"` item's `content[]` part with `type: "output_text"`. A `type: "refusal"` part → `MetaRefusal`. Parse the text as JSON, then validate with the pydantic model. If invalid, **re-ask once** with the same request, then fail closed.
+
+**Files upload / delete:** **two uploads per job**: `sam_proxy.mp4` (≤10 fps, §5b; used by every SAM request) and `prepared.mp4` (the scene pass, and the speech fallback's soundtrack). Each is a multipart `POST /v1/files` with `purpose=user_data`, `file=@<name>`, `expires_after[anchor]=created_at`, `expires_after[seconds]=21600` → `{"id": "file-…" | "file_…", …}`. `DELETE /v1/files/{id}` → 200 `{"id", "deleted": true}`, or 404 (treated as deleted). The response bodies are OpenAI-compatible and unverified *(probe)*. Sending `prepared.mp4` to SAM by mistake multiplies the SAM cost by `job.fps / sam_fps` and breaks the frame indexing, so WP1's request builder takes the proxy's `file_id` from `files.json` by name.
+
+**ASR:** see §4.1. Use `mode: "DIARIZATION"` and validate the mode client-side (an unknown mode is silently ignored [GH-cookbook]). The WAV is extracted from `prepared.mp4` (mono, 16-bit, 24 kHz).
+
+### 10.7 Startup probe and `/healthz`
+**At startup only** (once per deploy): for each configured `(model, effort)` pair, send a minimal request (text "ok", `max_output_tokens: 16`, `store: false`); for SAM, a 64×64 PNG with the text `"square"` (≈ $0.0025). Any HTTP 200 counts as healthy, even `status: "incomplete"`, because reasoning may use up the 16 tokens. A 400 or 404 → `MetaConfigError` → refuse to start; 401/403 → `MetaAuthError`.
+
+**`/healthz`** (ARCHITECTURE §5: at most once a minute) sends **one** text request to `SAFECUT_ROLE_MODEL` at `reasoning.effort: "minimal"`, `max_output_tokens: 16`. At most ≈ 20 input + 16 output tokens = (20 × $1.25 + 16 × $4.25) / 1M = **$0.000093** per check, so at most **$0.134 a day** (1,440 checks) even if it's polled every minute. It never calls SAM. Probe costs are logged with stage `healthz` and count against `SAFECUT_DAILY_USD_CAP`, which leaves $2.866 of the planned $3/day for jobs.
+
+---
+
+## 11. Test vectors (expected outputs; WP0/WP1/WP2/WP4 copy these into tests)
+
+Vectors in 11.1 came from Meta's `meta-sam-parser` 0.1.0, run in a scratch venv on 2026-10-24. Vectors in 11.2–11.5 came from a scratch reference implementation of §5, §5b and §10.5, run the same day. The scripts aren't committed (AGENTS rule 1); the outputs are pasted in PR #1.
+
+### 11.1 SAM wire → records (`video_segmentation_format()`, then `finish(CompletedOutcome())`)
+| # | Input line(s) | Expected records | Outcome / diagnostics |
+|---|---|---|---|
+| S1 | `<7f>0<\|box;x1=10;y1=20;x2=14;y2=24;w=100;h=80\|><\|mask;x=0;y=0;data=5,5,!!!!!(QO(0lu8?\|>` | box `id "0"`, frame 7, left 10, top 20, **right 15, bottom 25** (half-open); mask `one_bit`, 5×5, 10 foreground pixels | completed, none |
+| S2 | the two-object line from `meta-sam/python/README.md` (ids 0 and 1, `w=320;h=334`) | id 0: box 211,228 → 271,255; mask `lossless` **60×27** (= box size), 1,539 px. id 1: box 155,228 → 203,255; mask 48×27, 1,236 px | completed, none |
+| S3 | S1 with `;c=0.75` on the box token | box `confidence 0.75`; mask confidence `None` (each token carries its own) | completed |
+| S4 | a `<9f>12…` line, then S1's `<7f>0…` line | records in **arrival order**: id `"12"` frame 9 first, then id `"0"` frame 7 | completed |
+| S5 | `<0f>` (bare header) | no records | completed, **1 error `malformed_record` line 1** → treat as `MetaIncomplete` |
+| S6 | empty lane | no records | completed (a valid zero-match result, **not** an error) |
+| S7 | S1, then the stream ends with no terminal event (`IncompleteOutcome(reason="eof")`) | S1's records | **incomplete** → retry policy (§10.2) |
+
+Object prompts (`build_object_prompt(size=(1280, 720), objects=[…])`):
+| # | Objects | Expected text |
+|---|---|---|
+| O1 | id 1, frame 30, point (639, 339) | `<30f>1<\|point;x=639;y=339;w=1280;h=720\|>` |
+| O2 | id 1, frame 30, `PromptBox(100, 50, 200, 150)` + point (150, 100) + negative point (10, 10) | `<30f>1<\|box;x1=100;y1=50;x2=199;y2=149;w=1280;h=720\|><\|point;x=150;y=100;w=1280;h=720\|>-<\|point;x=10;y=10;w=1280;h=720\|>` (half-open in, inclusive out) |
+| O3 | point (1280, 10) or (−1, 10) | raises `ObjectPromptError`, code `invalid_point` |
+
+### 11.2 Grid → pixels (§5; frame 1280×720, `bar_h` 40, sent image 1280×760)
+| # | Input (0–1000) | Kind | Expected |
+|---|---|---|---|
+| G1 | point (500, 500) | point | (639, 339) |
+| G2 | point (0, 0) | point | **dropped** (in the bar) |
+| G3 | point (1001, 1000) | point | (1279, 719) (clamped) |
+| G4 | point (0, 53) | point | (0, 0) |
+| G5 | point (0, 52) | point | **dropped** |
+| G6 | point (250, 750) | point | (319, 529) |
+| G7 | box [100, 100, 300, 400] | red-team | [127, 35, 384, 264] (half-open) |
+| G8 | box [100, 0, 300, 40] | red-team | [239, 0, 271, 16] (degenerate → 32 px box, clamped) |
+| G9 | box [100, 0, 300, 40] | miss-loop | **dropped** (keep the point) |
+| G10 | box [500, 500, 501, 501] | red-team | [639, 339, 641, 341] |
+| G11 | box [−5, 60, 1001, 1001] | red-team | [0, 5, 1280, 720] |
+
+### 11.3 Time axes (§5b; `job.fps` 30, `job.frames` 900, `sam_fps` 8; `sam_frames` read back = **240**). The ground truth is ffmpeg 6.1.1's own output, matched by frame checksums
+| # | Function | Input | Expected |
+|---|---|---|---|
+| T1 | `from_proxy` | j = 0, 1, 2, 3, 4, 8, 120, 239 | 1, 5, 9, 13, 16, 31, 451, 898 (prepared frame 899 never reaches the proxy) |
+| T2 | `to_proxy` | f = 0, 1, 2, 3, 4, 5, 6, 7, 450, 898, 899 | 0, 0, 0, 0, 1, 1, 1, 1, 120, 239, 239 |
+| T3 | `max_f abs(from_proxy(to_proxy(f)) − f)` | all f | **2** at this length (bound `ceil(30 / 8)` = 4; other lengths reach 3) |
+| T4 | `to_proxy(from_proxy(j)) == j` | all j | true |
+| T5 | player (PR #2 formula) | `mediaTime` 0.0, 0.0249, 0.025, 1/30, 0.05, 29.99, 31.0 | 0, 0, **1**, 1, 1, 899, 899 (clamped). The quarter-frame tolerance switches to the next frame 0.75 of the way through a frame |
+| T6a | `times`, `job.fps` 10 | source frames at t = 0.00, 0.10, 0.26, 0.40 | ffmpeg wrote 4 frames: `times` = [0.00, 0.10, **0.10**, 0.26]. 0.26 → slot 3, so slot 2 repeats 0.10, and the 0.40 frame isn't emitted at end of stream |
+| T6b | `times`, `job.fps` 10 | 0.00, 0.10, 0.31, 0.40 | 4 frames: [0.00, 0.10, 0.10, 0.31] (the nearest-frame rule happens to agree here; T6a is the case where it doesn't: nearest gives 0.26 at slot 2, ffmpeg gives 0.10) |
+| T6c | `times`, `job.fps` 10 | 0.00, 0.03, 0.04, 0.09, 0.10, 0.40 | 4 frames: [**0.04**, 0.10, 0.10, 0.10]. Slot 0 keeps its last frame (0.04), so `times[0] > 0` |
+
+### 11.4 Cost (§10.5; Spark $1.25 / $0.15 / $4.25 per M)
+| # | Call | Units | Expected `usd` |
+|---|---|---|---|
+| C1 | Responses | in 47,000, cached 0, out 4,000 | 0.07575 |
+| C2 | Responses | in 47,000, cached 45,000, out 4,000 | 0.02625 |
+| C3 | Responses (`max`) | in 17,000, cached 0, out 16,000 | 0.08925 |
+| C4 | Responses pre-call worst case (`max`) | count 17,000, `max_output_tokens` 48,000 | 0.22525 |
+| C5 | SAM | 240 frames | 0.048 |
+| C6 | SAM | 7 concepts × 900 frames | 1.26 |
+| C7 | ASR | `audioDurationMs` 30,500 | 0.0015 (30 s) |
+| C8 | ASR | `audioDurationMs` 59,999 | 0.00295 (59 s) |
+
+### 11.5 Retry, failure and cost-accounting schedule (§10.2–10.4), with `uniform` stubbed to 0
+| # | Sequence of outcomes | Expected |
+|---|---|---|
+| R1 | Responses (`medium`): 429, 429, 200 (no `Retry-After`) | waits 1 s, 2 s; returns the 200. `cost.jsonl`: two lines with `usd: 0` (rejected before processing) and one actual line (`estimated: false`) |
+| R2 | 429 with `Retry-After: 7`, then 200 | waits 7 s |
+| R3 | 400 | no retry; `MetaBadRequest` (or `MetaConfigError` if `param` names the model, effort or format) |
+| R4 | SAM base sweep: read timeout, read timeout | 2 attempts, then `MetaUnavailable`. Both attempts were accepted, so both reservations stay as **estimated** charges against the caps. Job → **`retry_later`** |
+| R5 | Responses (`medium`): 503 × 4 | waits 1, 2, 4 s, then `MetaUnavailable`; role pass fails closed (all `unsure`) |
+| R6 | 5 **calls** fail (each after its own attempts) within 60 s | breaker opens; the next call raises `MetaUnavailable` without a request; after 60 s one trial call is allowed; success closes it |
+| R7 | Responses (`max`): timeout, timeout | **2** attempts only, then `MetaUnavailable`; escalation fails closed (E3) |
+| R8 | SAM stream ends with no terminal event (eof), then a complete stream | eof counts as retryable: the second attempt's records are used |
+| R9 | SAM stream eof, eof | `MetaIncomplete` after 2 attempts; base sweep → job `retry_later` |
+| R10 | SAM request → 404 naming the `file_id` | `MetaFileGone`: re-upload `sam_proxy.mp4`, update `files.json`, repeat once. A second 404 → `MetaBadRequest` |
+| R11 | Responses complete, but the JSON fails pydantic validation | one re-ask (same request); invalid again → the stage fails closed. Both calls are logged with their actual cost |
+| R12 | the pre-call estimate exceeds the remaining job cap | no request; `BudgetExceeded`; the stage fails closed with reason `budget` |

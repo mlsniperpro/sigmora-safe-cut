@@ -55,7 +55,7 @@ Provide speech evidence ("Hi, I'm Amina") when the primary sensor, `muse-voice-t
 - **Dropped-audio check:** if `usage.input_tokens` is below a WP0-measured floor for the clip's duration (i.e. the audio wasn't ingested), or if `has_speech == false` while the creator's note or the scene pass says there's dialogue, mark the transcript `source: "muse-spark-1.2", degraded: true`. **Decided:** add `degraded: bool = false` to the `transcript.json` contract (ARCHITECTURE §3.3), so a dropped soundtrack is visible and never silent. WP0 implements it in `contracts.py`, and WP2 must not emit it before that lands. The role pass then gets "speech unavailable", and participants can only be supported by visual evidence. That tends toward `unsure` → hidden, the safe direction.
 
 ## Failure handling
-- HTTP or schema failure → one retry, then an empty `turns` list with `degraded: true`. Never block the pipeline on speech.
+- HTTP failure after the transport attempts of API-NOTES §10.2, or a schema failure after one re-ask (§10.6) → an empty `turns` list with `degraded: true`. Never block the pipeline on speech.
 - Long clips: the model's audio limit is unknown. ≤60 s uploads (ARCHITECTURE §5) are expected to fit; WP0 confirms.
 
 ## Tricky cases it must get right
