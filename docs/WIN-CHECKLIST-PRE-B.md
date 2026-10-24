@@ -74,16 +74,16 @@ Every finding from every round, with its fix. "Round" = which review found it.
 | 32 | win audit 1 | Builders had no exact schema, validator codes, examples or test vectors | LABEL-FORMAT §6–9 | ✅ |
 | 33 | win audit 1 | Builders had no mocks list, validation rules, error map, state machine, reducer tests | UI-SPEC §10 | ✅ |
 | 34 | win audit 1 | Owner inputs had no stub path | BLOCKED-PRE-B "Until it arrives" lines | ✅ |
-| 35 | win audit 2 | Main review mock broke the spec's own `times` check; §10.6 used a 61 s time | UI-SPEC §10.1 mock, §10.6 | 🔧 in progress |
-| 36 | win audit 2 | Plates sent through the screen keep-confirm; §4.3 said plates are always hidden | UI-SPEC §4.3, §10.5 R1–R2; café mock added | 🔧 in progress |
-| 37 | win audit 2 | BLOCKED promised a café mock that didn't exist | UI-SPEC §10.1 `job-review-cafe`; BLOCKED-PRE-B | 🔧 in progress |
+| 35 | win audit 2 | Main review mock broke the spec's own `times` check; §10.6 used a 61 s time | UI-SPEC §10.1 mock, §10.6 | ✅ |
+| 36 | win audit 2 | Plates sent through the screen keep-confirm; §4.3 said plates are always hidden | UI-SPEC §4.3, §10.5 R1–R2; café mock added | ✅ |
+| 37 | win audit 2 | BLOCKED promised a café mock that didn't exist | UI-SPEC §10.1 `job-review-cafe`; BLOCKED-PRE-B | ✅ |
 | 38 | win audit 2 | κ vector K1 disagreed with IEEE float arithmetic | LABEL-FORMAT §9 tolerance and rounding rule | ✅ |
 | 39 | win audit 2 | No validator path for a missing labeller-B file (plan R3) | LABEL-FORMAT §7 warning code + cases | ✅ |
 | 40 | win audit 2 | Several §8.3 expected codes didn't follow from §7 | LABEL-FORMAT §7 stop rules, §8.3 | ✅ |
-| 41 | win audit 2 | State machine contradicted §5.4 and §10.3; missing states | UI-SPEC §10.4 | 🔧 in progress |
-| 42 | win audit 2 | Reducer guards, CONFIRM_KEEP, MERGE precedence and UNDO undefined | UI-SPEC §10.5, §8 request 5 | 🔧 in progress |
-| 43 | win audit 2 | 404 on a job route mapped to two different pages | UI-SPEC §7, §10.3, §10.4 | 🔧 in progress |
-| 44 | win audit 2 | SoM mark given per item, needed per track | UI-SPEC §0, §8 request 2, §10.1 mock | 🔧 in progress |
+| 41 | win audit 2 | State machine contradicted §5.4 and §10.3; missing states | UI-SPEC §10.4 | ✅ |
+| 42 | win audit 2 | Reducer guards, CONFIRM_KEEP, MERGE precedence and UNDO undefined | UI-SPEC §10.5, §8 request 5 | ✅ |
+| 43 | win audit 2 | 404 on a job route mapped to two different pages | UI-SPEC §7, §10.3, §10.4 | ✅ |
+| 44 | win audit 2 | SoM mark given per item, needed per track | UI-SPEC §0, §8 request 2, §10.1 mock | ✅ |
 
 ## 4. Which builder reads what
 

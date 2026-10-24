@@ -29,7 +29,7 @@ Contents: [0 Principles](#0-principles-and-shared-pieces) · [1 Landing](#1-land
 
 **Time display.** Every frame number shown to a person is converted to clip time `m:ss` (or `m:ss.s` in the Why drawer) as `job.times[frame]`, which is the same timeline as the player's scrubber: prepare doesn't trim, so `times[0] = 0` and the prepared MP4 is encoded with exactly these timestamps (PRE-A `docs/API-NOTES.md` §5b, which owns the time axes; [ARCHITECTURE.md](ARCHITECTURE.md) §3.1). `m:ss` floors to whole seconds (`times = 65.9` → `1:05`); `m:ss.s` floors to tenths (`1:05.9`). Never show raw frame numbers outside the Why drawer's details row.
 
-**Item number.** One rule, so the chip and the keyframe always agree: an item's number `#n` is the Set-of-Mark number drawn on the keyframes for its **primary track** (its `face:*` track if it has one, otherwise its first track in `track_ids`). If the item has other tracks (e.g. `person:2` grouped with `face:7`), the drawer's Details row says "also marked #12 on the keyframes". Items added by the audit have no SoM mark and are numbered `A1, A2, …`. The UI never invents its own numbering. (Request to WP2/WP5: expose each track's mark number; see §8.)
+**Item number.** One rule, so the chip and the keyframe always agree: an item's number `#n` is the Set-of-Mark number drawn on the keyframes for its **primary track** (its `face:*` track if it has one, otherwise its first track in `track_ids`). If the item has other tracks (e.g. `person:2` grouped with `face:7`), the drawer's Details row says "also marked #12 on the keyframes" for each of them. The marks come from `items[].som_marks`, a map from **each** of the item's track IDs to its mark number *(proposal, §10.1)*. Items added by the audit have no SoM mark and are numbered `A1, A2, …`. The UI never invents its own numbering, except the logged fallback in §10.7. (Request to WP2/WP5: expose each track's mark number; see §8 request 2.)
 
 **Icons.** Every state has an icon *and* a word: Hidden = filled square, Kept clear = open eye, Needs you = question mark in a circle, Locked = padlock, Demo mode = play-in-circle. Colour is never the only signal.
 
@@ -483,7 +483,7 @@ Pressing it: `POST /v1/jobs/{id}/render`, then the stage rows `Applying your cho
 | Re-entry (NEW) | Chip with NEW badge and "Same as #n…" |
 | Saving an edit | The chip shows a small "Saving…" under its buttons |
 | Edit failed | Chip returns to its column; toast: "That change didn't save. Check your connection and try again." [Try again] |
-| Job expired (`404` after 24 h) | Full-page: "This clip has been deleted. Safe Cut deletes everything automatically after 24 hours." [Try another clip] |
+| Job expired (`404` with `code: "expired"`; for any other `404` code see §7 "Job not found") | Full-page: "This clip has been deleted. Safe Cut deletes everything automatically after 24 hours." [Try another clip] |
 | Demo mode | The banner (§6) and all edits work locally against the replay (WP5 replays them) |
 
 ### 3.8 Keyboard and accessibility
@@ -614,7 +614,7 @@ On mobile, the drawer repeats the chip's action buttons at the bottom so the cre
 | Removed at your request | You asked to remove this person. They're fully covered everywhere they appear. |
 | Added by the audit | The final check found this after rendering and covered it. |
 
-**"What Muse Spark said (n checks)".** One mark per vote in `votes`, each with its role word (Part of the story / Not part of the story / Child / Not sure); ✓ when it matches the final role, ✕ otherwise. Then Muse Spark's `evidence` text in quotes. If `escalated`: "The checks disagreed, so Muse Spark took a longer, closer look once." For objects (screens, documents): "Muse Spark read it as: {content}" and "Personal: yes/no" from `objects[].sensitive`. For plates: "Number plates are always hidden; Muse Spark isn't asked about them." (only if the role pass doesn't rule on plates; WP2 confirms).
+**"What Muse Spark said (n checks)".** One mark per vote in `votes`, each with its role word (Part of the story / Not part of the story / Child / Not sure); ✓ when it matches the final role, ✕ otherwise. Then Muse Spark's `evidence` text in quotes. If `escalated`: "The checks disagreed, so Muse Spark took a longer, closer look once." For objects (screens, documents): "Muse Spark read it as: {content}" and "Personal: yes/no" from `objects[].sensitive`. For plates: "Number plates are hidden by default; Muse Spark isn't asked about them. Only you can keep one clear." (only if the role pass doesn't rule on plates; WP2 confirms). A plate isn't locked: the creator can keep it clear with one tap, without the screen/document confirm (§3.4).
 
 **"What was said while #n was on screen".** Transcript turns that overlap the item's on-screen time, max 4, each as `m:ss S# "text"`. If the scene pass links a speaker to this person (`scene.participants[].speaker` matched to the item; see §8), mark that speaker's lines with "said by #n". Otherwise end with "No speech is linked to #n." If there's no transcript: "No speech was found in this clip." If `job.audio` is `false`, the whole section is replaced by "This clip has no sound." Text is shown as heard; long turns are cut at 140 characters with "…".
 
@@ -796,7 +796,8 @@ Mobile:
 | Page | Copy | Actions |
 |---|---|---|
 | 404 (unknown route) | We couldn't find that page. | Go to the home page · Try Safe Cut |
-| Job not found or expired | This clip has been deleted. Safe Cut deletes everything automatically after 24 hours. | Try another clip |
+| Job expired (`404` with `code: "expired"`) | This clip has been deleted. Safe Cut deletes everything automatically after 24 hours. | Try another clip |
+| Job not found (`404` on a job route, any other code) | We couldn't find that clip. Check the link, or try another clip. | Try another clip |
 | API unreachable | Safe Cut's service isn't responding right now. Your clip is safe and nothing has been published. Try again in a minute. | Try again · Watch the demo |
 | Unexpected error | Something went wrong on our side. Nothing has been published. | Try again · Go to the home page |
 
@@ -827,10 +828,10 @@ The API ([WP5](work-packages/WP5.md)) hasn't been written; these are the fields 
 
 **Requests for other WPs** (also listed in the PRE-B PR):
 1. **WP5:** return the fields above, including `plan` with the review response, `mode` on every response, and `status: failed` with the failed `stage`.
-2. **WP2/WP5:** expose each item's **SoM mark number** (the number drawn on the keyframes), so chips and the drawer show the same `#n` as the image.
+2. **WP2/WP5:** expose **each track's** SoM mark number (the number drawn on the keyframes) as `items[].som_marks: {track_id: mark}`, so the chip shows the primary track's `#n` and the drawer can list the others (§0).
 3. **WP2:** where the scene pass links a participant to a speaker and a track, record the track ID (today `scene.json` participants have `description`, `evidence`, `speaker` but no track), so the drawer can say "said by #n".
 4. **WP3:** keep `reason` strings short (≤ 90 characters), plain, lowercase-first, no trailing full stop; the UI capitalises.
-5. **WP3:** name the review edit types to match §3.4: `keep`, `hide`, `merge` (into an item ID), `remove_person`, `undo` (or the UI replays the inverse edit).
+5. **WP3/WP5:** name the review edit types to match §3.4 and §10.5: `keep`, `hide`, `merge` (into an item ID), `remove_person`, and `undo` carrying the `edit_id` to revert. The server restores the item's state from before that edit (including `needs_you`, `decided_by` and an unmerge), so the UI never has to construct an inverse edit.
 6. **WP1:** follow PRE-A `docs/API-NOTES.md` §5b exactly for `job.json` `times` (no trim, `times[0] = 0`, strictly increasing, `frames` entries, prepared MP4 encoded with exactly these timestamps). The overlay mapping (§3.6) and every displayed time depend on it.
 7. **WP2:** put `transcript.json` turn times on the same timeline as `job.times` (seconds from prepared frame 0), or record which timeline they use, so the Why drawer's transcript overlap (§4.6) lines up.
 8. **WP5:** return `deletes_at` as the latest time the 24 h cleanup will have removed the job (it depends on how often the cleanup runs).
@@ -869,7 +870,8 @@ One file per screen state. Component and page tests load these through the API c
 | `job-processing-track.json` | `GET /v1/jobs/{id}` | §2.3 progress, active row "Finding people and objects" |
 | `job-processing-miss-loop.json` | `GET /v1/jobs/{id}` | §2.5 progress with the optional "Looking again for anything missed" row shown |
 | `job-failed-roles.json` | `GET /v1/jobs/{id}` (`status: "failed"`, `stage: "roles"`) | §2.6 stage-failure message: "Something went wrong while working out who's part of the story. …" |
-| `job-review-hero1.json` | `GET /v1/jobs/{id}` | §3.1 review panel: hidden, kept clear and needs-you items, a locked child (full example below) |
+| `job-review-hero1.json` | `GET /v1/jobs/{id}` | §3.1 review panel: hidden, kept clear and needs-you items, a locked child, a plate (full example below) |
+| `job-review-cafe.json` | `GET /v1/jobs/{id}` | the context test ([STORYBOARD.md](STORYBOARD.md) 5.1–5.2): an inbox screen hidden, a menu screen in Needs you, the screen keep-confirm (§3.4), and the drawer's "Muse Spark read it as …" (§4.3) (example below) |
 | `job-review-empty.json` | `GET /v1/jobs/{id}` (`items: []`) | §3.7 "Empty: nothing found at all" |
 | `job-review-needs-you-only.json` | `GET /v1/jobs/{id}` | every item `needs_you`; mobile opens on the Needs-you tab; bottom bar "3 items still need you…" |
 | `job-review-locked-child.json` | `GET /v1/jobs/{id}` | one locked child only: no toggle, "Always hidden" |
@@ -885,7 +887,9 @@ One file per screen state. Component and page tests load these through the API c
 | `error-401.json` | any | "That code didn't work. …" |
 | `error-429-cap.json` | any (`error.code: "daily_cap"`) | "Safe Cut has reached today's limit …" |
 | `error-429-rate.json` | any (`error.code: "rate_limited"`) | "Too many tries in a short time. …" |
-| `error-404-expired.json` | `GET /v1/jobs/{id}` | "This clip has been deleted. …" |
+| `error-404-expired.json` | `GET /v1/jobs/{id}` (`error.code: "expired"`) | §7 "This clip has been deleted. …" |
+| `error-404-not-found.json` | `GET /v1/jobs/{id}` (`error.code: "not_found"`) | §7 "We couldn't find that clip. …" |
+| `job-failed-render.json` | `GET /v1/jobs/{id}` (`status: "failed"`, `stage: "render"`) | stage-failure message; [Try again] re-renders (§10.4) |
 | `error-413.json` | `POST /v1/jobs` (`error.code: "too_large"`) | "This file is {size} MB. …" |
 | `error-422-duration.json` | `POST /v1/jobs` (`error.code: "too_long"`, `error.duration_s`) | "This clip is {duration} long. …" |
 | `error-422-job-cap.json` | `POST /v1/jobs/{id}/start` (`error.code: "job_cap"`) | "This clip would cost more than the per-clip limit …" |
@@ -894,58 +898,100 @@ One file per screen state. Component and page tests load these through the API c
 
 Error body *(proposal)*: `{"error": {"code": "<snake_case>", "message": "<for logs only, never shown>", …extra fields}}`. The UI chooses its copy from `status` + `code` (§10.3), never from `message`.
 
-**`job-review-hero1.json`** (complete, compact; `times` shortened to the frames used):
+**`job-review-hero1.json`** (complete and self-consistent: a 12-frame excerpt at 30 fps, so `times` has exactly `frames` entries and passes the §3.6 check):
 
 ```json
 {
   "job_id": "j_hero1", "mode": "live", "status": "review", "stage": "review", "progress": 1.0,
   "deletes_at": "2026-10-28T11:00:00Z",
-  "job": {"fps": 30.0, "width": 1280, "height": 720, "frames": 900, "audio": true,
-          "times": [0.0, 0.0333, 0.0667], "created_at": "2026-10-27T10:00:00Z",
+  "job": {"fps": 30.0, "width": 1280, "height": 720, "frames": 12, "audio": true,
+          "times": [0.0, 0.0333, 0.0667, 0.1, 0.1333, 0.1667, 0.2, 0.2333, 0.2667, 0.3, 0.3333, 0.3667],
+          "created_at": "2026-10-27T10:00:00Z",
           "prepared_url": "https://example.invalid/j_hero1/prepared.mp4"},
   "items": [
     {"item_id": "i_1", "track_ids": ["face:2", "person:1"], "kind": "person", "decision": "keep",
-     "reason": "the guest: introduced at 0:03, speaks to camera", "evidence_frames": [90, 150],
-     "style": "pixelate", "decided_by": "policy", "locked": false, "som_mark": 2},
+     "reason": "the guest: introduced at the start, speaks to camera", "evidence_frames": [3, 5],
+     "style": "pixelate", "decided_by": "policy", "locked": false, "som_marks": {"face:2": 2, "person:1": 7}},
     {"item_id": "i_2", "track_ids": ["face:4"], "kind": "child", "decision": "hide",
-     "reason": "child in the background, not addressed", "evidence_frames": [180],
-     "style": "solid", "decided_by": "policy", "locked": true, "som_mark": 4},
+     "reason": "child in the background, not addressed", "evidence_frames": [6],
+     "style": "solid", "decided_by": "policy", "locked": true, "som_marks": {"face:4": 4}},
     {"item_id": "i_3", "track_ids": ["plate:1"], "kind": "plate", "decision": "hide",
-     "reason": "number plate on a parked car", "evidence_frames": [30],
-     "style": "solid", "decided_by": "policy", "locked": false, "som_mark": 5},
+     "reason": "number plate on a parked car", "evidence_frames": [1],
+     "style": "solid", "decided_by": "policy", "locked": false, "som_marks": {"plate:1": 5}},
     {"item_id": "i_4", "track_ids": ["face:6"], "kind": "person", "decision": "needs_you",
-     "reason": "looks at the camera; checks disagreed", "evidence_frames": [270, 300],
-     "style": "pixelate", "decided_by": "model", "locked": false, "som_mark": 6}
+     "reason": "looks at the camera; checks disagreed", "evidence_frames": [9, 10],
+     "style": "pixelate", "decided_by": "model", "locked": false, "som_marks": {"face:6": 6}}
   ],
   "tracks": [
-    {"track_id": "face:2", "concept": "face", "first": 0, "last": 899, "reentry_of": null, "boxes": {"90": [400, 120, 470, 210]}},
-    {"track_id": "person:1", "concept": "person", "first": 0, "last": 899, "reentry_of": null, "boxes": {"90": [360, 100, 560, 700]}},
-    {"track_id": "face:4", "concept": "face", "first": 120, "last": 390, "reentry_of": null, "boxes": {"180": [900, 200, 940, 250]}},
-    {"track_id": "plate:1", "concept": "license plate", "first": 0, "last": 899, "reentry_of": null, "boxes": {"30": [1050, 560, 1150, 590]}},
-    {"track_id": "face:6", "concept": "face", "first": 260, "last": 420, "reentry_of": null, "boxes": {"270": [700, 150, 750, 215]}}
+    {"track_id": "face:2", "concept": "face", "first": 0, "last": 11, "reentry_of": null, "boxes": {"3": [400, 120, 470, 210]}},
+    {"track_id": "person:1", "concept": "person", "first": 0, "last": 11, "reentry_of": null, "boxes": {"3": [360, 100, 560, 700]}},
+    {"track_id": "face:4", "concept": "face", "first": 4, "last": 10, "reentry_of": null, "boxes": {"6": [900, 200, 940, 250]}},
+    {"track_id": "plate:1", "concept": "license plate", "first": 0, "last": 11, "reentry_of": null, "boxes": {"1": [1050, 560, 1150, 590]}},
+    {"track_id": "face:6", "concept": "face", "first": 8, "last": 11, "reentry_of": null, "boxes": {"9": [700, 150, 750, 215]}}
   ],
   "roles": {
     "tracks": [
-      {"track_id": "face:2", "role": "participant", "votes": ["participant", "participant", "participant"], "escalated": false, "evidence": "introduced at frame 90, speaks to camera 120–600", "frames": [90, 150]},
-      {"track_id": "face:4", "role": "child", "votes": ["child", "child", "child"], "escalated": false, "evidence": "small person walking with an adult behind the guest", "frames": [180]},
-      {"track_id": "face:6", "role": "unsure", "votes": ["bystander", "participant", "bystander"], "escalated": true, "evidence": "looks at the camera at frame 270, never speaks", "frames": [270, 300]}
+      {"track_id": "face:2", "role": "participant", "votes": ["participant", "participant", "participant"], "escalated": false, "evidence": "introduced at frame 3, speaks to camera", "frames": [3, 5]},
+      {"track_id": "face:4", "role": "child", "votes": ["child", "child", "child"], "escalated": false, "evidence": "small person walking with an adult behind the guest", "frames": [6]},
+      {"track_id": "face:6", "role": "unsure", "votes": ["bystander", "participant", "bystander"], "escalated": true, "evidence": "looks at the camera at frame 9, never speaks", "frames": [9, 10]}
     ],
-    "objects": [], "missed": [], "keyframes": ["som/000030.jpg", "som/000090.jpg", "som/000180.jpg", "som/000270.jpg"]
+    "objects": [], "missed": [], "keyframes": ["som/000001.jpg", "som/000003.jpg", "som/000006.jpg", "som/000009.jpg"]
   },
-  "keyframe_urls": {"30": "https://example.invalid/j_hero1/som/000030.jpg", "90": "https://example.invalid/j_hero1/som/000090.jpg",
-                    "180": "https://example.invalid/j_hero1/som/000180.jpg", "270": "https://example.invalid/j_hero1/som/000270.jpg"},
-  "plan": {"frames": {"180": [{"item_id": "i_2", "shape": "box", "box": [894, 193, 946, 257], "mask": null, "style": "solid", "grid": null}],
-                      "270": [{"item_id": "i_4", "shape": "box", "box": [692, 140, 758, 225], "mask": null, "style": "pixelate", "grid": [692, 140, 11]}]},
+  "keyframe_urls": {"1": "https://example.invalid/j_hero1/som/000001.jpg", "3": "https://example.invalid/j_hero1/som/000003.jpg",
+                    "6": "https://example.invalid/j_hero1/som/000006.jpg", "9": "https://example.invalid/j_hero1/som/000009.jpg"},
+  "plan": {"frames": {"1": [{"item_id": "i_3", "shape": "box", "box": [1042, 552, 1158, 598], "mask": null, "style": "solid", "grid": null}],
+                      "6": [{"item_id": "i_2", "shape": "box", "box": [894, 193, 946, 257], "mask": null, "style": "solid", "grid": null}],
+                      "9": [{"item_id": "i_4", "shape": "box", "box": [692, 140, 758, 225], "mask": null, "style": "pixelate", "grid": [692, 140, 11]}]},
            "crowd_fills": []},
   "transcript": {"source": "muse-voice-transcribe-1.0",
-                 "turns": [{"speaker": "S2", "start": 3.0, "end": 5.2, "text": "Hi, I'm Amina, and today…"}]},
+                 "turns": [{"speaker": "S2", "start": 0.1, "end": 0.3, "text": "Hi, I'm Amina, and today…"}]},
   "scene": {"model": "muse-spark-1.3", "summary": "street interview with a guest",
-            "participants": [{"description": "woman in yellow jacket", "evidence": "introduced by S1 at 0:03", "speaker": "S2"}],
+            "participants": [{"description": "woman in yellow jacket", "evidence": "introduced by S1 at the start", "speaker": "S2"}],
             "candidate_objects": []}
 }
 ```
 
-*(proposal)* fields beyond ARCHITECTURE §3: `job_id`, `mode`, `status`, `stage`, `progress` (0–1), `deletes_at`, `job.prepared_url`, `items[].som_mark` (§0 Item number), `keyframe_urls` (frame → signed URL). Everything else is the contract shape. `example.invalid` is a reserved non-resolving domain, so a mock can never fetch real media.
+The `plan` lists only a few frames to stay short; frames it leaves out simply draw nothing (§10.7). A real job has a plan entry on every frame where a hidden item is visible.
+
+**`job-review-cafe.json`** (the context test; the fields not shown are as in the hero mock, with `job_id: "j_cafe"` and the same 12-frame `job`):
+
+```json
+{
+  "items": [
+    {"item_id": "i_1", "track_ids": ["face:1"], "kind": "person", "decision": "keep",
+     "reason": "the host: speaks to camera throughout", "evidence_frames": [2, 8],
+     "style": "pixelate", "decided_by": "policy", "locked": false, "som_marks": {"face:1": 1}},
+    {"item_id": "i_5", "track_ids": ["screen:2"], "kind": "screen", "decision": "hide",
+     "reason": "laptop showing an email inbox with names", "evidence_frames": [4],
+     "style": "solid", "decided_by": "policy", "locked": false, "som_marks": {"screen:2": 2}},
+    {"item_id": "i_6", "track_ids": ["screen:3"], "kind": "screen", "decision": "needs_you",
+     "reason": "menu, nothing personal", "evidence_frames": [4, 7],
+     "style": "solid", "decided_by": "policy", "locked": false, "som_marks": {"screen:3": 3}}
+  ],
+  "tracks": [
+    {"track_id": "face:1", "concept": "face", "first": 0, "last": 11, "reentry_of": null, "boxes": {"2": [300, 120, 370, 210]}},
+    {"track_id": "screen:2", "concept": "screen", "first": 0, "last": 11, "reentry_of": null, "boxes": {"4": [700, 400, 900, 520]}},
+    {"track_id": "screen:3", "concept": "screen", "first": 0, "last": 11, "reentry_of": null, "boxes": {"4": [950, 410, 1150, 530]}}
+  ],
+  "roles": {
+    "tracks": [{"track_id": "face:1", "role": "participant", "votes": ["participant", "participant", "participant"], "escalated": false, "evidence": "speaks to camera throughout", "frames": [2, 8]}],
+    "objects": [
+      {"track_id": "screen:2", "sensitive": true, "content": "email inbox with names", "frames": [4]},
+      {"track_id": "screen:3", "sensitive": false, "content": "café menu", "frames": [4, 7]}
+    ],
+    "missed": [], "keyframes": ["som/000002.jpg", "som/000004.jpg", "som/000007.jpg"]
+  },
+  "keyframe_urls": {"2": "https://example.invalid/j_cafe/som/000002.jpg", "4": "https://example.invalid/j_cafe/som/000004.jpg",
+                    "7": "https://example.invalid/j_cafe/som/000007.jpg"},
+  "plan": {"frames": {"4": [{"item_id": "i_5", "shape": "box", "box": [684, 384, 916, 536], "mask": null, "style": "solid", "grid": null},
+                            {"item_id": "i_6", "shape": "box", "box": [934, 394, 1166, 546], "mask": null, "style": "solid", "grid": null}]},
+           "crowd_fills": []}
+}
+```
+
+`i_6` is in the plan because `needs_you` renders hidden until the creator decides (ARCHITECTURE §3.6).
+
+*(proposal)* fields beyond ARCHITECTURE §3: `job_id`, `mode`, `status`, `stage`, `progress` (0–1), `deletes_at`, `job.prepared_url`, `items[].som_marks` (track ID → SoM mark, §0 Item number), `keyframe_urls` (frame → signed URL). Everything else is the contract shape. `example.invalid` is a reserved non-resolving domain, so a mock can never fetch real media.
 
 ### 10.2 Input validation (`/try`)
 
@@ -971,8 +1017,9 @@ The Start button is enabled once a file passes every check above, but pressing i
 | Rate limited | `429` + `code: "rate_limited"` | §2.6 "Too many tries in a short time. …" | | none automatic; if a `Retry-After` header is present, the button stays disabled until then |
 | Too large / too long | `413` `too_large` / `422` `too_long` | §2.6 matching row | back to step B | none |
 | Job cap | `422` `job_cap` | §2.6 "This clip would cost more than the per-clip limit …" | back to step B | none |
-| Job expired or unknown | `404` on a job route | §7 "This clip has been deleted. …" | [Try another clip] | none |
-| Stage failed | `status: "failed"` | §2.6 stage-failure message, filled with that stage's §2.5 row label | [Try again] = `POST /start` again · [Delete now] | none automatic |
+| Job expired | `404` with `code: "expired"` on a job route | §7 "This clip has been deleted. …" | [Try another clip] | none |
+| Job not found | `404` with any other code on a job route | §7 "We couldn't find that clip. …" | [Try another clip] | none |
+| Stage failed | `status: "failed"` | §2.6 stage-failure message, filled with that stage's §2.5 row label | [Try again] = `POST /render` if the failed stage is `render`, `audit` or `receipt` (re-render with the creator's decisions); otherwise `POST /start` *(proposal, WP5)* · [Delete now] | none automatic |
 | Edit rejected | `POST /review` non-2xx, or timeout | §3.7 "That change didn't save. …" | chip reverts (§10.5 `SERVER_REJECT`) | **none automatic**: the creator presses [Try again] |
 | Render already running | `409` on `POST /render` | no message | keep polling | n/a |
 | Network error or timeout on a GET | fetch rejects, or no response in **15 s** | after 3 failed retries: §7 "Safe Cut's service isn't responding right now. …" | [Try again] restarts polling | retry after 2 s, 4 s, 8 s; then stop and show the message |
@@ -980,7 +1027,7 @@ The Start button is enabled once a file passes every check above, but pressing i
 | Anything else | other `5xx`, malformed JSON, failed `times` check (§3.6) | §7 "Something went wrong on our side. …" | [Try again] · [Go to the home page] | none automatic |
 
 - **Timeouts:** every JSON request is aborted after 15 s (`AbortController`). Uploads have no overall timeout, only the 30 s stall rule.
-- **Polling:** `GET /v1/jobs/{id}` every 2 s for the first 60 s of a page view, then every 5 s. Stop polling when the tab is hidden (`visibilitychange`) and resume immediately when it's visible again. Stop for good in `review`, `done`, `failed`, `expired` and `not_found`.
+- **Polling:** `GET /v1/jobs/{id}` every 2 s for the first 60 s of a page view, then every 5 s. Stop polling when the tab is hidden (`visibilitychange`) and resume immediately when it's visible again. Polling **pauses** in `review` while no render is in flight, and **resumes** as soon as `POST /render` is sent (or answered `409`), so the render stages show. It **stops for good** in `done`, `failed`, `expired` and `not_found`.
 - **Idempotency:** each review edit carries an `edit_id` (a UUID v4 made in the browser) *(proposal; request to WP5)*. A manual retry resends the same `edit_id`, so the server can't apply it twice. `POST /render` is protected by disabling the button until the response, plus the `409` rule.
 - **Logging:** errors go to the console with the job ID and the HTTP status, never the access code or signed URLs.
 
@@ -989,52 +1036,62 @@ The Start button is enabled once a file passes every check above, but pressing i
 | State | Entered when (`GET /v1/jobs/{id}`) | Route that renders it | Shows |
 |---|---|---|---|
 | `loading` | before the first response | either route | skeleton: video box and three empty columns, no spinner over text |
-| `processing(stage)` | `status: "processing"`, `stage` ∈ prepare…guard | `/jobs/[id]` | §2.5 stage list (as on `/try` step C) |
+| `processing(stage)` | `status: "processing"`, `stage` ∈ `queued`, `prepare`, `track`, `transcribe`, `scene`, `roles`, `miss_loop`, `decide`, `guard` | `/jobs/[id]` | §2.5 stage list (as on `/try` step C) |
 | `review` | `status: "review"` | `/jobs/[id]` | §3 review panel |
-| `rendering(stage)` | `status: "rendering"`, `stage` ∈ render, audit, receipt | `/jobs/[id]` | review panel, read-only, with the render stages in the bottom bar (§3.5) |
+| `rendering(stage)` | `status: "rendering"`, `stage` ∈ `render`, `audit`, `receipt` | `/jobs/[id]` · `/jobs/[id]/result` | on `/jobs/[id]`: review panel, read-only, with the render stages in the bottom bar (§3.5); on `/result`: §5.4 "Rendering (arrived early)" |
 | `done` | `status: "done"` | `/jobs/[id]/result` | §5 |
-| `failed(stage)` | `status: "failed"` | `/jobs/[id]` | §2.6 stage-failure message |
+| `failed(stage)` | `status: "failed"` | either route | §2.6 stage-failure message with that stage's §2.5 label; [Try again] per §10.3 |
 | `expired` | `404` with `code: "expired"` | either route | §7 "This clip has been deleted. …" |
-| `not_found` | `404` with any other code | either route | §7 "We couldn't find that page." |
+| `not_found` | `404` with any other code | either route | §7 "We couldn't find that clip. …" (the route-level 404 "We couldn't find that page." is only for unknown URLs) |
 
-Transitions follow the server: `loading → processing → review → rendering → done`; any state can go to `failed` or `expired`. **Redirects** (with `router.replace`, so Back doesn't bounce): `/jobs/[id]` in `done` → `/jobs/[id]/result`; `/jobs/[id]/result` in `processing`, `review` or `rendering` → `/jobs/[id]`. Query parameters (`?from=sigmora`, `?demo=1`) are kept across redirects.
+Transitions follow the server: `loading → processing → review → rendering → done`; any state can go to `failed` or `expired`. **Redirects** (with `router.replace`, so Back doesn't bounce): `/jobs/[id]` in `done` → `/jobs/[id]/result`; `/jobs/[id]/result` in `processing` or `review` → `/jobs/[id]`. `/result` in `rendering` doesn't redirect: it shows §5.4's "Rendering (arrived early)" and moves on to the result when the job is `done`. Neither route redirects in `failed`, `expired` or `not_found`. Query parameters (`?from=sigmora`, `?demo=1`) are kept across redirects.
 
 ### 10.5 Review reducer
 
-**State** *(per job)*: `items: Record<item_id, {decision, decided_by, locked, kind, merged_into: item_id | null, removed: boolean}>`, `pending: Record<edit_id, {edit, prev}>`, `undo: Edit[]` (unlimited within the page session; each toast's [Undo] undoes **that** edit and only appears while the toast is visible, 6 s), `confirm: {item_id} | null` (the screen/document keep confirm).
+**State** *(per job)*: `items: Record<item_id, {decision, decided_by, locked, kind, role, merged_into: item_id | null, removed: boolean}>` (`role` is the item's primary-track role from `roles.json`, or `null` for objects), `rendering: boolean`, `pending: Record<edit_id, {edit, prev}>`, `undo: Edit[]` (unlimited within the page session; each toast's [Undo] undoes **that** edit and only appears while the toast is visible, 6 s), `confirm: {item_id} | null` (the screen/document keep confirm).
 
-**Actions and preconditions:**
+**Guards on every mutating action** (`KEEP`, `CONFIRM_KEEP`, `HIDE`, `MERGE`, `REMOVE_PERSON`, `UNDO`): `rendering` is false, and no edit is pending on any item the action touches (for `MERGE`, both `src` and `dst`). If a guard fails, nothing changes and **no request** is sent; while rendering, the note "Changes are paused while we render." shows.
 
-| Action | Precondition (otherwise: no state change, **no request**) | Effect |
+**Actions and preconditions** (on top of the guards; otherwise: no state change, **no request**):
+
+| Action | Precondition | Effect |
 |---|---|---|
-| `KEEP(id)` | not `locked`; `decision ≠ keep`; no pending edit on `id`. For `kind ∈ {screen, document}`: first sets `confirm = {id}`; the keep applies only on `CONFIRM_KEEP` | `decision = keep`, `decided_by = creator`, edit queued |
-| `HIDE(id)` | `decision ≠ hide`; no pending edit on `id` | `decision = hide`, `decided_by = creator` |
-| `MERGE(src, dst)` | `src ≠ dst`; `src.kind = person` and `src` is hidden with a track that has `reentry_of`, or `src` is hidden by the creator; `dst.kind = person`, `dst.decision = keep`, `dst` not `merged_into` anything; neither is a child (`kind = child` or `locked`) | `src.merged_into = dst`, `src.decision = keep` (follows `dst`), `decided_by = creator`; `dst`'s time range grows |
-| `REMOVE_PERSON(id)` | `kind ∈ {person, child}` | `removed = true`, `decision = hide`, style shown as Whole person covered; on a kept participant this hides them |
-| `UNDO(edit_id)` | the edit exists in `undo` | restores `prev` and sends the inverse edit (or `undo` if WP3 names it, §8 request 5) |
+| `KEEP(id)` | not `locked`; `decision ≠ keep` | `kind ∈ {screen, document}`: sets `confirm = {id}` only; no request yet. Any other kind (person, plate, other): `decision = keep`, `decided_by = creator`, edit sent |
+| `CONFIRM_KEEP` | `confirm` is set and its item still passes `KEEP`'s precondition | `decision = keep`, `decided_by = creator`, edit sent; `confirm = null` |
+| `CANCEL_CONFIRM` | `confirm` is set | `confirm = null`; nothing sent |
+| `HIDE(id)` | `decision ≠ hide` | `decision = hide`, `decided_by = creator`, edit sent |
+| `MERGE(src, dst)` | **all of:** `src ≠ dst`; `src.kind = person`; `src` not `locked`; (`src` has a track with `reentry_of` set **or** `src.decision = hide`); `dst.kind = person`; `dst.decision = keep`; `dst.role = participant`; `dst` not `locked`; `dst.merged_into = null` | `src.merged_into = dst`, `src.decision = keep` (follows `dst`), `decided_by = creator`; `dst`'s time range grows; edit sent |
+| `REMOVE_PERSON(id)` | `kind ∈ {person, child}` (sent only after the §3.4 dialog's [Remove]) | `removed = true`, `decision = hide`, style shown as Whole person covered; on a kept participant this hides them; edit sent |
+| `UNDO(edit_id)` | the edit is in `undo` and isn't pending | restores that edit's `prev` locally and sends an `undo` edit carrying `edit_id`; the server restores the prior state (§8 request 5) *(proposal, WP3/WP5)* |
 | `SERVER_ACK(edit_id, items, plan)` | edit is pending | drop from `pending`; replace items and plan with the server's |
 | `SERVER_REJECT(edit_id)` | edit is pending | restore `prev`; show the §3.7 edit-failed toast |
+
+Children are never `MERGE` sources or targets: a child is `kind = child`, which fails both `kind = person` checks, and is `locked`.
 
 **Test cases** (expected state and UI after the action):
 
 | # | Initial | Action | Expected |
 |---|---|---|---|
-| R1 | i_3 plate, hide | `KEEP(i_3)` | `confirm = {i_3}`; inline "Only keep this clear if nothing on it is personal."; no request yet |
-| R2 | R1 state | `CONFIRM_KEEP` | i_3 keep, creator; chip in Kept clear; toast "#5 will be kept clear. [Undo]"; one request |
+| R1 | café mock: i_6 menu screen, needs_you | `KEEP(i_6)` | `confirm = {i_6}`; inline "Only keep this clear if nothing on it is personal."; no request yet |
+| R2 | R1 state | `CONFIRM_KEEP` | i_6 keep, creator; chip in Kept clear; toast "#3 will be kept clear. [Undo]"; one request; `confirm = null` |
+| R2b | R1 state | `CANCEL_CONFIRM` | i_6 unchanged (needs_you); `confirm = null`; no request |
+| R2c | hero mock: i_3 plate, hide | `KEEP(i_3)` | i_3 keep, creator, **no confirm** (plates aren't screens or documents); toast "#5 will be kept clear. [Undo]"; one request |
 | R3 | i_2 locked child | `KEEP(i_2)` | no change; **no request**; no toast (the button isn't rendered; this guards keyboard and devtools paths) |
 | R4 | i_4 needs_you | `HIDE(i_4)` | hide, creator; chip in Hidden; toast "#6 will be hidden. [Undo]" |
-| R5 | R4 state | `UNDO(R4)` | i_4 back to needs_you, decided_by model; chip in Needs you; toast "Undone." |
-| R6 | i_1 keep | `HIDE(i_1)` twice quickly (double-click) | one state change, **one request** (second blocked by the pending edit) |
+| R5 | R4 state (acknowledged) | `UNDO(R4)` | i_4 back to needs_you, decided_by model; chip in Needs you; toast "Undone."; one `undo` edit sent with R4's `edit_id` |
+| R6 | i_1 keep | `HIDE(i_1)` twice quickly (double-click) | one state change, **one request** (the second fails the pending-edit guard) |
 | R7 | i_4 needs_you | `KEEP(i_4)` | keep, creator; Kept clear; toast "#6 will be kept clear. [Undo]" |
 | R8 | i_9 hidden with `reentry_of`, i_1 kept guest | `MERGE(i_9, i_1)` | i_9 merged into i_1, keep; NEW chip gone; i_1 range grows; toast "#9 merged into #2. They'll be kept clear like #2. [Undo]" |
-| R9 | R8 state | `UNDO(R8)` | i_9 hidden, NEW again; i_1 range back |
+| R9 | R8 state (acknowledged) | `UNDO(R8)` | i_9 hidden, `merged_into = null`, NEW again; i_1 range back; one `undo` edit sent with R8's `edit_id` |
 | R10 | i_9, i_2 child | `MERGE(i_9, i_2)` | rejected; no request (child target) |
 | R11 | i_2 child | `MERGE(i_2, i_1)` | rejected; no request (child source) |
 | R12 | i_9, i_4 needs_you | `MERGE(i_9, i_4)` | rejected (target not kept) |
+| R12b | i_9, i_7 a bystander the creator kept (`role = bystander`, keep) | `MERGE(i_9, i_7)` | rejected (target isn't a participant) |
+| R12c | i_9 with an edit pending | `MERGE(i_9, i_1)` | rejected by the pending-edit guard; no request |
 | R13 | i_1 kept participant | `REMOVE_PERSON(i_1)` (after the dialog's [Remove]) | i_1 hide, removed, Whole person covered; toast "#2 will be fully covered wherever they appear. [Undo]" |
 | R14 | i_4 needs_you | `HIDE(i_4)` then `SERVER_REJECT` | back to needs_you; toast "That change didn't save. Check your connection and try again." |
 | R15 | i_4 needs_you | `HIDE(i_4)` then `SERVER_ACK` with server items | items replaced by the server's; plan replaced; overlay redraws from the new plan |
-| R16 | rendering state | any edit action | rejected; note "Changes are paused while we render." |
+| R16 | `rendering = true` | any mutating action | rejected by the guard; no request; note "Changes are paused while we render." |
 | R17 | replay mode | `HIDE(i_4)` | same behaviour; the request goes to WP5's replay API (§3.7 demo mode) |
 
 ### 10.6 Frame-mapping test cases (§3.6, PRE-A §5b)
@@ -1051,7 +1108,7 @@ Transitions follow the server: `loading → processing → review → rendering 
 | Past the end | same | `5.0` | 3 |
 | VFR (uneven gaps) | `[0, 0.040, 0.050, 0.120, 0.130]` | `0.100` | 2 |
 | VFR, on a late frame | same | `0.1205` | 3 |
-| Display time | `times[1830] = 61.02` | — | `1:01` (and `1:01.0` in the drawer) |
+| Display time | `times[1500] = 50.02` | — | `0:50` (and `0:50.0` in the drawer) |
 | Invalid `times` | `[0, 0.04, 0.04]` (not strictly increasing) | — | unexpected-error page, overlay not drawn |
 
 ### 10.7 Edge states checklist
@@ -1068,5 +1125,5 @@ Transitions follow the server: `loading → processing → review → rendering 
 | `job.audio: false` | drawer section replaced by "This clip has no sound." |
 | No `scene` | the "said by #n" link is never shown; nothing else changes |
 | `plan.frames` has no entry for a frame | draw nothing on that frame; no error (frames with nothing to cover are left out of the plan) |
-| `som_mark` missing on an item | never show `#?`. Fall back to numbering such items after the highest mark, in first-appearance order, and log a warning. This is the one exception to §0's "the UI never invents its own numbering", and it signals a WP5 gap (§8 request 2) |
+| `som_marks` missing, or missing the primary track | never show `#?`. Fall back to numbering such items after the highest mark, in first-appearance order, and log a warning. This is the one exception to §0's "the UI never invents its own numbering", and it signals a WP5 gap (§8 request 2) |
 | Signed URL expired (`403` on media) | refetch `GET /v1/jobs/{id}` once for fresh URLs; if it fails again, §7 unexpected-error |
