@@ -27,7 +27,7 @@ Contents: [0 Principles](#0-principles-and-shared-pieces) · [1 Landing](#1-land
 
 **Footer (all pages).** "Built for the Meta Global AI Developer Hackathon with Muse Spark, SAM 3.1 and Muse Voice Transcribe on the Meta Model API." · "Uploads are deleted after 24 hours." · "MIT licence" · "Source on GitHub".
 
-**Time display.** Every frame number shown to a person is converted to clip time `m:ss` (or `m:ss.s` in the Why drawer) on the **prepared clock**, `frame / job.fps`, so it matches the player's scrubber ([ARCHITECTURE.md](ARCHITECTURE.md) §3.1; §3.6 below explains the two clocks). `job.times` (source seconds) is used only where the source clock is needed, e.g. the receipt's "source time" column. Never show raw frame numbers outside the Why drawer's details row.
+**Time display.** Every frame number shown to a person is converted to clip time `m:ss` (or `m:ss.s` in the Why drawer) as `job.times[frame]`, which is the same timeline as the player's scrubber: prepare doesn't trim, so `times[0] = 0` and the prepared MP4 is encoded with exactly these timestamps (PRE-A `docs/API-NOTES.md` §5b, which owns the time axes; [ARCHITECTURE.md](ARCHITECTURE.md) §3.1). `m:ss` floors to whole seconds (`times = 65.9` → `1:05`); `m:ss.s` floors to tenths (`1:05.9`). Never show raw frame numbers outside the Why drawer's details row.
 
 **Item number.** One rule, so the chip and the keyframe always agree: an item's number `#n` is the Set-of-Mark number drawn on the keyframes for its **primary track** (its `face:*` track if it has one, otherwise its first track in `track_ids`). If the item has other tracks (e.g. `person:2` grouped with `face:7`), the drawer's Details row says "also marked #12 on the keyframes". Items added by the audit have no SoM mark and are numbered `A1, A2, …`. The UI never invents its own numbering. (Request to WP2/WP5: expose each track's mark number; see §8.)
 
@@ -313,6 +313,8 @@ The `miss_loop` row appears only if that stage runs. `~N s left` shows only when
 | Cancel and delete (confirm dialog) | Delete this clip and stop processing? This can't be undone. · [Delete] [Keep going] | |
 | After delete | Deleted. Nothing from this clip is kept. | link to `/try` |
 | Rights tick label | I filmed this clip or have the right to use it. | |
+| More than one file dropped or chosen | Drop one clip at a time. | keep the drop zone empty |
+| Render already running (`409` on render) | (no message: the page polls and shows the render stages) | |
 
 ### 2.7 States
 
@@ -423,7 +425,7 @@ The video stays sticky at the top while the chip list scrolls. The tab that open
 | Kind | Person / Child / Number plate / Screen / Document / Other item, with its icon | `kind` |
 | Badges | 🔒 **Always hidden** if `locked`; **NEW** if any track has `reentry_of` set and the item hasn't been merged; **Changed by you** if `decided_by = creator` | `locked`, `tracks[].reentry_of`, `decided_by` |
 | Reason | One or two lines, first letter capitalised, no trailing full stop added | `reason` |
-| Time range | `m:ss–m:ss` from the first to the last frame of the item's tracks | `tracks.json` `first`/`last` over `track_ids` → `frame / job.fps` (prepared clock) |
+| Time range | `m:ss–m:ss` from the first to the last frame of the item's tracks | `tracks.json` `first`/`last` over `track_ids` → `job.times` |
 | Buttons | Hidden chip: [Why?] [Keep clear] · Kept chip: [Why?] [Hide] · Needs-you chip: [Why?] [Hide] [Keep clear] · Locked chip: [Why?] and the text "Always hidden" (no toggle) · NEW chip (hidden, re-acquired track): [Why?] [Same as #n…] [Keep clear]; "Same as #n…" comes first because merging is the usual fix | `decision`, `locked` |
 | Overflow `⋯` | Remove this person from the video (person/child items); Jump to first appearance | |
 
@@ -460,8 +462,8 @@ Pressing it: `POST /v1/jobs/{id}/render`, then the stage rows `Applying your cho
 
 ### 3.6 The overlay
 
-- A `<canvas>` sized to the video's displayed box, drawn on each `requestVideoFrameCallback` (rVFC). Per the WICG spec, the callback's `metadata.mediaTime` is the presentation timestamp of the frame being shown, on the `currentTime` timeline. **Two clocks, kept apart:** the **prepared clock** (the player's timeline, starting at 0) and the **source clock** (`job.times`, source seconds per prepared frame, offset by any trim; PRE-A's meaning, [LABEL-FORMAT.md](labeling/LABEL-FORMAT.md) §2). The prepared clip is encoded at a **constant frame rate** `job.fps` (request to WP1, §8), so prepared frame `i` is presented at `i / job.fps`. Map with `i = clamp(floor(mediaTime × job.fps + 0.25), 0, job.frames − 1)`, where the quarter frame absorbs float rounding ([WP6](work-packages/WP6.md) step 4). `job.times` isn't used for this: phone footage is often variable frame rate, so `times[i] − times[0]` can drift from `i / fps`. If `metadata.presentedFrames` jumps by more than 1 between callbacks, the overlay just draws the frame now shown (frames skipped by the player don't need drawing).
-- Browser support (MDN browser-compat-data, 2026-10-23): rVFC is in Chrome 83+, Safari 15.4+ and Firefox 132+. On a browser without it, fall back to `requestAnimationFrame` reading `video.currentTime`, which can be a frame late, and say so next to the toggle: "Preview may lag by a frame in this browser. The final render isn't affected." Never fall back silently.
+- A `<canvas>` sized to the video's displayed box, drawn on each `requestVideoFrameCallback` (rVFC). Per the WICG spec, `metadata.mediaTime` is the presentation timestamp of the frame being shown, on the `currentTime` timeline. Map it to a prepared frame exactly as PRE-A `docs/API-NOTES.md` §5b defines: **`i = max{ i : job.times[i] ≤ mediaTime + 0.001 }`**, found by binary search, then clamped to `[0, job.frames − 1]` (a `mediaTime` before `times[0]` gives frame 0). With rVFC, `mediaTime` equals `times[i]` exactly; the 1 ms tolerance only absorbs float error ([WP6](work-packages/WP6.md) step 4). This works for variable-frame-rate sources too, because `times` holds each prepared frame's own timestamp. If `times` isn't strictly increasing, doesn't start at 0, or doesn't have `job.frames` entries, the UI shows the unexpected-error page (§7) instead of drawing a misaligned overlay. Test cases: §10.6.
+- Browser support (MDN browser-compat-data, 2026-10-23): rVFC is in Chrome 83+, Safari 15.4+ and Firefox 132+. On a browser without it, fall back to `requestAnimationFrame` reading `video.currentTime` through **the same `max{}` rule** (not nearest-rounding, which PRE-A §5b notes would draw one frame ahead). `currentTime` can lag the displayed frame, so say so next to the toggle: "Preview may lag by a frame in this browser. The final render isn't affected." Never fall back silently.
 - For that frame, draw every region in `plan.json` `frames[frame]` whose `item_id` is currently hidden or needs-you (after the creator's local edits). `solid` and `person_solid` → opaque fill (mask shape when `mask` is present, else box); `pixelate` → coarse cells on the locked `grid` (a preview; the final render adds noise); `crowd_fills` → opaque fill.
 - An item switched from kept to hidden by the creator has no plan regions yet: until the review response returns a new plan, draw its **track boxes** from `tracks.json` (padded 15% as a visual approximation) so the creator sees it covered immediately.
 - **Raw / Safe Cut toggle** turns the overlay off and on. In Raw mode, a 2 px outline still shows each item's position with its `#n`, so the creator can match chips to people.
@@ -614,7 +616,7 @@ On mobile, the drawer repeats the chip's action buttons at the bottom so the cre
 
 **"What Muse Spark said (n checks)".** One mark per vote in `votes`, each with its role word (Part of the story / Not part of the story / Child / Not sure); ✓ when it matches the final role, ✕ otherwise. Then Muse Spark's `evidence` text in quotes. If `escalated`: "The checks disagreed, so Muse Spark took a longer, closer look once." For objects (screens, documents): "Muse Spark read it as: {content}" and "Personal: yes/no" from `objects[].sensitive`. For plates: "Number plates are always hidden; Muse Spark isn't asked about them." (only if the role pass doesn't rule on plates; WP2 confirms).
 
-**"What was said while #n was on screen".** Transcript turns that overlap the item's on-screen time, max 4, each as `m:ss S# "text"`. If the scene pass links a speaker to this person (`scene.participants[].speaker` matched to the item; see §8), mark that speaker's lines with "said by #n". Otherwise end with "No speech is linked to #n." If there's no transcript: "No speech was found in this clip." Text is shown as heard; long turns are cut at 140 characters with "…".
+**"What was said while #n was on screen".** Transcript turns that overlap the item's on-screen time, max 4, each as `m:ss S# "text"`. If the scene pass links a speaker to this person (`scene.participants[].speaker` matched to the item; see §8), mark that speaker's lines with "said by #n". Otherwise end with "No speech is linked to #n." If there's no transcript: "No speech was found in this clip." If `job.audio` is `false`, the whole section is replaced by "This clip has no sound." Text is shown as heard; long turns are cut at 140 characters with "…".
 
 **"Details"** (collapsed by default on mobile): `Decided by {Safe Cut's rules | Muse Spark | You}` · `Cover: {style word}` · `Tracks: {track_ids}` · `Frames {first}–{last}` · `Models: {receipt-style model list}`. This is the only place raw IDs and frame numbers appear.
 
@@ -645,7 +647,7 @@ On mobile, the drawer repeats the chip's action buttons at the bottom so the cre
 | Reason | `decisions.items[].reason` |
 | Votes, evidence, escalation | `roles.json` `tracks[]`: `votes`, `role`, `evidence`, `escalated` (for each track in `track_ids`; show the person's face track first) |
 | Object content | `roles.json` `objects[]`: `sensitive`, `content` |
-| Transcript | `transcript.json` `turns[]` overlapping the item's prepared-clock span `[first / job.fps, (last + 1) / job.fps]`, assuming turn times are on the prepared clock (ASR runs on the prepared clip's audio; request to WP2 in §8 to confirm or convert) |
+| Transcript | `transcript.json` `turns[]` overlapping `[times[first], times[last]]`: a turn overlaps when `turn.start ≤ times[last]` and `turn.end ≥ times[first]`. This assumes turn times are on the same timeline as `times` (ASR runs on the prepared clip's audio; request to WP2 in §8 to confirm) |
 | Speaker link | `scene.json` `participants[].speaker` (when WP2 links a participant to a track) |
 | Decided by, style, locked | `decisions.items[]` |
 | Models | `receipt.json` `models` (or the job's config before a receipt exists) |
@@ -829,8 +831,8 @@ The API ([WP5](work-packages/WP5.md)) hasn't been written; these are the fields 
 3. **WP2:** where the scene pass links a participant to a speaker and a track, record the track ID (today `scene.json` participants have `description`, `evidence`, `speaker` but no track), so the drawer can say "said by #n".
 4. **WP3:** keep `reason` strings short (≤ 90 characters), plain, lowercase-first, no trailing full stop; the UI capitalises.
 5. **WP3:** name the review edit types to match §3.4: `keep`, `hide`, `merge` (into an item ID), `remove_person`, `undo` (or the UI replays the inverse edit).
-6. **WP1:** keep PRE-A's meaning of `job.json` `times`: source seconds per prepared frame, measured from the first decoded source frame (the container's start timestamp subtracted), and offset by any trim, so `times[0]` is the trim start and is 0 when nothing is trimmed. Encode the prepared clip at a **constant frame rate** `job.fps` with a timeline starting at 0, so prepared frame `i` is presented at `i / job.fps` (the overlay mapping in §3.6 relies on this, even for variable-frame-rate phone sources). Validate that `times` is strictly increasing and has `frames` entries.
-7. **WP2:** put `transcript.json` turn times on the prepared clock (seconds from prepared frame 0), or record which clock they use, so the Why drawer's transcript overlap (§4.6) lines up.
+6. **WP1:** follow PRE-A `docs/API-NOTES.md` §5b exactly for `job.json` `times` (no trim, `times[0] = 0`, strictly increasing, `frames` entries, prepared MP4 encoded with exactly these timestamps). The overlay mapping (§3.6) and every displayed time depend on it.
+7. **WP2:** put `transcript.json` turn times on the same timeline as `job.times` (seconds from prepared frame 0), or record which timeline they use, so the Why drawer's transcript overlap (§4.6) lines up.
 8. **WP5:** return `deletes_at` as the latest time the 24 h cleanup will have removed the job (it depends on how often the cleanup runs).
 
 ---
@@ -851,3 +853,220 @@ Target: WCAG 2.2 AA on every screen.
 - [ ] Every image has alt text built from data (keyframes, thumbnails: "#4, Child, hidden").
 - [ ] Single-key shortcuts only in the chip area, with a way to turn them off (SC 2.1.4).
 - [ ] Dialogs: labelled, focus trapped, `Esc` closes, focus returns to the opener.
+
+---
+
+## 10. Build contract (for WP6)
+
+This section is what WP6 codes and tests against, so nothing in §1–§9 has to be guessed. Field names marked *(proposal)* are WP6↔WP5 proposals: if WP5 names them differently, WP5's names win and the mocks follow in the same PR. Every user-facing string here already appears in a copy-deck table above; if a builder needs a string that isn't in a copy deck, that's a spec gap: add it to the copy deck first.
+
+### 10.1 Mock fixtures (`web/mocks/`)
+
+One file per screen state. Component and page tests load these through the API client (`web/src/lib/api.ts`), which uses the mocks whenever `NEXT_PUBLIC_SAFECUT_API` is unset ([WP6](work-packages/WP6.md) step 2).
+
+| File | Endpoint it stands in for | Screen state it drives |
+|---|---|---|
+| `job-processing-track.json` | `GET /v1/jobs/{id}` | §2.3 progress, active row "Finding people and objects" |
+| `job-processing-miss-loop.json` | `GET /v1/jobs/{id}` | §2.5 progress with the optional "Looking again for anything missed" row shown |
+| `job-failed-roles.json` | `GET /v1/jobs/{id}` (`status: "failed"`, `stage: "roles"`) | §2.6 stage-failure message: "Something went wrong while working out who's part of the story. …" |
+| `job-review-hero1.json` | `GET /v1/jobs/{id}` | §3.1 review panel: hidden, kept clear and needs-you items, a locked child (full example below) |
+| `job-review-empty.json` | `GET /v1/jobs/{id}` (`items: []`) | §3.7 "Empty: nothing found at all" |
+| `job-review-needs-you-only.json` | `GET /v1/jobs/{id}` | every item `needs_you`; mobile opens on the Needs-you tab; bottom bar "3 items still need you…" |
+| `job-review-locked-child.json` | `GET /v1/jobs/{id}` | one locked child only: no toggle, "Always hidden" |
+| `job-review-reentry.json` | `GET /v1/jobs/{id}` | a kept guest plus a NEW hidden item whose track has `reentry_of` set; merge flow (§3.4) |
+| `job-review-200-items.json` | `GET /v1/jobs/{id}` | the performance case in §10.7 |
+| `job-review-no-audio.json` | `GET /v1/jobs/{id}` (`job.audio: false`, no `transcript`) | drawer shows "This clip has no sound." |
+| `job-replay.json` | `GET /v1/jobs/{id}` (`mode: "replay"`) | demo-mode banner (§6) on the review panel |
+| `job-rendering-audit.json` | `GET /v1/jobs/{id}` (`stage: "audit"`) | §3.5 bottom bar replaced by the render stages; chips read-only |
+| `result-clean.json` | `GET /v1/jobs/{id}/result` | §5.3 "No leaks found." |
+| `result-fixed.json` | `GET /v1/jobs/{id}/result` | §5.3 "1 leak(s) found and fixed. Nothing left to fix." (two `leaks[]` rows with the same `patched_item`: proves the distinct-item count, §5.6) |
+| `result-unresolved.json` | `GET /v1/jobs/{id}/result` (`audit.unresolved: 1`) | §5.4 warning, Publish disabled |
+| `review-ack.json` | `POST /v1/jobs/{id}/review` | an accepted edit returning updated `items` and `plan` |
+| `error-401.json` | any | "That code didn't work. …" |
+| `error-429-cap.json` | any (`error.code: "daily_cap"`) | "Safe Cut has reached today's limit …" |
+| `error-429-rate.json` | any (`error.code: "rate_limited"`) | "Too many tries in a short time. …" |
+| `error-404-expired.json` | `GET /v1/jobs/{id}` | "This clip has been deleted. …" |
+| `error-413.json` | `POST /v1/jobs` (`error.code: "too_large"`) | "This file is {size} MB. …" |
+| `error-422-duration.json` | `POST /v1/jobs` (`error.code: "too_long"`, `error.duration_s`) | "This clip is {duration} long. …" |
+| `error-422-job-cap.json` | `POST /v1/jobs/{id}/start` (`error.code: "job_cap"`) | "This clip would cost more than the per-clip limit …" |
+| `error-409-rendering.json` | `POST /v1/jobs/{id}/render` | no message; keep polling |
+| `error-500.json` | any | §7 "Something went wrong on our side. …" |
+
+Error body *(proposal)*: `{"error": {"code": "<snake_case>", "message": "<for logs only, never shown>", …extra fields}}`. The UI chooses its copy from `status` + `code` (§10.3), never from `message`.
+
+**`job-review-hero1.json`** (complete, compact; `times` shortened to the frames used):
+
+```json
+{
+  "job_id": "j_hero1", "mode": "live", "status": "review", "stage": "review", "progress": 1.0,
+  "deletes_at": "2026-10-28T11:00:00Z",
+  "job": {"fps": 30.0, "width": 1280, "height": 720, "frames": 900, "audio": true,
+          "times": [0.0, 0.0333, 0.0667], "created_at": "2026-10-27T10:00:00Z",
+          "prepared_url": "https://example.invalid/j_hero1/prepared.mp4"},
+  "items": [
+    {"item_id": "i_1", "track_ids": ["face:2", "person:1"], "kind": "person", "decision": "keep",
+     "reason": "the guest: introduced at 0:03, speaks to camera", "evidence_frames": [90, 150],
+     "style": "pixelate", "decided_by": "policy", "locked": false, "som_mark": 2},
+    {"item_id": "i_2", "track_ids": ["face:4"], "kind": "child", "decision": "hide",
+     "reason": "child in the background, not addressed", "evidence_frames": [180],
+     "style": "solid", "decided_by": "policy", "locked": true, "som_mark": 4},
+    {"item_id": "i_3", "track_ids": ["plate:1"], "kind": "plate", "decision": "hide",
+     "reason": "number plate on a parked car", "evidence_frames": [30],
+     "style": "solid", "decided_by": "policy", "locked": false, "som_mark": 5},
+    {"item_id": "i_4", "track_ids": ["face:6"], "kind": "person", "decision": "needs_you",
+     "reason": "looks at the camera; checks disagreed", "evidence_frames": [270, 300],
+     "style": "pixelate", "decided_by": "model", "locked": false, "som_mark": 6}
+  ],
+  "tracks": [
+    {"track_id": "face:2", "concept": "face", "first": 0, "last": 899, "reentry_of": null, "boxes": {"90": [400, 120, 470, 210]}},
+    {"track_id": "person:1", "concept": "person", "first": 0, "last": 899, "reentry_of": null, "boxes": {"90": [360, 100, 560, 700]}},
+    {"track_id": "face:4", "concept": "face", "first": 120, "last": 390, "reentry_of": null, "boxes": {"180": [900, 200, 940, 250]}},
+    {"track_id": "plate:1", "concept": "license plate", "first": 0, "last": 899, "reentry_of": null, "boxes": {"30": [1050, 560, 1150, 590]}},
+    {"track_id": "face:6", "concept": "face", "first": 260, "last": 420, "reentry_of": null, "boxes": {"270": [700, 150, 750, 215]}}
+  ],
+  "roles": {
+    "tracks": [
+      {"track_id": "face:2", "role": "participant", "votes": ["participant", "participant", "participant"], "escalated": false, "evidence": "introduced at frame 90, speaks to camera 120–600", "frames": [90, 150]},
+      {"track_id": "face:4", "role": "child", "votes": ["child", "child", "child"], "escalated": false, "evidence": "small person walking with an adult behind the guest", "frames": [180]},
+      {"track_id": "face:6", "role": "unsure", "votes": ["bystander", "participant", "bystander"], "escalated": true, "evidence": "looks at the camera at frame 270, never speaks", "frames": [270, 300]}
+    ],
+    "objects": [], "missed": [], "keyframes": ["som/000030.jpg", "som/000090.jpg", "som/000180.jpg", "som/000270.jpg"]
+  },
+  "keyframe_urls": {"30": "https://example.invalid/j_hero1/som/000030.jpg", "90": "https://example.invalid/j_hero1/som/000090.jpg",
+                    "180": "https://example.invalid/j_hero1/som/000180.jpg", "270": "https://example.invalid/j_hero1/som/000270.jpg"},
+  "plan": {"frames": {"180": [{"item_id": "i_2", "shape": "box", "box": [894, 193, 946, 257], "mask": null, "style": "solid", "grid": null}],
+                      "270": [{"item_id": "i_4", "shape": "box", "box": [692, 140, 758, 225], "mask": null, "style": "pixelate", "grid": [692, 140, 11]}]},
+           "crowd_fills": []},
+  "transcript": {"source": "muse-voice-transcribe-1.0",
+                 "turns": [{"speaker": "S2", "start": 3.0, "end": 5.2, "text": "Hi, I'm Amina, and today…"}]},
+  "scene": {"model": "muse-spark-1.3", "summary": "street interview with a guest",
+            "participants": [{"description": "woman in yellow jacket", "evidence": "introduced by S1 at 0:03", "speaker": "S2"}],
+            "candidate_objects": []}
+}
+```
+
+*(proposal)* fields beyond ARCHITECTURE §3: `job_id`, `mode`, `status`, `stage`, `progress` (0–1), `deletes_at`, `job.prepared_url`, `items[].som_mark` (§0 Item number), `keyframe_urls` (frame → signed URL). Everything else is the contract shape. `example.invalid` is a reserved non-resolving domain, so a mock can never fetch real media.
+
+### 10.2 Input validation (`/try`)
+
+The client checks these for fast feedback; **the server enforces the same limits** (WP5), because the client can be bypassed.
+
+| Field | Rule | Trigger | Copy (§2.6) | Focus |
+|---|---|---|---|---|
+| Access code | Trim whitespace; must be non-empty; `maxlength="64"` on the input (longer input can't be typed or pasted beyond 64 characters). No other format check: only the server knows valid codes | Continue pressed | Empty: "Enter your access code." · `401`: "That code didn't work. Check it and try again." | Stay on the field; on `401`, select its text |
+| File count | Exactly one file | Drop or choose | More than one: "Drop one clip at a time." (nothing is kept) | The drop zone's "Choose a file" button |
+| File type | Extension `.mp4` or `.mov` (case-insensitive) **and** MIME `video/mp4` or `video/quicktime`. If either check fails, reject. An empty MIME string (some browsers) counts as a fail only if the extension also fails | Drop or choose | "Safe Cut takes MP4 or MOV video files." | "Choose a file" button |
+| File size | `size ≤ 157,286,400` bytes (= 150 × 1024 × 1024; WP5 must use the same number). Shown as `{size}` = bytes ÷ 1,048,576, rounded to 1 decimal | Drop or choose | "This file is {size} MB. The limit is 150 MB." | "Choose a file" button |
+| Duration | Read `duration` from a hidden `<video preload="metadata">`. Reject if `duration > 60.05` s (60 s plus a 0.05 s float tolerance). If the metadata hasn't loaded within 10 s, or `duration` is `NaN` or `Infinity`, don't show a client error: the server decides (`422` `too_long`). `{duration}` is shown as `m:ss` | After the file is accepted by the checks above | "This clip is {duration} long. The limit is 60 seconds. Trim it and try again." | "Choose a file" button |
+| Rights tick | Must be ticked | Start pressed | "Tick the box to confirm you can use this clip." | The checkbox |
+
+The Start button is enabled once a file passes every check above, but pressing it with the box unticked shows the rights message (so the requirement is announced rather than silently blocking the button). Errors are announced through the live region and tied to their field with `aria-describedby` (§2.8).
+
+### 10.3 Errors, retries and timeouts
+
+| Situation | Detection | Copy | Action | Retry policy |
+|---|---|---|---|---|
+| Wrong code | `401` | §2.6 "That code didn't work. …" | stay on step A | none (user retries) |
+| Daily cap | `429` + `code: "daily_cap"` | §2.6 "Safe Cut has reached today's limit …" | link to `/` | none |
+| Rate limited | `429` + `code: "rate_limited"` | §2.6 "Too many tries in a short time. …" | | none automatic; if a `Retry-After` header is present, the button stays disabled until then |
+| Too large / too long | `413` `too_large` / `422` `too_long` | §2.6 matching row | back to step B | none |
+| Job cap | `422` `job_cap` | §2.6 "This clip would cost more than the per-clip limit …" | back to step B | none |
+| Job expired or unknown | `404` on a job route | §7 "This clip has been deleted. …" | [Try another clip] | none |
+| Stage failed | `status: "failed"` | §2.6 stage-failure message, filled with that stage's §2.5 row label | [Try again] = `POST /start` again · [Delete now] | none automatic |
+| Edit rejected | `POST /review` non-2xx, or timeout | §3.7 "That change didn't save. …" | chip reverts (§10.5 `SERVER_REJECT`) | **none automatic**: the creator presses [Try again] |
+| Render already running | `409` on `POST /render` | no message | keep polling | n/a |
+| Network error or timeout on a GET | fetch rejects, or no response in **15 s** | after 3 failed retries: §7 "Safe Cut's service isn't responding right now. …" | [Try again] restarts polling | retry after 2 s, 4 s, 8 s; then stop and show the message |
+| Upload stalls | no progress event for **30 s** | §2.6 "The upload stopped. …" | [Try again] restarts the upload | none automatic |
+| Anything else | other `5xx`, malformed JSON, failed `times` check (§3.6) | §7 "Something went wrong on our side. …" | [Try again] · [Go to the home page] | none automatic |
+
+- **Timeouts:** every JSON request is aborted after 15 s (`AbortController`). Uploads have no overall timeout, only the 30 s stall rule.
+- **Polling:** `GET /v1/jobs/{id}` every 2 s for the first 60 s of a page view, then every 5 s. Stop polling when the tab is hidden (`visibilitychange`) and resume immediately when it's visible again. Stop for good in `review`, `done`, `failed`, `expired` and `not_found`.
+- **Idempotency:** each review edit carries an `edit_id` (a UUID v4 made in the browser) *(proposal; request to WP5)*. A manual retry resends the same `edit_id`, so the server can't apply it twice. `POST /render` is protected by disabling the button until the response, plus the `409` rule.
+- **Logging:** errors go to the console with the job ID and the HTTP status, never the access code or signed URLs.
+
+### 10.4 Job page state machine
+
+| State | Entered when (`GET /v1/jobs/{id}`) | Route that renders it | Shows |
+|---|---|---|---|
+| `loading` | before the first response | either route | skeleton: video box and three empty columns, no spinner over text |
+| `processing(stage)` | `status: "processing"`, `stage` ∈ prepare…guard | `/jobs/[id]` | §2.5 stage list (as on `/try` step C) |
+| `review` | `status: "review"` | `/jobs/[id]` | §3 review panel |
+| `rendering(stage)` | `status: "rendering"`, `stage` ∈ render, audit, receipt | `/jobs/[id]` | review panel, read-only, with the render stages in the bottom bar (§3.5) |
+| `done` | `status: "done"` | `/jobs/[id]/result` | §5 |
+| `failed(stage)` | `status: "failed"` | `/jobs/[id]` | §2.6 stage-failure message |
+| `expired` | `404` with `code: "expired"` | either route | §7 "This clip has been deleted. …" |
+| `not_found` | `404` with any other code | either route | §7 "We couldn't find that page." |
+
+Transitions follow the server: `loading → processing → review → rendering → done`; any state can go to `failed` or `expired`. **Redirects** (with `router.replace`, so Back doesn't bounce): `/jobs/[id]` in `done` → `/jobs/[id]/result`; `/jobs/[id]/result` in `processing`, `review` or `rendering` → `/jobs/[id]`. Query parameters (`?from=sigmora`, `?demo=1`) are kept across redirects.
+
+### 10.5 Review reducer
+
+**State** *(per job)*: `items: Record<item_id, {decision, decided_by, locked, kind, merged_into: item_id | null, removed: boolean}>`, `pending: Record<edit_id, {edit, prev}>`, `undo: Edit[]` (unlimited within the page session; each toast's [Undo] undoes **that** edit and only appears while the toast is visible, 6 s), `confirm: {item_id} | null` (the screen/document keep confirm).
+
+**Actions and preconditions:**
+
+| Action | Precondition (otherwise: no state change, **no request**) | Effect |
+|---|---|---|
+| `KEEP(id)` | not `locked`; `decision ≠ keep`; no pending edit on `id`. For `kind ∈ {screen, document}`: first sets `confirm = {id}`; the keep applies only on `CONFIRM_KEEP` | `decision = keep`, `decided_by = creator`, edit queued |
+| `HIDE(id)` | `decision ≠ hide`; no pending edit on `id` | `decision = hide`, `decided_by = creator` |
+| `MERGE(src, dst)` | `src ≠ dst`; `src.kind = person` and `src` is hidden with a track that has `reentry_of`, or `src` is hidden by the creator; `dst.kind = person`, `dst.decision = keep`, `dst` not `merged_into` anything; neither is a child (`kind = child` or `locked`) | `src.merged_into = dst`, `src.decision = keep` (follows `dst`), `decided_by = creator`; `dst`'s time range grows |
+| `REMOVE_PERSON(id)` | `kind ∈ {person, child}` | `removed = true`, `decision = hide`, style shown as Whole person covered; on a kept participant this hides them |
+| `UNDO(edit_id)` | the edit exists in `undo` | restores `prev` and sends the inverse edit (or `undo` if WP3 names it, §8 request 5) |
+| `SERVER_ACK(edit_id, items, plan)` | edit is pending | drop from `pending`; replace items and plan with the server's |
+| `SERVER_REJECT(edit_id)` | edit is pending | restore `prev`; show the §3.7 edit-failed toast |
+
+**Test cases** (expected state and UI after the action):
+
+| # | Initial | Action | Expected |
+|---|---|---|---|
+| R1 | i_3 plate, hide | `KEEP(i_3)` | `confirm = {i_3}`; inline "Only keep this clear if nothing on it is personal."; no request yet |
+| R2 | R1 state | `CONFIRM_KEEP` | i_3 keep, creator; chip in Kept clear; toast "#5 will be kept clear. [Undo]"; one request |
+| R3 | i_2 locked child | `KEEP(i_2)` | no change; **no request**; no toast (the button isn't rendered; this guards keyboard and devtools paths) |
+| R4 | i_4 needs_you | `HIDE(i_4)` | hide, creator; chip in Hidden; toast "#6 will be hidden. [Undo]" |
+| R5 | R4 state | `UNDO(R4)` | i_4 back to needs_you, decided_by model; chip in Needs you; toast "Undone." |
+| R6 | i_1 keep | `HIDE(i_1)` twice quickly (double-click) | one state change, **one request** (second blocked by the pending edit) |
+| R7 | i_4 needs_you | `KEEP(i_4)` | keep, creator; Kept clear; toast "#6 will be kept clear. [Undo]" |
+| R8 | i_9 hidden with `reentry_of`, i_1 kept guest | `MERGE(i_9, i_1)` | i_9 merged into i_1, keep; NEW chip gone; i_1 range grows; toast "#9 merged into #2. They'll be kept clear like #2. [Undo]" |
+| R9 | R8 state | `UNDO(R8)` | i_9 hidden, NEW again; i_1 range back |
+| R10 | i_9, i_2 child | `MERGE(i_9, i_2)` | rejected; no request (child target) |
+| R11 | i_2 child | `MERGE(i_2, i_1)` | rejected; no request (child source) |
+| R12 | i_9, i_4 needs_you | `MERGE(i_9, i_4)` | rejected (target not kept) |
+| R13 | i_1 kept participant | `REMOVE_PERSON(i_1)` (after the dialog's [Remove]) | i_1 hide, removed, Whole person covered; toast "#2 will be fully covered wherever they appear. [Undo]" |
+| R14 | i_4 needs_you | `HIDE(i_4)` then `SERVER_REJECT` | back to needs_you; toast "That change didn't save. Check your connection and try again." |
+| R15 | i_4 needs_you | `HIDE(i_4)` then `SERVER_ACK` with server items | items replaced by the server's; plan replaced; overlay redraws from the new plan |
+| R16 | rendering state | any edit action | rejected; note "Changes are paused while we render." |
+| R17 | replay mode | `HIDE(i_4)` | same behaviour; the request goes to WP5's replay API (§3.7 demo mode) |
+
+### 10.6 Frame-mapping test cases (§3.6, PRE-A §5b)
+
+`frame(m) = clamp(max{ i : times[i] ≤ m + 0.001 }, 0, frames − 1)`; when no `i` qualifies (`m < −0.001`), the result is 0.
+
+| Case | `times` | `m` | Expected frame |
+|---|---|---|---|
+| CFR, exact start | `[0, 0.0333, 0.0667, 0.1]` | `0` | 0 |
+| CFR, exact boundary | same | `0.0667` | 2 |
+| CFR, just below a boundary, inside tolerance | same | `0.0660` | 2 (0.0660 + 0.001 ≥ 0.0667) |
+| CFR, below a boundary, outside tolerance | same | `0.0650` | 1 |
+| Before 0 | same | `−0.5` | 0 |
+| Past the end | same | `5.0` | 3 |
+| VFR (uneven gaps) | `[0, 0.040, 0.050, 0.120, 0.130]` | `0.100` | 2 |
+| VFR, on a late frame | same | `0.1205` | 3 |
+| Display time | `times[1830] = 61.02` | — | `1:01` (and `1:01.0` in the drawer) |
+| Invalid `times` | `[0, 0.04, 0.04]` (not strictly increasing) | — | unexpected-error page, overlay not drawn |
+
+### 10.7 Edge states checklist
+
+| Case | Expected |
+|---|---|
+| Zero items | §3.7 "Empty: nothing found at all"; Approve & render still available |
+| All items locked | Hidden column only; Kept clear "Nothing is kept clear. …"; Needs you "Nothing needs you."; bottom bar "Everything's decided." |
+| Exactly 1 item | normal layout; the other two columns show their empty copy |
+| 200 items | each column virtualises its list above 100 chips (only visible chips are in the DOM, with an accessible count in the column header); the overlay draws at most 200 regions per frame, and `crowd_fills` count as one region each; keyboard order still visits every chip |
+| Very long `reason` | chip clamps to 2 lines with "…"; the full text is in the drawer and in the chip's accessible name |
+| Missing keyframe URL | drawer shows "The keyframe didn't load." (§4.4); the rest of the drawer works |
+| Empty transcript (`turns: []`) | drawer: "No speech was found in this clip." |
+| `job.audio: false` | drawer section replaced by "This clip has no sound." |
+| No `scene` | the "said by #n" link is never shown; nothing else changes |
+| `plan.frames` has no entry for a frame | draw nothing on that frame; no error (frames with nothing to cover are left out of the plan) |
+| `som_mark` missing on an item | never show `#?`. Fall back to numbering such items after the highest mark, in first-appearance order, and log a warning. This is the one exception to §0's "the UI never invents its own numbering", and it signals a WP5 gap (§8 request 2) |
+| Signed URL expired (`403` on media) | refetch `GET /v1/jobs/{id}` once for fresh URLs; if it fails again, §7 unexpected-error |
