@@ -19,7 +19,7 @@ Provide speech evidence ("Hi, I'm Amina") when the primary sensor, `muse-voice-t
 **User**
 > Transcribe all speech in this video's soundtrack, split into turns. A new turn starts when the speaker changes or after a pause of more than about one second.
 > For each turn give:
-> - `speaker`: `S1`, `S2`, … in order of first appearance. Use the same label for the same voice throughout. If you can't tell voices apart, use `S?`;
+> - `speaker`: `S1`, `S2`, … in order of first appearance. Use the same label for the same voice throughout. If you can't tell which earlier voice this is, use a new label `U1`, `U2`, … (one per uncertain turn, never reused). Never put two possibly different people under one label;
 > - `start` and `end` in seconds from the start of the video, to one decimal. Give your best estimate; these will be cross-checked;
 > - `text`: the words, verbatim, including names exactly as heard;
 > - `self_intro`: the name if the speaker introduces themself in this turn ("I'm Amina"), else null;
@@ -52,7 +52,7 @@ Provide speech evidence ("Hi, I'm Amina") when the primary sensor, `muse-voice-t
 ## Trust and post-processing
 - **Timestamps from the LLM are untrusted** (the same rule as DESIGN §2.3 for video times). Use them only to place a turn on the role pass's frame axis with a **±1.5 s tolerance**, widening the frame range of each turn accordingly. A turn's timing must never be the only evidence for a `participant` vote. The burned-in frame numbers on the keyframes stay authoritative.
 - Clamp start and end to [0, clip duration]. Drop turns with `end < start`. Sort by `start`.
-- **Dropped-audio check:** if `usage.input_tokens` is below a WP0-measured floor for the clip's duration (i.e. the audio wasn't ingested), or if `has_speech == false` while the creator's note or the scene pass says there's dialogue, mark the transcript `source: "muse-spark-1.2", degraded: true`. The role pass then gets "speech unavailable", and participants can only be supported by visual evidence. That tends toward `unsure` → hidden, the safe direction.
+- **Dropped-audio check:** if `usage.input_tokens` is below a WP0-measured floor for the clip's duration (i.e. the audio wasn't ingested), or if `has_speech == false` while the creator's note or the scene pass says there's dialogue, mark the transcript `source: "muse-spark-1.2", degraded: true`. `degraded` is a **proposed contract field** (ARCHITECTURE §3.3 doesn't have it yet). WP0 adds it to `contracts.py` before WP2 writes it, or WP2 can't emit it. The role pass then gets "speech unavailable", and participants can only be supported by visual evidence. That tends toward `unsure` → hidden, the safe direction.
 
 ## Failure handling
 - HTTP or schema failure → one retry, then an empty `turns` list with `degraded: true`. Never block the pipeline on speech.

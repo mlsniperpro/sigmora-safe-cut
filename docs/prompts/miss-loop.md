@@ -1,6 +1,6 @@
 # Miss loop (v0): proposing SAM noun phrases and points
 
-**Model:** `SAFECUT_ROLE_MODEL` (default `muse-spark-1.3`) · **effort** `medium` · **rides in the role-pass call** (the `missed` array), and on loop iterations 2–3 runs as its own call on the frames around the new sweeps · **max 2 loops** (DESIGN §2.3) · **output** `roles.json.missed` → new SAM requests (WP1)
+**Model:** `SAFECUT_ROLE_MODEL` (default `muse-spark-1.3`) · **effort** `medium` · **loop 1 rides in the role-pass call** (the `missed` array); **loop 2** runs as its own call on the frames around loop 1's new tracks · **max 2 loops** (DESIGN §2.3) · **output** `roles.json.missed` → new SAM requests (WP1)
 
 ## Purpose
 Close the loop between Meta's two models. Muse Spark looks at the numbered keyframes and names anything sensitive that **has no box**. Each miss becomes a SAM request, either as:
@@ -17,7 +17,7 @@ Close the loop between Meta's two models. Muse Spark looks at the numbered keyfr
 > **Missed items.** Look for anything in these frames that could identify a person or reveal private information and **has no labelled box on it**: e.g. a letter or envelope, a parcel label, a house or flat number, a whiteboard with names, a photo of a person, a tattoo, a name written on clothing, an ID card, a face in a poster or on a screen, a reflection of a face in a window or mirror, or a licence plate that's partly hidden.
 > For each one give:
 > - `what`: a short description;
-> - `sam_phrase`: a **2–3 word lowercase noun phrase** a segmentation model could search for (`envelope`, `house number`, `tattoo`). No adjectives about privacy, no verbs, and not a phrase already in the swept list;
+> - `sam_phrase`: a **1–3 word lowercase noun phrase** a segmentation model could search for (`envelope`, `house number`, `tattoo`, `face`). No adjectives about privacy and no verbs. It's fine to use a phrase that's already in the swept list if the thing simply has no box (e.g. an unboxed face on a TV);
 > - `frame`: the burned-in frame number of an image where it's clearest;
 > - `point`: one point **on the object** in that image, as `{"x", "y"}` on a 0–1000 grid where (0,0) is the top-left and (1000,1000) the bottom-right of **that image**;
 > - `box`: its box on the same grid as `[x1, y1, x2, y2]`, or null if you can't bound it;
@@ -45,11 +45,12 @@ Close the loop between Meta's two models. Muse Spark looks at the numbered keyfr
 
 ## Post-processing (WP1/WP2, deterministic)
 1. Validate that `frame` was among the images sent, or drop the item.
-2. Clamp `x, y` (and box) to [0,1000], then map to pixels: `x_px = floor(x/1000 × (W−1))`, `y_px = floor(y/1000 × (H−1))`, using the size of the prepared clip (keyframes are sent unscaled).
-3. Normalise `sam_phrase`: lowercase, strip punctuation, ≤3 words, and reject it if it's already swept or on a blocklist (`person`, `face`, `thing`, `object`, `private`, `sensitive`).
+2. Convert `point` and `box` from the 0–1000 grid to prepared-clip pixels with the single rule in API-NOTES §5 (sent-image size, minus the frame-number bar, floor, clamp).
+3. Normalise `sam_phrase`: lowercase, strip punctuation, ≤3 words. A **phrase sweep** is planned only if `recurs` is true **and** the phrase isn't already swept **and** it isn't on the blocklist (`thing`, `object`, `stuff`, `private`, `sensitive`, `item`). The **point prompt is always planned**, whatever the phrase.
 4. Dedupe across votes: the role pass runs 3×, so take the union of misses, merging items whose phrases match and whose points are within 5% of the frame diagonal on the same frame.
 5. **Plan:**
-   - object prompt on `frame`: `<{frame}f>{n}<|point;x={x_px};y={y_px};w={W};h={H}|>` plus the box token if present, with `metadata.propagation_direction: "both"`;
+   - convert the frame axis. `frame` is a **prepared-clip** frame index (the burned-in number), but the SAM upload may be a lower-fps proxy **encoded from the prepared clip** (API-NOTES §9: ≤10 fps for cost). Both axes start at prepared frame 0. Don't use `job.times`, which holds *source* seconds and is offset by any trim. The conversion is `sam_frame = clamp(round(frame × sam_fps / job.fps), 0, sam_frames − 1)`, and back is `frame = clamp(round(sam_frame × job.fps / sam_fps), 0, job.frames − 1)`, rounding both ways so the error is symmetric (≤ ½ proxy frame). WP1 owns this in one function and property-tests the round trip. A briefly visible object the nearest proxy frame misses is caught by the static-box fallback below;
+   - object prompt on `sam_frame`: `<{sam_frame}f>{n}<|point;x={x_px};y={y_px};w={W};h={H}|>` plus the box token if present, with `metadata.propagation_direction: "both"` (`W×H` = the SAM upload's size; rescale the pixels if the proxy is also downscaled);
    - if `recurs`: also a phrase sweep with `sam_phrase`;
    - the new tracks are **hidden by default** (concept `other` → `solid`), and enter the next role pass as normal labels.
 6. **Stop** after 2 loops, or when a loop adds no new tracks, or when the job budget falls below the next sweep's cost.
@@ -61,5 +62,5 @@ Close the loop between Meta's two models. Muse Spark looks at the numbered keyfr
 
 ## Tricky cases it must get right
 1. **An envelope on a table**, readable for 2 s. `sam_phrase: "envelope"`, a point on it, `recurs: false` → an object prompt on that frame, tracked both ways.
-2. **A face on a TV screen** where SAM boxed the screen but the face inside is unboxed. The screen is already labelled, so this is *not* a miss if the screen is sensitive. If the role pass marked the screen non-sensitive (a "news programme"), the face on it is a miss: `sam_phrase: "face on screen"` is too vague, so propose `face` with a point. That's already swept, so the point prompt path is the one that runs.
+2. **A face on a TV screen** where SAM boxed the screen but the face inside is unboxed. The screen is already labelled, so this is *not* a miss if the screen is sensitive. If the role pass marked the screen non-sensitive (a "news programme"), the face on it is a miss: the model proposes `face` with a point. `face` is already swept, so no phrase sweep is planned, but **the point prompt runs** (step 3), and the face gets its own hidden track.
 3. **The phrase that matches everything.** The model proposes `sign` for a street sign with a phone number. `sign` would segment every sign in a city clip, and the cost scales with frames, not matches. Normalisation keeps it, but `recurs: false` means only the point prompt runs. WP1 should log a phrase that returns >16 objects per frame as "too broad" and not re-run it.

@@ -203,7 +203,13 @@ Docs: [speech-to-text](https://dev.meta.ai/docs/speech-to-text) · [api-referenc
 Docs: [features/image-understanding](https://dev.meta.ai/docs/features/image-understanding) (the cookbook links it 6×; not opened)
 - **0–1000 normalised grid** for both points and boxes, relative to the **image as sent** (after any client-side resize). Box example `[424,115,610,273]` = `[x1,y1,x2,y2]` ‰. **[3P]** Simon Willison's write-up of the meta.ai Muse Spark launch, **[DESIGN]**
 - Edge case: **values of 1001 have been seen** → clamp to `[0,1000]` before mapping. **[DESIGN]**
-- Mapping: `px = round(v / 1000 * (W_sent - 1))`. Whether it's `/1000*W` or `/1000*(W-1)` is undocumented; the difference is under 1.3 px at 1280. WP0 probe g checks which on a synthetic image with a known dot.
+- **The single mapping rule** (every spec points here). Keyframes are sent at the **prepared clip's own resolution** (≤1280 px; never resized again). The prompt specs add a black frame-number bar of `bar_h` **sent pixels** above the frame, so the sent image is `W × (H + bar_h)`:
+  1. clamp each grid value to `[0, 1000]`;
+  2. to sent-image pixels: `x_img = floor(vx / 1000 × (W − 1))`, `y_img = floor(vy / 1000 × (H + bar_h − 1))`;
+  3. to frame pixels: `x = x_img`, `y = y_img − bar_h`;
+  4. **point:** if `y < 0` (it's in the bar), drop it; otherwise it's valid, since it's in-bounds by construction.
+     **box:** map both corners, then clamp to `[0, W−1] × [0, H−1]`. If the clamped box is under 2 px in either dimension (e.g. wholly inside the bar, or a hairline), a **red-team** box becomes a 32×32 px box centred on the clamped centre and clamped to the frame (fail closed: it still gets patched); a **miss-loop** box is discarded and its point kept.
+  `floor` matches the SAM protocol's "round down to whole pixels" **[GH-sam]**. Whether the model's grid means `/1000·W` or `/1000·(W−1)` is undocumented (under 1.3 px apart at 1280); WP0 probe g checks it on a synthetic image with a known dot. WP2 implements this rule once and property-tests it: outputs are in-bounds, monotone in the input, and the round trip from frame pixels is within 1 px.
 - Exact point JSON (`{"x","y"}` vs `[x,y]` vs `<point>` text) is only defined by **our** schema, because we ask for points via `text.format`. The grid convention is the model's trained prior, so the prompt must state it explicitly (see `docs/prompts/role-pass.md`).
 - Note: SAM object prompts (§1.3) need **pixel** coordinates with `w`/`h`, so convert the 0–1000 points before sending.
 
@@ -266,34 +272,34 @@ Assumptions (flagged; WP0 replaces them with measured `usage`):
 | Role pass vote 1 | 47k in × $1.25/M + 4k out | 0.076 | 0.076 |
 | Role pass votes 2–3 | 2 × (45k cached × $0.15/M + 2k fresh × $1.25/M + 4k out) | 0.053 | 0.053 |
 | Escalation (≈10 disputed keyframes, `high`) | 17k in + 8k out | 0.055 | 0.055 |
-| Red-team (2 passes × 10 sampled frames) | 2 × (16k in + 2k out) | 0.057 | 0.057 |
-| **Total per 30 s clip** | | **≈ $0.77** | **≈ $1.96** |
+| Red-team (`redteam.md` sampling) | pass 1: 40 frames (30 at 1 fps + 3 per track × ~3 tracks + ~1 EgoBlur flag) = 61k in + 3k out; pass 2: 10 patched frames = 16k in + 2k out | 0.118 | 0.118 |
+| **Total per 30 s clip** | | **≈ $0.83** | **≈ $2.02** |
 | *With no prompt-cache hits* | +2 × 45k × ($1.25 − $0.15)/M | +0.10 | +0.10 |
-| *With Wonder for scene + escalation* | scene 65k × $4 + 4k × $20; escalation 17k × $4 + 8k × $20 (replaces the Spark lines) | +0.42 | +0.42 |
+| *With Wonder for scene + escalation* | scene 65k × $4 + 4k × $20; escalation 17k × $4 + 8k × $20 (replaces the Spark lines) | +0.41 | +0.41 |
 
-**Reading:** at 30 fps, SAM is ⅔ of the cost. At 30 fps a clip costs ≈ $1.96, within 2% of `SAFECUT_JOB_USD_CAP = 2.00`, and one extra miss-loop phrase breaches it. So **prepare at ≤10 fps for SAM** (or find what `input_video.fps` does) and then densify. Muse Spark is about $0.34 per clip either way. Per minute of footage: **≈ $1.54 at 8 fps**.
+**Reading:** at 30 fps SAM is 80% of the cost, and a clip costs ≈ $2.02, **over** `SAFECUT_JOB_USD_CAP = 2.00`. So **upload a ≤10 fps proxy to SAM** (or find what `input_video.fps` does) and densify back onto the prepared clip's frames; the miss-loop spec gives the frame-axis conversion. Muse Spark is about $0.40 per clip either way. Per minute of footage: **≈ $1.67 at 8 fps**. Totals were computed with a scratch script; its output is pasted in the PR.
 
 ### 9.2 The whole eval plan (EVAL.md §5) against $150
 
 | Item | Calc | USD |
 |---|---|---|
 | WP0 probes | WP0 budget | 6.00 |
-| Test split: full Safe Cut | 18 clips × $0.77 × 3 runs | 41.58 |
+| Test split: full Safe Cut | 18 clips × $0.83 × 3 runs | 44.82 |
 | Baseline 1 (blur every face) and 2 (detector-only) | reuse the full run's SAM `face`/`plate`/`screen` sweeps (replay) | 0.00 |
 | Baseline 1b (EgoBlur Gen 2) | local compute | 0.00 |
 | Baseline 3 (Muse without tracking) | 18 × 30 keyframes × 1 call ≈ 18 × $0.08 × 3 runs | 4.32 |
 | Ablation (no audit) | replay of the full run | 0.00 |
-| Dev split, first run | 12 × $0.77 | 9.24 |
-| Dev iterations (prompt tuning; SAM replayed) | 9 iterations × 12 clips × $0.34 (Muse only) | 36.72 |
-| Hero clips (3 clips × 2 takes; ~3 renders each incl. demo) | 6 × $0.77 × 3 | 13.86 |
-| Pilots (5 creators × ~2 clips) + public "Try it" | 10 × $0.77 + daily-cap headroom | 7.70 + cap |
-| **Subtotal** | | **≈ $119.42** |
-| **Headroom vs $150** | | **≈ $30** |
+| Dev split, first run | 12 × $0.83 | 9.96 |
+| Dev iterations (prompt tuning; SAM replayed) | 9 iterations × 12 clips × $0.40 (Muse only) | 43.20 |
+| Hero clips (3 clips × 2 takes; ~3 renders each incl. demo) | 6 × $0.83 × 3 | 14.94 |
+| Pilots (5 creators × ~2 clips) + public "Try it" | 10 × $0.83 + daily-cap headroom | 8.30 + cap |
+| **Subtotal** | | **≈ $131.54** |
+| **Headroom vs $150** | | **≈ $18** |
 
 **Risks to this budget:**
-- **30 fps SAM** multiplies the SAM lines by 3.75 (test runs alone → ≈ $106). Stay at ≤10 fps.
-- **Dev iterations over the full dev split** are the biggest discretionary line. Iterate on a 4-clip subset (→ $12.24, saving ≈ $24) and use the full split only for checkpoint runs.
-- Adopting **Wonder** adds ≈ $0.42 per clip run. Across every clip run above (≈202) that's +$85, which doesn't fit. Restricted to test, hero and pilot runs (82) it's ≈ +$34, which fits only if dev iterations shrink to the 4-clip subset.
-- The public demo's `SAFECUT_DAILY_USD_CAP = 10.00` could eat the headroom in 3 days. Lower it to $3 after judging starts, or require the access code.
+- **30 fps SAM** multiplies the SAM lines by 3.75 (test runs alone → ≈ $109). Stay at ≤10 fps.
+- **Dev iterations over the full dev split** are the biggest discretionary line. Iterate on a 4-clip subset (→ $14.40, saving ≈ $29) and use the full split only for checkpoint runs. **With only ≈ $18 of headroom, treat this as the plan, not an option.**
+- Adopting **Wonder** adds $0.41 per clip run. Across every clip run above (202) that's +$83.73, which doesn't fit. Restricted to test, hero and pilot runs (82) it's +$33.99, which fits only if dev iterations shrink to the 4-clip subset.
+- The public demo's `SAFECUT_DAILY_USD_CAP = 10.00` would eat the ≈ $18 headroom in under 2 days. Lower it to $3 after judging starts, or require the access code.
 
 Every figure above is a model to be replaced by measured `cost.jsonl` from WP0's probes. None of it may appear in the README (AGENTS rule 9).

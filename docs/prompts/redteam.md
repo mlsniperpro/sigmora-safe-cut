@@ -6,8 +6,8 @@
 The second look (DESIGN §2.8). Show the model **rendered output frames**, where everything planned is already hidden, and ask it to *attack* them: read any text, number or name, and point at any visible face or identifying detail. Any hit on something that should be hidden is a **leak**. It's auto-patched with a new hidden track and logged, and publishing is blocked until `unresolved == 0`. It complements EgoBlur Gen 2, which catches faces and plates on every frame. The red-team catches **text and context** (a name on a cup, a readable screen, a reflection).
 
 ## Inputs
-- **Sampled rendered frames**: 1 per second, plus every frame at a track start or end ±3 (the leak-prone edges, DESIGN §2.6), plus every frame EgoBlur flagged. ≤50 per call; batch above that.
-- Each image has the frame number burned in **outside the picture** (a bar added for the audit copy only). **No** Set-of-Mark boxes: the model must see what a viewer sees.
+- **Sampled rendered frames**: 1 per second, plus **3 per track** (its first frame, first + 8, and last frame: the leak-prone edges, DESIGN §2.6), plus every frame EgoBlur flagged. ≤50 per call. Above that, **split into more calls**; frames are never dropped.
+- Each image has the frame number burned in on a bar **added above** the picture (the audit copy only; the same bar as the role pass, API-NOTES §5). **No** Set-of-Mark boxes: the model must see what a viewer sees.
 - The list of **kept-clear items** (approved participants and non-sensitive screens), described in words, so the model doesn't report them as leaks: "the woman in the yellow jacket (approved participant)", "the menu board (approved as harmless)".
 
 ## Prompt text (v0)
@@ -22,7 +22,7 @@ The second look (DESIGN §2.8). Show the model **rendered output frames**, where
 > - any **face or person** you can see well enough to recognise, other than the approved ones, including partial faces at the edge of a redaction, reflections, and faces in photos or on screens;
 > - any **text you can read** that is or could be personal: names, phone numbers, email addresses, street addresses, licence plates, ID or card numbers, message contents. Transcribe what you can read;
 > - any **redaction that looks misaligned**, e.g. a block that has slid off the face it was covering.
-> For each finding give the frame number, what it is, the exact text if it's text, and a box on that frame's 0–1000 grid, `[x1, y1, x2, y2]` (top-left origin). If a frame is clean, report it with `finding: "none"`.
+> For each finding give the frame number, what it is, the exact text if it's text, and a box on that image's 0–1000 grid, `[x1, y1, x2, y2]` (top-left origin of the whole image, bar included). **Report every frame.** A clean frame gets an empty `findings` list. Never add a placeholder finding.
 
 ## Output schema (`text.format`, strict)
 ```json
@@ -49,6 +49,8 @@ The second look (DESIGN §2.8). Show the model **rendered output frames**, where
   }
 }
 ```
+Validation (pydantic, after the schema), **per frame**: drop any frame entry that wasn't sent, and merge duplicates by taking the union of findings. A finding whose `box` isn't 4 integers is kept as a leak with a whole-frame box (fail closed), and the model output is logged. Boxes convert to pixels with the single rule in API-NOTES §5, including its minimum-size rule. Frames **missing** from the output are re-sent once in a small follow-up call; frames still missing then count toward `unresolved`, not the whole batch.
+
 Mapping: a frame with an empty `findings` list → `audit.json.redteam[{frame, finding: "none"}]`. Each finding → a `redteam` entry with the detail, and (unless it's excluded below) a `leaks[]` entry with `detector: "redteam"` and the box mapped to pixels.
 
 ## Leak decision (WP4, deterministic)
@@ -59,7 +61,7 @@ Mapping: a frame with an empty `findings` list → `audit.json.redteam[{frame, f
 ## Failure handling
 - A failed red-team call → `unresolved += 1` for the batch's frames. **Publish is blocked**, and the creator sees "audit couldn't run". Never default to "clean".
 - Refusal (the model declines to identify people): log it. Treat the frames as unaudited (blocked) on pass 1 and retry with the softer wording "describe visible faces or readable text, without identifying anyone". The task is detection, not identification.
-- Budget: the red-team lines in API-NOTES §9 assume 2 × 10 frames per 30 s; edges and EgoBlur flags can raise that. Cap at 60 frames per pass per 30 s.
+- Budget: API-NOTES §9 prices this sampling at ≈40 frames on pass 1 (about 3 tracks) and ≈10 on pass 2 per 30 s (≈ $0.12). Busy clips cost more, at about $0.0019 per extra frame. Before each pass the pipeline checks the estimated cost against `SAFECUT_JOB_USD_CAP`. If the pass won't fit, it doesn't run, and the clip is blocked as "audit over budget" (`needs_you`). Frames are never silently skipped.
 
 ## Tricky cases it must get right
 1. **Reading through a fine mosaic.** A plate pixelated with a fine grid is legible to the model as "KDA 123X". That's a leak, which proves why DESIGN §2.7 bans fine pixelation. The patch upgrades the item to `solid`.

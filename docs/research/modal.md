@@ -38,7 +38,7 @@ Assumptions: the CPU worker gets **2 cores + 4 GiB** for **3 minutes** (prepare,
 | GPU (L4, alternative) | 60 s × $0.000222 | (0.0133) |
 | **Total per clip** | T4 | **≈ $0.016** |
 
-- With $30/mo Starter credits that's **≈1,850 clips/month**, so Modal isn't the constraint; Meta credits are (≈$0.77/clip, API-NOTES §9).
+- With $30/mo Starter credits that's **≈1,850 clips/month**, so Modal isn't the constraint; Meta credits are (≈$0.83/clip, API-NOTES §9).
 - The waiting-on-Meta time is billed CPU. If WP0 measures SAM latency well above a minute, move the wait into the async client with many jobs per container, or lower the cores while waiting.
 - GPU container cold start (pulling torch + weights) may dominate the 1 GPU-minute. Keep the weights in a Volume and measure.
 
