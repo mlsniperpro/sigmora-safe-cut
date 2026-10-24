@@ -211,7 +211,7 @@ Docs: [features/image-understanding](https://dev.meta.ai/docs/features/image-und
   2. to sent-image pixels: `x_img = floor(vx / 1000 × (W − 1))`, `y_img = floor(vy / 1000 × (H + bar_h − 1))`;
   3. to frame pixels: `x = x_img`, `y = y_img − bar_h`;
   4. **point:** if `y < 0` (it's in the bar), drop it; otherwise it's valid, since it's in-bounds by construction.
-     **box:** Safe Cut pixel boxes are **half-open** `[x1, y1, x2, y2)`, the same convention as the parser's normalised `left/top/right/bottom` (§1.4). First **normalise reversed corners** (swap so that x1 ≤ x2 and y1 ≤ y2). A box lying **entirely inside the bar** (`y2_img < bar_h`) describes our frame label, not the video: drop it and log `in_bar`, for every kind. Then map the top-left corner with steps 2–3. For the bottom-right corner, map the same way and then add 1 (`x2 = x2_img + 1`, `y2 = y2_img + 1 − bar_h`). Clamp to `[0, W] × [0, H]`. If the clamped box is under 2 px in either dimension (e.g. a hairline, or a sliver clipped at the frame edge), a **red-team** box becomes a 32×32 px box centred on `((x1+x2) div 2, (y1+y2) div 2)` and clamped to the frame (fail closed: it still gets patched); a **miss-loop** box is discarded and its point kept. When a half-open box goes into a SAM object prompt, it's sent as inclusive `x2 − 1`, `y2 − 1`; `meta_sam_parser.build_object_prompt(PromptBox(left, top, right, bottom))` does this conversion. Test vectors: §11.2.
+     **box:** Safe Cut pixel boxes are **half-open** `[x1, y1, x2, y2)`, the same convention as the parser's normalised `left/top/right/bottom` (§1.4). First **normalise reversed corners** (swap so that x1 ≤ x2 and y1 ≤ y2). A box lying **entirely inside the bar** (`y2_img < bar_h`) describes our frame label, not the video: it describes our frame label only if it's a red-team `text` finding whose text matches the label (`F` plus digits, spaces ignored): **drop it** and log `in_bar`. **Any other in-bar box** (a face, person or plate finding, or text that isn't the label) is a misplaced real finding: the red-team keeps it as a leak with a **whole-frame box** (fail closed, like a malformed box), Role-pass and miss-loop boxes in the bar are dropped (they only seed SAM; the static-box fallback covers the item). Then map the top-left corner with steps 2–3. For the bottom-right corner, map the same way and then add 1 (`x2 = x2_img + 1`, `y2 = y2_img + 1 − bar_h`). Clamp to `[0, W] × [0, H]`. If the clamped box is under 2 px in either dimension (e.g. a hairline, or a sliver clipped at the frame edge), a **red-team** box becomes a 32×32 px box centred on `((x1+x2) div 2, (y1+y2) div 2)` and clamped to the frame (fail closed: it still gets patched); a **miss-loop** box is discarded and its point kept. When a half-open box goes into a SAM object prompt, it's sent as inclusive `x2 − 1`, `y2 − 1`; `meta_sam_parser.build_object_prompt(PromptBox(left, top, right, bottom))` does this conversion. Test vectors: §11.2.
   `floor` matches the SAM protocol's "round down to whole pixels" **[GH-sam]**. Whether the model's grid means `/1000·W` or `/1000·(W−1)` is undocumented (under 1.3 px apart at 1280); WP0 probe g checks it on a synthetic image with a known dot. WP2 implements this rule once and property-tests it: outputs are in-bounds, monotone in the input, and the round trip from frame pixels is within 1 px.
 - Exact point JSON (`{"x","y"}` vs `[x,y]` vs `<point>` text) is only defined by **our** schema, because we ask for points via `text.format`. The grid convention is the model's trained prior, so the prompt must state it explicitly (see `docs/prompts/role-pass.md`).
 - Note: SAM object prompts (§1.3) need **pixel** coordinates with `w`/`h`, so convert the 0–1000 points before sending.
@@ -300,7 +300,7 @@ All numbers come from a scratch script (`cost2.py`, not committed; its output is
 ### 9.1 One 30 s clip through the full pipeline (ARCHITECTURE §4 defaults: Spark 1.3 everywhere, Voice Transcribe)
 Assumptions:
 - **A1** SAM runs on the ≤10 fps proxy (§5b; 8 fps shown) and, for comparison, on the 30 fps prepared clip.
-- **A2** Miss loop: 2 loops, each with **one batched object-prompt request** (all of that loop's points as object ids in one request, which `protocol/sam3.md` allows) **plus one phrase sweep**. Every SAM request sweeps the whole proxy, so each costs the full frame count. That's 4 sweeps per clip.
+- **A2** Miss loop: 2 loops (loop 1 on the first role pass's misses, loop 2 on the misses of the role pass that judges loop 1's new tracks), each with **one batched object-prompt request** (all of that loop's points as object ids in one request, which `protocol/sam3.md` allows) **plus one phrase sweep**. Every SAM request sweeps the whole proxy, so each costs the full frame count. That's 4 sweeps per clip.
 - **A3** ≈1,500 input tokens per 1280×720 keyframe (unknown; the cookbook only says tokens scale with resolution).
 - **A4** The scene pass sees ≈ 65k input tokens (60 sampled frames, from Muse Spark Open's 2 fps sampling).
 - **A5** 30 Set-of-Mark keyframes in one role-pass call; votes 2–3 hit the prompt cache for the image prefix.
@@ -325,7 +325,7 @@ Assumptions:
 | *With no prompt-cache hits* | +2 × 45k × ($1.25 − $0.15)/M | +0.10 | +0.10 |
 
 **Reading:**
-- At 30 fps, SAM is 77% of the cost and a clip costs $2.57, over the cap. So SAM always gets the proxy (§5b, §10.6). Per minute of footage: **$2.24 at 8 fps**.
+- At 30 fps, SAM is 77% of the cost and a clip costs $2.57, over the cap. So SAM always gets the proxy (§5b, §10.6). Per minute of footage: **$2.24 at 8 fps**, defined as 2 × the 30 s clip. A single 60 s clip costs less ($1.91, below), because the scene and speech calls don't double. The README quotes per-clip costs from `metrics.json`, never this per-minute figure.
 - **A 60 s clip** (the upload limit, ARCHITECTURE §5) models at **$1.91 with 8 tracks, $1.99 with 16**. That's under `SAFECUT_JOB_USD_CAP = 2.00`, but with almost no margin once pre-call reservations are in flight (§10.5). **Decided:** request WP0 to raise the default `SAFECUT_JOB_USD_CAP` to **$3.00**. The daily cap (public), per-code caps (pilots) and per-WP budgets (owner runs) still bound total spend (§9.2). *Rejected:* keeping $2.00, under which a busy 60 s clip ends "audit over budget" and can never be published.
 - **Pilot codes** (PR #2: $4 per code, 2 clips, a $20 total) cover two 30 s clips ($2.24) with margin, but not two busy 60 s clips ($3.82–3.98 against $4, with reservations in flight). Request to PRE-B: raise the per-code cap to **$6** (2 × the $3.00 job cap), keeping the **$20 total** that WP5 enforces separately.
 
@@ -336,29 +336,29 @@ Split sizes are PRE-B's final assignment (PR #2 `docs/labeling/SCHEDULE.md` §3)
 |---|---|---|---|
 | Probes | WP0 (≤ $6) | WP0 budget | 6.00 |
 | Build and integration tests | WP1 (≤ $8), WP4 (≤ $6), WP5 (≤ $6, includes deployed smoke runs) | their caps | 20.00 |
-| Prompt tuning on the dev split (SAM replayed) | WP2 (≤ $15) | **8** iterations × 3 clips × $0.59 (Muse only) | 14.16 |
-| Dev first run + SA-Co/VEval SmartGlasses runs | WP7 sandbox (≤ $12) | 3 × $1.12, plus a **$5 cap** on SA-Co SAM sweeps (≈ 6,250 frames: 4 phrases at 6 fps, about 4 min of SmartGlasses video; WP7 sizes the subset to fit) | 8.36 |
+| Prompt tuning on the dev split (SAM replayed) | WP2 (≤ $15) | its cap; the plan uses **8** iterations × 3 clips × $0.59 (Muse only) = $14.16 of it | 15.00 |
+| Dev first run + SA-Co/VEval SmartGlasses runs | WP7 sandbox (≤ $12) | its cap; the plan uses 3 × $1.12 plus a **$5 cap** on SA-Co SAM sweeps ($5 = 25,000 billed frames = 4 phrases × 6,250 video frames, about 17 min of SmartGlasses video at 6 fps; WP7 sizes the subset to fit) = $8.36 of it | 12.00 |
 | Test split: full Safe Cut + baseline 3 | WP7, run by the owner on the Linux GPU box (BLOCKED) | 12 × $1.12 × 3 runs; 12 × $0.08 × 3 | 43.20 |
 | Baselines 1, 1b, 2 and the no-audit ablation | WP7 | reuse the full run's SAM sweeps; EgoBlur runs locally | 0.00 |
 | Hero renders (demo and video) | owner / WP8, outside the WP caps | 6 takes × $1.12 × **2** renders (one after review, one final) | 13.44 |
 | Creator pilots | PRE-B's hard cap (PR #2 PILOTS §5) | our estimate is 10 clips × $1.12 = $11.20 | 20.00 |
 | Public "Try it" (judges, Nov 4–9) | the deployed service's daily cap | 6 days × $3 | 18.00 |
-| **Planned total** | | | **$143.16** |
-| **Headroom vs $150** | | | **$6.84** |
+| **Planned total** | | | **$147.64** |
+| **Headroom vs $150** | | | **$2.36** |
 
 **Decisions in this table:**
-- **Fit every cap inside $150.** Dev tuning is **8** rounds (it fits WP2's $15); there are **2** hero renders per take (not 3); SA-Co gets a **$5** cap. *Rejected:* the earlier plan, which left the WP1/WP4/WP5 build budgets ($20) out of the total and quietly over-committed the credits.
+- **Fit every cap inside $150.** Every WP line is counted at its full cap, even where the plan uses less (WP2 $14.16 of $15, WP7 $8.36 of $12), so no WP can overspend the ledger by spending to its cap. Dev tuning is **8** rounds (it fits WP2's $15); there are **2** hero renders per take (not 3); SA-Co gets a **$5** cap. *Rejected:* the earlier plan, which left the WP1/WP4/WP5 build budgets ($20) out of the total and quietly over-committed the credits.
 - **Spending caps by who is calling** (also §10.2):
-  - **`SAFECUT_DAILY_USD_CAP` ($3/day) covers only public "Try it" traffic** (judge access codes) and `/healthz`;
+  - **`SAFECUT_DAILY_USD_CAP` ($3/day) covers public "Try it" traffic** (judge access codes), **Sigmora service-key traffic** (`SAFECUT_SERVICE_KEYS`, WP5.md) and `/healthz`, all sharing the one $3/day. Public access codes **and service keys are valid only Nov 4–9** (issued on Nov 4, expiring at the end of Nov 9), so the line is 6 days × $3. Before Nov 4 the deployed service takes only the owner's smoke runs (WP5's cap), pilot codes, and Sigmora integration calls in **replay mode** (no Meta calls). `/healthz` before Nov 4 is ≤ $0.134/day, about $1.34 over 10 days, inside the headroom;
   - **pilot codes** sit outside it, with their own per-code cap and PRE-B's $20 total (as PR #2 PILOTS §5 asks);
   - **owner, eval and WP runs** are bounded by the per-job cap and their WP caps.
 
-  The cap is $3/day over the whole deployed window. *Rejected:* ARCHITECTURE §4's $10/day default, under which 12 days could spend $120. Request to WP5: deploy with `SAFECUT_DAILY_USD_CAP=3.00`, apply it to access-code traffic only, and add a per-code cap for pilot codes.
-- **Wonder isn't pre-approved.** The $6.84 headroom fits none of the options: Wonder for the scene pass on test and hero runs is +$11.60, and the larger options are more (§9.1 deltas: scene +$0.24, escalation +$0.30 per run). WP0 adopts Wonder only if probe f shows a gain (H1/H2) **and** the measured spend in `cost.jsonl` by then (WP caps are maxima, and replay-heavy WPs usually come in under) leaves room for the extra. If Wonder escalation is ever used, its `max_output_tokens` is 24,000 (§10.5).
+  The $3/day still applies whenever the service is deployed, as a backstop. *Rejected:* ARCHITECTURE §4's $10/day default, under which 12 days could spend $120. Request to WP5: deploy with `SAFECUT_DAILY_USD_CAP=3.00`, apply it to access-code traffic only, and add a per-code cap for pilot codes.
+- **Wonder isn't pre-approved.** The $2.36 headroom fits none of the options: Wonder for the scene pass on test and hero runs is +$11.60, and the larger options are more (§9.1 deltas: scene +$0.24, escalation +$0.30 per run). WP0 adopts Wonder only if probe f shows a gain (H1/H2) **and** the measured spend in `cost.jsonl` by then (WP caps are maxima, and replay-heavy WPs usually come in under) leaves room for the extra. If Wonder escalation is ever used, its `max_output_tokens` is 24,000 (§10.5).
 
 **Risks to this budget:**
 - **30 fps SAM** would make the test runs alone $92.53. Never send `prepared.mp4` to SAM (§10.6).
-- **Busy clips:** with 16 tracks, red-team pass 1 needs 96 frames instead of 64. That's +$0.06 per run, or +$2.16 over the 36 test runs, a third of the headroom.
+- **Busy clips:** with 16 tracks, red-team pass 1 needs 96 frames instead of 64. That's +$0.06 per run, or +$2.16 over the 36 test runs, which the $2.36 headroom just covers, leaving $0.20.
 - **Dev iteration** beyond 8 rounds costs $1.77 per round (3 clips × $0.59) and would breach WP2's $15 cap.
 
 ---
@@ -389,7 +389,7 @@ Everything here is either sourced (tagged) or a **decision** for the build. WP0'
 - **Throttle before a 429:** read `x-ratelimit-remaining-requests` and `x-ratelimit-remaining-tokens` [GH-cookbook]. When either is below 5% of its `x-ratelimit-limit-*`, delay new requests by 1 s and log `throttled`.
 - **Circuit breaker:** counts **calls** that failed after exhausting their attempts, not individual attempts. Five such failures within 60 s open the breaker for 60 s. Then it's half-open: one trial call is allowed; success closes it, failure re-opens it for 60 s. While it's open, calls fail fast with `MetaUnavailable`. A hide-critical stage that fails transiently sends the job to **`retry_later`** (rules below the typed-error table). `/healthz` reports degraded while the breaker is open.
 - **Cost accounting (honest numbers, AGENTS rule 9):**
-  - Before each attempt, **reserve** its pre-call estimate (§10.5) against the **job cap**, and against the cap of **who started the job**: a public access code → `SAFECUT_DAILY_USD_CAP`; a pilot code → its per-code cap and the $20 pilot total (PR #2 PILOTS §5); the owner, eval and WP runs → the job cap only. `/healthz` counts against the daily cap (§9.2).
+  - Before each attempt, **reserve** its pre-call estimate (§10.5) against the **job cap**, and against the cap of **who started the job**: a public access code or a Sigmora service key → `SAFECUT_DAILY_USD_CAP`; a pilot code → its per-code cap and the $20 pilot total (PR #2 PILOTS §5); the owner, eval and WP runs → the job cap only. `/healthz` counts against the daily cap (§9.2).
   - On success, replace the reservation with the actual cost from `usage`, logged `estimated: false`.
   - On a failure where the request was **rejected before processing** (any non-200 HTTP status received **before the first stream event**, which covers 429, other 4xx and an immediate 5xx, or a connect error), release the reservation and log `usd: 0`. Assumption: Meta doesn't bill requests that error before producing output. WP0 checks this against the console's billing after the probes.
   - On a failure **after** the request was accepted (read timeout or stream drop **after** the first event), billing is unknown. Keep the reservation as a charge against the **caps**, and log it with `estimated: true`.
@@ -407,7 +407,7 @@ Everything here is either sourced (tagged) or a **decision** for the build. WP0'
 | `MetaRefusal` | a refusal part or event (§3.6, [GH-sam]) | the stage fails closed; logged |
 | *(parser exceptions, `meta-sam-parser` 0.1.0)* | `ResponsesStreamSourceError` wraps the transport's exception (read it from `__cause__`, or the error's wrapped exception): map that inner exception as above (an `httpx` timeout or reset → retryable). `ResponsesStreamFailedError` (a `response.failed` event) and `ResponsesStreamEventError` (an `error` event) → retryable as `MetaUnavailable` within the SAM attempt count. `ResponsesStreamLaneError` (no or interleaved output lane) and `ResponsesStreamParserError` → non-eof `MetaIncomplete`. `ResponsesStreamRefusalError` → `MetaRefusal` | as for the mapped type |
 | `MetaIncomplete` | the server declares `status: "incomplete"` (e.g. `incomplete_details.reason: "max_output_tokens"`), or a SAM stream still ends without a terminal event after its last attempt (S7), or the parser reports an `error` diagnostic (S5) | the stage fails closed; not retried |
-| `BudgetExceeded` | the pre-call estimate exceeds the remaining job cap or the caller's cap (§10.2: daily cap for public codes, the per-code cap for pilots) | the call isn't made; the stage fails closed with reason `over_budget` (the same word as `audit.json` `redteam_status`). For the audit, the frames count in `unresolved` (§12) |
+| `BudgetExceeded` | the pre-call estimate exceeds the remaining job cap or the caller's cap (§10.2: the daily cap for public codes and service keys, the per-code cap for pilots) | the call isn't made; the stage fails closed. A job that fails on it sets PR #2's `failure.reason` (UI-SPEC §5.3): `budget` for the job cap, `code_cap` for a pilot's per-code cap, `daily_cap` for the daily cap (a new value, request to PRE-B for its copy). An audit pass sets `audit.redteam_status: "over_budget"` instead. For the audit, the frames count in `unresolved` (§12) |
 
 "Fails closed" means: for a stage that could only *add* keep evidence (role pass, escalation, scene pass, speech), the job continues with everything hidden and `needs_you` (docs/prompts/README.md rule 3). For a stage that's needed to *hide* (SAM base sweep, render), the job can't be published. It goes to **`retry_later`** when the cause is transient (`MetaUnavailable`, `MetaRateLimited`, or an eof `MetaIncomplete`); WP5 re-queues it once after 5 min. Otherwise it goes to **`failed`**: `MetaAuthError`, `MetaConfigError`, `MetaBadRequest`, `MetaRefusal`, `BudgetExceeded`, and a **non-eof** `MetaIncomplete` (a server-declared incomplete, or a parser `error` diagnostic, S5), which is deterministic, so re-running wouldn't help.
 
@@ -507,7 +507,8 @@ Object prompts (`build_object_prompt(size=(1280, 720), objects=[…])`):
 | G5 | point (0, 52) | point | **dropped** |
 | G6 | point (250, 750) | point | (319, 529) |
 | G7 | box [100, 100, 300, 400] | red-team | [127, 35, 384, 264] (half-open) |
-| G8 | box [100, 0, 300, 40] | red-team | **dropped** (`in_bar`: y_img 0–30 < 40; the model read our frame label) |
+| G8 | box [100, 0, 300, 40], `kind: text`, text "F 000090" | red-team | **dropped** (`in_bar`: y_img 0–30 < 40; the model read our frame label) |
+| G8b | box [100, 0, 300, 40], `kind: face` (or text "AMINA") | red-team | **leak with a whole-frame box** (an in-bar box that isn't the label is a misplaced real finding) |
 | G9 | box [100, 0, 300, 40] | miss-loop | **dropped** (`in_bar`; keep the point if it's valid) |
 | G10 | box [500, 500, 501, 501] | red-team | [639, 339, 641, 341] |
 | G11 | box [−5, 60, 1001, 1001] | red-team | [0, 5, 1280, 720] |
@@ -557,7 +558,7 @@ Constant-rate case: `job.fps` 30, `job.frames` 900, `sam_fps_eff` 8, `sam_frames
 | R9 | SAM stream eof, eof | `MetaIncomplete` after 2 attempts; base sweep → job `retry_later` |
 | R10 | SAM request → 404 naming the `file_id` | `MetaFileGone`: re-upload `sam_proxy.mp4`, update `files.json`, repeat once. A second 404 → `MetaBadRequest` |
 | R11 | Responses complete, but the JSON fails pydantic validation | one re-ask (same request); invalid again → the stage fails closed. Both calls are logged with their actual cost |
-| R12 | the pre-call estimate exceeds the remaining job cap | no request; `BudgetExceeded`; the stage fails closed with reason `over_budget`. If the stage was a red-team pass over 40 frames: `unresolved` += 40, `redteam_status: "over_budget"` |
+| R12 | the pre-call estimate exceeds the remaining job cap | no request; `BudgetExceeded`; the stage fails closed (job `failure.reason: "budget"`). If the stage was a red-team pass over 40 frames: `unresolved` += 40, `redteam_status: "over_budget"` |
 
 ---
 
@@ -581,7 +582,7 @@ Nothing is implemented yet (there's no code before kickoff), so these are **chan
 | `tracks.json` | `requests[].kind`, `requests[].matches` | `"phrase"\|"object_prompt"`, int, **required** | WP1 → miss-loop logs, eval | which request type ran, and how many objects it found (`miss-loop.md` zero-match logging) |
 | **`files.json`** (new, per job) | `[{name, sha256, file_id, purpose, created_at, deleted_at}]` | **required** fields; `deleted_at` null until deleted | WP0 client → WP1 (proxy id by `name`), WP5 sweeper, receipt `files_deleted` | idempotent uploads and guaranteed deletion (§10.4) |
 | `audit.json` | `leaks[].flag` | `"redaction_too_weak"` \| null, optional, `null` | WP4 → re-render, UI | read-through → `solid` (`redteam.md` L7) |
-| `audit.json` | `redteam_status` (PR #2 UI-SPEC request 11's name, adopted) | `"ok"\|"failed"\|"over_budget"`, **required**, default `"ok"` | WP4 → UI result panel | why the audit didn't finish. **Invariant: `redteam_status != "ok"` ⇒ `unresolved > 0`.** Every frame an audit pass didn't run on counts in `unresolved`, so `unresolved == 0` stays the one publish gate; `ok` with `unresolved > 0` means real leaks left after 3 passes |
+| `audit.json` | `redteam_status` (PR #2 UI-SPEC request 11's name, adopted) | `"ok"\|"failed"\|"over_budget"`, **required** (no default: a writer that omits it fails validation instead of claiming the audit finished) | WP4 → UI result panel | why the audit didn't finish. **Invariant: `redteam_status != "ok"` ⇒ `unresolved > 0`.** Every frame an audit pass didn't run on counts in `unresolved`, so `unresolved == 0` stays the one publish gate; `ok` with `unresolved > 0` means real leaks left after 3 passes |
 | `cost.jsonl` | `job_id`, `attempt`, `estimated` | str, int, bool, **required** | WP0 client → caps, receipt, eval | reservation accounting (§10.2) |
 | `receipt.json` | `cost_usd_estimated` | number, optional, `0` | WP4 → receipt page | "possibly billed" kept apart from measured `cost_usd` (AGENTS rule 9) |
 | `receipt.json` | `data_handling.store_by_model` | `{model: bool}`, **required** | WP4 → receipt page | what each model was actually sent. **`data_handling.store` is redefined as `any(store_by_model.values())`**, so it's `false` only when every call sent `store:false` (§10.6) |

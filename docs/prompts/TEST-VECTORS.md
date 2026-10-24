@@ -37,6 +37,7 @@ Objects (`screen:2`):
 | E4 | participant, participant, unsure | ruling `participant`, frames F210, F240 (both sent, track present) | `unsure`, `needs_you`, `suggested_role: "participant"`, `escalation_frames: [210, 240]`, `escalated: true`. **Not kept.** |
 | E5 | participant, bystander, bystander | ruling `bystander` | `unsure`, `needs_you`, `suggested_role: "bystander"` |
 | E6 | participant, participant, unsure | ruling `participant`, citing F205 (not sent) | same as E3 (invalid citation) |
+| E7 | participant, participant, unsure | ruling `unsure`, frames F210 (valid) | `unsure`, `needs_you`, `suggested_role: null`, `escalated: true`; evidence and frames still shown |
 
 The invariant tested over every row: **no escalation output ever yields `keep`.** WP3 property-tests it over random vote and ruling combinations with hypothesis.
 
@@ -55,7 +56,7 @@ Swept so far: `face, person, license plate, screen, phone, document, name badge`
 | M8 | 9 items | the first 8 get SAM prompts (in output order); item 9 gets a **static hidden box** ±`temporal.extend`, `needs_you`, logged `item_cap` |
 | M9 | point (0, 0) on the 0–1000 grid (inside the bar) | point dropped. If the item has a valid `box`, its centre becomes the point; otherwise the item is dropped |
 | M10 | the same `envelope` from votes 1 and 2, points 30 px apart on the same frame (a 1280×720 diagonal is 1,469 px, 5% = 73 px) | merged into one item |
-| M11 | loop 2 (the last allowed) proposes `envelope` at F420, or the step-6 budget check stops before its request, or the batched object-prompt request fails after retries | no SAM result → **static hidden box** at F420 ±`temporal.extend` (from `box`, else a 6% square), `needs_you`. Never dropped |
+| M11 | the role pass over loop 2's new tracks proposes `envelope` at F420 (no loop 3), or the step-6 budget check stops before its request, or the batched object-prompt request fails after retries | no SAM result → **static hidden box** at F420 ±`temporal.extend` (from `box`, else a 6% square), `needs_you`. Never dropped |
 
 ## 4. Red-team leak decisions (`redteam.md`)
 Frame 50 has one approved kept-clear item, `A` (a participant's face), visible at box [100, 100, 200, 200]. Frame 1280×720.
