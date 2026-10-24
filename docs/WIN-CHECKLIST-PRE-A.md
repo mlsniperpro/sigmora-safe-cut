@@ -20,7 +20,7 @@ Named `-PRE-A` so it can't collide with PR #2. **Updated:** 2026-10-24.
 - [P] `muse-spark-1.2` price: not found in any reachable source, so §6 assumes it equals 1.3. Pending: the pricing page (allowlist)
 - [x] Data policies (Standard vs Contributor, `store`): §7, with the receipt's `store_by_model` (§12)
 - [P] Standard-mode retention periods: not found. Pending: WP0 reads the policy page (allowlist)
-- [x] Cost model for one 30 s clip and for the whole eval plan vs $150: §9 (v3: $1.12 per 30 s clip at 8 fps, $1.91–1.99 per 60 s clip; $132.65 planned on PRE-B's 12/3 split, with the pilot cap and a staged demo reserve; $17.35 headroom)
+- [x] Cost model for one 30 s clip and for the whole eval plan vs $150: §9 (v3: $1.12 per 30 s clip at 8 fps, $1.91–1.99 per 60 s clip; $126.65 planned on PRE-B's 12/3 split, with the pilot cap and a Nov 4–9 demo reserve; $23.35 headroom)
 - [x] Six prompt specs (purpose, inputs, v0 prompt, strict JSON schema, failure handling, 3 tricky cases): `prompts/*.md`, plus `prompts/TEST-VECTORS.md`
 - [x] Link to Meta's prompting guidance: `prompts/README.md`
 - [x] `research/egoblur-gen2.md`: where, licence, gating (email form), files, preprocessing (BGR), thresholds, NMS defaults (0.5 Gen 2 / 0.3 Gen 1), speed, Gen 1 vs Gen 2, install pins, detector API, owner steps
@@ -62,7 +62,7 @@ Named `-PRE-A` so it can't collide with PR #2. **Updated:** 2026-10-24.
 - [x] The SAM proxy mapping belongs to PRE-A: PRE-B `LABEL-FORMAT.md` §2 defers to PRE-A's `to_proxy`/`from_proxy`
 - [x] Split of 12 test, 3 dev, 3 hero: PRE-B `SCHEDULE.md` §3; PRE-A §9.2
 - [x] Pilot money cap: PRE-B owns the $20 cap and $4 per code; PRE-A §9.2 budgets the full $20
-- [x] Pilot money estimate: PR #2 `PILOTS.md` §5 @ `e86a051` now refers to "PRE-A's figure" (currently $11.20, §9.2) inside its $20 cap, and no longer quotes a stale number
+- [P] Pilot money: PR #2 `PILOTS.md` §5 @ `e86a051` still quotes PRE-A's old **$8.70** (from `498fa20`) and derives $4 per code from a $2 per-clip cap. PRE-A's current estimate is **$11.20** (§9.2), still inside PRE-B's $20 total cap, and PRE-A requests a **$6 per-code cap** so that two busy 60 s clips fit. The fact both sides share, a $20 total cap with the estimate under it, holds. Pending: PRE-B's next pass updates the number and the per-code cap
 - [x] CVAT machine: PRE-B decides (Linux/WSL2, never the Intel Mac). PRE-A's test-split GPU machine prefers that same owner-controlled box but never a third party's (`BLOCKED-PRE-A.md`); pointer to `docs/BLOCKED-PRE-B.md` fixed
 - [x] `retry_later` job state: PRE-B UI-SPEC (`f6815a5` adds it); PRE-A §10.3
 - [x] UI fields PRE-A added: `suggested_role`, `escalation_evidence`/`escalation_frames` (PRE-B's names, adopted by PRE-A) and `matches_participant` as the speech link are in PR #2 UI-SPEC §4.6, §5 and §8 @ `e86a051`. `blocked_reason` and "Run the audit again" are additive PRE-A fields that PR #2 doesn't contradict; its audit panel still keys off `unresolved`, which remains the one publish gate
@@ -77,7 +77,7 @@ Named `-PRE-A` so it can't collide with PR #2. **Updated:** 2026-10-24.
 - [x] Self-review rounds 1–3 (30 findings: escalation keeping on 2/3 votes, the bar mapping, floor vs round, proxy axes, point prompts for swept phrases, the red-team placeholder, overlapping rule rows, under-costed red-team, loop count, `S?`, `degraded`, `job.times`, scaling, degenerate boxes, frame caps, override wording, "top-left", unequal vote phrasings, whole-batch failure, number drift) → fixed (PR #1 earlier bodies)
 - [-] Self-review suggestion "keep `BLOCKED.md` at the root": superseded by the owner's direction to use `docs/BLOCKED-PRE-A.md`
 - [x] Iteration 1: no client spec, no test vectors, no box convention → §10, §11, §5
-- [x] Iteration 1 review, ffmpeg: the proxy map and `times` rule didn't match ffmpeg → slot rule verified by checksums (T1–T4, T8)
+- [x] Iteration 1 review, ffmpeg: the proxy map and `times` rule didn't match ffmpeg → slot rule verified by checksums (T1–T4)
 - [x] Iteration 1 review: the `/healthz` SAM probe would cost $3.60/day → `/healthz` is one `minimal` text call; SAM only at startup
 - [x] Iteration 1 review: contradictory retry counts; SAM eof handling → one policy (§10.2), R7–R9
 - [x] Iteration 1 review: estimated costs inflating reports → reservation model (§10.2)
@@ -117,3 +117,4 @@ Named `-PRE-A` so it can't collide with PR #2. **Updated:** 2026-10-24.
 
 ## 6. Full hostile audits of the whole package (for the done condition: two consecutive with nothing new)
 - [x] Audit #1 (2026-10-24 ~18:10 UTC, `code-review` at max effort, whole package `main..HEAD` vs the brief, MAXXING, ARCHITECTURE, DESIGN, EVAL, WP0–WP8, PR #2 @ `f6815a5`): **15 findings, all fixed** (§5 above). Not clean
+- [x] Audit #2 (2026-10-24 ~21:30 UTC, an independent fresh agent over the whole package at `eb4c62c` vs the brief, MAXXING, WP0–WP8 and PR #2 @ `e86a051`): **8 findings, all fixed.** They were: a false `[x]` on the PRE-B pilot figure (back to `[P]`); the $1/day pre-judging cap (now $3/day throughout, $18 reserve); the $4 pilot-code margin (a $6 request to PRE-B); `times` rounding vs PRE-B (now full-precision doubles); dangling T7/T8 references; the busy-clip delta (+$2.16); escalation's budget guard (one path, §10.5); a garbled miss-loop clause and the red-team re-ask budget. Not clean

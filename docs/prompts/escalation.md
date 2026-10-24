@@ -62,7 +62,7 @@ There's deliberately no rule that yields `keep`. A creator who accepts a `partic
 ## Failure handling
 - At `max` effort the transport policy allows 2 attempts in total (API-NOTES §10.2). Escalation as a stage is never re-run (DESIGN: "once").
 - Cited frames are validated as in the role pass. Invalid citations → `unsure`.
-- Budget guard: if the remaining job budget is below the estimated cost (API-NOTES §9), skip escalation; every disputed track becomes `needs_you`.
+- Budget guard: one path only, the client's pre-call reservation (API-NOTES §10.5: the worst case for `max` is $0.225 at 48k `max_output_tokens`, vector C4). If it raises `BudgetExceeded`, escalation is skipped, and every disputed track stays `unsure` + `needs_you` with `suggested_role: null` (rule 3). WP2 doesn't add a second check.
 
 ## Tricky cases it must get right
 1. **The co-host who's only heard.** Votes are participant / participant / unsure ("too small to tell"). The transcript shows S2 answering the creator at F200–F260, and `face:4` is the only face whose mouth is open in F210 and F240. The ruling is `participant` with 2 frames and the quote. The track **stays hidden** with a strong "Keep clear?" suggestion, which is one tap for the creator.

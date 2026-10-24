@@ -219,7 +219,7 @@ Docs: [features/image-understanding](https://dev.meta.ai/docs/features/image-und
 ---
 
 ## 5b. Time and frame axes, the definition every WP uses
-PRE-A owns this definition, and PR #2 applies it (`docs/labeling/LABEL-FORMAT.md` §2 and §9.1, `docs/UI-SPEC.md` §3.6, at `f6815a5`). It also matches DESIGN §2.1's existing `PreparedClip.times` ("source-second timestamps per frame"). Every ffmpeg behaviour below was **verified with ffmpeg 6.1.1** on 2026-10-24 by matching per-frame checksums before and after the filter (vectors T1–T9). No contract field changes.
+PRE-A owns this definition, and PR #2 applies it (`docs/labeling/LABEL-FORMAT.md` §2 and §9.1, `docs/UI-SPEC.md` §3.6, at `f6815a5`). It also matches DESIGN §2.1's existing `PreparedClip.times` ("source-second timestamps per frame"). Every ffmpeg behaviour below was **verified with ffmpeg 6.1.1** on 2026-10-24 by matching per-frame checksums before and after the filter (vectors T1–T6, T9, T10). No contract field changes.
 
 **Decided (2026-10-24, final):** the prepared clip has a **constant frame rate**, and `times` holds **source-clock seconds**.
 - *Rejected:* a variable-frame-rate prepared clip that keeps source timestamps. It was tried twice in this branch's history, and two problems were found by running ffmpeg. A drop-only `select` rule drops real frames from jittery 30 fps phone clips (36% of a ±1.5 ms-jitter clip). And `-fps_mode passthrough` re-quantises timestamps to the stream's frame rate unless `-enc_time_base demux` is set.
@@ -236,7 +236,7 @@ PRE-A owns this definition, and PR #2 applies it (`docs/labeling/LABEL-FORMAT.md
 1. `job.fps = min(30, round(source average fps))`, an integer from 1 to 30. The output is constant frame rate at `job.fps`, H.264, `+faststart`, ≤1280 px long edge (DESIGN §2.1).
 2. **Normalise the start first:** video filter chain `setpts=PTS-STARTPTS, fps=<job.fps>, scale=…`. Without `setpts`, a video stream that starts after its audio (or with a non-zero first PTS) makes the `fps` filter slot frames by absolute time, and the mapping shifts (verified: a 0.1 s video delay moved proxy frame 0 from prepared frame 1 to 2; T9). **Audio stays in sync on the same origin:** if the audio starts earlier than the video by `d` seconds, `atrim=start=d, asetpts=PTS-STARTPTS`; if it starts later, `adelay=d×1000:all=1`. Then the prepared audio and video both start at 0.
 3. **Frame selection is ffmpeg's `fps` filter** (default `round=near`). Give source frame `k` the slot `s_k = round_half_up(t_k × job.fps)`, where `t_k` is its source-clock time. **Output frame `n` shows the last source frame with `s_k ≤ n`.** Earlier frames in the same slot are dropped, and an empty slot repeats the previous frame. **`times[n] = t_k` of that frame.** WP1 computes `times` from the ffprobe per-frame PTS list with this rule, and its test checks the rule against ffmpeg's own output on a synthetic VFR clip (the bundled imageio-ffmpeg binary, with its version recorded).
-4. **Exact arithmetic:** compute `t_k` from the **integer** `pts` and the stream `time_base` as a rational (`Fraction(pts − pts_0) × time_base`), not from ffprobe's 6-decimal `pts_time` string. `times` is stored as floats rounded to 9 decimals. Then every consumer that recomputes `t_k` with the same function gets bit-identical values, which PR #2's `|t_k − times[i]| ≤ 1e-6` match relies on.
+4. **Exact arithmetic:** compute `t_k` from the **integer** `pts` and the stream `time_base` as a rational (`Fraction(pts − pts_0) × time_base`), not from ffprobe's 6-decimal `pts_time` string. `times` is stored as the **full-precision double** `float(Fraction(...))`, never rounded (the same rule PR #2 LABEL-FORMAT §2 states). Then every consumer that recomputes `t_k` with the same function gets bit-identical values, which PR #2's `|t_k − times[i]| ≤ 1e-6` match relies on.
 5. Consequences a builder must not "fix":
    - `times` is **non-decreasing, not strictly increasing** (a gap repeats a frame);
    - `times[0]` is the time of the last source frame in slot 0, which **may be > 0** (T6c: 0.04);
@@ -327,7 +327,7 @@ Assumptions:
 **Reading:**
 - At 30 fps, SAM is 77% of the cost and a clip costs $2.57, over the cap. So SAM always gets the proxy (§5b, §10.6). Per minute of footage: **$2.24 at 8 fps**.
 - **A 60 s clip** (the upload limit, ARCHITECTURE §5) models at **$1.91 with 8 tracks, $1.99 with 16**. That's under `SAFECUT_JOB_USD_CAP = 2.00`, but with almost no margin once pre-call reservations are in flight (§10.5). **Decided:** request WP0 to raise the default `SAFECUT_JOB_USD_CAP` to **$3.00**. The daily cap still bounds total spend. *Rejected:* keeping $2.00, under which a busy 60 s clip ends "audit over budget" and can never be published.
-- Pilot codes (PR #2: $4 per code, 2 clips) cover two clips of up to 60 s ($1.91–1.99 each).
+- **Pilot codes** (PR #2: $4 per code, 2 clips, a $20 total) cover two 30 s clips ($2.24) with margin, but not two busy 60 s clips ($3.82–3.98 against $4, with reservations in flight). Request to PRE-B: raise the per-code cap to **$6** (2 × the $3.00 job cap), keeping the **$20 total** that WP5 enforces separately.
 
 ### 9.2 The whole eval plan (EVAL.md §5) against $150
 Split sizes are PRE-B's final assignment (PR #2 `docs/labeling/SCHEDULE.md` §3): **12 test, 3 dev, 3 hero** (2 takes each). PRE-B owns labels and pilots; these are this doc's API cost estimates for them.
@@ -342,22 +342,22 @@ Split sizes are PRE-B's final assignment (PR #2 `docs/labeling/SCHEDULE.md` §3)
 | Dev iterations (prompt tuning; SAM replayed) | 9 × 3 clips × $0.59 (Muse only) | 15.93 |
 | Hero clips (3 clips × 2 takes; ~3 renders each, demo included) | 6 × $1.12 × 3 | 20.16 |
 | Creator pilots | **PR #2's hard cap: $20** ($4 per code). Our estimate is 10 clips × $1.12 = **$11.20**, within it | 20.00 |
-| Public "Try it" demo reserve | `SAFECUT_DAILY_USD_CAP` **$1/day Oct 29 – Nov 3, $3/day Nov 4–9** (6 × $1 + 6 × $3) | 24.00 |
-| **Planned total** | | **$132.65** |
-| **Headroom vs $150** | | **$17.35** |
+| Public "Try it" demo reserve | judges' and visitors' runs, **Nov 4–9**, at a `SAFECUT_DAILY_USD_CAP` of **$3/day** (6 × $3) | 18.00 |
+| **Planned total** | | **$126.65** |
+| **Headroom vs $150** | | **$23.35** |
 
 **Decisions in this table:**
-- The demo cap is staged. Before judging, only the owner and the pilots (who have their own capped codes) use the service, so $1/day covers smoke tests. *Rejected:* ARCHITECTURE §4's $10/day default for the whole window: 12 days × $10 = $120, which takes the plan to **$228.65, over the $150**. Request to WP5: set the deployed `SAFECUT_DAILY_USD_CAP` on that schedule.
+- **Daily cap: $3/day for the whole deployed window (Oct 29 – Nov 9).** Before Nov 4 the deployed service is used only by the owner's hero and smoke renders, which are already counted in the hero line, and by pilots, whose codes have their own caps. So only Nov 4–9 needs a public reserve. $3/day leaves $2.866 a day after `/healthz` (§10.7), which is room for two 30 s runs. *Rejected:* ARCHITECTURE §4's $10/day default, under which 12 days could spend $120 and take the plan to **$228.65, over the $150**. *Also rejected:* $1/day before judging, which is below one clip ($1.12) and would block WP5's first deployed end-to-end run. Request to WP5: deploy with `SAFECUT_DAILY_USD_CAP=3.00`.
 - **Wonder doesn't fit as planned.** Measured over the 84 non-pilot runs above (pilots stay under their own $20 cap):
   - scene pass only: +$0.24 per run, +$20.31 in total;
   - escalation only: +$0.30, +$25.10;
   - both: +$45.40.
 
-  All three exceed the $17.35 headroom. Wonder for the scene pass **on test and hero runs only** (54 runs, +$13.05) is the one option that fits, and it fits only if WP0's probe f shows a gain (H1). The per-clip adoption bar (`research/muse-wonder-vs-spark.md` H5, ≤ 1.5 × $1.12 = $1.68) passes for all three, so **the budget, not the bar, is the binding constraint.** If Wonder escalation is ever used, its `max_output_tokens` is 24,000: a pre-call reservation of $0.55, against $1.03 at 48,000, which could exceed the job cap on its own.
+  The $23.35 headroom fits **Wonder for the scene pass** (+$20.31 across all 84 runs, or +$13.05 on test and hero runs only). It doesn't fit escalation-only (+$25.10) or both (+$45.40). So the only adoptable option is the scene pass, and only if WP0's probe f shows a gain (H1).
 
 **Risks to this budget:**
 - **30 fps SAM** would make the test runs alone $92.53. Never send `prepared.mp4` to SAM (§10.6).
-- **Busy clips:** with 16 tracks a 30 s clip is about $1.19, about +$4 over the test runs.
+- **Busy clips:** with 16 tracks, red-team pass 1 needs 96 frames instead of 64. That's +$0.06 per run, or +$2.16 over the 36 test runs (+$5.04 across all 84 non-pilot runs).
 - **Dev iteration** beyond 9 rounds costs $1.77 per round (3 clips × $0.59).
 
 ---

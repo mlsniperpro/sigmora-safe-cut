@@ -27,7 +27,7 @@ Read 2026-10-24. Meta's model pages (`dev.meta.ai/docs/models`, `developer.meta.
 4. **H4, effort levels:** confirm the live page: `max` is accepted on both models, and `xhigh` uses measurably more reasoning tokens than `high` (`usage.output_tokens_details.reasoning_tokens`). Record what `max` costs per escalation call, which replaces API-NOTES assumption A6.
 5. **H5, cost and latency:** measure wall-clock and `usage` per call. Adopt Wonder for the scene pass or escalation only if quality improves **and** two cost tests pass:
    - **per clip:** cost stays ≤ 1.5× the Spark-only cost at 8 fps, which is ≤ $1.68 against Spark's $1.12 today (API-NOTES §9.1). Scene only ($1.36), escalation only ($1.42) and both ($1.66) all pass;
-   - **budget:** the extra spend fits the remaining eval headroom (§9.2, $17.35 today). Only **Wonder for the scene pass on test and hero runs** (+$13.05) fits.
+   - **budget:** the extra spend fits the remaining eval headroom (§9.2, $23.35 today). Only **Wonder for the scene pass** fits: +$20.31 across all runs, or +$13.05 on test and hero runs only.
 
    So the realistic adoption is the scene pass, on reported runs, and only if H1 shows a gain. Wonder escalation uses `max_output_tokens: 24000`, a $0.55 reservation. (The bar is relative so it doesn't drift with the cost model.)
 6. **H6, frame-number honesty:** on the burned-in counter clip, which model reads the right frame number at the right event more often (DESIGN §5)? This decides how much the scene pass's times can be trusted, even as context.
