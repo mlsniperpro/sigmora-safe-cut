@@ -11,34 +11,26 @@ Why CVAT: free, open source, video track annotation with interpolation, MOT expo
 3. **Disk.** CVAT keeps uploaded videos and exports in Docker volumes on the build box. Treat the box as holding the private set: full-disk encryption on, no shared accounts, delete the volumes after judging (target 2026-12-01, [SHOTLIST.md](../SHOTLIST.md)).
 4. **Exports** go to the owner's private storage (`~/SafeCutEval/labels/` on the Mac, plus the private bucket for `dev`/`hero` only). Test-split labels never go to the bucket the cloud agents read.
 
-## 2. The build box
+## 2. The build box (decision)
 
-Not the Intel dev Mac ([EVAL.md](../EVAL.md) §1). Any Linux x86_64 machine with Docker works; CVAT's install guide covers Ubuntu 22.04/20.04 first, plus Windows (WSL2) and macOS. Google Chrome is the only browser CVAT supports. **Open question for the owner:** which machine this is (see the PR).
+**Decision: run CVAT on a machine the owner physically controls, never a cloud VM.** Real-public clips may live only on the owner's machines and the private bucket ([SHOTLIST.md](../SHOTLIST.md), [AGENTS.md](../../AGENTS.md) rule 5). A rented VM would put them on a third-party host too, and that's the step that's hard to undo.
+- **First choice:** any Linux x86_64 or Windows (WSL2) machine with Docker. CVAT's install guide covers Ubuntu 22.04/20.04 first, plus Windows (WSL2) and macOS.
+- **Fallback if there's no such machine:** another local machine held by a trusted labeller (e.g. labeller B's), with clips moved on an encrypted drive and deleted from it after export. **Not the Intel dev Mac:** [EVAL.md](../EVAL.md) §1 and the PRE-B brief both exclude it.
+
+CVAT supports only Google Chrome. Setting up the machine is the owner's hands-on step, listed in `BLOCKED.md`.
 
 ## 3. Install (from CVAT's guide)
 
-These are the steps from CVAT's installation page, in order. Type them on the build box; nothing here belongs in this repo.
+Follow CVAT's installation page (`site/content/en/docs/administration/community/basics/installation.md` in `cvat-ai/cvat`, the section for your OS). In summary, for the owner to carry out on the build box (nothing here belongs in this repo):
 
-1. Install Docker Engine and the Docker Compose plugin (CVAT's page links Docker's official Ubuntu instructions).
-2. Clone CVAT and pin the release you use, so both labellers and any re-export see the same tool:
-   ```
-   git clone https://github.com/cvat-ai/cvat
-   cd cvat
-   git checkout v2.80.0
-   ```
-   Record the tag you actually used in the clip list ([SCHEDULE.md](SCHEDULE.md)).
-3. Start it (the first run downloads the images and takes a while):
-   ```
-   docker compose up -d
-   ```
-4. Create the admin account:
-   ```
-   docker exec -it cvat_server bash -ic 'python3 ~/manage.py createsuperuser'
-   ```
+1. Install Docker Engine and the Docker Compose plugin (CVAT's page links Docker's official instructions).
+2. Clone `https://github.com/cvat-ai/cvat` and check out the release tag **v2.80.0** (the latest on 2026-10-24), so both labellers and any re-export use the same version. Record the tag in the clip list ([SCHEDULE.md](SCHEDULE.md)).
+3. Start the containers with Docker Compose from the `cvat` folder, as the guide shows (the first run downloads the images and takes a while).
+4. Create the admin account with Django's `createsuperuser` inside the `cvat_server` container, as the guide shows.
 5. Open Chrome at `http://localhost:8080` and log in.
 6. Create one non-admin user per labeller (A and B) from the admin account. Labeller B doesn't need to draw boxes, but may use CVAT to scrub frames.
 
-To stop: `docker compose down` in the `cvat` folder (the data volumes stay). Don't use `down -v` until the labels are exported and backed up.
+To stop CVAT, bring the Compose stack down from the `cvat` folder; the data volumes stay. **Don't remove the volumes** (Compose's `-v` option) until every label is exported and backed up.
 
 ## 4. Project and labels
 
@@ -81,6 +73,8 @@ Per CVAT's track-mode docs:
 7. Save often (`Ctrl+S`).
 
 Use one CVAT track per entity. If the same person is in a reflection, that reflection is its own entity and its own track (case 4/5 in the guide).
+
+**Optional speed-up: OpenCV TrackerMIL** (built into CVAT, not a Meta model; CVAT docs `annotation/manual-annotation/utilities/opencv-tools.md`). Draw the first box, open the **OpenCV** menu, pick TrackerMIL, set the target frame, and run. CVAT's docs warn that it runs on **all rectangles that pass the current filter**, so filter to the one object first, or it moves other tracks you've already finished. Then check and fix it at the usual 15-frame keyframe spacing. **Never use the "Segment Anything 2 Tracker"** for ground truth ([LABELING-GUIDE.md](LABELING-GUIDE.md) §2.4).
 
 ## 7. Export
 

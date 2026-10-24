@@ -7,8 +7,9 @@ Status: **v1, 2026-10-24 (PRE-B, docs only).** Shot by shot for the beats in [DE
 1. **Numbers are placeholders** like `{recall_full}` until WP8 fills them from a committed `eval/results/<run-id>/metrics.json` ([AGENTS.md](../AGENTS.md) rule 9). If a number is weak, it's shown anyway ([DEMO.md](DEMO.md)). If a placeholder has no committed source by Nov 3, the shot changes; nobody types a number in.
 2. **Nothing staged as real.** Every screen shot is a recording of the deployed app. If a shot uses replayed data, the demo-mode banner is visible in it ([UI-SPEC.md](UI-SPEC.md) §6). If something the script expects didn't happen on the real run (e.g. the audit found no leak), the script changes to what did happen.
 3. **Only consenting people on screen.** Hero clips only (signed releases), fake PII on every screen and document, no real keys, emails or private footage ([SHOTLIST.md](SHOTLIST.md), [DEMO.md](DEMO.md) Production).
-4. **Baselines are labelled as ours.** "Blur every face" is our implementation of that approach (WP7's `blur_all`), labelled "Blur every face (baseline)". Don't say it's YouTube's or CapCut's actual output.
-5. **Captions on** for the whole video. VO is the owner's voice (O9) at about 150 words a minute; the VO below is about 290 words, so no line runs faster than about 150 wpm.
+4. **The café menu is shown in Needs you, not Kept clear.** Under the policy ([DESIGN.md](DESIGN.md) §2.5, WP3), a harmless screen goes to Needs you and is never kept clear automatically, so beat 5 shows the real behaviour: Muse Spark reads it as a menu, then the creator confirms with one tap. That's stronger on screen than an automatic keep, because it shows reasoning and human control together. [DEMO.md](DEMO.md) beat 5 says "clear"; this storyboard supersedes that line.
+5. **Baselines are labelled as ours.** "Blur every face" is our implementation of that approach (WP7's `blur_all`), labelled "Blur every face (baseline)". Don't say it's YouTube's or CapCut's actual output.
+6. **Captions on** for the whole video. **Decision: the VO is the owner's own recorded voice (O9), not the ElevenLabs clone.** That leaves nothing AI-generated to label or disclose, and if a rule asks about synthetic voices the answer is already no. VO at about 150 words a minute; the VO below is about 290 words, so no line runs faster than about 150 wpm.
 
 **Sources key.** `H1A`/`H1B` = hero clip 1 "street interview", take A / take B (the van re-entry); `H2` = hero 2 "café"; `H3` = hero 3 "walk-through". `R-xx` = a render; `SR-xx` = a screen recording (§3); `CH-xx` = a chart from `eval/report.py`; `GFX` = a title card made in the editor.
 
@@ -17,10 +18,10 @@ Status: **v1, 2026-10-24 (PRE-B, docs only).** Shot by shot for the beats in [DE
 | # | Time | Dur | Frame | On-screen text | VO | Source |
 |---|---|---|---|---|---|---|
 | **Beat 1: Hook** | | | | | | |
-| 1.1 | 0:00–0:03 | 3 s | H1A raw, full frame: the guest talking to the host on a busy street | — | "This is a normal street interview." | `R-01` (H1A raw) |
-| 1.2 | 0:03–0:12 | 9 s | Same clip continues; each problem gets a thin outline and label as it appears: the child passing, actor 2's phone with the fake number, the parked car's plate | "Child" · "Phone number" · "Number plate" (small labels next to each) · bottom: "None of them agreed to be in it." | "It also shows a child, a stranger's phone number and a number plate. None of them agreed to be in it." | `R-01` + outlines from the labelled boxes of H1A |
+| 1.1 | 0:00–0:03 | 3 s | H1A raw, full frame: the guest talking to the host on a busy street | Corner, for the whole of beat 1: "Staged with actors. Everyone signed a release." | "Here's a typical street interview." | `R-01` (H1A raw) |
+| 1.2 | 0:03–0:12 | 9 s | Same clip continues; each problem gets a thin outline and label as it appears: the child passing, actor 2's phone with the fake number, the parked car's plate | "Child" · "Phone number" · "Number plate" (small labels next to each) · bottom: "In real footage, none of them agreed to be in it." | "It also shows a child, a stranger's phone number and a number plate. In real footage, none of them agreed to be in it." | `R-01` + outlines from the labelled boxes of H1A |
 | **Beat 2: The status quo fails** | | | | | | |
-| 2.1 | 0:12–0:20 | 8 s | Split screen, same moment of H1A. Left: blur-every-face baseline (the guest is covered; plate and phone visible). Right: manual masking in an editor, time-lapse, real timer in the corner | Left: "Blur every face (baseline)". Right: "Masking by hand · `{manual_minutes}` min for a 30 s clip" | "Today you either blur everyone, including your guest," | `R-02` (H1A `blur_all`) + `SR-10` (manual masking, time-lapse) |
+| 2.1 | 0:12–0:20 | 8 s | Split screen, same moment of H1A. Left: blur-every-face baseline (the guest is covered; plate and phone visible). Right: manual masking in an editor, time-lapse, real timer in the corner | Left: "Blur every face (baseline)". Right: "Masking by hand · `{manual_minutes}` min for this `{h1a_seconds}` s clip" | "Today you either blur everyone, including your guest," | `R-02` (H1A `blur_all`) + `SR-10` (manual masking, time-lapse) |
 | 2.2 | 0:20–0:30 | 10 s | Right half fills the frame: the timer keeps running; then cut to a black card | Card: "Most creators just publish." | "or mask by hand for `{manual_minutes}` minutes. Most creators just publish, and hope nobody complains." | `SR-10`, `GFX` |
 | **Beat 3: One pass** | | | | | | |
 | 3.1 | 0:30–0:37 | 7 s | The Safe Cut upload page: drop H1A, tick the rights box, Start | — | "With Safe Cut, you upload the clip once." | `SR-01` |
@@ -37,18 +38,20 @@ Status: **v1, 2026-10-24 (PRE-B, docs only).** Shot by shot for the beats in [DE
 | 6.1 | 1:40–1:50 | 10 s | H1B: the passer-by walks behind the van and comes out; the cover stays on. Then the NEW chip: "appeared again after leaving" | "Lost and found again → still hidden" | "If the tracker loses someone, they come back hidden, until you say otherwise." | `SR-06` + `R-03B` (H1B Safe Cut render) |
 | 6.2 | 1:50–2:00 | 10 s | Result page: the audit panel "`{h1_frames_scanned}` frames checked. `{h1_leaks_fixed}` leak(s) found and fixed." If a leak was fixed: before/after frames side by side | Audit text as recorded | "Then Meta's EgoBlur checks every frame of the final render, and Muse Spark tries to read anything left, before it goes live." | `SR-07`; before/after stills from WP4's audit on H1 |
 | **Beat 7: Numbers** | | | | | | |
-| 7.1 | 2:00–2:12 | 12 s | The results chart/table: blur-every-face, EgoBlur Gen 2, detector-only and Safe Cut rows; recall, exposure, leak bursts, over-blur. A thin line marks human agreement | Table values as committed; footer "`{n_test_clips}` clips · run `{run_id}`" | "On `{n_test_clips}` labelled test clips, Safe Cut hid `{recall_full}` of what should be hidden, with `{leak_bursts_full}` leak bursts." | `CH-01` (from `eval/report.py`) |
+| 7.1 | 2:00–2:12 | 12 s | The results chart/table with the five rows of [EVAL.md](EVAL.md) §3 (blur every face, EgoBlur Gen 2, detector only, Muse Spark without tracking, Safe Cut full; plus "Safe Cut without the audit" if WP7 ran it): recall, exposure, leak bursts, over-blur. A thin line marks human agreement | Table values as committed; footer "`{n_test_clips}` clips · run `{run_id}`" | "On `{n_test_clips}` labelled test clips, Safe Cut hid `{recall_full}` of what should be hidden, with `{leak_bursts_full}` leak bursts." | `CH-01` (from `eval/report.py`) |
 | 7.2 | 2:12–2:20 | 8 s | Same chart, over-blur column highlighted | "Over-blur: `{overblur_blur_all}` → `{overblur_full}`" | "Blur every face hid `{overblur_blur_all}` of the people who should stay clear. Safe Cut: `{overblur_full}`." | `CH-01` |
 | **Beat 8: Ship** | | | | | | |
-| 8.1 | 2:20–2:28 | 8 s | Approve & render → result → "Publish to Sigmora" → Sigmora's publish screen | — | "Approve, and publish straight from Sigmora." | `SR-08` + `SR-09` |
+| 8.1 | 2:20–2:28 | 8 s | Approve & render → result → "Publish to Sigmora" → Sigmora's publish screen | — | "Approve, and publish straight from Sigmora." Only if the Sigmora integration is merged and `SR-09` was recorded; otherwise the frame ends on the result page and the line is "Approve, and download the result." | `SR-08` + `SR-09` |
 | 8.2 | 2:28–2:35 | 7 s | The privacy receipt: items, reasons, who approved, audit result, data handling | — | "You keep a privacy receipt: what was hidden, why, and who approved it." | `SR-07` |
-| 8.3 | 2:35–2:40 | 5 s | Pilot card (only with a pilot's written permission): their quote and minutes saved | "`{pilot_quote}` — `{pilot_name_or_handle}`, `{pilot_format}` · `{pilot_minutes_manual}` min → `{pilot_minutes_safecut}` min" | "`{pilot_vo_line}`" (≤ 10 words, e.g. "Pilot creators: `{pilot_median_manual}` minutes of masking became `{pilot_median_safecut}`.") | `GFX` from [PILOTS.md](PILOTS.md) results |
+| 8.3 | 2:35–2:40 | 5 s | Pilot card (only with a pilot's written permission): their quote and minutes saved | "`{pilot_quote}` — `{pilot_name_or_handle}`, `{pilot_format}` · `{pilot_minutes_manual}` min → `{pilot_minutes_safecut}` min" | "`{pilot_vo_line}`" (≤ 10 words, e.g. "Pilot creators: `{pilot_median_manual}` minutes of masking became `{pilot_median_safecut}`."). **Capped values:** if any pilot hit the 30-minute cap ([PILOTS.md](PILOTS.md) §5), the manual figure is never shown as a plain median. The card says "≥ 30 min (`{n_capped}` of `{n_pilots}` didn't finish)", the VO becomes "Masking by hand took over 30 minutes for `{n_capped}` of `{n_pilots}` pilot creators", and per-pilot values carry "≥" | `GFX` from [PILOTS.md](PILOTS.md) results |
 | **Beat 9: Close** | | | | | | |
 | 9.1 | 2:40–2:50 | 10 s | Logo, `safecut.sigmora.org`, the repo URL, "Built with Muse Spark, SAM 3.1 and Muse Voice Transcribe" | As described | — | `GFX` + `SR-11` (landing page in the background) |
 
 Total: 2:50. If shot 8.3 has no permitted pilot data, it's cut and 8.2 runs to 2:40 with the line "…and who approved it. It's live in Sigmora today." (only if the Sigmora integration is merged; otherwise "…and who approved it.").
 
 ## 2. Placeholders (all filled by WP8 from committed results)
+
+Every placeholder, timings and audit counts included, must resolve to a value in a committed `eval/results/<run-id>/metrics.json` ([AGENTS.md](../AGENTS.md) rule 9). Values that don't come from an eval run (the hero run's latency and audit, the manual-masking time, the pilots) need their own results directory, committed before Nov 3 (requests to WP5/WP7 in the PRE-B PR). A placeholder without one is cut from the video, not estimated.
 
 | Placeholder | Meaning | Source |
 |---|---|---|
@@ -58,11 +61,13 @@ Total: 2:50. If shot 8.3 has no permitted pilot data, it's cut and 8.2 runs to 2
 | `{overblur_full}`, `{overblur_blur_all}` | over-blur rate, full vs `blur_all` | `full` and `blur_all` runs |
 | `{n_test_clips}` | number of clips in the frozen test split | `config.json` / `eval/splits/test.sha256` |
 | `{run_id}` | the run shown | the run directory name |
-| `{kappa}` | Cohen's κ on `should_hide` (or "not measured, single labeller") | WP7's label report |
-| `{manual_minutes}` | owner's timed manual masking of H1A | EVAL.md §2 "Creator time", timed once on 3 clips; committed by WP7 |
-| `{upload_to_review_s}`, `{speedup}` | real wall-clock of SR-01 and the time-lapse factor | measured from SR-01 itself; also in WP5's latency notes |
-| `{h1_frames_scanned}`, `{h1_leaks_fixed}` | the audit on the recorded H1 run | that run's `audit.json` |
-| `{pilot_*}` | pilot results, quotes and names | [PILOTS.md](PILOTS.md) §6, only with written permission |
+| `{kappa}` | Cohen's κ on `should_hide`, shown with the raw percent agreement (or "not measured, single labeller") | WP7's label report, committed under `eval/results/<run-id>/` |
+| `{manual_minutes}` | owner's timed manual masking of H1A | EVAL.md §2 "Creator time", timed once on 3 clips; committed as `eval/results/creator-time-<date>/metrics.json` |
+| `{upload_to_review_s}` | real wall-clock from upload to "Ready for you" on the recorded H1A run | `eval/results/hero-live-<date>/metrics.json` (stage timings from WP5's `job_log.jsonl`) |
+| `{speedup}` | the time-lapse factor applied in the edit | derived from committed numbers only: `{upload_to_review_s}` (committed above) ÷ the shot's on-screen seconds. It describes the edit, not the product, so it needs no metrics file of its own |
+| `{h1a_seconds}` | the length of H1A | the same `creator-time-<date>` run's `config.json` (clip duration from `job.json`) |
+| `{h1_frames_scanned}`, `{h1_leaks_fixed}` | the audit on the recorded H1 run | the same `hero-live-<date>` run, copied from its `audit.json` |
+| `{pilot_*}` | pilot results, quotes and names | numbers from `eval/results/pilots-<date>/metrics.json`; quotes and names only with written permission ([PILOTS.md](PILOTS.md) §6) |
 
 ## 3. Screen recordings to capture on Nov 3
 
@@ -92,4 +97,4 @@ Total: 2:50. If shot 8.3 has no permitted pilot data, it's cut and 8.2 runs to 2
 - [ ] Every replayed shot shows the demo-mode banner.
 - [ ] Nobody without a release is visible anywhere, including reflections.
 - [ ] No real PII, keys, emails or account names in any frame.
-- [ ] Length ≤ 2:50; captions match the VO; the audio is the owner's voice (or the labelled clone, per [DEMO.md](DEMO.md)).
+- [ ] Length ≤ 2:50; captions match the VO; the audio is the owner's own voice.

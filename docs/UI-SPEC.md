@@ -29,7 +29,7 @@ Contents: [0 Principles](#0-principles-and-shared-pieces) · [1 Landing](#1-land
 
 **Time display.** Every frame number shown to a person is converted to clip time `m:ss` (or `m:ss.s` in the Why drawer) through `job.times[frame]` ([ARCHITECTURE.md](ARCHITECTURE.md) §3.1). Never show raw frame numbers outside the Why drawer's details row.
 
-**Item number.** Items are numbered `#1, #2, …` in the order of their first appearance. When an item has a SAM track that appears on the Set-of-Mark keyframes, the number shown is **the number drawn on the keyframe** (the SoM mark), so the drawer and the chip match. (Request to WP2/WP5: expose that mark number per item; see §8.)
+**Item number.** One rule, so the chip and the keyframe always agree: an item's number `#n` is the Set-of-Mark number drawn on the keyframes for its **primary track** (its `face:*` track if it has one, otherwise its first track in `track_ids`). If the item has other tracks (e.g. `person:2` grouped with `face:7`), the drawer's Details row says "also marked #12 on the keyframes". Items added by the audit have no SoM mark and are numbered `A1, A2, …`. The UI never invents its own numbering. (Request to WP2/WP5: expose each track's mark number; see §8.)
 
 **Icons.** Every state has an icon *and* a word: Hidden = filled square, Kept clear = open eye, Needs you = question mark in a circle, Locked = padlock, Demo mode = play-in-circle. Colour is never the only signal.
 
@@ -77,9 +77,11 @@ Goal: in 20 seconds a judge sees the product working on real footage, understand
 │  │ Blur every face  │ …        │ …        │ …           │ …         │               │
 │  │ EgoBlur Gen 2    │ …        │ …        │ …           │ …         │               │
 │  │ Detector only    │ …        │ …        │ …           │ …         │               │
+│  │ Muse, no tracking│ …        │ …        │ …           │ …         │               │
 │  │ Safe Cut         │ …        │ …        │ …           │ …         │               │
+│  │ (no audit)*      │ …        │ …        │ …           │ …         │               │
 │  └──────────────────┴──────────┴──────────┴─────────────┴───────────┘               │
-│  n clips · labelled by 2 people (agreement κ = …) · run ID ↗                         │
+│  n clips · labelled by 2 people (agreement …%, κ = …) · run ID ↗ · *if WP7 ran it    │
 ├──────────────────────────────────────────────────────────────────────────────────────┤
 │  Try it   ·   Source on GitHub   ·   Use it inside Sigmora                           │
 ├──────────────────────────────────────────────────────────────────────────────────────┤
@@ -145,12 +147,13 @@ Goal: in 20 seconds a judge sees the product working on real footage, understand
 | Side-by-side captions | Blur every face: your guest is hidden, the number plate isn't. · Safe Cut: your guest stays clear, the plate and the passer-by are hidden. |
 | Results title | Results on our labelled test set |
 | Results columns | Method · Recall · Exposure · Leak bursts · Over-blur |
-| Column help (tooltip and footnote) | Recall: share of things that should be hidden that were hidden for at least 95% of their frames. · Exposure: share of frames where something that should be hidden was less than 90% covered. · Leak bursts: runs of 3 or more exposed frames in a row. · Over-blur: share of people and items that should stay clear but were hidden for more than 10% of their frames. |
-| Results footnote | `{n_clips}` clips filmed in public, labelled by `{n_labellers}` people (agreement κ = `{kappa}`). Run `{run_id}`. How we measured ↗ |
+| Results rows | Blur every face · EgoBlur Gen 2 · Detector only · Muse Spark, no tracking · Safe Cut · Safe Cut, no audit (if run) |
+| Column help (tooltip and footnote) | Recall: of the people and things that should be hidden, the share that were hidden on at least 95% of the frames they're visible in. · Exposure: counting each should-be-hidden person or thing on each frame it's visible in, the share where less than 90% of it was covered. · Leak bursts: the number of times something that should be hidden was exposed for 3 or more frames in a row. · Over-blur: of the people and things that should stay clear, the share that were hidden on more than 10% of their frames. |
+| Results footnote | `{n_clips}` clips filmed in public, labelled by `{n_labellers}` people (they agreed on `{percent_agreement}` of decisions; κ = `{kappa}`). Run `{run_id}`. How we measured ↗ |
 | Results placeholder (before WP8 fills it) | Numbers appear here after our frozen test runs. We publish them whether they're good or not. |
 | Bottom links | Try it · Source on GitHub · Use it inside Sigmora |
 
-The metric definitions are [EVAL.md](EVAL.md) §2 word for word; the baselines are EVAL.md §3. All result numbers come from `eval/results/<run-id>/metrics.json` through WP8 ([AGENTS.md](../AGENTS.md) rule 9). WP6 ships the placeholder and the table component; it never types a number.
+The tooltips are plain-language restatements of [EVAL.md](EVAL.md) §2 with the same units (entities for recall and over-blur, entity-frames for exposure, runs for leak bursts); if EVAL.md changes, they change with it. The table rows are EVAL.md §3's baselines 1–4 plus Safe Cut full, and row 5 (without the audit) when WP7 runs it; Muse Spark without tracking stays in because it shows why SAM 3.1 is needed. All result numbers come from `eval/results/<run-id>/metrics.json` through WP8 ([AGENTS.md](../AGENTS.md) rule 9). WP6 ships the placeholder and the table component; it never types a number.
 
 ### 1.4 States
 
@@ -195,7 +198,7 @@ Goal: get from access code to the review panel with no surprises, and make the w
 │                                                                                      │
 │      What happens to your clip                                                       │
 │      • It's sent to Meta's Model API in Standard mode, which doesn't train on it.    │
-│      • Everything is deleted 24 hours after upload, or sooner if you choose.         │
+│      • Everything is deleted automatically after 24 hours, or sooner if you choose.  │
 │      • Up to 60 seconds and 150 MB. MP4 or MOV.                                      │
 └──────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -457,7 +460,8 @@ Pressing it: `POST /v1/jobs/{id}/render`, then the stage rows `Applying your cho
 
 ### 3.6 The overlay
 
-- A `<canvas>` sized to the video's displayed box, drawn on each `requestVideoFrameCallback`. The callback's `mediaTime` maps to a prepared-frame index by finding the last `job.times[i] ≤ mediaTime` ([WP6](work-packages/WP6.md) step 4).
+- A `<canvas>` sized to the video's displayed box, drawn on each `requestVideoFrameCallback` (rVFC). Per the WICG spec, the callback's `metadata.mediaTime` is the presentation timestamp of the frame being shown, on the `currentTime` timeline. Map it to a prepared-frame index with a **binary search** for the last `i` where `job.times[i] ≤ mediaTime + ε`, with ε = a quarter of a frame (`0.25 / fps`) to absorb float rounding ([WP6](work-packages/WP6.md) step 4). This uses the single definition of `times` in [LABEL-FORMAT.md](labeling/LABEL-FORMAT.md) §2: seconds from the first decoded source frame, so `times[0] = 0`, and the prepared clip carries the same timestamps (request to WP1 in §8). If `times[0]` isn't 0, the UI shows an error instead of drawing a shifted overlay.
+- Browser support (MDN browser-compat-data, 2026-10-23): rVFC is in Chrome 83+, Safari 15.4+ and Firefox 132+. On a browser without it, fall back to `requestAnimationFrame` reading `video.currentTime`, which can be a frame late, and say so next to the toggle: "Preview may lag by a frame in this browser. The final render isn't affected." Never fall back silently.
 - For that frame, draw every region in `plan.json` `frames[frame]` whose `item_id` is currently hidden or needs-you (after the creator's local edits). `solid` and `person_solid` → opaque fill (mask shape when `mask` is present, else box); `pixelate` → coarse cells on the locked `grid` (a preview; the final render adds noise); `crowd_fills` → opaque fill.
 - An item switched from kept to hidden by the creator has no plan regions yet: until the review response returns a new plan, draw its **track boxes** from `tracks.json` (padded 15% as a visual approximation) so the creator sees it covered immediately.
 - **Raw / Safe Cut toggle** turns the overlay off and on. In Raw mode, a 2 px outline still shows each item's position with its `#n`, so the creator can match chips to people.
@@ -477,30 +481,32 @@ Pressing it: `POST /v1/jobs/{id}/render`, then the stage rows `Applying your cho
 | Re-entry (NEW) | Chip with NEW badge and "Same as #n…" |
 | Saving an edit | The chip shows a small "Saving…" under its buttons |
 | Edit failed | Chip returns to its column; toast: "That change didn't save. Check your connection and try again." [Try again] |
-| Job expired (`404` after 24 h) | Full-page: "This clip has been deleted. Safe Cut deletes everything 24 hours after upload." [Try another clip] |
+| Job expired (`404` after 24 h) | Full-page: "This clip has been deleted. Safe Cut deletes everything automatically after 24 hours." [Try another clip] |
 | Demo mode | The banner (§6) and all edits work locally against the replay (WP5 replays them) |
 
 ### 3.8 Keyboard and accessibility
 
 | Key (focus in the chip area) | Does |
 |---|---|
-| `Tab` / `Shift+Tab` | Moves between the three columns, the video, the bottom bar |
-| `↑` / `↓` | Moves between chips in a column (roving tabindex; one tab stop per column) |
-| `←` / `→` | Moves to the same position in the neighbouring column |
-| `Enter` | Opens the Why? drawer for the focused chip |
+| `Tab` / `Shift+Tab` | Moves through **every** button in reading order: the video controls, then each chip's buttons (Why?, Hide / Keep clear, Same as #n…, `⋯`) column by column, then the bottom bar. Nothing is reachable only by a shortcut |
+| `↑` / `↓` | Jumps to the same button on the previous / next chip in the column (a shortcut on top of Tab, not a replacement) |
+| `←` / `→` | Jumps to the first chip of the neighbouring column |
+| `Enter` / `Space` on a button | Activates it (native button behaviour), including the `⋯` menu, whose items (Remove this person, Jump to first appearance) are then reachable with `↑`/`↓` |
+| `Enter` on a chip's body (when the chip itself is focused by `↑`/`↓`) | Opens the Why? drawer |
 | `H` | Hide the focused item |
 | `C` | Keep the focused item clear |
 | `Z` / `Ctrl+Z` | Undo the last edit |
-| `Space` | Play / pause the video (also when the video has focus) |
+| `K` | Play / pause the video (`Space` does this only when the video itself has focus, so it never steals a button press) |
 | `?` | Shows this list in a dialog |
 | `Esc` | Closes a menu, dialog or the drawer, and returns focus to the chip that opened it |
 
 - Each chip is an `<article>` with an accessible name like "#4, Child, hidden, always hidden. Child in the background, not addressed. 0:04 to 0:13." Buttons inside have full names ("Keep #5 clear", "Hide #2").
 - Moving a chip announces it in a polite live region (the toast text) and keeps focus on the moved chip in its new column.
 - Visible focus ring on every interactive element (2 px, contrast ≥ 3:1 against both light and dark surfaces).
-- Touch targets are at least 44×44 px on mobile.
+- Touch targets are at least 44×44 CSS px on mobile and 32×32 on desktop: stricter than WCAG 2.2's AA minimum of 24×24 (SC 2.5.8 Target Size (Minimum)).
+- **Focus not obscured** (WCAG 2.2 SC 2.4.11): the sticky video at the top and the sticky bottom bar on mobile must never cover the focused chip. Set `scroll-padding-top` and `scroll-padding-bottom` to their heights so focus scrolls into the visible band, and test it by tabbing through a 20-chip list at 320 px wide.
 - The overlay canvas is `aria-hidden`; the chip list carries all the information. The timeline bars are decorative; the time range is in each chip's text.
-- Single-letter shortcuts work only when focus is in the chip area (WCAG 2.1.4), and the `?` dialog has a switch to turn them off.
+- Single-letter shortcuts (`H`, `C`, `Z`, `K`, `?`) work only when focus is in the chip area, and the `?` dialog has a switch to turn them off; either satisfies WCAG SC 2.1.4 Character Key Shortcuts. With them off, every action still works through Tab and Enter.
 
 ### 3.9 Data
 
@@ -672,7 +678,7 @@ Goal: the creator gets the redacted video, sees that it was checked, and has the
 │ │ receipt.html (sandboxed frame): every item, reason, who decided, the audit,      │ │
 │ │ models used, data handling, cost, hash                                           │ │
 │ └──────────────────────────────────────────────────────────────────────────────────┘ │
-│ This clip and everything made from it will be deleted on 27 Oct, 10:00 UTC.          │
+│ This clip and everything made from it will be deleted by 28 Oct, 11:00 UTC.          │
 │                                                            [ Delete everything now ] │
 └──────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -694,7 +700,7 @@ Goal: the creator gets the redacted video, sees that it was checked, and has the
 │ [ Publish to Sigmora ]           │
 │ Privacy receipt ▸                │
 │ [ Download receipt (JSON) ]      │
-│ Deleted on 27 Oct, 10:00 UTC     │
+│ Deleted by 28 Oct, 11:00 UTC     │
 │ [ Delete everything now ]        │
 └──────────────────────────────────┘
 ```
@@ -716,7 +722,7 @@ Goal: the creator gets the redacted video, sees that it was checked, and has the
 | Receipt title | Privacy receipt |
 | Receipt intro (above the frame) | A record of what was hidden, why, and who approved it. Keep it if anyone asks about this video. |
 | Receipt download | Download receipt (JSON) |
-| Deletion note | This clip and everything made from it will be deleted on `{deletes_at, local date and time}`. |
+| Deletion note | This clip and everything made from it will be deleted by `{deletes_at, local date and time}`. (`deletes_at` is the latest time the deletion job will have run, from WP5, not `created_at` + 24 h: a periodic job deletes *after* 24 h. The wireframe's example assumes upload on 27 Oct 10:00 UTC and an hourly job.) |
 | Delete button | Delete everything now |
 | Delete confirm | Delete the video, the receipt and all working files now? Download anything you need first. This can't be undone. · [Delete] [Cancel] |
 | After delete | Deleted. Nothing from this clip is kept on Safe Cut. |
@@ -746,10 +752,10 @@ Goal: the creator gets the redacted video, sees that it was checked, and has the
 | Element | Source |
 |---|---|
 | Video, download | `GET /v1/jobs/{id}/result` → signed URL for `redacted.mp4` |
-| Audit summary | `audit.json`: `frames_scanned`, `leaks.length` (found and patched), `unresolved`, `passes` |
+| Audit summary | `audit.json`: `frames_scanned`; **leaks found and fixed = the number of distinct `patched_item` values** in `leaks[]` (one leaking person over 2 frames is 1 leak, not 2; `leaks[]` has one row per frame); `unresolved`; `passes` |
 | Publish allowed | `audit.json` `unresolved == 0` ([ARCHITECTURE.md](ARCHITECTURE.md) §3.8) and `?from=sigmora` |
 | Receipt frame / download | signed URLs for `receipt.html` and `receipt.json` (§3.9: items, audit, models, data_handling, approved_by/at, cost_usd, hash) |
-| Deletion time | `job.json` `created_at` + 24 h (or a `deletes_at` from the API) |
+| Deletion time | `deletes_at` from the API (WP5 computes it from its cleanup schedule) |
 | Delete | `DELETE /v1/jobs/{id}` |
 
 ---
@@ -788,7 +794,7 @@ Mobile:
 | Page | Copy | Actions |
 |---|---|---|
 | 404 (unknown route) | We couldn't find that page. | Go to the home page · Try Safe Cut |
-| Job not found or expired | This clip has been deleted. Safe Cut deletes everything 24 hours after upload. | Try another clip |
+| Job not found or expired | This clip has been deleted. Safe Cut deletes everything automatically after 24 hours. | Try another clip |
 | API unreachable | Safe Cut's service isn't responding right now. Your clip is safe and nothing has been published. Try again in a minute. | Try again · Watch the demo |
 | Unexpected error | Something went wrong on our side. Nothing has been published. | Try again · Go to the home page |
 
@@ -815,7 +821,7 @@ The API ([WP5](work-packages/WP5.md)) hasn't been written; these are the fields 
 | Audit | §3.8 `audit.json` | `GET /v1/jobs/{id}/result` → `audit` |
 | Result files | `redacted.mp4`, §3.9 `receipt.html`, `receipt.json` | `GET /v1/jobs/{id}/result` |
 | Demo mode | — | every response → `mode: "live" \| "replay"` |
-| Deletion time | `job.json` `created_at` + 24 h | optional `deletes_at` |
+| Deletion time | `job.json` `created_at` + WP5's cleanup schedule | `deletes_at` (required) |
 
 **Requests for other WPs** (also listed in the PRE-B PR):
 1. **WP5:** return the fields above, including `plan` with the review response, `mode` on every response, and `status: failed` with the failed `stage`.
@@ -823,6 +829,8 @@ The API ([WP5](work-packages/WP5.md)) hasn't been written; these are the fields 
 3. **WP2:** where the scene pass links a participant to a speaker and a track, record the track ID (today `scene.json` participants have `description`, `evidence`, `speaker` but no track), so the drawer can say "said by #n".
 4. **WP3:** keep `reason` strings short (≤ 90 characters), plain, lowercase-first, no trailing full stop; the UI capitalises.
 5. **WP3:** name the review edit types to match §3.4: `keep`, `hide`, `merge` (into an item ID), `remove_person`, `undo` (or the UI replays the inverse edit).
+6. **WP1:** define `job.json` `times[i]` as seconds from the first decoded source frame (start timestamp subtracted, `times[0] = 0`), and encode the prepared clip with those timestamps, so WP7's label mapping and `requestVideoFrameCallback`'s `mediaTime` (§3.6) both use the same list.
+7. **WP5:** return `deletes_at` as the latest time the 24 h cleanup will have removed the job (it depends on how often the cleanup runs).
 
 ---
 
@@ -836,7 +844,9 @@ Target: WCAG 2.2 AA on every screen.
 - [ ] Captions on every video with speech (the hero clip by default).
 - [ ] Live regions announce stage changes and chip moves once, politely; no announcements on every progress tick.
 - [ ] `prefers-reduced-motion`: no autoplay, no sliding drawers (they appear without animation).
-- [ ] Touch targets ≥ 44×44 px; the layout works at 320 px wide and at 200% zoom without horizontal page scroll.
+- [ ] Touch targets ≥ 44×44 CSS px on mobile, ≥ 32×32 on desktop (above SC 2.5.8's 24×24); the layout reflows at 320 CSS px wide (SC 1.4.10) and at 200% zoom without horizontal page scroll.
+- [ ] Focused elements are never hidden behind the sticky video or bottom bar (SC 2.4.11).
+- [ ] Every drag action has a single-pointer alternative (SC 2.5.7): the drop zone has "Choose a file", the bottom sheet's handle is a button.
 - [ ] Every image has alt text built from data (keyframes, thumbnails: "#4, Child, hidden").
-- [ ] Single-key shortcuts only in the chip area, with a way to turn them off.
+- [ ] Single-key shortcuts only in the chip area, with a way to turn them off (SC 2.1.4).
 - [ ] Dialogs: labelled, focus trapped, `Esc` closes, focus returns to the opener.

@@ -32,11 +32,11 @@ We contact creators only through their **public business channels**, never perso
 
 ## 3. Outreach drafts
 
-Both are under 120 words (DM: 96; email body, without the subject: 107). Personalise the `{…}` parts with something specific from their own videos; never send a template without it.
+Both are under 120 words (DM: 103; email body, without the subject: 110). Personalise the `{…}` parts with something specific from their own videos; never send a template without it.
 
 ### 3.1 DM (Instagram, TikTok, X)
 
-> Hi {name}, I liked your {video}, especially {specific detail}. I'm building Safe Cut, a tool that hides passers-by, children, number plates and private screens in street footage while keeping you and your guests clear. It's a hackathon build for Meta's AI developer hackathon, not a finished product. Would you try it on one clip you haven't published yet? It takes about 30 minutes: you time how long masking usually takes you, run the same clip through Safe Cut, and answer 3 questions. Your footage is deleted within 24 hours. Can I send details? {your name}, Sigmora
+> Hi {name}, I liked your {video}, especially {specific detail}. I'm building Safe Cut, a tool that hides passers-by, children, number plates and private screens in street footage while keeping you and your guests clear. It's a hackathon build for Meta's AI developer hackathon, not a finished product. Would you try it on one clip you haven't published yet, between Oct 30 and Nov 2? It takes up to an hour: mask the clip your usual way for at most 30 minutes, run it through Safe Cut, and answer 3 questions. Your footage is deleted automatically afterwards. Can I send details? {your name}, Sigmora
 
 ### 3.2 Email
 
@@ -46,9 +46,9 @@ Both are under 120 words (DM: 96; email body, without the subject: 107). Persona
 >
 > I watch your {channel}; {specific detail} is the kind of clip I have in mind. I'm building Safe Cut for Meta's AI developer hackathon (deadline Nov 4). It works out who's part of your video and hides everyone else, plus children, number plates and private screens. You approve every decision.
 >
-> It's an honest hackathon build, not a finished product. Would you test it on one unpublished clip between Oct 30 and Nov 2? About 30 minutes: time your usual masking, run the clip through Safe Cut, answer 3 questions. Footage is deleted after 24 hours.
+> It's an honest hackathon build, not a finished product. Would you test it on one unpublished clip between Oct 30 and Nov 2? Up to an hour: your usual masking (capped at 30 minutes), then Safe Cut, then 3 questions. Footage is deleted automatically afterwards.
 >
-> Interested? I'll send an access code.
+> Interested? I'll send an access code and the details.
 >
 > {your name}, Sigmora (sigmora.org)
 
@@ -59,29 +59,33 @@ Both are under 120 words (DM: 96; email body, without the subject: 107). Persona
 > **What happens to your clip in the Safe Cut pilot**
 >
 > - **It's your footage and stays yours.** You upload it yourself with a personal access code. We don't publish it, share it, or use it in our demo, video or repo.
-> - **Deleted after 24 hours.** The clip, the redacted version, the receipt and all working files are deleted automatically 24 hours after upload, or straight away if you press "Delete everything now".
+> - **Deleted automatically.** The clip, the redacted version, the receipt and all working files are deleted within `{deletion_deadline}` of upload (the exact time is shown on your result page), or straight away if you press "Delete everything now".
 > - **Meta Model API, Standard mode.** To decide what to hide, Safe Cut sends your clip to Meta's Model API (Muse Spark, SAM 3.1, Muse Voice Transcribe) in Standard mode with storage off; files are deleted from Meta's side after each run. We never use Contributor mode, which can train on inputs.
 > - **People in your clip.** Your clip may show people who didn't agree to be filmed. That's what Safe Cut is for: the processing exists to hide them, and nobody at our end views your footage unless you share your screen with us.
 > - **What we keep:** only what you tell us — your timings, your answers, and (only if you say yes in writing) a quote and how you'd like to be credited. You can withdraw any of it before Nov 4 and we'll remove it.
 > - **It's a hackathon build.** Check the result before publishing anything. If you spot something Safe Cut missed, please tell us; that's the most useful thing you can do.
 
-Data-handling facts in this note must match what's deployed ([ARCHITECTURE.md](ARCHITECTURE.md) §5, [AGENTS.md](../AGENTS.md) rule 6). Before sending on Oct 27, Claude checks that the 24 h deletion cron and file deletion are live (WP5); if they aren't, the note changes to what's true, or the pilots wait.
+Data-handling facts in this note must match what's deployed ([ARCHITECTURE.md](ARCHITECTURE.md) §5, [AGENTS.md](../AGENTS.md) rule 6). So the two messages make different promises:
+- The **outreach on Oct 27** promises only that footage is deleted automatically, which is a design requirement every WP5 build has to meet.
+- **This note and the access codes go out only after Claude has checked the live service** (on Oct 29 or the first day after it that WP5 is deployed): the 24 h cleanup job runs, files uploaded to Meta are deleted after each run, and `store: false` is set. `{deletion_deadline}` is then filled from WP5's real cleanup schedule (e.g. "25 hours" for an hourly job that deletes jobs older than 24 h).
 
-## 5. Pilot protocol (about 30–40 minutes for the creator)
+If the check fails, no codes go out: the pilot window moves, the promise doesn't.
 
-**Before:** the owner sends a personal access code (one per pilot, so cost and usage are separate), the consent note, and this protocol. Each pilot runs at most **2 clips**; with the $2 per-clip cap ([ARCHITECTURE.md](ARCHITECTURE.md) §4) that's ≤ $20 for all 5, from the event's $150 budget (owner to confirm).
+## 5. Pilot protocol (up to about an hour for the creator)
+
+**Before:** the owner sends a personal access code (one per pilot, so cost and usage are separate), the consent note, and this protocol. Each pilot runs at most **2 clips**; with the $2 per-clip cap ([ARCHITECTURE.md](ARCHITECTURE.md) §4) that's ≤ $20 for all 5, from the event's $150 budget. **Decision:** each pilot code gets a hard cap of **$4** (2 clips × $2) through the per-code limit WP5 enforces, and the whole pilot programme is capped at **$20**: about 13% of the credits for the strongest Impact evidence we can collect ([AGENTS.md](../AGENTS.md) rule 10). Request to WP5: support a per-code USD cap.
 
 **The clip:** one clip they haven't published yet, 15–60 s, with at least one person in it who isn't part of the video (a passer-by, a shop worker) or a plate, screen or document.
 
 **Steps:**
-1. **Usual way, timed.** They mask the clip the way they normally would (their editor, YouTube Studio's blur, an app), until they'd be happy to publish it. They write down the **minutes** it took. If they normally don't mask at all, they try for up to 30 minutes and note where they stopped. (If they already masked this clip before, they can report that time instead, and say so.)
+1. **Usual way, timed, capped at 30 minutes for everyone.** They mask the clip the way they normally would (their editor, YouTube Studio's blur, an app) until they'd be happy to publish it, or until 30 minutes are up. They write down the **minutes**, and if they hit the cap, how far they got (e.g. "3 of 5 people masked"). Capped results are reported as "≥ 30 min (not finished)", never as a measured time. (If they already masked this clip before, they can report that time instead, and say so.) The cap keeps the pilot to about an hour, which is what the outreach promises.
 2. **Safe Cut, timed.** Upload the same clip at the pilot link, review the decisions, change anything they disagree with, and render until they'd be happy to publish. They note: total **minutes** from upload to approved render, and how many **chips they changed**.
 3. **Check.** They watch the Safe Cut result once and note anything that was **missed** (visible when it shouldn't be) or **wrongly hidden**.
 4. **Three questions** (written, a sentence or two each):
    1. Would you publish the Safe Cut version as it is? If not, what would you change first?
    2. Was there a decision you didn't expect? Did its reason make sense?
    3. Would you use this on your next clip? What would stop you?
-5. **Permission (separate, optional):** "May we quote your answer to question {n} in our hackathon submission and video? If yes, how should we credit you: name, channel handle, or anonymous with your format and country (e.g. 'a street-interview creator in Lagos')?"
+5. **Permission (separate, optional):** "May we quote your answer to question {n} in our hackathon submission and video? If yes, how should we credit you: name, channel handle, or anonymous with your format and country (e.g. 'a street-interview creator in Lagos')?" **Decision:** each pilot chooses their own credit, and if they don't say, it's the anonymous form. That's the most privacy-protective default, and an upgrade to a name is easy where the reverse isn't.
 
 **Order effect, stated honestly:** the usual way always comes first, so by the Safe Cut step they know the clip. That favours the second method slightly in time, and the submission says so. With 5 pilots this is a small, self-reported study, not a benchmark; it's reported as exactly that.
 
@@ -103,8 +107,9 @@ Data-handling facts in this note must match what's deployed ([ARCHITECTURE.md](A
 |---|---|---|
 | Oct 25–26 | Build the private list of 15 candidates | Owner (Claude can search public channel types and suggest, never contact) |
 | **Oct 27** | Personalise and send DMs/emails | Owner |
-| Oct 28–29 | Replies; send the consent note, protocol and access codes; one follow-up | Owner |
-| Oct 29 | Check the deletion cron and Standard-mode settings are live before any pilot uploads | Claude |
+| Oct 28–29 | Replies; one follow-up | Owner |
+| Oct 29 (or WP5's first live day) | Check the cleanup job, Meta file deletion and `store: false` on the live service; fill `{deletion_deadline}` | Claude |
+| Right after that check passes | Send the consent note, protocol and per-pilot access codes | Owner |
 | **Oct 30 – Nov 2** | Pilots run | Creators |
 | Nov 2 23:59 | Collect timings, answers, permissions | Owner |
 | Nov 3 | Commit the pilot results file; WP8 uses it | Claude / WP8 |

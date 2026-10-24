@@ -1,6 +1,8 @@
 # Labelling schedule (Oct 24 → kickoff, and the fallbacks)
 
-Status: **v1, written 2026-10-24 12:45 EAT (PRE-B).** Times are EAT. The original plan in [EVAL.md](../EVAL.md) §6 (dev split labelled Oct 20–21, test Oct 22–23, frozen Oct 24) has slipped: on Oct 20 [MAXXING.md](../MAXXING.md) §5 recorded that `~/SafeCutEval/` didn't exist and the Oct 17–18 filming looked undone. This file replans from today. **Owner: confirm what footage exists** (open question 1 in the PR); the plan below assumes the hero clips and about 15 eval clips can be filmed or are filmed by the end of Oct 24, then falls back.
+Status: **v1, written 2026-10-24 12:45 EAT (PRE-B).** Times are EAT. The original plan in [EVAL.md](../EVAL.md) §6 (dev split labelled Oct 20–21, test Oct 22–23, frozen Oct 24) has slipped: on Oct 20 [MAXXING.md](../MAXXING.md) §5 recorded that `~/SafeCutEval/` didn't exist and the Oct 17–18 filming looked undone. This file replans from today.
+
+**Decision: plan as if nothing has been filmed yet.** The last written evidence ([MAXXING.md](../MAXXING.md) §5, Oct 20) says the footage didn't exist, and planning for less footage is the safe side: if more exists, labelling just starts earlier. So the **default track is R4 → R1** (§4): hero clip 1 is filmed and labelled first, then the rest. The 18-clip plan in §3 is what happens if filming is done by Oct 24 evening. Filming is the owner's hands-on step, in `BLOCKED.md`.
 
 How to label: [LABELING-GUIDE.md](LABELING-GUIDE.md). Tool: [CVAT-SETUP.md](CVAT-SETUP.md). Files: [LABEL-FORMAT.md](LABEL-FORMAT.md).
 
@@ -35,7 +37,7 @@ Fixed costs: CVAT install and project setup about 2 h (once); a calibration sess
 
 ## 3. The plan for ~18 clips by Oct 26 (if footage exists by Oct 24 evening)
 
-The 18: **3 hero clips** (best take of each) + **15 eval clips** in the priority order from [MAXXING.md](../MAXXING.md) §5 (A, C, D, G, J first). Splits: hero clips → `hero`; staged eval clips (actors only) → `dev`; clips with real passers-by → `test` ([LABELING-GUIDE.md](LABELING-GUIDE.md) §6).
+The 18: **3 hero clips** (best take of each) + **15 eval clips** in the priority order from [MAXXING.md](../MAXXING.md) §5 (A, C, D, G, J first). Splits ([LABELING-GUIDE.md](LABELING-GUIDE.md) §6): hero clips → `hero`; every real-public clip → `test`; staged clips go to `dev` or `test` so that both splits cover the categories. **Assignment:** `dev` = C × 1, G × 1, J × 1 (all staged: the 3 dev clips Wave B needs on Oct 27); `test` = A × 4 and D × 3 (real-public) plus C × 2, G × 1, J × 2 (staged), 12 clips in all.
 
 | Clips | Count | Labeller A time (midpoint) |
 |---|---|---|
@@ -51,8 +53,8 @@ Labeller B: about 3 h for all 18. Resolution: about 1.5 h. **Total people time �
 
 | When (EAT) | Labeller A | Labeller B | Owner |
 |---|---|---|---|
-| **Sat Oct 24, 14:00–22:00** | Install CVAT, create the 3 projects (2 h). Calibrate on hero 1 with B (1 h). Hero 2, hero 3 (1.5 h). Time each clip | Calibrate on hero 1; label hero 2–3 roles | Confirm the footage; upload hero 1 + labels to the private bucket |
-| **Sun Oct 25, 09:00–20:00** | A × 4, C × 3, G × 2 (≈ 8.5 h) | Roles for those 9 | Decide which clips are test vs dev |
+| **Sat Oct 24, 14:00–23:00** | Install CVAT, create the 3 projects (2 h). Calibrate on hero 1's roles with B (1 h). Hero 1 boxes (≈ 1.1 h). Hero 2, hero 3 (≈ 1.5 h). Time each clip | Calibrate on hero 1; label hero 2–3 roles | Upload hero 1 + its labels to the private bucket |
+| **Sun Oct 25, 09:00–20:00** | A × 4, C × 3, G × 2 (≈ 8.5 h) | Roles for those 9 | Apply the §3 split (dev = C, G, J × 1; the rest to test) |
 | **Mon Oct 26, 08:00–17:00** | D × 3, J × 3 (≈ 3 h); fix boxes B flagged (1 h); export + back up everything | Roles for D, J; 10% box spot-check | Resolve disagreements (1.5 h); back up `~/SafeCutEval/labels/` privately |
 | Mon Oct 26, 19:00 | — | — | Kickoff. Hero + dev labels in the bucket; test labels stay local |
 
@@ -60,11 +62,11 @@ Labeller B: about 3 h for all 18. Resolution: about 1.5 h. **Total people time �
 
 **R1. Footage arrives a day late (filmed Oct 25).** Kickoff needs only hero 1, so label the three hero clips first on Oct 25–26, then J × 3 (cheap). Label the 15 eval clips Oct 27–29 in the priority order, about 4 h a day around the Oct 27 deadlines. Freeze Oct 29 23:59 with whatever is double-labelled.
 
-**R2. Eval footage won't exist before Oct 28.** The test split shrinks. Minimum viable test split: **8 clips** (A × 3, C × 2, D × 1, G × 1, J × 1), about 6 h for A. Use SA-Co/VEval SmartGlasses (CC BY 4.0) for the tracking and leak-guard numbers ([MAXXING.md](../MAXXING.md) risk 1, [EVAL.md](../EVAL.md) §2). The README and video say exactly how many clips the test split has; never extrapolate ([AGENTS.md](../../AGENTS.md) rule 9).
+**R2. Eval footage won't exist before Oct 28.** The test split shrinks. Minimum viable test split: **8 clips**: A × 3 and D × 1 (real-public), plus C × 2, G × 1 and J × 1 (staged, allowed in `test` per [LABELING-GUIDE.md](LABELING-GUIDE.md) §6, so the re-entry and over-blur cases are still covered). About 6 h for A. Use SA-Co/VEval SmartGlasses (CC BY 4.0) for the tracking and leak-guard numbers ([MAXXING.md](../MAXXING.md) risk 1, [EVAL.md](../EVAL.md) §2). The README and video say exactly how many clips the test split has; never extrapolate ([AGENTS.md](../../AGENTS.md) rule 9).
 
-**R3. Only one labeller.** Do everything above without B. κ is reported as "not measured (single labeller)". The owner re-labels `should_hide` on 5 clips a day later, blind to the first pass, if time allows; that's "intra-rater agreement" and must be named as such, not called κ between labellers.
+**R3. Only one labeller.** Default rule: plan with labeller B (recruiting B is the owner's step, in `BLOCKED.md`); if no B has started by **Oct 25 09:00 EAT**, switch to R3 automatically, without waiting. Do everything above without B. κ is reported as "not measured (single labeller)". Labeller A re-labels `should_hide` on 5 clips at least a day later, without looking at the first pass; that's "intra-rater agreement" and must be named as such, not called κ between labellers.
 
-**R4. Hero clips aren't filmed by Oct 25.** This blocks the demo (25%), not just eval. Film **hero clip 1 first** with a phone and 2 consenting actors (one passer-by holding a phone with a fake chat, one parked car), even without the van re-entry take. Everything else waits for it.
+**R4. Hero clips aren't filmed by Oct 25.** This blocks the demo (25%), not just eval. Film **hero clip 1 first**, on a phone if need be, with the full cast in `BLOCKED.md` (host, guest, consented child, actor 2 with the fabricated chat, 2+ passers-by, the actor who looks at the camera, a parked car). Do take A first; take B (the van re-entry) can follow. Everything else waits for it.
 
 **Never in any plan:** labelling on a hosted service, inventing labels for clips nobody watched, or relabelling after seeing model output to make a number look better.
 

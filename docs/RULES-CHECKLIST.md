@@ -2,7 +2,7 @@
 
 Status: **v1, 2026-10-24 (PRE-B, docs only).** The official rules publish at kickoff (Oct 26 12:00 ET = 16:00 UTC = 19:00 EAT). Claude reads them that evening, answers every question below with a **quote and the URL**, applies the matching plan, and updates the event table in [MAXXING.md](MAXXING.md) §1 (the "to confirm" line there is this list). What we assume today is in MAXXING §1 and [AGENTS.md](../AGENTS.md); nothing below is a fact about the rules until it's checked.
 
-**How to use this:** for each item, find the clause, paste it into the "Found" line in the PR that updates MAXXING, pick the matching row, and do the action. If the rules are silent, take the "silent" row. If an answer could disqualify us, **stop and tell the owner the same evening** (marked 🚩).
+**How to use this:** for each item, find the clause, paste it into the "Found" line in the PR that updates MAXXING, pick the matching row, and **do the action straight away**. Claude decides every row; nothing here waits for an answer. Rows marked 🚩 could disqualify us, so their action happens the same evening. Steps only the owner can physically do (accepting the rules, filling the entry form, identity checks, creating or publishing a repo) go into `BLOCKED.md` as checklist items with the default written in, and work continues around them. If the rules are silent, take the "silent" row.
 
 ## 1. Pre-existing code
 
@@ -12,8 +12,8 @@ Look for: "pre-existing", "previously built", "prior work", "must be created dur
 |---|---|
 | Everything must be built during the event; libraries and APIs are fine | As planned: this repo has docs only before kickoff and every code commit is after Oct 26 16:00 UTC ([AGENTS.md](../AGENTS.md) rule 1). The README keeps "What existed before Oct 26" ([README.md](../README.md)), which lists Sigmora's pre-existing parts and says none was copied |
 | Pre-existing work is allowed if disclosed | The same, plus a dated "Prior work" paragraph in `docs/SUBMISSION.md` (WP8) naming Sigmora and the pre-event design docs |
-| 🚩 Even design docs or planning before the event aren't allowed | Tell the owner. Options: keep the docs but mark them clearly as pre-event planning in the README; or squash them into the kickoff commit with an honest note. The owner decides; never rewrite history to hide dates |
-| 🚩 Projects connected to an existing company product are excluded | Tell the owner. Safe Cut is standalone; Sigmora is only a caller. Be ready to drop "Publish to Sigmora" from the demo ([STORYBOARD.md](STORYBOARD.md) shot 8.1) |
+| 🚩 Even design docs or planning before the event aren't allowed | Never rewrite history to hide dates. Submit from a **fresh repo created at kickoff**: every code commit there is after kickoff, and the pre-event docs are re-added in one commit whose message gives their original dates and this repo's link. That's reversible, and the full history stays public here. Add "owner creates the fresh repo" to `BLOCKED.md` |
+| 🚩 Projects connected to an existing company product are excluded | Present Safe Cut as standalone (it is: [ARCHITECTURE.md](ARCHITECTURE.md) §1). Drop "Publish to Sigmora" from the demo (STORYBOARD shot 8.1 ends on the download, `SR-09` isn't recorded) and from the README and submission; keep the Sigmora integration out of the submitted repo |
 | Silent | Act as in the first row, and keep the disclosure (it costs nothing) |
 
 ## 2. More than one submission per participant
@@ -33,10 +33,10 @@ Look for: "public repository", "GitHub", "open source", "licence/license", "judg
 
 | If the rules say | We do |
 |---|---|
-| Public repo required | Owner step O7: make `sigmora-safe-cut` public at kickoff. Check before flipping that the repo has no secrets, footage or private data ([AGENTS.md](../AGENTS.md) rule 4) |
-| A specific open-source licence (e.g. MIT, Apache-2.0) | MIT already ([LICENSE](../LICENSE)). If they require Apache-2.0 or another, change the licence file at kickoff (the owner approves) |
+| Public repo required | Owner step O7: the owner makes `sigmora-safe-cut` public at kickoff (in `BLOCKED.md`). Before that, Claude checks the repo has no secrets, footage or private data ([AGENTS.md](../AGENTS.md) rule 4) and posts the result |
+| A specific open-source licence (e.g. MIT, Apache-2.0) | MIT already ([LICENSE](../LICENSE)). If they require another licence, Claude switches `LICENSE` to it at kickoff in its own commit (it covers only this repo's code, all written for the event) |
 | Private repo with judge access allowed | Still public: it supports the "holds up in production" story and the bonus prizes |
-| Repo must be created after kickoff | 🚩 This repo was created before kickoff (docs only). Tell the owner; options: a fresh repo at kickoff with the docs re-added in one commit that says where they came from, or a written note if a judge-facing explanation is allowed |
+| Repo must be created after kickoff | 🚩 This repo predates kickoff (docs only). Same action as "even design docs aren't allowed" in §1: a fresh repo at kickoff, the docs re-added in one dated commit, and "owner creates the fresh repo" in `BLOCKED.md` |
 | Silent | Public, MIT |
 
 ## 4. Video length and hosting
@@ -46,11 +46,11 @@ Look for: "video", "demo", "minutes", "YouTube", "Loom", "unlisted".
 | If the rules say | We do |
 |---|---|
 | A limit of 3 minutes or more | Keep the 2:50 cut ([STORYBOARD.md](STORYBOARD.md)) |
-| A limit under 2:50 (e.g. 2:00) | Cut beats in this order until it fits: 8.3 (pilot card), 4.2 (guest drawer), 5.2 (shorten to 5 s), 2.2 (shorten to 5 s), 6.1 (shorten to 6 s). Keep the hook, the review panel, the context test, the numbers and the close |
+| A limit under 2:50 | Cut in two stages, re-timing the VO at ≤ 150 wpm each time (durations from [STORYBOARD.md](STORYBOARD.md) §1, which totals 170 s). **Stage A → 2:22:** drop 8.3 (pilot card, −5 s) and 4.2 (guest drawer, −9 s); shorten 5.2 to 5 s (−5), 2.2 to 5 s (−5), 6.1 to 6 s (−4). **Stage B → 2:00:** also drop 3.1 (open on the progress list, −7 s) and 7.2 (fold the over-blur line into 7.1, which grows from 12 to 14 s, net −6 s); shorten 9.1 to 5 s (−5), 3.3 to 7 s (−3), 8.2 to 6 s (−1). That keeps the hook, the review panel, the context test, the re-entry guarantee, the numbers and the close. **Below 2:00:** keep only 1.1–1.2, 2.1, 3.2–3.3, 4.1, 5.1, 6.1 (6 s), 7.1 (14 s) and 9.1 (5 s), about 1:20 in total, and trim each shot evenly to fit. That still puts one shot of each judging criterion on screen |
 | A longer maximum (e.g. 5 min) | Still ≤ 2:50 ([DEMO.md](DEMO.md): judges skim long videos) |
 | YouTube required | Upload to the owner's channel (Silicon Savannah Guy), unlisted, then public at submission ([DEMO.md](DEMO.md)) |
 | A specific host (Loom, Vimeo, upload to the form) | Use it; keep a YouTube copy for the bonus prizes if the rules allow |
-| Video must not include AI voice, or AI voice must be disclosed | VO in the owner's own voice (O9). If the cloned voice is used, disclose it as the rule asks |
+| Video must not include AI voice, or AI voice must be disclosed | Already met: the VO is the owner's own recorded voice, not the clone (decision in [STORYBOARD.md](STORYBOARD.md) rule 6), so there's nothing to disclose |
 | Silent | YouTube, unlisted until submission, ≤ 2:50 |
 
 ## 5. Required form fields
@@ -86,9 +86,9 @@ Look for: "team size", "solo", "track", "Startup track", "Build for Your World",
 | If the rules say | We do |
 |---|---|
 | Solo entries allowed | The owner enters alone (Claude is a tool, not a team member) |
-| A minimum team size above 1 | 🚩 Tell the owner the same evening; they decide whether to add a teammate (e.g. labeller B if they'd be a real contributor) |
-| Startup track needs an incorporated company, a pitch deck, traction or a business model | Gather what's true: Sigmora as the company (if it is one), the Sigmora integration, the pilots ([PILOTS.md](PILOTS.md)), a short business section in SUBMISSION.md. Never overstate traction |
-| "Build for Your World" is a separate track, not a theme | Choose with the owner on Oct 26; the plan assumes Startup track with the theme |
+| A minimum team size above 1 | 🚩 Add a real contributor as a teammate: labeller B is the natural one, because they contribute the second set of labels. Recruiting is the owner's step (`BLOCKED.md`, default: labeller B). Claude never counts as a team member |
+| Startup track needs an incorporated company, a pitch deck, traction or a business model | Gather what's true. Sigmora's legal status is a fact only the owner holds, so it's in `BLOCKED.md`. Default: enter as an individual and present Sigmora as the product Safe Cut plugs into; switch to the company entry only if the track requires it (§10). Also gather the Sigmora integration, the pilots ([PILOTS.md](PILOTS.md)), a short business section in SUBMISSION.md. Never overstate traction |
+| "Build for Your World" is a separate track, not a theme | Enter the **Startup track**. It has the biggest prizes and is judged on "holds up in production", which is what WP5/WP6 build. Name the theme in the description only if it's allowed there |
 | Judging is on the deployed product ("holds up in production") | Matches the plan (WP5 deploys; WP6 on the custom domain) |
 | Silent | Startup track, solo, theme stated in the submission |
 
@@ -110,7 +110,7 @@ Look for: "licence to Meta/Cerebral Valley", "ownership", "confidential", "publi
 | If the rules say | We do |
 |---|---|
 | We keep ownership; organisers get a licence to show and promote it (matches the waiver) | No change. Treat everything submitted as public ([MAXXING.md](MAXXING.md) §1, Waiver) |
-| 🚩 The organisers take ownership or an exclusive licence | Tell the owner before anything is submitted; Sigmora's own code is never part of the submission, only this repo |
+| 🚩 The organisers take ownership or an exclusive licence | Submit **only this repo**, which is already public under MIT (a licence granted to everyone can't be made exclusive afterwards), and keep Sigmora's own code out of anything submitted. Record the clause in the Decisions section of the MAXXING update |
 | Rights to the video and the people in it | The hero clips' releases already cover "may be shared with Meta and Cerebral Valley and published online" ([SHOTLIST.md](SHOTLIST.md) release form). Check the release wording matches any extra rights the rules ask for; if not, get the actors to sign an addendum |
 | Third-party assets (music, fonts) must be licensed | No music in the video, or royalty-free with its licence noted |
 | Silent | Keep MIT; nothing confidential goes in |
@@ -122,12 +122,12 @@ Look for: "eligible countries", "excluded", "sanctions", "age", "individual", "c
 | If the rules say | We do |
 |---|---|
 | Open worldwide except listed countries, and Kenya isn't listed | Continue. Kenya is also not in Meta's Restricted Territories (Geographic Use Policy, updated Oct 12; [MAXXING.md](MAXXING.md) §1). Calls go direct, never through a proxy ([AGENTS.md](../AGENTS.md) rule 7) |
-| 🚩 Kenya is excluded, or only some countries can win prizes | Tell the owner at once. Never work around it (no VPN, no proxy, no entering from another country) |
-| Individuals only | The owner enters as an individual; Sigmora is described as the product it plugs into |
-| Companies may enter / the Startup track expects one | The owner decides whether to enter as Sigmora's company; capture its legal name and country for the form |
-| Prize payment needs tax forms or a bank in a given country | Note what's needed for a Kenyan winner and tell the owner (no action until after judging) |
+| 🚩 Kenya is excluded, or only some countries can win prizes | Comply exactly; never work around it (no VPN, no proxy, no entering from another country). If Kenyan residents can take part but not win some prizes, still submit and compete for what's open. If they can't enter at all, stop the submission work (WP8) and keep building the product, which still ships in Sigmora |
+| Individuals only | The owner enters as an individual; Sigmora is described as the product Safe Cut plugs into |
+| Companies may enter / the Startup track expects one | Enter as an individual unless the Startup track **requires** a company; then enter as Sigmora's company, and the legal name and country go into `BLOCKED.md` for the owner to supply |
+| Prize payment needs tax forms or a bank in a given country | Write down what a Kenyan winner needs and add it to `BLOCKED.md` as an after-judging item; nothing to do before then |
 | Employees of Meta, Cerebral Valley or partners are excluded | Confirm nobody on the entry is one |
-| Age or identity checks | The owner handles it |
+| Age or identity checks | Owner's step (`BLOCKED.md`) |
 
 ## 11. Also check (quick)
 
@@ -142,7 +142,7 @@ Look for: "eligible countries", "excluded", "sanctions", "age", "individual", "c
 ## 12. After reading the rules
 
 - [ ] Every item above has a quote + URL in the MAXXING update PR, or "silent".
-- [ ] Every 🚩 that applies has been sent to the owner on Oct 26.
+- [ ] Every 🚩 that applies has its action carried out on Oct 26, and any owner-only step is in `BLOCKED.md`.
 - [ ] `docs/SUBMISSION.md` has the exact form fields (WP8 owns the file; Claude may seed it with the field list).
 - [ ] [STORYBOARD.md](STORYBOARD.md) is adjusted if the video limit is under 2:50.
 - [ ] [MAXXING.md](MAXXING.md) §1 and §3 are updated.

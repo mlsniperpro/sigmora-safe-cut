@@ -37,7 +37,7 @@ The **clip ID** is the first three parts of the file name in [SHOTLIST.md](../SH
 | `entities[].boxes` | string \| null | path to the entity's MOT file, relative to `labels/<split>/`. `null` only in a labeller-B file |
 | `notes` | string | anything a reader needs: things below threshold, harmless items that must stay clear, filming problems |
 
-**Coordinates and frames are in the source clip** (e.g. 1920×1080 at 30 fps). The pipeline works on the prepared clip (≤1280 px, its own frame list, [ARCHITECTURE.md](../ARCHITECTURE.md) §3.1). WP7 maps labels onto it: boxes scale by `prepared.width / source.width`, and frames map through `job.json`'s `times` (each prepared frame's source time). Labellers never resample anything.
+**Coordinates and frames are in the source clip** (e.g. 1920×1080 at 30 fps). The pipeline works on the prepared clip (≤1280 px, its own frame list, [ARCHITECTURE.md](../ARCHITECTURE.md) §3.1). WP7 maps labels onto it: boxes scale by `prepared.width / source.width`, and frames map through `job.json`'s `times`. **One meaning, used by every PRE-B doc:** `times[i]` is the time in seconds of prepared frame `i`, measured from the first decoded source frame (the source's start timestamp subtracted, so `times[0] = 0`). The prepared clip is encoded with those same timestamps, so the same list maps both ways: label frame → source time → prepared frame for WP7, and the player's `mediaTime` → prepared frame for the review overlay ([UI-SPEC.md](../UI-SPEC.md) §3.6). Label frame `k` is at source time `k / fps` from that same first frame. (Request to WP1.) Labellers never resample anything.
 
 ## 3. The MOT files
 
@@ -76,7 +76,7 @@ This is mechanical, so WP7's label loader should accept the CVAT zip directly, p
 - Every box lies inside `0 … width` × `0 … height` and has `w, h > 0`.
 - Person boxes are at least 24 px tall on at least one frame (the threshold in the guide).
 - Categories and difficulty tags come from the allowed lists; `child` entities have `should_hide: true`.
-- The labeller-A, labeller-B and resolved files list the same entity IDs (B may have extra ones; they must appear in the resolved file).
+- Labeller B's file contains every entity ID in labeller A's file (B labels A's whole list) and may add more. The resolved file contains every ID from both. Agreement statistics use only the IDs in A's file; B's extra IDs are counted separately as A's misses ([LABELING-GUIDE.md](LABELING-GUIDE.md) §5).
 
 ## 4. The adjudication log
 
@@ -86,7 +86,7 @@ This is mechanical, so WP7's label loader should accept the CVAT zip directly, p
 |---|---|---|---|---|---|
 | e6 | screen, false | screen, true | false | case covers it | #24 (menu) |
 
-"How" is one of: *case covers it*, *agreed after discussion (new case #n added)*, *owner decided*. κ is computed from the labeller-A and labeller-B files, never from the resolved one.
+"How" is one of: *case covers it*, *agreed after discussion (new case #n added)*, *disputed → hidden by default*. Agreement (percent, κ, and the 2×2 counts) is computed from the labeller-A and labeller-B files, never from the resolved one.
 
 ## 5. Worked example: a 10-second clip
 
