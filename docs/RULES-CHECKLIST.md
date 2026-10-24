@@ -53,6 +53,21 @@ Look for: "video", "demo", "minutes", "YouTube", "Loom", "unlisted".
 | Video must not include AI voice, or AI voice must be disclosed | Already met: the VO is the owner's own recorded voice, not the clone (decision in [STORYBOARD.md](STORYBOARD.md) rule 6), so there's nothing to disclose |
 | Silent | YouTube, unlisted until submission, ≤ 2:50 |
 
+### VO for the cut versions
+
+Shortened shots get these lines, so every cut version stays at or under 150 wpm (STORYBOARD rule 6). Word counts include placeholders as one word each, and wpm = words ÷ seconds × 60.
+
+| Shot | Length after cut | VO | Words | wpm |
+|---|---|---|---|---|
+| 2.2 | 5 s | "or mask by hand for `{manual_minutes}` minutes. Most just publish." | 10 | 120 |
+| 5.2 | 5 s | "It asks you before showing it. Blur tools don't make that call." | 12 | 144 |
+| 6.1 | 6 s | "If the tracker loses someone, they come back hidden, until you say otherwise." | 13 | 130 |
+| 3.3 | 7 s | "Muse Spark decides who's part of the story. Anything uncertain stays hidden, with a reason." | 15 | 129 |
+| 7.1 (+7.2) | 14 s | "On `{n_test_clips}` labelled test clips, Safe Cut hid `{recall_full}` of what should be hidden, with `{leak_bursts_full}` leak bursts, and over-blur at `{overblur_full}`, against `{overblur_blur_all}` for blur-every-face." | 26 | 111 |
+| 8.2 | 6 s | "You keep a privacy receipt: what was hidden, why, and who approved it." | 13 | 130 |
+
+Below 2:00, each kept shot's VO is cut to at most 2.5 words per second of its new length, and the same rule applies.
+
 ## 5. Required form fields
 
 Look for: the submission form itself (Cerebral Valley), "submission requirements", "include".
