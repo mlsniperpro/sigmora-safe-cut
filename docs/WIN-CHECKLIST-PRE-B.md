@@ -190,20 +190,29 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#154 (win audit 15)**: `retry_later` promised open-ended retries; PRE-A re-queues once. Fix: UI-SPEC §2.6, request 1, §10.3–10.4, `upstream` failure, mock.
 - [x] **#155 (win audit 16)**: Read-only chips under `job_cap` had no reducer guard. Fix: UI-SPEC §10.5 `readOnly` (rendering, needs_you), R23, R25.
 - [x] **#156 (win audit 16)**: Bar chosen by `blocked_reason` showed the wrong action after a reload. Fix: UI-SPEC §3.5 (by job status + cause).
-- [x] **#157 (win audit 16)**: Approve & render after an edit could only fail on an exhausted cap. Fix: Simplified: `needs_you` is read-only; [Edit and render again] reopens with a budget confirm.
+- [-] **#157 (win audit 16)**: Approve & render after an edit could only fail on an exhausted cap. Fix: Simplified: `needs_you` is read-only; [Edit and render again] reopens with a budget confirm. **Superseded by #176:** reopen was removed in round 18.
 - [x] **#158 (win audit 16)**: 429 cap codes mapped only on POST /start. Fix: UI-SPEC §10.3 (one mapping for /start, /render, /audit, /reopen).
 - [x] **#159 (win audit 16)**: [Run the audit again] had no endpoint. Fix: UI-SPEC request 11 (`POST /v1/jobs/{id}/audit`, `/reopen`), mocks.
 - [x] **#160 (win audit 16)**: Download promised in `needs_you` had no URL or button. Fix: UI-SPEC request 1 (`result.video_url` on the job), §3.5.
 - [x] **#161 (win audit 16)**: No fixture for the reload-after-edit state. Fix: UI-SPEC §10.1 `job-reopened-review.json`; R24 replaced.
 - [x] **#162 (win audit 16)**: BLOCKED said WP5 issues the recording code. Fix: BLOCKED-PRE-B (the owner adds it to the deploy secret).
 - [x] **#163 (win audit 16)**: /start code-cap copy left the pilot at a dead end. Fix: UI-SPEC §2.6 (Start stays enabled).
-- [x] **#164 (win audit 17)**: Reopen didn't check the per-job cap. Fix: UI-SPEC request 11 (`409 job_cap`), §3.5, §10.3, mock.
+- [-] **#164 (win audit 17)**: Reopen didn't check the per-job cap. Fix: UI-SPEC request 11 (`409 job_cap`), §3.5, §10.3, mock. **Superseded by #176:** reopen was removed in round 18.
 - [x] **#165 (win audit 17)**: 409 on /audit said keep polling while polling was paused. Fix: UI-SPEC §10.3 (resume polling).
 - [x] **#166 (win audit 17)**: Re-running the audit skipped the receipt. Fix: UI-SPEC request 11, §10.4 (audit then receipt).
 - [x] **#167 (win audit 17)**: Old daily-cap and rate-limit rows contradicted the single 429 mapping. Fix: UI-SPEC §10.3 rows removed.
 - [x] **#168 (win audit 17)**: §2.6 daily-limit row sent job pages away to /. Fix: UI-SPEC §2.6 (two contexts).
 - [x] **#169 (win audit 17)**: §3.3 banner keyed on `blocked_reason`, not job status. Fix: UI-SPEC §3.3.
 - [x] **#170 (win audit 17)**: Polling rule didn't cover `needs_you` or the new endpoints. Fix: UI-SPEC §10.3 (one authoritative polling rule).
+- [x] **#171 (win audit 18)**: Polling never restarted after [Try again] from `failed`. Fix: UI-SPEC §10.3 polling rule (POST /start resumes).
+- [x] **#172 (win audit 18)**: Reopen's job-cap answer lived only in client memory. Fix: Removed: no reopen (#176).
+- [x] **#173 (win audit 18)**: `job_cap` had two HTTP mappings. Fix: Removed with reopen; one mapping keyed by `error.code`.
+- [x] **#174 (win audit 18)**: `429 daily_cap` on POST /v1/jobs had no row. Fix: UI-SPEC §10.3 single cap mapping.
+- [x] **#175 (win audit 18)**: Audit re-run plus receipt not reconciled with PRE-A's wording. Fix: UI-SPEC request 11 (wording request to PRE-A).
+- [x] **#176 (win audit 18)**: Audit re-run outcomes undefined; reopen added states that kept breaking. Fix: UI-SPEC request 11 outcomes; reopen and [Edit and render again] removed; needs_you has exactly 3 actions.
+- [x] **#177 (win audit 18)**: Old audit's "Details row" didn't exist. Fix: Removed with reopen.
+- [x] **#178 (win audit 18)**: No GET fixtures for the audit re-run flow. Fix: UI-SPEC §10.1 (2 fixtures).
+- [x] **#179 (win audit 18)**: Polling "resumed" into a paused state on reopen. Fix: Removed with reopen.
 
 ## 4. Which builder reads what
 
