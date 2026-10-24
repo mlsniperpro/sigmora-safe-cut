@@ -1,0 +1,75 @@
+# Labelling schedule (Oct 24 → kickoff, and the fallbacks)
+
+Status: **v1, written 2026-10-24 12:45 EAT (PRE-B).** Times are EAT. The original plan in [EVAL.md](../EVAL.md) §6 (dev split labelled Oct 20–21, test Oct 22–23, frozen Oct 24) has slipped: on Oct 20 [MAXXING.md](../MAXXING.md) §5 recorded that `~/SafeCutEval/` didn't exist and the Oct 17–18 filming looked undone. This file replans from today. **Owner: confirm what footage exists** (open question 1 in the PR); the plan below assumes the hero clips and about 15 eval clips can be filmed or are filmed by the end of Oct 24, then falls back.
+
+How to label: [LABELING-GUIDE.md](LABELING-GUIDE.md). Tool: [CVAT-SETUP.md](CVAT-SETUP.md). Files: [LABEL-FORMAT.md](LABEL-FORMAT.md).
+
+## 1. What actually has to be done by when
+
+| Deadline | What | Why |
+|---|---|---|
+| **Oct 26 19:00** (kickoff) | Hero clip 1 labelled and in the private bucket | WP7's loader and metric tests, WP0's probes and every Wave B package use it |
+| Oct 27 (Wave B starts) | Hero clips 2–3 and at least 3 dev clips labelled | WP7 dev runs; WP2/WP3 tuning |
+| **Oct 29 23:59** | Test split labelled by two labellers, disagreements resolved, **frozen** (WP7 writes `eval/splits/test.sha256`) | The first test-split run is Oct 30 ([MAXXING.md](../MAXXING.md) §4); EVAL.md requires a freeze before it |
+
+So "about 18 clips by Oct 26" is the **target**; the hard line is hero clip 1 by kickoff and a frozen test split by Oct 29. Note the owner's other deadlines on Oct 27 (Build With AI 00:00, OpenCV 09:45, GitLab 16:00): Oct 26 daytime is the riskiest labelling day.
+
+## 2. Hours per clip (estimates; measure on the first two clips)
+
+These are our estimates for a **30 s handheld clip at 30 fps** (900 frames), keying every 15 frames as the guide asks. A handheld camera makes even "static" things move, so participants who are on screen the whole clip are the expensive part (about 60 keyframes each). They are **not measured yet**: labeller A times the first two clips and replaces this table.
+
+| Cat ([SHOTLIST.md](../SHOTLIST.md)) | Typical entities | Labeller A (boxes + JSON) | Labeller B (roles only) |
+|---|---|---|---|
+| A street interview | 2 participants, 3–4 bystanders, 0–1 plate | 60–75 min | 10 min |
+| B walk-and-talk | host, 6–10 passing faces | 70–90 min | 12 min |
+| C screens | 2 participants at a table, 3 screens | 35–45 min | 8 min |
+| D plates | 4–8 plates, a few drivers | 35–50 min | 8 min |
+| E documents | presenter, 3 objects | 25–35 min | 6 min |
+| F home tour | presenter, 4–6 objects | 45–60 min | 8 min |
+| G re-entry | host, 1–2 actors with gaps | 40–50 min | 8 min |
+| H group interview | 3 participants, 1 watcher | 60–75 min | 12 min |
+| I crowd | 20+ people | 2–3 h | 20 min |
+| J negatives | 1 talking head | 15–20 min | 3 min |
+
+Fixed costs: CVAT install and project setup about 2 h (once); a calibration session where A and B label hero clip 1 together and read the guide's cases about 1 h (once); resolving disagreements about 5 min per clip.
+
+## 3. The plan for ~18 clips by Oct 26 (if footage exists by Oct 24 evening)
+
+The 18: **3 hero clips** (best take of each) + **15 eval clips** in the priority order from [MAXXING.md](../MAXXING.md) §5 (A, C, D, G, J first). Splits: hero clips → `hero`; staged eval clips (actors only) → `dev`; clips with real passers-by → `test` ([LABELING-GUIDE.md](LABELING-GUIDE.md) §6).
+
+| Clips | Count | Labeller A time (midpoint) |
+|---|---|---|
+| Hero 1 (street), 2 (café), 3 (walk-through) | 3 | 68 + 40 + 53 = 161 min |
+| A street interview | 4 | 4 × 68 = 272 min |
+| C screens | 3 | 3 × 40 = 120 min |
+| D plates | 3 | 3 × 43 = 129 min |
+| G re-entry | 2 | 2 × 45 = 90 min |
+| J negatives | 3 | 3 × 18 = 54 min |
+| **Total** | **18** | **≈ 14 h** of boxes, + 3 h setup and calibration = **≈ 17 h** |
+
+Labeller B: about 3 h for all 18. Resolution: about 1.5 h. **Total people time ≈ 21 h over about 54 elapsed hours.** It's feasible only if A has two near-full days and B exists.
+
+| When (EAT) | Labeller A | Labeller B | Owner |
+|---|---|---|---|
+| **Sat Oct 24, 14:00–22:00** | Install CVAT, create the 3 projects (2 h). Calibrate on hero 1 with B (1 h). Hero 2, hero 3 (1.5 h). Time each clip | Calibrate on hero 1; label hero 2–3 roles | Confirm the footage; upload hero 1 + labels to the private bucket |
+| **Sun Oct 25, 09:00–20:00** | A × 4, C × 3, G × 2 (≈ 8.5 h) | Roles for those 9 | Decide which clips are test vs dev |
+| **Mon Oct 26, 08:00–17:00** | D × 3, J × 3 (≈ 3 h); fix boxes B flagged (1 h); export + back up everything | Roles for D, J; 10% box spot-check | Resolve disagreements (1.5 h); back up `~/SafeCutEval/labels/` privately |
+| Mon Oct 26, 19:00 | — | — | Kickoff. Hero + dev labels in the bucket; test labels stay local |
+
+## 4. Reduced plans (pick the first one that fits)
+
+**R1. Footage arrives a day late (filmed Oct 25).** Kickoff needs only hero 1, so label the three hero clips first on Oct 25–26, then J × 3 (cheap). Label the 15 eval clips Oct 27–29 in the priority order, about 4 h a day around the Oct 27 deadlines. Freeze Oct 29 23:59 with whatever is double-labelled.
+
+**R2. Eval footage won't exist before Oct 28.** The test split shrinks. Minimum viable test split: **8 clips** (A × 3, C × 2, D × 1, G × 1, J × 1), about 6 h for A. Use SA-Co/VEval SmartGlasses (CC BY 4.0) for the tracking and leak-guard numbers ([MAXXING.md](../MAXXING.md) risk 1, [EVAL.md](../EVAL.md) §2). The README and video say exactly how many clips the test split has; never extrapolate ([AGENTS.md](../../AGENTS.md) rule 9).
+
+**R3. Only one labeller.** Do everything above without B. κ is reported as "not measured (single labeller)". The owner re-labels `should_hide` on 5 clips a day later, blind to the first pass, if time allows; that's "intra-rater agreement" and must be named as such, not called κ between labellers.
+
+**R4. Hero clips aren't filmed by Oct 25.** This blocks the demo (25%), not just eval. Film **hero clip 1 first** with a phone and 2 consenting actors (one passer-by holding a phone with a fake chat, one parked car), even without the van re-entry take. Everything else waits for it.
+
+**Never in any plan:** labelling on a hosted service, inventing labels for clips nobody watched, or relabelling after seeing model output to make a number look better.
+
+## 5. Priority order if time runs out mid-plan
+
+hero 1 → hero 2 (the context test) → A → C → G → D → J → hero 3 → H → B → E → F → I.
+
+I (crowd) is last because it costs 2–3 h per clip; if it's skipped, the README says crowd performance is untested on our set.
