@@ -181,6 +181,13 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#145 (win audit 14)**: `job_cap` audit offered an endless re-run. Fix: UI-SPEC §5.3 (no button; shorter clip).
 - [x] **#146 (win audit 14)**: `daily_cap` retry button described two ways. Fix: UI-SPEC §10.3 aligned with §2.6.
 - [x] **#147 (win audit 14)**: Superseded job-count fixes still marked [x]. Fix: WIN #125, #130, #133 → [-].
+- [x] **#148 (win audit 15)**: An edit in `needs_you` didn't change the server state. Fix: UI-SPEC request 5, §3.5, §10.4 transitions, R24.
+- [x] **#149 (win audit 15)**: `job_cap` in `needs_you` left the bar empty or allowed a doomed re-render. Fix: UI-SPEC §3.3, §3.5, §5.3–5.4, §10.4, mock, R23.
+- [x] **#150 (win audit 15)**: `job_cap` exception missing from three other sections and mocks. Fix: Same propagation as #149.
+- [x] **#151 (win audit 15)**: Code kinds and caps had no config home; risk of codes in the public repo. Fix: UI-SPEC request 20 (`SAFECUT_ACCESS_CODES` JSON secret, `SAFECUT_PILOT_POOL_USD`); BLOCKED-PRE-B, STORYBOARD.
+- [x] **#152 (win audit 15)**: `type=password` would trigger Chrome's save prompt inside SR-01. Fix: UI-SPEC §10.2 text input with CSS masking.
+- [x] **#153 (win audit 15)**: A stage failing on `code_cap` couldn't recover after the cap was raised. Fix: UI-SPEC §2.6, §10.3, mock.
+- [x] **#154 (win audit 15)**: `retry_later` promised open-ended retries; PRE-A re-queues once. Fix: UI-SPEC §2.6, request 1, §10.3–10.4, `upstream` failure, mock.
 
 ## 4. Which builder reads what
 
