@@ -88,15 +88,15 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#52 (win audit 3)**: Merged items' counts, overlay and later edits undefined. Fix: UI-SPEC §10.5.
 - [x] **#53 (win audit 3)**: Limit messages could show the limit itself (floor rounding). Fix: UI-SPEC §2.6, §10.2.
 - [x] **#54 (win audit 3)**: No single-labeller copy for the landing results footnote. Fix: UI-SPEC §1.3–1.4.
-- [P] **#55 (win audit 4)**: Time axes followed PRE-A's rejected draft; PRE-A @3d33e5f uses a constant-rate prepared clock and non-decreasing source-second `times`. Fix: UI-SPEC §0, §3.3, §3.6, §4.6, §8, §10.1, §10.6.
+- [x] **#55 (win audit 4)**: Time axes followed PRE-A's rejected draft; PRE-A @3d33e5f uses a constant-rate prepared clock and non-decreasing source-second `times`. Fix: UI-SPEC §0, §3.3, §3.6, §4.6, §8, §10.1, §10.6.
 - [x] **#56 (win audit 4)**: Label → prepared mapping was "nearest frame"; PRE-A decided prepared → label at `times[i]`. Fix: LABEL-FORMAT §2, §9.1.
-- [P] **#57 (win audit 4)**: No UI state for PRE-A's `retry_later` job status. Fix: UI-SPEC §10.4, copy, mock.
-- [P] **#58 (win audit 4)**: Drawer said Muse Spark isn't asked about plates; PRE-A's role pass judges them. Fix: UI-SPEC §4.3–4.4, hero mock.
-- [P] **#59 (win audit 4)**: Muse evidence quoted raw frame numbers into the drawer. Fix: UI-SPEC §4.3 frame → m:ss transform + tests.
-- [P] **#60 (win audit 4)**: Landing footnote showed κ without the 2×2 counts; no K3 variant. Fix: UI-SPEC §1.3–1.4.
-- [P] **#61 (win audit 4)**: `removed` flag had no contract field. Fix: UI-SPEC §8 request (`removed_by_creator`), reducer.
+- [x] **#57 (win audit 4)**: No UI state for PRE-A's `retry_later` job status. Fix: UI-SPEC §10.4, copy, mock.
+- [x] **#58 (win audit 4)**: Drawer said Muse Spark isn't asked about plates; PRE-A's role pass judges them. Fix: UI-SPEC §4.3–4.4, hero mock.
+- [x] **#59 (win audit 4)**: Muse evidence quoted raw frame numbers into the drawer. Fix: UI-SPEC §4.3 frame → m:ss transform + tests.
+- [x] **#60 (win audit 4)**: Landing footnote showed κ without the 2×2 counts; no K3 variant. Fix: UI-SPEC §1.3–1.4.
+- [x] **#61 (win audit 4)**: `removed` flag had no contract field. Fix: UI-SPEC §8 request (`removed_by_creator`), reducer.
 - [x] **#62 (win audit 4)**: X8's expected codes didn't follow stop rule 4. Fix: LABEL-FORMAT §7 stop rule 4, §8.3.
-- [P] **#63 (win audit 4)**: Mock `scene` lacked PRE-A's required fields. Fix: UI-SPEC §10.1 mocks, field list.
+- [x] **#63 (win audit 4)**: Mock `scene` lacked PRE-A's required fields. Fix: UI-SPEC §10.1 mocks, field list.
 - [x] **#64 (win audit 4)**: Shots 1.2 and 8.3 ran above 150 wpm. Fix: STORYBOARD 1.2, 8.3, rule 6 (now 265 words, max ≤150 wpm per shot).
 
 ## 4. Which builder reads what
