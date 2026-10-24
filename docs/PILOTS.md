@@ -94,7 +94,8 @@ Data-handling facts in this note must match what's deployed ([ARCHITECTURE.md](A
 - **Quotes** appear only with written permission, word for word, credited exactly as they asked. Nothing is paraphrased into a stronger claim.
 - **Their footage never appears**, not even redacted, unless a pilot offers it in writing *and* everyone visible unblurred has consented; in practice, assume never.
 - If fewer than 5 pilots finish, the submission says how many did. A pilot who found Safe Cut slower or wrong is reported the same way as one who loved it.
-- Where it shows: the README Impact section and the results table footnote (WP8), [STORYBOARD.md](STORYBOARD.md) shot 8.3 (only with permission), and `docs/SUBMISSION.md`.
+- What the pilots test is the review flow in [DESIGN.md](DESIGN.md) §2 (deny by default, one-tap keep); if a pilot asks how decisions are made, point them there.
+- Where it shows: the README Impact section and the results table footnote (WP8), [STORYBOARD.md](STORYBOARD.md) shot 8.3 (beat 8 of [DEMO.md](DEMO.md), only with permission), and `docs/SUBMISSION.md`.
 
 ## 7. Timeline
 

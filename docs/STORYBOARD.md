@@ -1,6 +1,6 @@
 # Safe Cut: demo video storyboard (2:50)
 
-Status: **v1, 2026-10-24 (PRE-B, docs only).** Shot by shot for the beats in [DEMO.md](DEMO.md). The screens are specified in [UI-SPEC.md](UI-SPEC.md); the clips are the hero clips in [SHOTLIST.md](SHOTLIST.md); the numbers come from WP7's `eval/RESULTS.md` ([EVAL.md](EVAL.md), [WP7](work-packages/WP7.md)). WP8 turns this into the final `docs/VIDEO-SCRIPT.md` on Nov 3.
+Status: **v1, 2026-10-24 (PRE-B, docs only).** Shot by shot for the beats in [DEMO.md](DEMO.md). The screens are specified in [UI-SPEC.md](UI-SPEC.md); the clips are the hero clips in [SHOTLIST.md](SHOTLIST.md); the numbers come from WP7's `eval/RESULTS.md` ([EVAL.md](EVAL.md), [WP7](work-packages/WP7.md)). The pipeline the VO describes is [DESIGN.md](DESIGN.md) §2 (Set-of-Mark role calls §2.3, re-entry policy §2.5, audit §2.8). WP8 turns this into the final `docs/VIDEO-SCRIPT.md` on Nov 3.
 
 ## Rules for this video
 

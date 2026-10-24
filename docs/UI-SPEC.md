@@ -150,7 +150,7 @@ Goal: in 20 seconds a judge sees the product working on real footage, understand
 | Results placeholder (before WP8 fills it) | Numbers appear here after our frozen test runs. We publish them whether they're good or not. |
 | Bottom links | Try it · Source on GitHub · Use it inside Sigmora |
 
-All result numbers come from `eval/results/<run-id>/metrics.json` through WP8 ([AGENTS.md](../AGENTS.md) rule 9). WP6 ships the placeholder and the table component; it never types a number.
+The metric definitions are [EVAL.md](EVAL.md) §2 word for word; the baselines are EVAL.md §3. All result numbers come from `eval/results/<run-id>/metrics.json` through WP8 ([AGENTS.md](../AGENTS.md) rule 9). WP6 ships the placeholder and the table component; it never types a number.
 
 ### 1.4 States
 
