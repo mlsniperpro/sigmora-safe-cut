@@ -343,22 +343,23 @@ Split sizes are PRE-B's final assignment (PR #2 `docs/labeling/SCHEDULE.md` §3)
 | Hero renders (demo and video) | owner / WP8, outside the WP caps | 6 takes × $1.12 × **2** renders (one after review, one final) | 13.44 |
 | Creator pilots | PRE-B's hard cap (PR #2 PILOTS §5) | our estimate is 10 clips × $1.12 = $11.20 | 20.00 |
 | Public "Try it" (judges, Nov 4–9) | the deployed service's daily cap | 6 days × $3 | 18.00 |
-| **Planned total** | | | **$147.64** |
-| **Headroom vs $150** | | | **$2.36** |
+| `/healthz` before the public window | WP5, under the daily cap | Oct 29 – Nov 3: 6 days × $0.134 | 0.80 |
+| **Planned total** | | | **$148.44** |
+| **Headroom vs $150** | | | **$1.56** |
 
 **Decisions in this table:**
 - **Fit every cap inside $150.** Every WP line is counted at its full cap, even where the plan uses less (WP2 $14.16 of $15, WP7 $8.36 of $12), so no WP can overspend the ledger by spending to its cap. Dev tuning is **8** rounds (it fits WP2's $15); there are **2** hero renders per take (not 3); SA-Co gets a **$5** cap. *Rejected:* the earlier plan, which left the WP1/WP4/WP5 build budgets ($20) out of the total and quietly over-committed the credits.
 - **Spending caps by who is calling** (also §10.2):
-  - **`SAFECUT_DAILY_USD_CAP` ($3/day) covers public "Try it" traffic** (judge access codes), **Sigmora service-key traffic** (`SAFECUT_SERVICE_KEYS`, WP5.md) and `/healthz`, all sharing the one $3/day. Public access codes **and service keys are valid only Nov 4–9** (issued on Nov 4, expiring at the end of Nov 9), so the line is 6 days × $3. Before Nov 4 the deployed service takes only the owner's smoke runs (WP5's cap), pilot codes, and Sigmora integration calls in **replay mode** (no Meta calls). `/healthz` before Nov 4 is ≤ $0.134/day, about $1.34 over 10 days, inside the headroom;
+  - **`SAFECUT_DAILY_USD_CAP` ($3/day) covers public "Try it" traffic** (judge access codes), **Sigmora service-key traffic** (`SAFECUT_SERVICE_KEYS`, WP5.md) and `/healthz`, all sharing the one $3/day. Public access codes **and service keys are valid only Nov 4–9** (issued on Nov 4, expiring at the end of Nov 9), so the line is 6 days × $3. Before Nov 4 the deployed service takes only the owner's smoke runs (WP5's cap), pilot codes, and Sigmora integration calls in **replay mode** (no Meta calls). `/healthz` before Nov 4 (WP5 deploys from Oct 29: 6 days × ≤ $0.134) has its own ledger line, $0.80;
   - **pilot codes** sit outside it, with their own per-code cap and PRE-B's $20 total (as PR #2 PILOTS §5 asks);
   - **owner, eval and WP runs** are bounded by the per-job cap and their WP caps.
 
-  The $3/day still applies whenever the service is deployed, as a backstop. *Rejected:* ARCHITECTURE §4's $10/day default, under which 12 days could spend $120. Request to WP5: deploy with `SAFECUT_DAILY_USD_CAP=3.00`, apply it to access-code traffic only, and add a per-code cap for pilot codes.
-- **Wonder isn't pre-approved.** The $2.36 headroom fits none of the options: Wonder for the scene pass on test and hero runs is +$11.60, and the larger options are more (§9.1 deltas: scene +$0.24, escalation +$0.30 per run). WP0 adopts Wonder only if probe f shows a gain (H1/H2) **and** the measured spend in `cost.jsonl` by then (WP caps are maxima, and replay-heavy WPs usually come in under) leaves room for the extra. If Wonder escalation is ever used, its `max_output_tokens` is 24,000 (§10.5).
+  The $3/day still applies whenever the service is deployed, as a backstop. *Rejected:* ARCHITECTURE §4's $10/day default, under which 12 days could spend $120. Request to WP5: deploy with `SAFECUT_DAILY_USD_CAP=3.00`, apply it to access-code, service-key and `/healthz` traffic (not pilot codes), and add a per-code cap for pilot codes.
+- **Wonder isn't pre-approved.** The $1.56 headroom fits none of the options: Wonder for the scene pass on test and hero runs is +$11.60, and the larger options are more (§9.1 deltas: scene +$0.24, escalation +$0.30 per run). WP0 adopts Wonder for the scene pass only if H1 shows a gain, and for escalation only if H2 does (both with zero new false keeps, as `docs/research/muse-wonder-vs-spark.md` decides), **and** the measured spend in `cost.jsonl` by then (WP caps are maxima, and replay-heavy WPs usually come in under) leaves room for the extra. If Wonder escalation is ever used, its `max_output_tokens` is 24,000 (§10.5).
 
 **Risks to this budget:**
 - **30 fps SAM** would make the test runs alone $92.53. Never send `prepared.mp4` to SAM (§10.6).
-- **Busy clips:** with 16 tracks, red-team pass 1 needs 96 frames instead of 64. That's +$0.06 per run, or +$2.16 over the 36 test runs, which the $2.36 headroom just covers, leaving $0.20.
+- **Busy clips:** with 16 tracks, red-team pass 1 needs 96 frames instead of 64. That's +$0.06 per run, or +$2.16 over the 36 test runs, **more than the $1.56 headroom**. **Decided:** the overrun comes from the pilot line's expected slack ($20 cap vs the $11.20 estimate), checked against `cost.jsonl` before the test runs start. If the pilots have spent their full cap, the third full run is skipped on the busiest clips, and the README states the run count per clip.
 - **Dev iteration** beyond 8 rounds costs $1.77 per round (3 clips × $0.59) and would breach WP2's $15 cap.
 
 ---
@@ -592,4 +593,5 @@ Not contract changes: a job's `retry_later` state lives in WP5's job record (API
 Requests to PRE-B (UI, PR #2):
 - show `suggested_role`, `escalation_evidence` and `escalation_frames` in the Why drawer next to the votes ("A second look suggests: Part of the story"). Adopted in PR #2 @ `e86a051`;
 - show the `redteam_status` panels (PR #2 UI-SPEC §5.3) when it isn't `ok`;
+- add a mid-job copy for `failure.reason: "daily_cap"` (the daily cap reached during a running job, §10.3), next to the existing `429` on `POST /start`;
 - take a track's speech link from `roles.tracks[].matches_participant` → `scene.participants[i].speaker`, which replaces UI-SPEC §8 request 3 (a track ID in `scene.json`), so the link lives in one place.

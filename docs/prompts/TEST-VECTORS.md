@@ -33,11 +33,13 @@ Objects (`screen:2`):
 |---|---|---|---|
 | E1 | participant, participant, child | *(not called)* | `child`, locked |
 | E2 | participant, participant, unsure | ruling `child` | `child`, locked |
-| E3 | participant, participant, unsure | call failed | `unsure`, `needs_you`, `suggested_role: null` |
+| E3 | participant, participant, unsure | call failed | `unsure`, `needs_you`, `suggested_role: null`, `escalated: false` |
 | E4 | participant, participant, unsure | ruling `participant`, frames F210, F240 (both sent, track present) | `unsure`, `needs_you`, `suggested_role: "participant"`, `escalation_frames: [210, 240]`, `escalated: true`. **Not kept.** |
 | E5 | participant, bystander, bystander | ruling `bystander` | `unsure`, `needs_you`, `suggested_role: "bystander"` |
 | E6 | participant, participant, unsure | ruling `participant`, citing F205 (not sent) | same as E3 (invalid citation) |
-| E7 | participant, participant, unsure | ruling `unsure`, frames F210 (valid) | `unsure`, `needs_you`, `suggested_role: null`, `escalated: true`; evidence and frames still shown |
+| E7 | participant, participant, unsure | ruling `unsure`, frames F210 (valid) | `unsure`, `needs_you`, `suggested_role: null`, `escalation_evidence: null`, `escalation_frames: null`, `escalated: true` (the drawer says the closer look couldn't settle it) |
+| E8 | a track in 2 windows | window 1 ruling `participant`, window 2 ruling `child` | `child`, locked (any window's `child` wins) |
+| E9 | a track in 2 windows | window 1 `participant`, window 2 `bystander` | as E7: `suggested_role: null`, `escalated: true` |
 
 The invariant tested over every row: **no escalation output ever yields `keep`.** WP3 property-tests it over random vote and ruling combinations with hypothesis.
 

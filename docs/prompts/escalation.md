@@ -1,6 +1,6 @@
 # Escalation (v0): disputed tracks, once
 
-**Model:** `SAFECUT_ESCALATE_MODEL` (default `muse-spark-1.3` at **`reasoning.effort: "max"`**, per DESIGN §2.3; `muse-wonder-1.0` at `"max"` only if WP0 probe f justifies it) · **one call per clip, covering every disputed track** · **output** advisory only: `suggested_role` + evidence on the track in `roles.json` (`escalated: true`). The track's `role` stays `unsure`, or becomes `child`
+**Model:** `SAFECUT_ESCALATE_MODEL` (default `muse-spark-1.3` at **`reasoning.effort: "max"`**, per DESIGN §2.3; `muse-wonder-1.0` at `"max"` only if WP0 probe f justifies it) · **one call per ≤50-keyframe window** (one call when the clip has ≤50 such keyframes), covering every disputed track in it · **output** advisory only: `suggested_role` + evidence on the track in `roles.json` (`escalated: true`). The track's `role` stays `unsure`, or becomes `child`
 
 > Effort is `max`, as DESIGN §2.3 and ARCHITECTURE §4 say. Meta's live [reasoning page](https://dev.meta.ai/docs/reasoning) lists `max` for both `muse-spark-1.3` and `muse-wonder-1.0` (API-NOTES §3.4). WP0's probe confirms it live. If `max` were rejected, that's a startup configuration error to fix in `config.py` (e.g. to `xhigh`, the next level down), never a silent per-call downgrade.
 
@@ -8,7 +8,7 @@
 Give tracks whose three role votes disagreed one more careful look, with the disagreement shown, so the creator's **Needs you** card carries a sharper suggestion and the evidence frames. **Escalation can never produce `keep`.** DESIGN §2.3–2.5 says `keep` needs 3/3 votes and that any disagreement → `unsure` → hidden + Needs you. Escalation can only (a) **tighten** a track to `child` (locked), or (b) attach a `suggested_role` and evidence for the creator. Disputed objects (screens) are handled the same way: the creator decides.
 
 ## Inputs
-- Only the keyframes where at least one disputed track appears, with the same Set-of-Mark rendering as the role pass. **≤50 per call.** More than 50 → consecutive windows of ≤50 keyframes, one call each, each carrying only the disputed tracks present in it. A track's suggestion counts only if every window it appears in gives the same ruling; otherwise `suggested_role: null`. Each window is reserved and capped separately (API-NOTES §10.5).
+- Only the keyframes where at least one disputed track appears, with the same Set-of-Mark rendering as the role pass. **≤50 per call.** More than 50 → consecutive windows of ≤50 keyframes, one call each, each carrying only the disputed tracks present in it. A track's windows combine as follows, applied before the rules below: **any** window ruling `child` → rule 2 (child, locked); else any window failed or cited invalid frames → rule 3; else all windows agree → rule 4 with that ruling, `escalation_evidence` from the first window (in time order) and `escalation_frames` = the union of the windows' valid frames; else (the windows disagree) → treated as an `unsure` ruling under rule 4. Each window is reserved and capped separately (API-NOTES §10.5).
 - Scene context and transcript, as in the role pass.
 - For each disputed track: the three votes with their evidence strings, e.g. `face:9: [participant: "speaks at F210", bystander: "background, never addressed", unsure: "too small"]`.
 
@@ -54,8 +54,8 @@ Give tracks whose three role votes disagreed one more careful look, with the dis
 ## Applying the ruling (WP3 policy, pure; **first matching rule wins**)
 1. Any role-pass vote was `child` → `child`, locked, hidden. Escalation doesn't run for these tracks.
 2. Escalation ruled `child` → `child`, locked, hidden.
-3. Escalation call failed, or its cited frames are invalid → `unsure`, hidden, `needs_you`, with no suggestion.
-4. Otherwise → `unsure`, hidden, `needs_you`, with `suggested_role` = the ruling (an `unsure` ruling → `suggested_role: null`, matching PR #2 UI-SPEC §4; vector E7), and `escalation_evidence` / `escalation_frames` = the ruling's evidence and frames for the review card (`why_others_wrong` is logged) (`escalated: true`; fields in API-NOTES §12). The creator's tap decides; `decided_by: "creator"`.
+3. Escalation call failed, or its cited frames are invalid, or it was skipped for budget → `unsure`, hidden, `needs_you`, with no suggestion: `suggested_role`, `escalation_evidence` and `escalation_frames` all `null`, **`escalated: false`** (PR #2 UI-SPEC §4).
+4. Otherwise → `unsure`, hidden, `needs_you`, with `suggested_role` = the ruling (an `unsure` ruling, or windows that disagree → `suggested_role: null` **and** `escalation_evidence`/`escalation_frames` `null`, `escalated: true`, so PR #2's drawer shows "A longer, closer look couldn't settle it"; vector E7), and `escalation_evidence` / `escalation_frames` = the ruling's evidence and frames for the review card (`why_others_wrong` is logged) (`escalated: true`; fields in API-NOTES §12). The creator's tap decides; `decided_by: "creator"`.
 
 There's deliberately no rule that yields `keep`. A creator who accepts a `participant` suggestion is the only way a disputed track is shown. **Decided:** `suggested_role` (nullable) is added to `roles.json.tracks[]`, because the review card needs it to show the suggestion. WP0 implements it in `contracts.py`.
 
