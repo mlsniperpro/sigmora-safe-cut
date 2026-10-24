@@ -70,8 +70,8 @@ Frame 50 has one approved kept-clear item, `A` (a participant's face), visible a
 | L3 | `text` "AMINA K." at [110, 110, 190, 190] | kind doesn't match A's (face) → **leak** |
 | L4 | `face`, `confidence: low`, at [600, 300, 650, 360] | **leak** (confidence never filters) |
 | L5 | a box with 3 integers | **leak**, with the whole-frame box [0, 0, 1280, 720] |
-| L6 | frame 50 missing from the output; also missing after one re-send | `unresolved += 1` for frame 50 only; `redteam_status: "failed"` |
-| L9 | a red-team pass over 40 frames is skipped because its estimate exceeds the job cap | `unresolved += 40`, `redteam_status: "over_budget"`; publishing is off (invariant: `redteam_status != "ok"` ⇒ `unresolved > 0`) |
+| L6 | frame 50 missing from the output; also missing after one re-send | `unresolved += 1` for frame 50 only; `blocked_reason: "audit_failed"` |
+| L9 | a red-team pass over 40 frames is skipped because its estimate exceeds the job cap | `unresolved += 40`, `blocked_reason: "over_budget"`, `audit_budget_cause: "job_cap"`; publishing is off (invariant: `blocked_reason != null` ⇔ `unresolved > 0`) |
 | L7 | `text` read *through* a redaction (inside a hidden item's region) | **leak** + flag `redaction_too_weak` → that item is re-rendered as `solid` |
 | L8 | no findings on any frame | `unresolved` unchanged; every frame logged `finding: "none"` |
 
