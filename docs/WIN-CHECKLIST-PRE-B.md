@@ -158,15 +158,15 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#122 (win audit 10)**: Landing hero job would be deleted after 24 h and needs a code. Fix: UI-SPEC §1.6, request 19 (`GET /v1/demo/{hero_id}`, pinned).
 - [x] **#123 (win audit 10)**: Recording budget used withdrawn costs and undercounted runs. Fix: STORYBOARD §3 ($10 owner code from PRE-A's hero line).
 - [x] **#124 (win audit 11)**: Pilot estimate's margin ignored 60 s clips. Fix: PILOTS §5 (clips 15–45 s; ≈ $15–17 for 10 clips).
-- [x] **#125 (win audit 11)**: Early pilots could use up the shared $20 before later ones ran. Fix: PILOTS §5 (≤ 2 jobs per code), UI-SPEC request 20.
+- [-] **#125 (win audit 11)**: Early pilots could use up the shared $20 before later ones ran. Fix: PILOTS §5 (≤ 2 jobs per code), UI-SPEC request 20. **Superseded by #135:** the per-code job count was removed in round 13; the $6 code cap and the $20 pool bound spend instead.
 - [x] **#126 (win audit 11)**: Running out of the shared pilot total pointed pilots to a new code. Fix: UI-SPEC §2.6 `pilot_pool_cap` copy.
 - [x] **#127 (win audit 11)**: Owner recording code existed only in STORYBOARD. Fix: UI-SPEC §8 request 20, BLOCKED-PRE-B Nov 3 step, WIN §4 WP5 row.
 - [x] **#128 (win audit 11)**: Recording budget priced hero runs at the 30 s rate. Fix: STORYBOARD §3 (45 s ≈ $1.5–1.7; $12 code).
 - [x] **#129 (win audit 12)**: `pilot_pool_cap` missing from the reason list, error table and mocks. Fix: UI-SPEC request 1, §10.3, §10.1.
-- [x] **#130 (win audit 12)**: Third job on a pilot code had no error; failed uploads used up jobs. Fix: UI-SPEC `code_job_limit`, request 20 (jobs count only past prepare).
+- [-] **#130 (win audit 12)**: Third job on a pilot code had no error; failed uploads used up jobs. Fix: UI-SPEC `code_job_limit`, request 20 (jobs count only past prepare). **Superseded by #135:** the per-code job count was removed in round 13; the $6 code cap and the $20 pool bound spend instead.
 - [x] **#131 (win audit 12)**: Recording code described as resetting daily. Fix: STORYBOARD §3, BLOCKED-PRE-B (a total; owner raises it).
 - [x] **#132 (win audit 12)**: Over-budget audit button stayed enabled when a code or pool cap was the cause. Fix: UI-SPEC §5.3 banner by `audit_budget_cause`, mocks, request 20.
-- [x] **#133 (win audit 12)**: Pilot cap sized for 2 clips while the protocol runs 1. Fix: PILOTS §5 (one clip, 2 jobs allowed; estimate ≈ $8).
+- [-] **#133 (win audit 12)**: Pilot cap sized for 2 clips while the protocol runs 1. Fix: PILOTS §5 (one clip, 2 jobs allowed; estimate ≈ $8). **Superseded by #135:** the per-code job count was removed in round 13; the $6 code cap and the $20 pool bound spend instead.
 - [x] **#134 (win audit 12)**: Daily-cap reasoning still cited 60 s pilot clips. Fix: PILOTS §5.
 - [x] **#135 (win audit 13)**: `code_job_limit` placed on two different endpoints. Fix: Simplified away: no job count; the $6 code cap and the $20 pool bound spend (UI-SPEC request 20, PILOTS §5).
 - [x] **#136 (win audit 13)**: Job limit couldn't be checked before prepare. Fix: Same simplification.
@@ -175,6 +175,12 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#139 (win audit 13)**: A cap raised by the owner could never re-enable the audit; pool cap blamed the code. Fix: UI-SPEC §5.3 cause lines, mock.
 - [x] **#140 (win audit 13)**: "Hero line has room" was false at 45 s clip costs. Fix: STORYBOARD §3 (overrun noted; re-pricing request to PRE-A).
 - [x] **#141 (win audit 13)**: [Try again tomorrow] always restarted the whole pipeline. Fix: UI-SPEC §2.6, §10.3 (same stage routing as [Try again]).
+- [x] **#142 (win audit 14)**: SR-01 would show the access code in the public video. Fix: UI-SPEC §10.2 masked field; STORYBOARD SR-01 and §4 checklist; BLOCKED-PRE-B revoke step.
+- [x] **#143 (win audit 14)**: Code-kind caps requested only of WP5; the budget guard lives in WP0's client. Fix: UI-SPEC request 20 (WP0 + `cost.jsonl` code fields; request to PRE-A).
+- [x] **#144 (win audit 14)**: Edits in the `needs_you` state could be lost by re-running only the audit. Fix: UI-SPEC §3.5 (an edit switches to Approve & render).
+- [x] **#145 (win audit 14)**: `job_cap` audit offered an endless re-run. Fix: UI-SPEC §5.3 (no button; shorter clip).
+- [x] **#146 (win audit 14)**: `daily_cap` retry button described two ways. Fix: UI-SPEC §10.3 aligned with §2.6.
+- [x] **#147 (win audit 14)**: Superseded job-count fixes still marked [x]. Fix: WIN #125, #130, #133 → [-].
 
 ## 4. Which builder reads what
 

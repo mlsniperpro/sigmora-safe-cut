@@ -75,7 +75,7 @@ Every placeholder, timings and audit counts included, must resolve to a value in
 
 | ID | What to capture | Clip / job | Length to record | Shots |
 |---|---|---|---|---|
-| `SR-01` | `/try`: enter the access code, drop the clip, tick, Start, the whole progress list to "Ready for you". Note the wall-clock time | H1A, live | full run (real time) | 3.1, 3.2 |
+| `SR-01` | `/try`: the access code is entered **before** the recording starts (the field is masked anyway, UI-SPEC §10.2), then drop the clip, tick, Start, the whole progress list to "Ready for you". Note the wall-clock time | H1A, live | full run (real time) | 3.1, 3.2 |
 | `SR-02` | Review panel arriving; hover slowly across the three columns; no clicks | H1A job | 30 s | 3.3 |
 | `SR-03` | Open the child's Why? drawer, step through its evidence frames, close; open the guest's drawer, scroll to the transcript line, close | H1A job | 60 s | 4.1, 4.2 |
 | `SR-04` | Tap Hide on the Needs-you person; show the toast and the overlay change on the paused video; then Undo and Hide again (for a clean take) | H1A job | 30 s | 4.3 |
@@ -96,5 +96,5 @@ Every placeholder, timings and audit counts included, must resolve to a value in
 - [ ] Every number on screen or in the VO is a filled placeholder with a run ID in the WP8 PR.
 - [ ] Every replayed shot shows the demo-mode banner.
 - [ ] Nobody without a release is visible anywhere, including reflections.
-- [ ] No real PII, keys, emails or account names in any frame.
+- [ ] No real PII, keys, access codes, emails or account names in any frame.
 - [ ] Length ≤ 2:50; captions match the VO; the audio is the owner's own voice.
