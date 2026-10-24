@@ -54,7 +54,7 @@ Labeller B: about 3 h for all 18. Resolution: about 1.5 h. **Total people time �
 | When (EAT) | Labeller A | Labeller B | Owner |
 |---|---|---|---|
 | **Sat Oct 24, 14:00–23:00** | Install CVAT, create the 3 projects (2 h). Calibrate on hero 1's roles with B (1 h). Hero 1 boxes (≈ 1.1 h). Hero 2, hero 3 (≈ 1.5 h). Time each clip | Calibrate on hero 1; label hero 2–3 roles | Upload hero 1 + its labels to the private bucket |
-| **Sun Oct 25, 09:00–20:00** | A × 4, C × 3, G × 2 (≈ 8.5 h) | Roles for those 9 | Apply the §3 split (dev = C, G, J × 1; the rest to test) |
+| **Sun Oct 25, 09:00–20:00** | A × 4, C × 3, G × 2 (272 + 120 + 90 = 482 min ≈ 8 h) | Roles for those 9 | Apply the §3 split (dev = C, G, J × 1; the rest to test) |
 | **Mon Oct 26, 08:00–17:00** | D × 3, J × 3 (≈ 3 h); fix boxes B flagged (1 h); export + back up everything | Roles for D, J; 10% box spot-check | Resolve disagreements (1.5 h); back up `~/SafeCutEval/labels/` privately |
 | Mon Oct 26, 19:00 | — | — | Kickoff. Hero + dev labels in the bucket; test labels stay local |
 

@@ -39,7 +39,7 @@ Status: **v1, 2026-10-24 (PRE-B, docs only).** Shot by shot for the beats in [DE
 | 6.2 | 1:50–2:00 | 10 s | Result page: the audit panel "`{h1_frames_scanned}` frames checked. `{h1_leaks_fixed}` leak(s) found and fixed." If a leak was fixed: before/after frames side by side | Audit text as recorded | "Then Meta's EgoBlur checks the final render, and Muse Spark tries to read anything left, before it goes live." | `SR-07`; before/after stills from WP4's audit on H1 |
 | **Beat 7: Numbers** | | | | | | |
 | 7.1 | 2:00–2:12 | 12 s | The results chart/table with the five rows of [EVAL.md](EVAL.md) §3 (blur every face, EgoBlur Gen 2, detector only, Muse Spark without tracking, Safe Cut full; plus "Safe Cut without the audit" if WP7 ran it): recall, exposure, leak bursts, over-blur. A thin line marks human agreement | Table values as committed; footer "`{n_test_clips}` clips · run `{run_id}`" | "On `{n_test_clips}` labelled test clips, Safe Cut hid `{recall_full}` of what should be hidden, with `{leak_bursts_full}` leak bursts." | `CH-01` (from `eval/report.py`) |
-| 7.2 | 2:12–2:20 | 8 s | Same chart, over-blur column highlighted | "Over-blur: `{overblur_blur_all}` → `{overblur_full}`" | "Blur every face hid `{overblur_blur_all}` of the people who should stay clear. Safe Cut: `{overblur_full}`." | `CH-01` |
+| 7.2 | 2:12–2:20 | 8 s | Same chart, over-blur column highlighted | "Over-blur: `{overblur_blur_all}` → `{overblur_full}`" | "Blur every face hid `{overblur_blur_all}` of the people and things that should stay clear. Safe Cut: `{overblur_full}`." | `CH-01` |
 | **Beat 8: Ship** | | | | | | |
 | 8.1 | 2:20–2:28 | 8 s | Approve & render → result → "Publish to Sigmora" → Sigmora's publish screen | — | "Approve, and publish straight from Sigmora." Only if the Sigmora integration is merged and `SR-09` was recorded; otherwise the frame ends on the result page and the line is "Approve, and download the result." | `SR-08` + `SR-09` |
 | 8.2 | 2:28–2:35 | 7 s | The privacy receipt: items, reasons, who approved, audit result, data handling | — | "You keep a privacy receipt: what was hidden, why, and who approved it." | `SR-07` |
@@ -58,7 +58,7 @@ Every placeholder, timings and audit counts included, must resolve to a value in
 | `{recall_full}` | entity recall, Safe Cut full, test split | `eval/results/<run-id>/metrics.json` (variant `full`) |
 | `{leak_bursts_full}` | leak bursts, Safe Cut full, test split | same |
 | `{exposure_full}` | exposure rate, Safe Cut full (in the table) | same |
-| `{overblur_full}`, `{overblur_blur_all}` | over-blur rate, full vs `blur_all` | `full` and `blur_all` runs |
+| `{overblur_full}`, `{overblur_blur_all}` | over-blur rate, full vs `blur_all`; `{overblur_full}` is always the **as-shipped** row (LABEL-FORMAT §9.3), never the suggestions-accepted one | `full` and `blur_all` runs |
 | `{n_test_clips}` | number of clips in the frozen test split | `config.json` / `eval/splits/test.sha256` |
 | `{run_id}` | the run shown | the run directory name |
 | `{kappa}` | Cohen's κ on `should_hide`, shown with the raw percent agreement (or "not measured, single labeller") | WP7's label report, committed under `eval/results/<run-id>/` |
