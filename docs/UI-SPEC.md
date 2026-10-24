@@ -29,7 +29,9 @@ Contents: [0 Principles](#0-principles-and-shared-pieces) · [1 Landing](#1-land
 
 **Time display: two clocks** (PRE-A `docs/API-NOTES.md` §5b owns the time axes; [ARCHITECTURE.md](ARCHITECTURE.md) §3.1). The prepared clip has a **constant frame rate** `job.fps` (an integer, at most 30), so everything a person sees is on the **prepared clock**: prepared frame `i` is at `i / job.fps` seconds. That covers the player and scrubber, the overlay, chip time ranges, the drawer's keyframe times, transcript lines and toasts. `job.times[i]` is the **source clock** (source seconds of the source frame that prepared frame `i` shows); the UI uses it **only** for the receipt's "source time" column, never to place anything on screen. Times are computed in integers so they never round the wrong way: whole seconds `= floor(i / fps)`, shown as `m:ss` (frame 1977 at 30 fps → `1:05`); tenths `= floor(10·i / fps)`, shown as `m:ss.s` in the Why drawer (`1:05.9`). Never show raw frame numbers outside the Why drawer's details row; frame numbers inside Muse Spark's own text are rewritten to times (§4.3).
 
-**Item label.** One rule, so the chip and the keyframe always agree. SAM 3.1's keyframes carry each track's label `<concept>:<n>` (e.g. `face:7`, `person:2`, `license plate:1`), burned in exactly as PRE-A `docs/prompts/role-pass.md` specifies, and track IDs use the same form ([ARCHITECTURE.md](ARCHITECTURE.md) §3.2). An item's **display label** is its **primary track**'s label in plain words: the primary track is its `face:*` track if it has one, otherwise the first track in `track_ids`; the label is the concept word plus `n`. Concept words: `face` → Face, `person` → Person, `license plate` → Plate, `screen` → Screen, `phone` → Phone, `document` → Document, `name badge` → Badge; any other (Muse-proposed) concept → its phrase with the first letter capitalised. So `face:7` → "Face 7", `license plate:1` → "Plate 1". Labels are unique because each concept numbers its own tracks. The drawer shows the raw label too ("On the keyframe: face:7", plus "also person:2" for the item's other tracks), so the creator can find it in the image. Items added by the audit have no keyframe label and are labelled `A1, A2, …` in order of their first frame. The UI derives every label from track IDs; it never invents a number.
+**Item label.** One rule, so the chip and the keyframe always agree. SAM 3.1's keyframes carry each track's label `<concept>:<n>` (e.g. `face:7`, `person:2`, `license plate:1`), burned in exactly as PRE-A `docs/prompts/role-pass.md` specifies, and track IDs use the same form ([ARCHITECTURE.md](ARCHITECTURE.md) §3.2). An item's **display label** is its **primary track**'s label in plain words: the primary track is its `face:*` track if it has one, otherwise the first track in `track_ids`; the label is the concept word plus `n`. Concept words: `face` → Face, `person` → Person, `license plate` → Plate, `screen` → Screen, `phone` → Phone, `document` → Document, `name badge` → Badge; any other (Muse-proposed) concept → its phrase with the first letter capitalised. So `face:7` → "Face 7", `license plate:1` → "Plate 1". Labels are unique because each concept numbers its own tracks.
+
+**Item kind.** WP3 sets `decisions.items[].kind` from the primary track's concept, and the UI relies on exactly this mapping (request 14 in §8): `face`, `person` → `person`, or `child` when the role is `child`; `license plate` → `plate`; `screen`, `phone` → `screen`; `document`, `name badge` → `document`; any other (Muse-proposed) concept → `other`. **Objects** are the kinds `plate`, `screen`, `document` and `other`; **people** are `person` and `child`. Kind words in copy: Person, Child, Number plate, Screen, Document, Other item (plural: people, children, number plates, screens, documents, items like this). The drawer shows the raw label too ("On the keyframe: face:7", plus "also person:2" for the item's other tracks), so the creator can find it in the image. Items added by the audit have no keyframe label and are labelled `A1, A2, …` in order of their first frame. The UI derives every label from track IDs; it never invents a number.
 
 **Icons.** Every state has an icon *and* a word: Hidden = filled square, Kept clear = open eye, Needs you = question mark in a circle, Locked = padlock, Demo mode = play-in-circle. Colour is never the only signal.
 
@@ -434,7 +436,7 @@ The video stays sticky at the top while the chip list scrolls. The tab that open
 
 | Part | Content | Source |
 |---|---|---|
-| Thumbnail (64×64, 96×96 on mobile) | A crop around the item at its first evidence frame, about twice the item's box, with the item itself drawn **covered** if hidden or needs-you, and **clear** if kept. The surroundings stay visible so the creator recognises the moment | `decisions.items[].evidence_frames[0]` → SoM keyframe image; box from `tracks.json` `boxes[frame]` for the item's **primary track** (its `face:*` track if it has one, otherwise its first track: the same track the label and the drawer ring use, §0), whatever order `track_ids` is in. If the primary track has no box on that frame, use the first other track of the item that does. If no track has a box there, show the neutral placeholder tile (kind icon on a grey square, no crop) and never crop around a guessed box |
+| Thumbnail (64×64, 96×96 on mobile) | A crop around the item at its first evidence frame, about twice the item's box, with the item itself drawn **covered** if hidden or needs-you, and **clear** if kept. The surroundings stay visible so the creator recognises the moment | `decisions.items[].evidence_frames[0]` → SoM keyframe image; box from `tracks.json` `boxes[frame]` for the item's **primary track** (its `face:*` track if it has one, otherwise its first track: the same track the label and the drawer ring use, §0), whatever order `track_ids` is in. If the primary track has no box on that frame, use the first other track of the item that does. If no track has a box there, show the neutral placeholder tile (kind icon on a grey square, no crop) and never crop around a guessed box. The box is in prepared-frame pixels; map it into the keyframe image with the §4.3 keyframe geometry (shift down by `bar_h`) before cropping |
 | Label | The item's display label, e.g. "Face 7", "Plate 1" (§0 Item label) | primary track ID in `track_ids` |
 | Kind | Person / Child / Number plate / Screen / Document / Other item, with its icon | `kind` |
 | Badges | 🔒 **Always hidden** if `locked`; **NEW** if one of the item's tracks has a `reentry_of` that points to a track belonging to a **different** item (after a merge the earlier track is in the same item, so the badge goes away and never shows on the merge target); **Changed by you** if `decided_by = creator` | `locked`, `tracks[].reentry_of`, `decided_by` |
@@ -453,7 +455,8 @@ All edits go through `POST /v1/jobs/{id}/review` (WP3's `apply_review`). The UI 
 |---|---|---|
 | Keep clear (on a hidden or needs-you item) | `decision → keep`, `decided_by → creator`; chip moves to Kept clear; overlay stops covering it | "{label} will be kept clear. [Undo]" (e.g. "Plate 1 will be kept clear.") |
 | Hide (on a kept or needs-you item) | `decision → hide`; chip moves to Hidden; overlay covers it, including any tracks merged into it | "{label} will be hidden. [Undo]" (e.g. "Face 2 will be hidden.") |
-| Keep clear on a **screen or document** | Same, plus a one-line confirm in place: "Only keep this clear if nothing on it is personal." [Keep clear] [Cancel] | |
+| Keep clear on an **object** (plate, screen, document or other item, §0 Item kind) | Same, plus a one-line confirm in place. Screens and documents: "Only keep this clear if nothing on it is personal." Plates and other items: "Only keep this clear if nothing on it identifies anyone." [Keep clear] [Cancel] | |
+| Keep clear on a person you removed | Same as Keep clear; the item is no longer marked removed (`removed_by_creator` → false) | "{label} will be kept clear. They're no longer removed. [Undo]" |
 | Toggle a locked child | Not possible: no toggle is rendered. The "Always hidden" text has a help link that opens the drawer at the explanation | — |
 | Same as {label}… (re-entry merge; offered only on a NEW chip whose earlier track is a kept participant's, §3.3) | A small menu lists the items that are **part of the story** (kept participants), each with its thumbnail, the suggested one first: "Same person as Face 2 (the guest)". Choosing one merges the new item into it: the NEW chip leaves the columns, its tracks show under the target (time range, overlay, Details), and the header counts drop by one | "{source label} merged into {target label}. They'll be kept clear like {target label}. [Undo]" (e.g. "Face 9 merged into Face 2. They'll be kept clear like Face 2.") |
 | Remove this person from the video | Confirm dialog (below). The item becomes hidden with the **Whole person covered** style and is marked "removed at your request" on the receipt | "{label} will be fully covered wherever they appear. [Undo]" |
@@ -613,6 +616,8 @@ On mobile, the drawer repeats the chip's action buttons at the bottom so the cre
 
 **Keyframe.** The SoM keyframe image for the selected evidence frame, with a **ring** (3 px, white with a dark edge) drawn by the UI around the item's box on that frame. Arrows step through `evidence_frames`; the dot row shows how many there are. Caption: "This is the frame Muse Spark was shown. The labels are the objects SAM 3.1 tracked." followed by "On the keyframe: {primary track ID}" and, for each other track of the item (including merged ones), "also {track ID}" (e.g. "On the keyframe: face:2 · also person:1"). If no keyframe exists for the item (e.g. an item added by the audit), show the plan box on the nearest prepared frame and the caption "Added by the audit after rendering. There's no keyframe for it."
 
+**Keyframe geometry.** The keyframe image is the Set-of-Mark image **exactly as sent** to Muse Spark: the prepared frame at its own resolution (never resized), with a black frame-number bar `bar_h` pixels tall **above** it, so the image is `job.width × (job.height + bar_h)` (PRE-A `docs/API-NOTES.md` §5 and §10.6; `bar_h = 40`). Track boxes are in prepared-frame pixels, so to draw the ring (or crop the thumbnail) on the image: `x_img = x`, `y_img = y + bar_h`, and then on screen multiply both by `s = displayed image width / image natural width`. The UI reads `bar_h` from `keyframe_geometry.bar_h` (*proposal*, §8 request 13) and checks that the loaded image's natural size is `job.width × (job.height + bar_h)`. If it isn't, it shows the image without a ring plus "The keyframe's size doesn't match this clip, so the outline is hidden.", never a misplaced ring. Test case: `job` 1280×720, `bar_h` 40, image 1280×760 shown 640 px wide (s = 0.5), box `[600, 200, 660, 250]` → ring at `[300, 120, 330, 145]` on screen.
+
 **"Why it's hidden / kept clear / needs you".** The `reason`, then one fixed sentence by case:
 
 | Case | Fixed sentence |
@@ -620,15 +625,15 @@ On mobile, the drawer repeats the chip's action buttons at the bottom so the cre
 | Hidden, bystander | People who aren't part of the story are hidden by default. |
 | Hidden, child (`locked`) | Children are always hidden. You can't change this, because Safe Cut can't check a parent's consent. |
 | Hidden, new ID after re-entry | The tracker lost this person and found them again. Anyone found again starts hidden until you say who they are. |
-| Hidden, plate / screen / document | Number plates, private screens and documents are always hidden unless you decide otherwise. |
+| Hidden, object (plate, screen, document or other item) | Number plates, private screens, documents and other identifying items are hidden unless you decide otherwise. |
 | Kept clear, participant | All three checks agreed this person is part of the story, on at least two keyframes. |
 | Kept clear by you | You chose to keep this clear. |
-| Needs you, harmless screen or document | Muse Spark read this as nothing personal, but screens and documents are only kept clear when you confirm. |
+| Needs you, harmless object (any object kind: all three checks said `sensitive: false`, PRE-A TEST-VECTORS B1) | Muse Spark read this as nothing personal, but {kind word, plural} are only kept clear when you confirm. (e.g. "…but number plates are only kept clear when you confirm.") |
 | Needs you, votes disagreed (`role: unsure`) or any other reason | The checks didn't all agree, so Safe Cut couldn't decide on its own. It stays hidden unless you keep it clear. |
-| Removed at your request | You asked to remove this person. They're fully covered everywhere they appear. |
+| Removed at your request (only while `removed` and `decision = hide`) | You asked to remove this person. They're fully covered everywhere they appear. |
 | Added by the audit | The final check found this after rendering and covered it. |
 
-**"What Muse Spark said (n checks)".** One mark per vote in `votes`, each with its role word (Part of the story / Not part of the story / Child / Not sure); ✓ when it matches the final role, ✕ otherwise. Then Muse Spark's `evidence` text in quotes, with its frame references rewritten to clip times (below). The quoted `evidence` is always the **role pass's** text; the escalation's own words live in separate fields, so neither overwrites the other. `escalated` is `true` only when the escalation call ran and returned a valid ruling (PRE-A `docs/prompts/escalation.md` rule 4); a failed call, invalid cited frames (rules 3 and 5) or a call skipped for budget leave `escalated: false` and `suggested_role: null`, and then the drawer shows **nothing** about escalation (it never claims a look that didn't happen). If `escalated`: "The checks disagreed, so Muse Spark took a longer, closer look once." and then, from the track's `suggested_role`: when it isn't null, "A longer, closer look suggests: {role word}. You decide." followed by `escalation_evidence` in quotes (frame references rewritten the same way; its `escalation_frames` become extra steps in the keyframe arrows); when it's null (the ruling was `unsure`), "A longer, closer look couldn't settle it." A suggestion never changes the item's column or decision: only the creator's tap does. For objects (screens, documents, phones, badges **and plates**, which PRE-A `docs/prompts/role-pass.md` has Muse Spark judge as objects: `sensitive` + `content`): "Muse Spark read it as: {content}" and "Personal: yes/no" from `objects[].sensitive`, in place of the vote marks. For a plate, add "Number plates are hidden by default. Only you can keep one clear." A plate isn't locked: the creator can keep it clear with one tap, without the screen/document confirm (§3.4).
+**"What Muse Spark said (n checks)".** One mark per vote in `votes`, each with its role word (Part of the story / Not part of the story / Child / Not sure); ✓ when it matches the final role, ✕ otherwise. Then Muse Spark's `evidence` text in quotes, with its frame references rewritten to clip times (below). The quoted `evidence` is always the **role pass's** text; the escalation's own words live in separate fields, so neither overwrites the other. `escalated` is `true` only when the escalation call ran and returned a valid ruling (PRE-A `docs/prompts/escalation.md` rule 4); a failed call, invalid cited frames (rules 3 and 5) or a call skipped for budget leave `escalated: false` and `suggested_role: null`, and then the drawer shows **nothing** about escalation (it never claims a look that didn't happen). If `escalated`: "The checks disagreed, so Muse Spark took a longer, closer look once." and then, from the track's `suggested_role`: when it isn't null, "A longer, closer look suggests: {role word}. You decide." followed by `escalation_evidence` in quotes (frame references rewritten the same way; its `escalation_frames` become extra steps in the keyframe arrows); when it's null (the ruling was `unsure`), "A longer, closer look couldn't settle it." A suggestion never changes the item's column or decision: only the creator's tap does. For objects (screens, documents, phones, badges **and plates**, which PRE-A `docs/prompts/role-pass.md` has Muse Spark judge as objects: `sensitive` + `content`): "Muse Spark read it as: {content}" and "Personal: yes/no" from `objects[].sensitive`, in place of the vote marks. For a plate, add "Number plates are hidden by default. Only you can keep one clear." A plate isn't locked: the creator can keep it clear, after the same one-line confirm as every object (§3.4).
 
 **Frame references in Muse Spark's text.** The role pass cites frames only by the number burned into each keyframe (PRE-A `docs/prompts/role-pass.md`), which is a prepared-frame index, so the drawer rewrites every reference before showing the text. The rewrite works sentence by sentence (a sentence ends at `.`, `;` or the end of the string) and is case-insensitive. `N` below means a run of digits; each converted `N` becomes `m:ss` on §0's prepared clock, and a range `N–N` becomes `m:ss–m:ss` (an en dash, whether the source used `-` or `–`).
 1. **"frame"/"frames" followed by numbers.** `\bframes?\s+` followed by a **list** of numbers or ranges, separated by `,`, `and` or `, and` (regex for one element: `\d+(?:\s*[–-]\s*\d+)?`). The word "frame(s)" is dropped and every element is converted: "frames 90 and 120" → "0:03 and 0:04"; "frames 90, 120 and 150" → "0:03, 0:04 and 0:05"; "frames 120–600" → "0:04–0:20".
@@ -642,9 +647,18 @@ On mobile, the drawer repeats the chip's action buttons at the bottom so the cre
 
 The role-pass prompt asks Muse Spark to cite frames as "F nnnnnn" (PRE-A `docs/prompts/role-pass.md`), so rule 2 is the common case. The unedited text stays in the Details row ("Muse Spark's words: …"). Test cases: §10.6.
 
+**Precedence:** the first row that matches wins, in this order: Added by the audit → Removed at your request → Hidden, child → Kept clear by you / Hidden by you (`decided_by = creator`) → the rest. A removed person the creator later keeps clear is no longer `removed` (§3.4), so they get "Kept clear by you", never the Removed sentence.
+
 There's no "Hidden, votes disagreed" case: a track whose votes disagree becomes `role: unsure` and the item goes to **Needs you**, never to Hidden on its own ([DESIGN.md](DESIGN.md) §2.3; PRE-A `docs/prompts/escalation.md` rules 3–4).
 
-**"What was said while {label} was on screen".** Transcript turns that overlap the item's on-screen time (§4.6), max 4, each as `m:ss S# "text"`, where `m:ss` is `floor(turn.start)` on the prepared clock (turn times are prepared-clock seconds, PRE-A §5b step 4). If the item's primary track has `matches_participant = k` (an index into `scene.participants`, set by the role pass, PRE-A `docs/prompts/role-pass.md`) and `scene.participants[k].speaker` is set, mark that speaker's lines with "said by {label}". Otherwise end with "No speech is linked to {label}." If there's no transcript: "No speech was found in this clip." If `job.audio` is `false`, the whole section is replaced by "This clip has no sound." Text is shown as heard; long turns are cut at 140 characters with "…".
+**"What was said while {label} was on screen".** Transcript turns that overlap the item's on-screen time (§4.6), max 4, each as `m:ss S# "text"`, where `m:ss` is `floor(turn.start)` on the prepared clock (turn times are prepared-clock seconds, PRE-A §5b step 4). If the item's primary track has `matches_participant = k` (an index into `scene.participants`, set by the role pass, PRE-A `docs/prompts/role-pass.md`) and `scene.participants[k].speaker` is set, mark that speaker's lines with "said by {label}". Otherwise end with "No speech is linked to {label}." If there's no transcript: "No speech was found in this clip." If `job.audio` is `false`, the whole section is replaced by "This clip has no sound."
+
+**Limited speech check.** When `transcript.degraded` is `true` (PRE-A `docs/prompts/speech-fallback.md`: Voice Transcribe failed or the audio was dropped) or `transcript.source` is the Muse Spark fallback (`muse-spark-1.2`):
+- the heading becomes "What was probably said (speech check was limited)";
+- an empty `turns` list shows "Speech couldn't be checked reliably for this clip.", never "No speech was found";
+- fallback turn times are untrusted (PRE-A: ±1.5 s), so the overlap window widens by 1.5 s on each side (§4.6), and each line's time is shown as "about m:ss" (e.g. "about 0:12 S2 \"Hi, I'm Amina\"").
+
+Precedence: "This clip has no sound." (`job.audio: false`) → limited-check copy → normal copy. Text is shown as heard; long turns are cut at 140 characters with "…".
 
 **"Details"** (collapsed by default on mobile): `Decided by {Safe Cut's rules | Muse Spark | You}` · `Cover: {style word}` · `Tracks: {track_ids}` · `Frames {first}–{last}` · `Muse Spark's words: "{evidence, unedited}"` · `Models: {receipt-style model list}`. This is the only place raw IDs and frame numbers appear.
 
@@ -654,6 +668,8 @@ There's no "Hidden, votes disagreed" case: a track whose votes disagree becomes 
 |---|---|
 | Loading the keyframe | The keyframe box with a neutral fill and "Loading the keyframe…" |
 | Keyframe failed | "The keyframe didn't load." The rest of the drawer still shows |
+| Keyframe size doesn't match the clip (§4.3 keyframe geometry) | The image without a ring, and "The keyframe's size doesn't match this clip, so the outline is hidden." The rest of the drawer still shows |
+| Limited speech check (`transcript.degraded` or the Muse Spark fallback) | Heading "What was probably said (speech check was limited)"; lines timed "about m:ss"; an empty list shows "Speech couldn't be checked reliably for this clip." (§4.3) |
 | No votes (an object such as a plate, screen or document; or an audit-added item) | Objects show "Muse Spark read it as …" and "Personal: yes/no" in place of the votes (§4.3). An audit-added item shows the fixed sentence for its case |
 | Demo mode | Same content, from the replayed hero job |
 
@@ -670,12 +686,13 @@ There's no "Hidden, votes disagreed" case: a track whose votes disagree becomes 
 | Element | Source |
 |---|---|
 | Keyframe image | `roles.json` `keyframes[]` (the `som/*.jpg` matching the evidence frame), served by WP5 as a URL |
-| Ring position | `tracks.json` `tracks[track_id].boxes[frame]` for the item's tracks on that frame |
+| Ring position | `tracks.json` `tracks[track_id].boxes[frame]` for the item's tracks on that frame, mapped into the image with the keyframe geometry (§4.3: `y + bar_h`, then the display scale); `bar_h` from `keyframe_geometry` (*proposal*, §8 request 13) |
 | Evidence frames | `decisions.items[].evidence_frames` (falls back to `roles.tracks[].frames`) |
 | Reason | `decisions.items[].reason` |
 | Votes, evidence, escalation | `roles.json` `tracks[]`: `votes`, `role`, `evidence` (role pass only), `escalated` (true only for a returned ruling), `suggested_role` (nullable; PRE-A escalation.md), `escalation_evidence` and `escalation_frames` (nullable; *proposal*, request 3 in §8) for each track in `track_ids`; show the primary track first |
 | Object content | `roles.json` `objects[]`: `sensitive`, `content`, for screens, documents, phones, badges and plates (`license plate:` tracks; PRE-A role-pass.md) |
-| Transcript | `transcript.json` `turns[]` whose span overlaps the item's prepared-clock span `[first / job.fps, (last + 1) / job.fps)`: a turn overlaps when `turn.start < (last + 1) / job.fps` and `turn.end ≥ first / job.fps`. Turn times are prepared-clock seconds, because the ASR audio is extracted from `prepared.mp4` (PRE-A `docs/API-NOTES.md` §5b step 4) |
+| Transcript | `transcript.json` `turns[]` whose span overlaps the item's prepared-clock span `[first / job.fps, (last + 1) / job.fps)`: a turn overlaps when `turn.start < (last + 1) / job.fps` and `turn.end ≥ first / job.fps`. Turn times are prepared-clock seconds, because the ASR audio is extracted from `prepared.mp4` (PRE-A `docs/API-NOTES.md` §5b step 4). For a limited transcript (`degraded: true` or `source: muse-spark-1.2`) the window is `[first / job.fps − 1.5, (last + 1) / job.fps + 1.5)` |
+| Transcript quality | `transcript.json` `source` (ARCHITECTURE §3.3) and `degraded` (boolean, default false; PRE-A speech-fallback.md adds it to the §3.3 contract) |
 | Speaker link | `roles.json` `tracks[].matches_participant` (nullable index into `scene.participants`; PRE-A role-pass.md) → `scene.json` `participants[k].speaker` |
 | Decided by, style, locked | `decisions.items[]` |
 | Models | `receipt.json` `models` (or the job's config before a receipt exists) |
@@ -873,6 +890,8 @@ The API ([WP5](work-packages/WP5.md)) hasn't been written; these are the fields 
 10. **WP5:** reset `SAFECUT_DAILY_USD_CAP` spending at **00:00 UTC** each day *(decision for the copy "Try again tomorrow", §2.6)*, and include `retry_at` on `daily_cap` errors.
 11. **WP4/WP5:** add `audit.redteam_status` (`ok` \| `failed` \| `over_budget`) *(proposal)*, so the result page can tell PRE-A redteam.md's "audit couldn't run" and "audit over budget" apart from real unresolved spots; and accept `POST /v1/jobs/{id}/render` with `audit_only: true` to re-run the audit on the existing render *(proposal)*.
 12. **WP6 brief owner:** WP6 step 4 says the overlay maps frames "via `job.times`"; that is superseded by PRE-A `docs/API-NOTES.md` §5b, where the player uses `i / job.fps` and `job.times` holds source seconds (§3.6 here).
+13. **WP2/WP5:** expose the keyframe image geometry with the job: `keyframe_geometry: {bar_h, width, height}` (*proposal*; today `bar_h = 40` and the image is `job.width × (job.height + bar_h)`, PRE-A API-NOTES §5), so the ring and thumbnails land on the right pixels (§4.3).
+14. **WP3:** set `decisions.items[].kind` with the §0 concept → kind mapping (`license plate` → `plate`; `screen`, `phone` → `screen`; `document`, `name badge` → `document`; Muse-proposed concepts → `other`), and send every object whose three checks all said `sensitive: false` to `needs_you`, never `keep` (PRE-A TEST-VECTORS B1, DESIGN §2.5).
 
 ---
 
@@ -918,6 +937,9 @@ One file per screen state. Component and page tests load these through the API c
 | `job-done-edited.json` | `GET /v1/jobs/{id}` (`status: "review"` after an edit made in `done` with `?view=review`) | the §3.5 "You changed something after rendering…" bar |
 | `job-review-200-items.json` | `GET /v1/jobs/{id}` | the performance case in §10.7 |
 | `job-review-no-audio.json` | `GET /v1/jobs/{id}` (`job.audio: false`, no `transcript`) | drawer shows "This clip has no sound." |
+| `job-review-speech-limited.json` | `GET /v1/jobs/{id}` (hero mock with `transcript: {"source": "muse-spark-1.2", "degraded": true, "turns": []}`) | drawer heading "What was probably said (speech check was limited)" and "Speech couldn't be checked reliably for this clip." (§4.3) |
+| `job-review-speech-fallback.json` | hero mock with `transcript.source: "muse-spark-1.2"`, `degraded: false`, one turn at 0.2–0.3 s | the turn is shown as "about 0:00" and overlaps items up to 1.5 s away (§4.6) |
+| `job-review-keyframe-mismatch.json` | hero mock with `keyframe_geometry.height` 720 (no bar) | drawer shows the image without a ring and "The keyframe's size doesn't match this clip, so the outline is hidden." (§4.3) |
 | `job-replay.json` | `GET /v1/jobs/{id}` (`mode: "replay"`) | demo-mode banner (§6) on the review panel |
 | `job-rendering-audit.json` | `GET /v1/jobs/{id}` (`stage: "audit"`) | §3.5 bottom bar replaced by the render stages; chips read-only |
 | `result-clean.json` | `GET /v1/jobs/{id}/result` | §5.3 "No leaks found." |
@@ -948,7 +970,7 @@ Error body *(proposal)*: `{"error": {"code": "<snake_case>", "message": "<for lo
   "job_id": "j_hero1", "mode": "live", "status": "review", "stage": "review", "progress": 1.0,
   "deletes_at": "2026-10-28T11:00:00Z",
   "job": {"fps": 30, "width": 1280, "height": 720, "frames": 12, "audio": true,
-          "times": [0.0, 0.0333, 0.0667, 0.1, 0.1333, 0.1667, 0.2, 0.2333, 0.2667, 0.3, 0.3333, 0.3667],
+          "times": [0.0, 0.03333333333333333, 0.06666666666666667, 0.1, 0.13333333333333333, 0.16666666666666666, 0.2, 0.23333333333333334, 0.26666666666666666, 0.3, 0.3333333333333333, 0.36666666666666664],
           "created_at": "2026-10-27T10:00:00Z",
           "prepared_url": "https://example.invalid/j_hero1/prepared.mp4"},
   "items": [
@@ -990,13 +1012,14 @@ Error body *(proposal)*: `{"error": {"code": "<snake_case>", "message": "<for lo
     "objects": [{"track_id": "license plate:1", "sensitive": true, "content": "number plate, characters legible", "frames": [1]}],
     "missed": [], "keyframes": ["som/000001.jpg", "som/000003.jpg", "som/000006.jpg", "som/000009.jpg"]
   },
+  "keyframe_geometry": {"bar_h": 40, "width": 1280, "height": 760},
   "keyframe_urls": {"1": "https://example.invalid/j_hero1/som/000001.jpg", "3": "https://example.invalid/j_hero1/som/000003.jpg",
                     "6": "https://example.invalid/j_hero1/som/000006.jpg", "9": "https://example.invalid/j_hero1/som/000009.jpg"},
   "plan": {"frames": {"1": [{"item_id": "i_3", "shape": "box", "box": [1042, 552, 1158, 598], "mask": null, "style": "solid", "grid": null}],
                       "6": [{"item_id": "i_2", "shape": "box", "box": [894, 193, 946, 257], "mask": null, "style": "solid", "grid": null}],
                       "9": [{"item_id": "i_4", "shape": "box", "box": [692, 140, 758, 225], "mask": null, "style": "pixelate", "grid": [692, 140, 11]}]},
            "crowd_fills": []},
-  "transcript": {"source": "muse-voice-transcribe-1.0",
+  "transcript": {"source": "muse-voice-transcribe-1.0", "degraded": false,
                  "turns": [{"speaker": "S1", "start": 0.0, "end": 0.1, "text": "So, who are you?"},
                            {"speaker": "S2", "start": 0.1, "end": 0.3, "text": "Hi, I'm Amina, and today…"}]},
   "scene": {"model": "muse-spark-1.3", "summary": "street interview with a guest",
@@ -1053,7 +1076,7 @@ The `plan` lists only a few frames to stay short; frames it leaves out simply dr
 
 `i_6` is in the plan because `needs_you` renders hidden until the creator decides (ARCHITECTURE §3.6).
 
-*(proposal)* fields beyond ARCHITECTURE §3: `job_id`, `mode`, `status`, `stage`, `progress` (0–1), `deletes_at`, `retry_at`, `job.prepared_url`, `keyframe_urls` (frame → signed URL), `items[].removed_by_creator` (§8 request 9), `failure: {stage, reason}` (§8 request 1), `roles.tracks[].escalation_evidence` and `escalation_frames` (§8 request 3), `audit.redteam_status` (§8 request 11), and on review edits `edit_id` plus `reverts` (§8 request 5). **PRE-A's additions** (decided in its prompt specs; WP0 adds them to `contracts.py`): `roles.tracks[].matches_participant` (role-pass.md) and `suggested_role` (escalation.md); `scene.participants[].is_creator`, `scene.children[]`, `scene.others_present`, and the `approx_time` enum on `scene.candidate_objects[]` (scene-pass.md). Everything else is the ARCHITECTURE §3 contract shape.
+*(proposal)* fields beyond ARCHITECTURE §3: `job_id`, `mode`, `status`, `stage`, `progress` (0–1), `deletes_at`, `retry_at`, `job.prepared_url`, `keyframe_urls` (frame → signed URL), `items[].removed_by_creator` (§8 request 9), `keyframe_geometry` (§8 request 13), `failure: {stage, reason}` (§8 request 1), `roles.tracks[].escalation_evidence` and `escalation_frames` (§8 request 3), `audit.redteam_status` (§8 request 11), and on review edits `edit_id` plus `reverts` (§8 request 5). **PRE-A's additions** (decided in its prompt specs; WP0 adds them to `contracts.py`): `roles.tracks[].matches_participant` (role-pass.md) and `suggested_role` (escalation.md); `scene.participants[].is_creator`, `scene.children[]`, `scene.others_present`, and the `approx_time` enum on `scene.candidate_objects[]` (scene-pass.md). Everything else is the ARCHITECTURE §3 contract shape.
 
 **Mock invariants** (a mock test checks them): `job.fps` is an integer from 1 to 30; `times` has `frames` entries, all finite and non-decreasing (§3.6); every frame number is in `[0, frames − 1]`; every `track_ids` entry exists in `tracks`; every evidence frame is in `roles.keyframes` and in `keyframe_urls`, with a box for the item's primary track on that frame; every `plan` region's `item_id` exists; every `reentry_of` names an existing track; every item has `removed_by_creator`; `scene` has every field of PRE-A's scene-pass.md schema; every `roles.objects[]` entry names an existing track. `example.invalid` is a reserved non-resolving domain, so a mock can never fetch real media.
 
@@ -1124,8 +1147,8 @@ Transitions follow the server: `loading → processing → review → rendering 
 
 | Action | Precondition | Effect |
 |---|---|---|
-| `KEEP(id)` | `merged_into = null`; not `locked`; `decision ≠ keep` | `kind ∈ {screen, document}`: sets `confirm = {id}` only; no request yet. Any other kind (person, plate, other): `decision = keep`, `decided_by = creator`, edit sent |
-| `CONFIRM_KEEP` | `confirm` is set and its item still passes `KEEP`'s precondition | `decision = keep`, `decided_by = creator`, edit sent; `confirm = null` |
+| `KEEP(id)` | `merged_into = null`; not `locked`; `decision ≠ keep` | object kinds (`plate`, `screen`, `document`, `other`; §0 Item kind): sets `confirm = {id}` only; no request yet. People (`person`): `decision = keep`, `decided_by = creator`, **`removed = false`**, edit sent |
+| `CONFIRM_KEEP` | `confirm` is set and its item still passes `KEEP`'s precondition | `decision = keep`, `decided_by = creator`, `removed = false`, edit sent; `confirm = null` |
 | `CANCEL_CONFIRM` | `confirm` is set | `confirm = null`; nothing sent |
 | `HIDE(id)` | `merged_into = null`; `decision ≠ hide` | `decision = hide`, `decided_by = creator`; items merged into it follow (effective decision); edit sent |
 | `MERGE(src, dst)` | **all of:** `src ≠ dst`; `src.kind = person`; `src` not `locked`; `src.merged_into = null`; `src.reentry_target` is set **and** that item is `kind = person`, `decision = keep`, `role = participant` (this is when the chip offers the merge, §3.3); `dst.kind = person`; `dst.decision = keep`; `dst.role = participant`; `dst` not `locked`; `dst.merged_into = null` | `src.merged_into = dst`, `decided_by = creator`; `src` leaves the columns; `dst` shows `src`'s tracks (time range, overlay, drawer); header counts drop by one; edit sent |
@@ -1160,7 +1183,8 @@ Children are never `MERGE` sources or targets: a child is `kind = child`, which 
 | R1 | café mock: i_6 menu screen, needs_you | `KEEP(i_6)` | `confirm = {i_6}`; inline "Only keep this clear if nothing on it is personal."; no request yet |
 | R2 | R1 state | `CONFIRM_KEEP` | i_6 keep, creator; chip in Kept clear; toast "Screen 3 will be kept clear. [Undo]"; one request; `confirm = null` |
 | R2b | R1 state | `CANCEL_CONFIRM` | i_6 unchanged (needs_you); `confirm = null`; no request |
-| R2c | hero mock: i_3 plate, hide | `KEEP(i_3)` | i_3 keep, creator, **no confirm** (plates aren't screens or documents); toast "Plate 1 will be kept clear. [Undo]"; one request |
+| R2c | hero mock: i_3 plate, hide | `KEEP(i_3)` | `confirm = {i_3}`; inline "Only keep this clear if nothing on it identifies anyone."; no request yet (every object kind confirms, §3.4) |
+| R2d | R2c state | `CONFIRM_KEEP` | i_3 keep, creator; toast "Plate 1 will be kept clear. [Undo]"; one request |
 | R3 | i_2 locked child | `KEEP(i_2)` | no change; **no request**; no toast (the button isn't rendered; this guards keyboard and devtools paths) |
 | R4 | i_4 needs_you | `HIDE(i_4)` | hide, creator; chip in Hidden; toast "Face 6 will be hidden. [Undo]" |
 | R5 | R4 state (acknowledged) | `UNDO(R4)` | i_4 back to needs_you, decided_by model; chip in Needs you; toast "Undone."; one `undo` edit sent with a new `edit_id` and `reverts` = R4's `edit_id` |
@@ -1176,6 +1200,7 @@ Children are never `MERGE` sources or targets: a child is `kind = child`, which 
 | R12b | i_9, i_7 a bystander the creator kept (`role = bystander`, keep) | `MERGE(i_9, i_7)` | rejected (target isn't a participant) |
 | R12c | i_9 with an edit pending | `MERGE(i_9, i_1)` | rejected by the pending-edit guard; no request |
 | R13 | i_1 kept participant | `REMOVE_PERSON(i_1)` (after the dialog's [Remove]) | i_1 hide, removed, Whole person covered; toast "Face 2 will be fully covered wherever they appear. [Undo]" |
+| R13b | R13 state (acknowledged) | `KEEP(i_1)` | i_1 keep, creator, `removed = false` (the edit clears `removed_by_creator`); no confirm (a person); toast "Face 2 will be kept clear. They're no longer removed. [Undo]"; drawer shows "Kept clear by you", not the Removed sentence |
 | R14 | i_4 needs_you | `HIDE(i_4)` then `SERVER_REJECT` | back to needs_you; toast "That change didn't save. Check your connection and try again." |
 | R15 | i_4 needs_you | `HIDE(i_4)` then `SERVER_ACK` with server items | items replaced by the server's; plan replaced; overlay redraws from the new plan |
 | R16 | `rendering = true` | any mutating action | rejected by the guard; no request; note "Changes are paused while we render." |
@@ -1199,16 +1224,16 @@ Children are never `MERGE` sources or targets: a child is `kind = child`, which 
 | Just below the next switch | `0.0583` | 1.999 | 1 |
 | Just above it | `0.0584` | 2.002 | 2 |
 
-**`job.times` checks** (§3.6). These decide only whether the panel draws; `times` never moves the overlay.
+**`job.times` checks** (§3.6). These decide only whether the panel draws; `times` never moves the overlay. Times in every mock and test are full-precision doubles (the shortest repr that round-trips, e.g. `0.03333333333333333`), never rounded: WP7 matches `times` to source timestamps within 1e-6, and a 4-decimal list fails that check ([LABEL-FORMAT.md](labeling/LABEL-FORMAT.md) §2, vector M8). The UI's own checks don't need full precision, but mocks copy the real shape.
 
 | Case | `job.frames` | `times` | Expected |
 |---|---|---|---|
-| CFR source | 4 | `[0.0, 0.0333, 0.0667, 0.1]` | valid |
+| CFR source | 4 | `[0.0, 0.03333333333333333, 0.06666666666666667, 0.1]` | valid |
 | VFR source with a repeat (PRE-A T6a, `job.fps` 10) | 4 | `[0.00, 0.10, 0.10, 0.26]` | **valid** (repeats are allowed) |
 | First frame above 0 (PRE-A T6c) | 4 | `[0.04, 0.10, 0.10, 0.10]` | **valid** |
 | Decreasing | 3 | `[0.0, 0.10, 0.05]` | unexpected-error page, overlay not drawn |
-| Wrong length | 5 | `[0.0, 0.0333, 0.0667, 0.1]` | unexpected-error page |
-| Not finite | 3 | `[0.0, NaN, 0.0667]` (or `null`) | unexpected-error page |
+| Wrong length | 5 | `[0.0, 0.03333333333333333, 0.06666666666666667, 0.1]` | unexpected-error page |
+| Not finite | 3 | `[0.0, NaN, 0.06666666666666667]` (or `null`) | unexpected-error page |
 | `job.fps` not an integer 1–30 | — | `job.fps = 29.97` or `60` | unexpected-error page (PRE-A §5b: `job.fps = min(30, round(source fps))`) |
 
 **Display times** (§0, integer arithmetic, `job.fps = 30`):
@@ -1250,7 +1275,10 @@ Children are never `MERGE` sources or targets: a child is `kind = child`, which 
 | 200 items | each column virtualises its list above 100 chips (only visible chips are in the DOM, with an accessible count in the column header); the overlay draws at most 200 regions per frame, and `crowd_fills` count as one region each; keyboard order still visits every chip |
 | Very long `reason` | chip clamps to 2 lines with "…"; the full text is in the drawer and in the chip's accessible name |
 | Missing keyframe URL | drawer shows "The keyframe didn't load." (§4.4); the rest of the drawer works |
-| Empty transcript (`turns: []`) | drawer: "No speech was found in this clip." |
+| Empty transcript (`turns: []`, `degraded: false`, Voice Transcribe) | drawer: "No speech was found in this clip." |
+| Empty and limited transcript (`degraded: true`, or `source: muse-spark-1.2`) | drawer: "Speech couldn't be checked reliably for this clip." under the limited-check heading (§4.3) |
+| Keyframe image size ≠ `job.width × (job.height + bar_h)` | image without a ring, plus "The keyframe's size doesn't match this clip, so the outline is hidden." |
+| Harmless plate (`sensitive: false` ×3) | Needs you, "…but number plates are only kept clear when you confirm."; Keep clear asks the object confirm |
 | `job.audio: false` | drawer section replaced by "This clip has no sound." |
 | No `scene`, or `matches_participant` null | the "said by {label}" link is never shown; nothing else changes |
 | `plan.frames` has no entry for a frame | draw nothing on that frame; no error (frames with nothing to cover are left out of the plan) |

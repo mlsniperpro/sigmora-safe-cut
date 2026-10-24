@@ -19,7 +19,7 @@ You are labelling **roles from behaviour and context**, never identity. Don't wr
 
 An **entity** is one person or one object a reviewer would discuss. Label each one **once per clip**, even if it leaves and comes back (that's what the `reentry` difficulty tag is for).
 
-Label a **person** when their head is visible and at least **24 px tall at the source resolution** (1080p) on at least one frame. Smaller heads are not entities; write "N far faces below threshold" in the clip `notes`. Label an **object** (plate, screen, document, address, photo) when **any text, digit or face on it is legible at source resolution on at least one frame** (pause and zoom to check). An object nobody could read is not an exposure; mention it in `notes`.
+Label a **person** when their head is visible and at least **24 px tall at 1080p-equivalent** on at least one frame. On the source that's `24 × short_side / 1080` px, where `short_side` is the smaller of the clip's displayed width and height (rotation applied, as CVAT shows it). Using the short side means portrait and landscape clips of the same quality get the same threshold. Worked conversions: 1920×1080 → **24 px**; 3840×2160 (4K) → **48 px**; 1280×720 → **16 px**; portrait 1080×1920 → **24 px**. Smaller heads are not entities; write "N far faces below threshold" in the clip `notes`. Label an **object** (plate, screen, document, address, photo) when **any text, digit or face on it is legible at source resolution on at least one frame** (pause and zoom to check). An object nobody could read is not an exposure; mention it in `notes`.
 
 ### 2.1 Categories
 
@@ -117,7 +117,7 @@ Add every tag that applies (`difficulty` in the label JSON):
 
 | Tag | When |
 |---|---|
-| `small` | the head or object is under 48 px tall at 1080p on most of its frames |
+| `small` | the head or object is under 48 px tall at 1080p-equivalent (`48 × short_side / 1080` px on the source, as in §2: 96 px at 4K, 32 px at 720p) on most of its frames |
 | `occluded` | more than a third of it is hidden for at least 1 s |
 | `reentry` | it leaves the frame or is fully hidden, then comes back |
 | `motion_blur` | it is smeared on at least 5 frames |

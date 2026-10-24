@@ -108,6 +108,16 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#72 (win audit 5)**: Unsupported claims shown to users ("doesn't train on it", "storage off", "every frame"). Fix: UI-SPEC §1.3, §2, §5; PILOTS §4; STORYBOARD 6.2.
 - [x] **#73 (win audit 5)**: Thumbnail used `track_ids[0]`, not the primary track. Fix: UI-SPEC §3.3.
 - [P] **#74 (win audit 5)**: Stale cross-doc statements (WIN #25/#31, SCHEDULE 4-clip subset, WP6 step 4; PRE-A's BLOCKED-PRE-A line 3 and WIN row 56). Fix: PRE-B side fixed (WIN #25/#31, SCHEDULE §3, UI-SPEC request 12). PRE-A side: BLOCKED-PRE-A line 3 still points to the old root BLOCKED.md and PRE-A WIN row 56 is still open; both are PRE-A's files, and PRE-A's session isn't reachable from here, so they're listed for PRE-A in PR #2.
+- [x] **#75 (win audit 6)**: Clip ID = "first 7 characters" broke hero IDs. Fix: LABEL-FORMAT §1, §6.1, §7 (one regex).
+- [x] **#76 (win audit 6)**: Ring and thumbnail ignored the keyframe's 40 px frame-number bar. Fix: UI-SPEC §4.3 geometry, `keyframe_geometry`, request 13.
+- [x] **#77 (win audit 6)**: Removed person kept clear still counted as removed. Fix: UI-SPEC §3.4, §10.5 R13b.
+- [x] **#78 (win audit 6)**: Degraded or fallback transcript shown as "no speech" with exact times. Fix: UI-SPEC §4.3–4.6, mocks.
+- [x] **#79 (win audit 6)**: Over-blur had no per-frame definition or test vectors. Fix: LABEL-FORMAT §9.3 (≥ 0.50; O1–O4).
+- [x] **#80 (win audit 6)**: Harmless non-screen objects got the wrong drawer sentence; concept→kind unmapped. Fix: UI-SPEC §0, §3.4, §4.3, request 14.
+- [x] **#81 (win audit 6)**: Mock and §10.6 times were rounded (fails M8). Fix: UI-SPEC §10.1, §10.6.
+- [x] **#82 (win audit 6)**: Consent note promised per-call data handling the receipt doesn't record. Fix: PILOTS §4.
+- [x] **#83 (win audit 6)**: Cut plans kept VO that breaks 150 wpm. Fix: RULES-CHECKLIST §4 cut-version VO table.
+- [x] **#84 (win audit 6)**: Person size threshold ambiguous for 4K and portrait. Fix: LABELING-GUIDE §2, §4; LABEL-FORMAT LBL020, X20.
 
 ## 4. Which builder reads what
 
