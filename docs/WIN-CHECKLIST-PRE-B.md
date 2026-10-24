@@ -138,6 +138,15 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#102 (win audit 8)**: Sunday labelling hours didn't follow the table. Fix: SCHEDULE §3 (≈ 8 h).
 - [x] **#103 (win audit 8)**: Remove person: person-only in one place, person and child in another. Fix: UI-SPEC §3.1 overflow menu.
 - [x] **#104 (win audit 8)**: Result wireframe dropped the "of {frames}" denominator. Fix: UI-SPEC §5.1–5.2.
+- [x] **#105 (win audit 9)**: One-keyframe row missing from the drawer's precedence list. Fix: UI-SPEC §4.3.
+- [x] **#106 (win audit 9)**: Escalation sentence said "checks disagreed" for a unanimous one-keyframe case. Fix: UI-SPEC §4.3.
+- [x] **#107 (win audit 9)**: Too-long or broken clips found after upload had no failure reason; client and server limits differed. Fix: UI-SPEC §2.6, §10.2, §10.3 (`too_long`/`too_large`/`bad_media`; one 60.05 s rule), request 17.
+- [x] **#108 (win audit 9)**: Nov 3 recordings would exceed the $3/day public cap. Fix: STORYBOARD §3 (owner recording code, $6 cap).
+- [x] **#109 (win audit 9)**: "Review them" for unresolved audit spots led to a panel with nothing to fix. Fix: UI-SPEC §3.3 "Unfixed spot" chips, `cover_spot`, request 18.
+- [x] **#110 (win audit 9)**: Pilot clip spec didn't mention the 150 MB limit. Fix: PILOTS §5.
+- [x] **#111 (win audit 9)**: `{h1a_seconds}` sourced from a run without a `job.json`. Fix: STORYBOARD §2 (hero-live run).
+- [x] **#112 (win audit 9)**: No state for a job created but never uploaded. Fix: UI-SPEC §10.4 `created`.
+- [x] **#113 (win audit 9)**: Labelling guide would fork into two master copies at kickoff. Fix: LABELING-GUIDE header (single master; WP7 links).
 
 ## 4. Which builder reads what
 
