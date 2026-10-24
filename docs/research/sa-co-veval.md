@@ -1,13 +1,13 @@
 # SA-Co/VEval: SmartGlasses split
 
-Read 2026-10-24. **Sources:** Meta's [`facebookresearch/sam3`](https://github.com/facebookresearch/sam3) README and [`scripts/eval/veval/README.md`](https://github.com/facebookresearch/sam3/blob/main/scripts/eval/veval/README.md) (via GitHub fetch), plus web-search summaries of the [Mintlify sam3 docs](https://mintlify.wiki/facebookresearch/sam3/evaluation/saco-veval) and [Roboflow Universe sa-co-veval](https://universe.roboflow.com/sa-co-veval). The HF dataset page [`facebook/SACo-VEval`](https://huggingface.co/datasets/facebook/SACo-VEval) **couldn't be opened** (network policy, see `BLOCKED.md`).
+Read 2026-10-24. **Sources:** Meta's [`facebookresearch/sam3`](https://github.com/facebookresearch/sam3) README and [`scripts/eval/veval/README.md`](https://github.com/facebookresearch/sam3/blob/main/scripts/eval/veval/README.md) (via GitHub fetch), plus web-search summaries of the [Mintlify sam3 docs](https://mintlify.wiki/facebookresearch/sam3/evaluation/saco-veval) and [Roboflow Universe sa-co-veval](https://universe.roboflow.com/sa-co-veval). The HF dataset page [`facebook/SACo-VEval`](https://huggingface.co/datasets/facebook/SACo-VEval) **couldn't be opened** (network policy, see `docs/BLOCKED-PRE-A.md`).
 
 ## Where to get it
 - **Annotations:** six JSON files on Hugging Face, `facebook/SACo-VEval` (test + val per domain).
 - **SmartGlasses media:** `media/saco_sg.tar.gz` in the same HF repo; extract it under `data/media` → `saco_sg/JPEGImages_6fps/`.
 - **Shortcut:** Roboflow Universe hosts preprocessed SmartGlasses frames + GT for both val and test.
 - Tooling: `pip install -e ".[veval]"` in the sam3 repo, then the offline evaluator `saco_veval_eval.py` (modes `one` and `all`).
-- Whether the HF dataset is **gated** (the sam3 *checkpoints* are gated: "request access… must be authenticated") is **unknown**. If it is, the owner requests access on HF with their own account (an owner step, like O8).
+- **The HF dataset is gated, with manual approval** [OWNER-2026-10-24: read on Hugging Face during the PR #1 audit]. Access is requested on the dataset page with a Hugging Face account, and a person at Meta approves it, so the wait is open-ended. **Request it now** (owner step in `docs/BLOCKED-PRE-A.md`), then store a read-scoped token as the environment secret `HF_TOKEN`. *Meanwhile:* WP7 builds the loader against the documented format below, using a tiny synthetic fixture. If access hasn't arrived by WP7's run, the Roboflow mirror is the fallback; first check that its licence for the SmartGlasses split reads CC BY 4.0 (Roboflow mislabels SA-V, see below).
 - Layout:
 ```
 data/annotation/saco_veval_smartglasses_{test,val}.json

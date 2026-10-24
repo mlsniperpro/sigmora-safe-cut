@@ -1,8 +1,8 @@
 # Escalation (v0): disputed tracks, once
 
-**Model:** `SAFECUT_ESCALATE_MODEL` (default `muse-spark-1.3` at **`reasoning.effort: "high"`**; `muse-wonder-1.0` at `"max"` only if WP0 probe f justifies it) · **one call per clip, covering every disputed track** · **output** advisory only: `suggested_role` + evidence on the track in `roles.json` (`escalated: true`). The track's `role` stays `unsure`, or becomes `child`
+**Model:** `SAFECUT_ESCALATE_MODEL` (default `muse-spark-1.3` at **`reasoning.effort: "max"`**, per DESIGN §2.3; `muse-wonder-1.0` at `"max"` only if WP0 probe f justifies it) · **one call per clip, covering every disputed track** · **output** advisory only: `suggested_role` + evidence on the track in `roles.json` (`escalated: true`). The track's `role` stays `unsure`, or becomes `child`
 
-> DESIGN.md and ARCHITECTURE.md say `effort: "max"` on Spark. The cookbook lists Spark's levels as `none…high` (`xhigh` = `high`), and a third-party report says `max` → HTTP 400. So this spec uses `high` on Spark (API-NOTES §3.4). WP0 confirms and updates ARCHITECTURE §4.
+> Effort is `max`, as DESIGN §2.3 and ARCHITECTURE §4 say. Meta's live [reasoning page](https://dev.meta.ai/docs/reasoning) lists `max` for both `muse-spark-1.3` and `muse-wonder-1.0` (API-NOTES §3.4). WP0's probe confirms it live. If `max` were rejected, that's a startup configuration error to fix in `config.py` (e.g. to `xhigh`, the next level down), never a silent per-call downgrade.
 
 ## Purpose
 Give tracks whose three role votes disagreed one more careful look, with the disagreement shown, so the creator's **Needs you** card carries a sharper suggestion and the evidence frames. **Escalation can never produce `keep`.** DESIGN §2.3–2.5 says `keep` needs 3/3 votes and that any disagreement → `unsure` → hidden + Needs you. Escalation can only (a) **tighten** a track to `child` (locked), or (b) attach a `suggested_role` and evidence for the creator. Disputed objects (screens) are handled the same way: the creator decides.

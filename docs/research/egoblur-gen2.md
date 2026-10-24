@@ -1,6 +1,6 @@
 # EgoBlur Gen 2 (audit detector)
 
-Read 2026-10-24. **Source:** Meta's official repo [`facebookresearch/EgoBlur`](https://github.com/facebookresearch/EgoBlur) at commit `75144e1` (2026-05-05): README, CHANGELOG, `pyproject.toml`, `gen2/script/constants.py`, `gen2/script/utils.py`. The project page [projectaria.com/tools/egoblur](https://www.projectaria.com/tools/egoblur/) **couldn't be opened** (network policy, see `BLOCKED.md`), so gating, file sizes and speed are unconfirmed.
+Read 2026-10-24. **Source:** Meta's official repo [`facebookresearch/EgoBlur`](https://github.com/facebookresearch/EgoBlur) at commit `75144e1` (2026-05-05): README, CHANGELOG, `pyproject.toml`, `gen2/script/constants.py`, `gen2/script/utils.py`. The project page [projectaria.com/tools/egoblur](https://www.projectaria.com/tools/egoblur/) **couldn't be opened** (network policy, see `docs/BLOCKED-PRE-A.md`), so gating, file sizes and speed are unconfirmed.
 
 ## Where and licence
 - Code: GitHub `facebookresearch/EgoBlur`, package **`egoblur` 2.0.1** (`pyproject.toml`), with the CLIs `egoblur-gen1`, `egoblur-gen2` and `egoblur-vrs-blur`.
@@ -10,16 +10,15 @@ Read 2026-10-24. **Source:** Meta's official repo [`facebookresearch/EgoBlur`](h
 - Model details: the README points to the Gen 1 paper, [EgoBlur: Responsible Innovation in Aria (arXiv 2308.13093)](https://arxiv.org/abs/2308.13093). There's no Gen 2 paper link. Gen 2 bundles a `detectron2` copy under `gen2/script/detectron2`, so it's a detectron2-style detector.
 
 ## Gating
-**Unknown.** Every weight link goes to `projectaria.com/tools/egoblur`. The README says only "download the zipped models from the links provided", with no mention of a form, an account or Hugging Face. Historically (Gen 1, 2023) the Aria page asked for a name and email and agreement to the licence before showing download links; **that's from memory and wasn't verified this session**.
+**Gated by an email request form** on the EgoBlur page, <https://www.projectaria.com/tools/egoblur/> [OWNER-2026-10-24: read from an open network during the PR #1 audit]. Every weight link in the README points there. The README itself mentions no form, account or Hugging Face mirror.
 
-**Decided:** WP4 builds the audit behind a detector interface with a **replay stub** (saved EgoBlur detections as fixtures), so the pipeline and tests run before the weights arrive. The real model plugs in when the weights are available. **Owner steps (O8) if it's gated** (also in `BLOCKED.md`):
-1. On the Mac, open <https://www.projectaria.com/tools/egoblur/> and find the Gen 2 download section.
-2. Fill in whatever form it shows (name, email, licence acceptance). Use the owner's own identity, never an agent's.
-3. Download `ego_blur_face_gen2` and `ego_blur_lp_gen2` (zips), and record the page's licence text and the date.
-4. Upload both zips to the **private** consented-clips bucket under `models/egoblur/gen2/` (they must never be committed to this public repo). Tell Claude the paths, and WP4 fetches them at runtime via `SAFECUT_CLIPS_URL` / token, or Modal mounts them from a Volume.
-5. If the links are time-limited signed URLs, don't paste them anywhere public.
+**Decided:** WP4 builds the audit behind a detector interface with a **replay stub** (saved EgoBlur detections as fixtures), so the pipeline and tests run before the weights arrive. The real model plugs in when the weights are available.
 
-**If it's not gated:** add `www.projectaria.com` (and whatever CDN host the zips come from) to the environment's network allowlist; MAXXING §6 already lists projectaria.com. WP4 downloads at build time.
+**Owner steps (O8), also in `docs/BLOCKED-PRE-A.md`:**
+1. Open <https://www.projectaria.com/tools/egoblur/> and submit the request form with the owner's own name and email, never an agent's.
+2. When the download arrives, get `ego_blur_face_gen2` and `ego_blur_lp_gen2` (zips), and record the licence text shown and the date.
+3. Upload both zips to the **private** consented-clips bucket under `models/egoblur/gen2/`. They must never be committed to this public repo. WP4 fetches them at runtime with the bucket token, or Modal mounts them from a Volume.
+4. If the links are time-limited signed URLs, don't paste them anywhere public.
 
 ## Files and sizes
 - File names as above. **Sizes aren't listed** in the README. WP4 records them. (The Gen 1 face model was a Faster R-CNN-class detector of a few hundred MB; unverified for Gen 2.)
@@ -58,7 +57,7 @@ Read 2026-10-24. **Source:** Meta's official repo [`facebookresearch/EgoBlur`](h
 For Safe Cut: **Gen 2 with `camera-rgb`**. Our prepared clips must carry a valid constant FPS (`prepare.py` already sets it).
 
 ## Verification tasks for WP4 (on Oct 26)
-1. Gating, the licence text on the page, and the zip sizes.
+1. The licence text shown with the download, and the zip sizes.
 2. ~~Short or long edge~~: resolved from `predictor.py`, the long edge ends at 1200.
 3. Measured ms/frame on Modal T4 vs L4 vs CPU at 1280×720.
 4. Detection recall on our hero clips at 0.674 vs 0.5.

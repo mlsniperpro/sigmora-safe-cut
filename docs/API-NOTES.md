@@ -2,7 +2,7 @@
 
 **Read on 2026-10-24 (UTC) by the PRE-A cloud agent. Every item is per docs, unverified; WP0 verifies live.**
 
-> ⚠️ **The primary source was unreachable.** The cloud environment's network policy denies `dev.meta.ai` (and `developer.meta.com`, `projectaria.com`, `modal.com`, `huggingface.co`), so none of the `dev.meta.ai/docs` pages could be opened from this session. See `BLOCKED.md`. These notes are built from the best sources that *were* reachable, and each fact is tagged with where it came from:
+> ⚠️ **The primary source was unreachable.** The cloud environment's network policy denies `dev.meta.ai` (and `developer.meta.com`, `projectaria.com`, `modal.com`, `huggingface.co`), so none of the `dev.meta.ai/docs` pages could be opened from this session. See `docs/BLOCKED-PRE-A.md`. These notes are built from the best sources that *were* reachable, and each fact is tagged with where it came from:
 >
 > | Tag | Source | Trust |
 > |---|---|---|
@@ -12,6 +12,7 @@
 > | **[SNIP]** | A `dev.meta.ai` page seen only through a web-search summary, not opened | Medium: paraphrased by a search tool |
 > | **[3P]** | Third-party issue trackers, blogs, resellers | Low |
 > | **[DESIGN]** | Carried over from `DESIGN.md` (the owner's read of dev.meta.ai on 2026-10-14) and not re-checked | Medium |
+> | **[OWNER-2026-10-24]** | The owner's read of the live `dev.meta.ai` page on 2026-10-24 from an open network (PR #1 audit), matching a search summary of the same page | High: the primary source, read today |
 >
 > WP0 must re-read every `dev.meta.ai` URL below (they're the ones the cookbook links) and replace or confirm each tagged fact.
 
@@ -29,7 +30,7 @@ Docs to read on D1: [segmenting](https://dev.meta.ai/docs/sam/segmenting) · [re
   - Image: `{"type":"input_image","image_url":"data:image/jpeg;base64,…"}`.
   - Video: upload first (`POST /v1/files`, `purpose=user_data`), then `{"type":"input_video","file_id":"file-…"}`.
 - **One noun phrase per request.** The cookbook says "pass multiple concepts to run separate requests and combine their summaries in application code".
-- **File IDs start with `file-`** (hyphen); the cookbook rejects anything else. `ARCHITECTURE.md` §3.2 shows `file_…`; WP0 should fix that example when it writes `contracts.py`.
+- **File IDs:** Meta's own examples use **both** `file-…` (the cookbook's SAM recipe, whose check rejects anything else) and `file_…` (ARCHITECTURE §3.2's example, from the docs). **Decided:** WP0's client and `contracts.py` accept both spellings (`file-` or `file_` followed by the server's ID) and treat the ID as opaque otherwise. Don't copy the cookbook's `startswith("file-")` check.
 - The cookbook's verified run: `ping pong ball` on a 134-frame MP4 returned one stable object across all 134 frames; `duck` on an image returned 5 masks.
 
 ### 1.2 Request metadata **[GH-sam]**
@@ -132,16 +133,18 @@ Video sampling: undocumented for the hosted model. For the open-weight **Muse Sp
 - With `store:false` there's no `previous_response_id` chaining; every Safe Cut call is single-turn anyway.
 
 ### 3.4 `reasoning.effort`
-> 🔴 **DESIGN.md §2.3 and ARCHITECTURE.md §4 use `reasoning.effort: "max"` for escalation on Muse Spark. The sources disagree, and the strongest ones say `max` is not a Spark level.**
+Docs: [reasoning](https://dev.meta.ai/docs/reasoning) (the cookbook links an older path, `features/reasoning`).
 
 | Model | Levels | Source |
 |---|---|---|
-| `muse-spark-1.3` | `none` < `minimal` < `low` < `medium` < `high`; **`xhigh` = same strength as `high`**; default "still being finalized" | **[GH-cookbook]** `06_reasoning_tokens`, `09_one-shot-game_dev` |
-| `muse-spark-1.3` | `minimal` … `xhigh`; **`none` and `max` → HTTP 400**; reasoning can't be disabled | [3P] inspect_ai #5222 |
-| `muse-spark-1.3` | the cookbook's CUA agent maps to "the API's accepted `low|medium|high` values" | [GH-cookbook] `13_macos_cua/metacua/llm.py` |
-| `muse-wonder-1.0` | `minimal` … **`max`** | [3P] (launch coverage summarised by search) |
+| `muse-spark-1.3`, `muse-wonder-1.0` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. **`max` is supported by `muse-wonder-1.0` and `muse-spark-1.3`** (not by `muse-spark-1.3-contributor`). **`xhigh` reasons deeper than `high`.** `none` → HTTP 400 on both (reasoning can't be disabled) | **[OWNER-2026-10-24]** live reasoning page; the same page via a search summary |
+| *(superseded)* `muse-spark-1.3` | the cookbook says "`xhigh` maps to the same strength as `high`"; a third-party report says `max` → 400 | [GH-cookbook] `06_reasoning_tokens` (written before the change); [3P] inspect_ai #5222. Third-party coverage says `max` reached the public API on 2026-09-04, two days after launch, which explains the 400 report |
 
-**Plan for WP0:** probe each level on each model (`GET /v1/models` may list them). Until then, the prompt specs use **`high` for Spark escalation** and **`max` only on Wonder**. `config.py` should validate effort per model.
+**Decided:** the effort levels in the specs follow the live page, so escalation keeps DESIGN's **`max`** on Spark (`docs/prompts/escalation.md`). WP0's probe f confirms `max` on both models, and `config.py` validates effort per model. A 400 on an effort value is never silently downgraded. Two checks, both explicit:
+- **At service start**, the API makes one minimal call for each configured `(model, effort)` pair (the same 1-token probe `/healthz` uses, ARCHITECTURE §5) and **refuses to start** on a 400. Static validation in `config.py` alone can't catch a server-side change.
+- **Mid-job** (the setting changed after boot), the escalation call counts as failed: every disputed track stays `unsure` + `needs_you` (escalation.md, rule 3), the error is logged as `config_error`, and `/healthz` reports degraded.
+
+ARCHITECTURE §4 stays as written.
 
 ### 3.5 Streaming
 - SSE events, OpenAI Responses style. Muse Spark reasons before any visible output, so a non-streamed call sits idle. Stream long calls, or set generous timeouts. **[3P]** inspect_ai #5222
@@ -215,6 +218,20 @@ Docs: [features/image-understanding](https://dev.meta.ai/docs/features/image-und
 
 ---
 
+## 5b. Time and frame axes (`job.json` `times`), the definition every WP uses
+PRE-A owns this definition, and PRE-B's `docs/labeling/LABEL-FORMAT.md` follows it. It extends ARCHITECTURE §3.1 without changing any field.
+
+- **Source timeline.** `t = 0` is the presentation time of the **first decoded source frame**: its PTS, after the container's edit list is applied, is subtracted from every timestamp.
+- **No trim in Safe Cut.** `prepare` processes the whole upload (≤60 s, ARCHITECTURE §5), and creators trim before uploading (PR #2's `docs/UI-SPEC.md` §2: "Trim it and try again"). The prepared clip therefore covers the whole source. DESIGN §3's Sigmora `prepare.ts` does trim, so **WP1's port drops the trim**. If WP1 keeps it, `source_offset_s` (below) becomes mandatory in the same PR.
+- **`times[i]`** is the presentation time, in seconds on that source timeline, of **prepared frame `i`**. It's a list of `frames` floats, strictly increasing, with `times[0] = 0.0`. If prepare resamples the frame rate (a VFR source to CFR, or a lower fps), `times[i]` is output frame `i`'s PTS, which ffmpeg places on the source timeline.
+- **The prepared MP4 is encoded with exactly these timestamps** (first PTS = 0). So the same list maps every axis:
+  - player → frame: the frame on screen at media time `m` is the **last** one whose timestamp has been reached, so `i = max{ i : times[i] ≤ m + 0.001 }` (binary search; the 1 ms tolerance absorbs float error). With rVFC, `metadata.mediaTime` equals `times[i]` exactly. With the `currentTime` fallback, nearest-rounding would put the overlay one frame ahead;
+  - frame → display time: `times[i]`, shown as `m:ss` (UI-SPEC);
+  - label → frame: a CVAT label on source frame `k` sits at `t_k = PTS_k − PTS_0`, the frame's **own** timestamp. `k / fps` is correct only for a constant-frame-rate source; for a variable-frame-rate phone clip, ffprobe's *average* fps drifts by several frames late in the clip. WP7 reads the per-frame PTS list from the source file with ffprobe; it doesn't need to be stored in the label JSON. Its prepared frame is `argmin_i |times[i] − t_k|`;
+  - prepared → SAM proxy: the proxy (§9, ≤10 fps) is encoded from the prepared clip at a constant `sam_fps`, starting at `t = 0`, so proxy frame `j` sits at `j / sam_fps`. Then `j = clamp(round(times[i] × sam_fps), 0, sam_frames − 1)`, and back, `i = argmin_i |times[i] − j / sam_fps|`.
+- **If trimming is ever added:** `job.json` gains `source_offset_s` (the source time of prepared frame 0). That's a contract change, made in both ARCHITECTURE §3.1 and `contracts.py` (AGENTS rule 3). `times` would then stay relative to the prepared start, and source time = `times[i] + source_offset_s`. With today's offset of 0, every mapping above is unchanged.
+- WP1 implements these as one module (`frame_of_time`, `time_of_frame`, `to_proxy`, `from_proxy`) and property-tests it: every output is in bounds; every map is monotone; **proxy → prepared → proxy is exact** whenever the prepared fps ≥ `sam_fps` (always, for a ≤10 fps proxy); and prepared → proxy → prepared lands within half a proxy frame duration in time, since several prepared frames share one proxy frame, so it isn't the identity.
+
 ## 6. Pricing and rate limits (per 1M tokens unless stated)
 
 | Model | Input | Cached input | Output | Other | RPM / TPM | Source |
@@ -244,9 +261,9 @@ Docs: [help/policies-and-privacy/contributor-tier](https://dev.meta.ai/help/poli
 1. **SAM can return confidences** (`metadata.include_confidence: "true"`) and **accepts box/point prompts**. Both contradict DESIGN. §1.2–1.3.
 2. **There's an official Python parser** (`meta-sam-parser`, SAM License). Don't hand-roll the grammar. §1.5.
 3. **SAM lines can arrive out of frame order**, and object IDs are sparse strings. §1.4.
-4. **`reasoning.effort: "max"` is probably a 400 on Muse Spark.** Use `high`; `max` is Wonder only. §3.4.
+4. **Effort levels changed after launch.** `max` is supported on Spark 1.3 and Wonder 1.0, and `xhigh` is deeper than `high` (live page). The cookbook's "`xhigh` = `high`" is out of date. §3.4.
 5. **`input_audio` can be silently dropped** (HTTP 200, no error), so the speech fallback must use the video soundtrack and check `usage`. §3.1.
-6. File IDs are `file-…`. ASR modes are case-sensitive and unknown modes are silently ignored. Speaker labels are letters.
+6. File IDs appear as both `file-…` and `file_…`, so accept both. ASR modes are case-sensitive and unknown modes are silently ignored. Speaker labels are letters.
 7. Live SAM streams have no `response.output_text.done`.
 
 ---
@@ -261,7 +278,7 @@ Assumptions (flagged; WP0 replaces them with measured `usage`):
 - **A3** Image tokens: ≈1,500 input tokens per 1280×720 keyframe (unknown; the cookbook only says tokens scale with resolution).
 - **A4** Video scene pass ≈ 60 sampled frames × 1,000 tokens + audio + prompt ≈ 65k input tokens (from Muse Spark Open's 2 fps sampling).
 - **A5** 30 SoM keyframes (1 fps) in one role-pass call. Votes 2 and 3 hit the prompt cache for the image prefix.
-- **A6** Output includes reasoning: medium ≈ 4k tokens per call; high ≈ 8k.
+- **A6** Output includes reasoning. Meta publishes no per-level token figures, so these are assumptions, monotone in effort: `medium` ≈ 4k tokens per call, `high` ≈ 8k, `xhigh` ≈ 12k, `max` ≈ 16k. WP0's probe f measures `usage.output_tokens_details.reasoning_tokens` at `max` and replaces this.
 
 | Stage | Calc | USD (8 fps) | USD (30 fps) |
 |---|---|---|---|
@@ -271,35 +288,52 @@ Assumptions (flagged; WP0 replaces them with measured `usage`):
 | Scene pass (video) | 65k in × $1.25/M + 4k out × $4.25/M | 0.098 | 0.098 |
 | Role pass vote 1 | 47k in × $1.25/M + 4k out | 0.076 | 0.076 |
 | Role pass votes 2–3 | 2 × (45k cached × $0.15/M + 2k fresh × $1.25/M + 4k out) | 0.053 | 0.053 |
-| Escalation (≈10 disputed keyframes, `high`) | 17k in + 8k out | 0.055 | 0.055 |
+| Escalation (≈10 disputed keyframes, `max`) | 17k in + 16k out | 0.089 | 0.089 |
 | Red-team (`redteam.md` sampling) | pass 1: 40 frames (30 at 1 fps + 3 per track × ~3 tracks + ~1 EgoBlur flag) = 61k in + 3k out; pass 2: 10 patched frames = 16k in + 2k out | 0.118 | 0.118 |
-| **Total per 30 s clip** | | **≈ $0.83** | **≈ $2.02** |
+| **Total per 30 s clip** | | **≈ $0.87** | **≈ $2.05** |
 | *With no prompt-cache hits* | +2 × 45k × ($1.25 − $0.15)/M | +0.10 | +0.10 |
-| *With Wonder for scene + escalation* | scene 65k × $4 + 4k × $20; escalation 17k × $4 + 8k × $20 (replaces the Spark lines) | +0.41 | +0.41 |
+| *With Wonder for scene + escalation* | scene 65k × $4 + 4k × $20; escalation (`max`) 17k × $4 + 16k × $20 (replaces the Spark lines) | +0.54 | +0.54 |
+| *With Wonder for the scene pass only* | scene 65k × $4 + 4k × $20 (replaces the Spark scene line) | +0.24 | +0.24 |
+| *With Wonder for escalation only* | escalation (`max`) 17k × $4 + 16k × $20 (replaces the Spark escalation line) | +0.30 | +0.30 |
 
-**Reading:** at 30 fps SAM is 80% of the cost, and a clip costs ≈ $2.02, **over** `SAFECUT_JOB_USD_CAP = 2.00`. So **upload a ≤10 fps proxy to SAM** (or find what `input_video.fps` does) and densify back onto the prepared clip's frames; the miss-loop spec gives the frame-axis conversion. Muse Spark is about $0.40 per clip either way. Per minute of footage: **≈ $1.67 at 8 fps**. Totals were computed with a scratch script; its output is pasted in the PR.
+**Reading:** at 30 fps SAM is 79% of the cost, and a clip costs ≈ $2.05, **over** `SAFECUT_JOB_USD_CAP = 2.00`. So **upload a ≤10 fps proxy to SAM** (or find what `input_video.fps` does) and densify back onto the prepared clip's frames; the miss-loop spec gives the frame-axis conversion. Muse Spark is about $0.43 per clip either way. Per minute of footage: **≈ $1.73 at 8 fps**. Totals were computed with a scratch script; its output is pasted in the PR.
 
 ### 9.2 The whole eval plan (EVAL.md §5) against $150
+Split sizes are PRE-B's final assignment (`docs/labeling/SCHEDULE.md` §3, PR #2): **12 test, 3 dev, 3 hero** (hero clips filmed in 2 takes each). PRE-B owns labels and pilots; the numbers below are this doc's API cost estimates for them.
 
 | Item | Calc | USD |
 |---|---|---|
 | WP0 probes | WP0 budget | 6.00 |
-| Test split: full Safe Cut | 18 clips × $0.83 × 3 runs | 44.82 |
+| Test split: full Safe Cut | 12 clips × $0.87 × 3 runs | 31.32 |
 | Baseline 1 (blur every face) and 2 (detector-only) | reuse the full run's SAM `face`/`plate`/`screen` sweeps (replay) | 0.00 |
 | Baseline 1b (EgoBlur Gen 2) | local compute | 0.00 |
-| Baseline 3 (Muse without tracking) | 18 × 30 keyframes × 1 call ≈ 18 × $0.08 × 3 runs | 4.32 |
+| Baseline 3 (Muse without tracking) | 12 × 30 keyframes × 1 call ≈ 12 × $0.08 × 3 runs | 2.88 |
 | Ablation (no audit) | replay of the full run | 0.00 |
-| Dev split, first run | 12 × $0.83 | 9.96 |
-| Dev iterations (prompt tuning; SAM replayed) | 9 iterations × 12 clips × $0.40 (Muse only) | 43.20 |
-| Hero clips (3 clips × 2 takes; ~3 renders each incl. demo) | 6 × $0.83 × 3 | 14.94 |
-| Pilots (5 creators × ~2 clips) + public "Try it" | 10 × $0.83 + daily-cap headroom | 8.30 + cap |
-| **Subtotal** | | **≈ $131.54** |
-| **Headroom vs $150** | | **≈ $18** |
+| Dev split, first run | 3 × $0.87 | 2.61 |
+| Dev iterations (prompt tuning; SAM replayed) | 9 iterations × 3 clips × $0.43 (Muse only) | 11.61 |
+| Hero clips (3 clips × 2 takes; ~3 renders each incl. demo) | 6 × $0.87 × 3 | 15.66 |
+| Creator pilots: **estimate** | 10 clips (5 creators × 2) × $0.87, **within PRE-B's hard cap of $20** ($4 per code, `docs/PILOTS.md` §5) | 8.70 |
+| **Subtotal (eval, hero, pilot estimate)** | | **$78.78** |
+| Subtotal with pilots at their full $20 cap | | $90.08 |
+| Public "Try it" demo reserve | live from the WP5 deploy (Oct 29) to finals (Nov 9), 12 days × a **$3/day** `SAFECUT_DAILY_USD_CAP` | 36.00 |
+| **Planned total (pilot cap + demo reserve)** | | **$126.08** |
+| **Headroom vs $150** | | **$23.92** |
+
+**Decided:** plan the public demo at a **$3/day** cap. At ARCHITECTURE §4's default of $10/day, 12 days of demo is $120, and the planned total would be **$210.08, over the $150**. Request to WP5: set `SAFECUT_DAILY_USD_CAP=3.00` in the deployed env (the default can stay for local runs).
+
+The pilot estimate was $8.30 before the effort-level correction moved escalation from `high` to `max`. It's $8.70 now, still well inside the $20 cap.
 
 **Risks to this budget:**
-- **30 fps SAM** multiplies the SAM lines by 3.75 (test runs alone → ≈ $109). Stay at ≤10 fps.
-- **Dev iterations over the full dev split** are the biggest discretionary line. Iterate on a 4-clip subset (→ $14.40, saving ≈ $29) and use the full split only for checkpoint runs. **With only ≈ $18 of headroom, treat this as the plan, not an option.**
-- Adopting **Wonder** adds $0.41 per clip run. Across every clip run above (202) that's +$83.73, which doesn't fit. Restricted to test, hero and pilot runs (82) it's +$33.99, which fits only if dev iterations shrink to the 4-clip subset.
-- The public demo's `SAFECUT_DAILY_USD_CAP = 10.00` would eat the ≈ $18 headroom in under 2 days. Lower it to $3 after judging starts, or require the access code.
+- **30 fps SAM** multiplies the SAM lines by 3.75 (test runs alone → $73.97). Stay at ≤10 fps.
+- **Wonder** (per-clip adoption bar: ≤ $1.30, `docs/research/muse-wonder-vs-spark.md` H5), on test, hero and pilot runs (64):
+
+  | Wonder use | Per clip | Bar | Budget |
+  |---|---|---|---|
+  | scene pass only | $1.11 | passes | +$15.47, fits |
+  | escalation only | $1.17 | passes | +$19.12, fits |
+  | scene + escalation | $1.41 | **fails** | +$34.59, **doesn't fit** the $23.92 headroom |
+
+  Either single use is affordable; both together are not.
+- Prompt iteration on 3 dev clips is cheap, but 3 clips is a thin tuning set. Iterating on hero clips too (consented, in the bucket) costs ≈ $0.43 per clip per iteration.
 
 Every figure above is a model to be replaced by measured `cost.jsonl` from WP0's probes. None of it may appear in the README (AGENTS rule 9).
