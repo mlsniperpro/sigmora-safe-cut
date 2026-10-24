@@ -58,13 +58,13 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#22 (owner audit)**: 3 CVAT export questions open. Fix: CVAT-SETUP §7.1 from v2.80.0 source.
 - [x] **#23 (owner audit)**: WP0/WP7 bound to 12/3 and $20. Fix: SCHEDULE §3.
 - [x] **#24 (owner audit)**: Root BLOCKED.md conflicts with PRE-A. Fix: moved to docs/BLOCKED-PRE-B.md.
-- [x] **#25 (review 3)**: VFR drift between `times` and the player clock. Fix: Superseded by PRE-A §5b: the prepared MP4 carries `times` as its timestamps, so the player and `times` can't drift (UI-SPEC §3.6).
+- [x] **#25 (review 3)**: VFR drift between `times` and the player clock. Fix: the overlay maps the player on the prepared clock (`clamp(floor(mediaTime × fps + 0.25), 0, frames − 1)`), never through `times`, per PRE-A §5b at `3d33e5f` (UI-SPEC §3.6). This replaces an interim fix (`times` as the MP4's own timestamps) that PRE-A later rejected.
 - [x] **#26 (review 3)**: Display time and transcript on the wrong clock. Fix: UI-SPEC §0, §4.6 now follow §5b.
 - [x] **#27 (review 3)**: `bystander` row said "adult or teen". Fix: LABELING-GUIDE §2.1.
 - [x] **#28 (review 3)**: Two CVAT line citations didn't support claims. Fix: CVAT-SETUP §7.1 (`include_empty=True` line 2101; `CommonData` default).
 - [x] **#29 (review 3)**: $20 cap enforcer unnamed; EVAL.md split conflict. Fix: SCHEDULE §3 (WP5; request to EVAL.md's owner).
 - [x] **#30 (review 3)**: Pilot estimate ignored clip length. Fix: PILOTS §5.
-- [x] **#31 (win audit 1)**: PRE-A moved to §5b (no trim, `times[0] = 0`); pilot estimate now $8.70. Fix: UI-SPEC §3.6, LABEL-FORMAT §2, PILOTS §5, SCHEDULE §3.
+- [x] **#31 (win audit 1)**: PRE-A moved the time-axis definition into §5b (its interim draft said no trim and `times[0] = 0`; the current `3d33e5f` text has two clocks and lets `times[0]` exceed 0); pilot estimate now $8.70. Fix: UI-SPEC §3.6, LABEL-FORMAT §2, PILOTS §5, SCHEDULE §3.
 - [x] **#32 (win audit 1)**: Builders had no exact schema, validator codes, examples or test vectors. Fix: LABEL-FORMAT §6–9.
 - [x] **#33 (win audit 1)**: Builders had no mocks list, validation rules, error map, state machine, reducer tests. Fix: UI-SPEC §10.
 - [x] **#34 (win audit 1)**: Owner inputs had no stub path. Fix: BLOCKED-PRE-B "Until it arrives" lines.
@@ -98,6 +98,16 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#62 (win audit 4)**: X8's expected codes didn't follow stop rule 4. Fix: LABEL-FORMAT §7 stop rule 4, §8.3.
 - [x] **#63 (win audit 4)**: Mock `scene` lacked PRE-A's required fields. Fix: UI-SPEC §10.1 mocks, field list.
 - [x] **#64 (win audit 4)**: Shots 1.2 and 8.3 ran above 150 wpm. Fix: STORYBOARD 1.2, 8.3, rule 6 (now 265 words, max ≤150 wpm per shot).
+- [x] **#65 (win audit 5)**: Every `failed` job got one generic retry; no failure reason, pilot code cap or daily-cap reset defined. Fix: UI-SPEC §2.6, §10.3, `failure: {stage, reason}`, `code_cap`, requests 1 and 10.
+- [x] **#66 (win audit 5)**: Ground-truth matching needed unrounded `times`; nothing required it. Fix: LABEL-FORMAT §2 (WP1 request), vector M8.
+- [x] **#67 (win audit 5)**: Escalation ruling had no field of its own; `escalated` undefined on failure. Fix: UI-SPEC §4.3, §4.6, §8 request 3 (`escalation_evidence`, `escalation_frames`).
+- [x] **#68 (win audit 5)**: No copy for PRE-A's "audit couldn't run" / "over budget" cases. Fix: UI-SPEC §5.3–5.6, `redteam_status`, request 11, mocks.
+- [x] **#69 (win audit 5)**: Frame-reference rewrite missed lists and bare ranges. Fix: UI-SPEC §4.3 rules + 7 more cases (incl. ARCHITECTURE §3.5's example).
+- [x] **#70 (win audit 5)**: Undo reused the idempotency key; reducer cases had no fixture. Fix: UI-SPEC §10.3, §10.5, `reducer-state.json`.
+- [x] **#71 (win audit 5)**: Label header: upper-case extensions, hero naming, rotated clips. Fix: LABEL-FORMAT §1, §2, §6.1, V7, portrait vector.
+- [x] **#72 (win audit 5)**: Unsupported claims shown to users ("doesn't train on it", "storage off", "every frame"). Fix: UI-SPEC §1.3, §2, §5; PILOTS §4; STORYBOARD 6.2.
+- [x] **#73 (win audit 5)**: Thumbnail used `track_ids[0]`, not the primary track. Fix: UI-SPEC §3.3.
+- [P] **#74 (win audit 5)**: Stale cross-doc statements (WIN #25/#31, SCHEDULE 4-clip subset, WP6 step 4; PRE-A's BLOCKED-PRE-A line 3 and WIN row 56). Fix: PRE-B side fixed (WIN #25/#31, SCHEDULE §3, UI-SPEC request 12). PRE-A side: BLOCKED-PRE-A line 3 still points to the old root BLOCKED.md and PRE-A WIN row 56 is still open; both are PRE-A's files, and PRE-A's session isn't reachable from here, so they're listed for PRE-A in PR #2.
 
 ## 4. Which builder reads what
 

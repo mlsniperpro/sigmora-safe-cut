@@ -140,9 +140,9 @@ Goal: in 20 seconds a judge sees the product working on real footage, understand
 | Step 1 title | Muse Spark decides who |
 | Step 1 body | Muse Spark watches the clip, reads who said what (from Muse Voice Transcribe), and rules on each person and object SAM 3.1 has labelled: part of the story, or not. |
 | Step 2 title | SAM 3.1 keeps them hidden |
-| Step 2 body | SAM 3.1 follows each hidden person and item frame by frame. Anyone the tracker loses and finds again starts hidden. Anything uncertain stays hidden. |
+| Step 2 body | SAM 3.1 keeps each hidden person and item covered through the clip. Anyone the tracker loses and finds again starts hidden. Anything uncertain stays hidden. |
 | Step 3 title | An audit checks the render |
-| Step 3 body | Before anything is published, Meta's EgoBlur checks every frame of the result and a second Muse Spark pass tries to read or recognise anything left. Any leak is fixed and recorded on your privacy receipt. |
+| Step 3 body | Before anything is published, Meta's EgoBlur checks the final render for faces and number plates, and a second Muse Spark pass tries to read or recognise anything left. Any leak is fixed and recorded on your privacy receipt. |
 | Side-by-side title | Blur every face vs Safe Cut |
 | Side-by-side captions | Blur every face: your guest is hidden, the number plate isn't. · Safe Cut: your guest stays clear, the plate and the passer-by are hidden. |
 | Results title | Results on our labelled test set |
@@ -202,7 +202,7 @@ Goal: get from access code to the review panel with no surprises, and make the w
 │      Judges: the code is in the submission's testing instructions.                   │
 │                                                                                      │
 │      What happens to your clip                                                       │
-│      • It's sent to Meta's Model API in Standard mode, which doesn't train on it.    │
+│      • It's sent to Meta's Model API in Standard mode, never Contributor mode.       │
 │      • Everything is deleted automatically after 24 hours, or sooner if you choose.  │
 │      • Up to 60 seconds and 150 MB. MP4 or MOV.                                      │
 └──────────────────────────────────────────────────────────────────────────────────────┘
@@ -293,8 +293,8 @@ One row per pipeline stage ([WP5](work-packages/WP5.md) `run()` order), in this 
 | `decide` | Deciding what to hide | Anything uncertain stays hidden until you decide. |
 | `guard` | Adding a safety margin | Extending each cover a little in space and time so nothing slips out at the edges. |
 | `review` | Ready for you | (the page moves to the review panel) |
-| `render` | Applying your choices | Covering every frame. |
-| `audit` | Checking every frame of the result | EgoBlur and Muse Spark look for anything that slipped through. |
+| `render` | Applying your choices | Covering each hidden item on every frame it appears in. |
+| `audit` | Checking the result | EgoBlur and Muse Spark look for anything that slipped through. |
 | `receipt` | Writing your privacy receipt | |
 | `done` | Done | (the page moves to the result) |
 
@@ -306,19 +306,27 @@ The `miss_loop` row appears only if that stage runs. `~N s left` shows only when
 |---|---|---|
 | Code empty on Continue | Enter your access code. | focus the field |
 | Code wrong (`401`) | That code didn't work. Check it and try again. | keep the text, select it |
-| Daily limit reached (`429`, cap) | Safe Cut has reached today's limit for the public demo. Try again after midnight UTC, or watch the demo on the home page. | link to `/` |
+| Daily limit reached (`429` `daily_cap`) | Safe Cut has reached today's limit for the public demo. Try again tomorrow, or watch the demo on the home page. ("Tomorrow" = after the reset at 00:00 UTC, request 10 in §8. If WP5 sends `retry_at`, the copy may say "after {local time}" instead.) | link to `/` |
+| Access code budget used (`429` `code_cap`, on `POST /start`) | This access code has used its processing budget. Ask the person who gave it to you for a new one. | none |
 | Too many requests (`429`, rate) | Too many tries in a short time. Wait a minute and try again. | |
 | File too long (client check on metadata, or `422` `too_long`) | This clip is `{duration}` seconds long. The limit is 60 seconds. Trim it and try again. (`{duration}` = the clip's length rounded **up** to one decimal, e.g. 60.06 s → "60.1", so the number shown is always over the limit; §10.2) | |
 | File too big | This file is `{size}` MB. The limit is 150 MB. (`{size}` = bytes ÷ 1,048,576 rounded **up** to one decimal, e.g. 157,286,401 bytes → "150.1"; §10.2) | |
 | Wrong type | Safe Cut takes MP4 or MOV video files. | |
 | No rights tick | Tick the box to confirm you can use this clip. | |
 | Upload interrupted | The upload stopped. Check your connection and try again; nothing was processed. | [Try again] |
-| A stage fails (`job.status = failed`) | Something went wrong while `{row label, lowercase}`. Your clip hasn't been published anywhere. You can try again, or delete it now. | [Try again] [Delete now] |
+| A stage fails (`status: "failed"`, `failure.reason` = `internal`, or no `failure` given) | Something went wrong while `{row label, lowercase}`. Your clip hasn't been published anywhere. You can try again, or delete it now. | [Try again] [Delete now] |
+| A stage fails for budget (`failure.reason` = `budget`, PRE-A §10.3 `BudgetExceeded`) | This clip needs more processing than one job allows. Your clip hasn't been published anywhere. Try a shorter clip. | [Try another clip] [Delete now] (no [Try again]: re-running would fail the same way and bill again) |
+| A stage fails on the code's budget (`failure.reason` = `code_cap`) | This access code has used its processing budget. Ask the person who gave it to you for a new one. Your clip hasn't been published anywhere. | [Delete now] |
+| A stage fails for any other deterministic reason (`failure.reason` = `config`, `bad_request`, `refusal` or `incomplete`; PRE-A §10.3) | Safe Cut couldn't process this clip. Your clip hasn't been published anywhere. We've logged the problem. | [Try another clip] [Delete now] (no [Try again]) |
 | Job cap would be exceeded | This clip would cost more than the per-clip limit to process. Try a shorter clip. | |
 | Meta's service is busy (`status: "retry_later"`) | Meta's service is busy right now. Safe Cut will try again in a few minutes on its own; you can leave this page and come back with your review link. Nothing has been published. | [Copy link] [Cancel and delete] |
 | Cancel and delete (confirm dialog) | Delete this clip and stop processing? This can't be undone. · [Delete] [Keep going] | |
 | After delete | Deleted. Nothing from this clip is kept. | link to `/try` |
 | Rights tick label | I filmed this clip or have the right to use it. | |
+| "What happens to your clip" heading | What happens to your clip | |
+| Data bullet 1 | It's sent to Meta's Model API in Standard mode, never Contributor mode (Contributor mode can use inputs to improve Meta's models). Wireframes show it shortened; the full sentence is the copy. Never claim "doesn't train on it" or "storage off": PRE-A `docs/API-NOTES.md` §7 found no Standard-mode retention terms, and §10.6 says `store: false` on `sam-3.1` is unverified | |
+| Data bullet 2 | Everything is deleted automatically after 24 hours, or sooner if you choose. | |
+| Data bullet 3 | Up to 60 seconds and 150 MB. MP4 or MOV. | |
 | More than one file dropped or chosen | Drop one clip at a time. | keep the drop zone empty |
 | Render already running (`409` on render) | (no message: the page polls and shows the render stages) | |
 
@@ -426,7 +434,7 @@ The video stays sticky at the top while the chip list scrolls. The tab that open
 
 | Part | Content | Source |
 |---|---|---|
-| Thumbnail (64×64, 96×96 on mobile) | A crop around the item at its first evidence frame, about twice the item's box, with the item itself drawn **covered** if hidden or needs-you, and **clear** if kept. The surroundings stay visible so the creator recognises the moment | `decisions.items[].evidence_frames[0]` → SoM keyframe image; box from `tracks.json` `boxes[frame]` for `track_ids[0]` |
+| Thumbnail (64×64, 96×96 on mobile) | A crop around the item at its first evidence frame, about twice the item's box, with the item itself drawn **covered** if hidden or needs-you, and **clear** if kept. The surroundings stay visible so the creator recognises the moment | `decisions.items[].evidence_frames[0]` → SoM keyframe image; box from `tracks.json` `boxes[frame]` for the item's **primary track** (its `face:*` track if it has one, otherwise its first track: the same track the label and the drawer ring use, §0), whatever order `track_ids` is in. If the primary track has no box on that frame, use the first other track of the item that does. If no track has a box there, show the neutral placeholder tile (kind icon on a grey square, no crop) and never crop around a guessed box |
 | Label | The item's display label, e.g. "Face 7", "Plate 1" (§0 Item label) | primary track ID in `track_ids` |
 | Kind | Person / Child / Number plate / Screen / Document / Other item, with its icon | `kind` |
 | Badges | 🔒 **Always hidden** if `locked`; **NEW** if one of the item's tracks has a `reentry_of` that points to a track belonging to a **different** item (after a merge the earlier track is in the same item, so the badge goes away and never shows on the merge target); **Changed by you** if `decided_by = creator` | `locked`, `tracks[].reentry_of`, `decided_by` |
@@ -465,11 +473,11 @@ All edits go through `POST /v1/jobs/{id}/review` (WP3's `apply_review`). The UI 
 | Edited after rendering (`done`, reached with `?view=review`, §10.4) | You changed something after rendering. Render again to update the video and receipt. | **Approve & render** |
 | Rendering | (the bar becomes the progress list from §2.5, `render` → `receipt`) | — |
 
-Pressing it: `POST /v1/jobs/{id}/render`, then the stage rows `Applying your choices` → `Checking every frame of the result` → `Writing your privacy receipt`, then the page moves to `/jobs/[id]/result`. Chips are read-only during the render (a calm note: "Changes are paused while we render.").
+Pressing it: `POST /v1/jobs/{id}/render`, then the stage rows `Applying your choices` → `Checking the result` → `Writing your privacy receipt`, then the page moves to `/jobs/[id]/result`. Chips are read-only during the render (a calm note: "Changes are paused while we render.").
 
 ### 3.6 The overlay
 
-- A `<canvas>` sized to the video's displayed box, drawn on each `requestVideoFrameCallback` (rVFC). Per the WICG spec, `metadata.mediaTime` is the presentation timestamp of the frame being shown, on the `currentTime` timeline, which is the prepared clock. Map it to a prepared frame with PRE-A `docs/API-NOTES.md` §5b's formula: **`i = clamp(floor(mediaTime × job.fps + 0.25), 0, job.frames − 1)`** ([WP6](work-packages/WP6.md) step 4). The prepared clip is constant frame rate, so this needs no search and doesn't use `job.times`; the quarter-frame term switches to the next frame three quarters of the way through a frame, which absorbs timestamp rounding (PRE-A vector T5). **Checks before drawing anything** (any failure → the unexpected-error page, §7, instead of a misaligned overlay): `job.fps` is an integer from 1 to 30; `job.frames ≥ 1`; `job.times` has exactly `job.frames` entries, all finite, and is **non-decreasing**. Repeated values are valid (a variable-frame-rate source repeats a frame where it had a gap), and `times[0]` may be slightly above 0 (PRE-A T6a, T6c), so the UI must **not** require strictly increasing values or `times[0] = 0`. Test cases: §10.6.
+- A `<canvas>` sized to the video's displayed box, drawn on each `requestVideoFrameCallback` (rVFC). Per the WICG spec, `metadata.mediaTime` is the presentation timestamp of the frame being shown, on the `currentTime` timeline, which is the prepared clock. Map it to a prepared frame with PRE-A `docs/API-NOTES.md` §5b's formula: **`i = clamp(floor(mediaTime × job.fps + 0.25), 0, job.frames − 1)`**. This supersedes [WP6](work-packages/WP6.md) step 4's "via `job.times`", which predates PRE-A §5b (request 12 in §8). The prepared clip is constant frame rate, so this needs no search and doesn't use `job.times`; the quarter-frame term switches to the next frame three quarters of the way through a frame, which absorbs timestamp rounding (PRE-A vector T5). **Checks before drawing anything** (any failure → the unexpected-error page, §7, instead of a misaligned overlay): `job.fps` is an integer from 1 to 30; `job.frames ≥ 1`; `job.times` has exactly `job.frames` entries, all finite, and is **non-decreasing**. Repeated values are valid (a variable-frame-rate source repeats a frame where it had a gap), and `times[0]` may be slightly above 0 (PRE-A T6a, T6c), so the UI must **not** require strictly increasing values or `times[0] = 0`. Test cases: §10.6.
 - Browser support (MDN browser-compat-data, 2026-10-23): rVFC is in Chrome 83+, Safari 15.4+ and Firefox 132+. On a browser without it, fall back to `requestAnimationFrame` reading `video.currentTime` through **the same formula** (`floor(currentTime × job.fps + 0.25)`, clamped). `currentTime` can lag the displayed frame, so say so next to the toggle: "Preview may lag by a frame in this browser. The final render isn't affected." Never fall back silently.
 - For that frame, draw every region in `plan.json` `frames[frame]` whose item is currently hidden or needs-you after the creator's local edits. A region whose item has been merged into another follows the **target**'s decision (§10.5). `solid` and `person_solid` → opaque fill (mask shape when `mask` is present, else box); `pixelate` → coarse cells on the locked `grid` (a preview; the final render adds noise); `crowd_fills` → opaque fill.
 - An item switched from kept to hidden by the creator has no plan regions yet: until the review response returns a new plan, draw its **track boxes** from `tracks.json` (padded 15% as a visual approximation) so the creator sees it covered immediately.
@@ -620,13 +628,19 @@ On mobile, the drawer repeats the chip's action buttons at the bottom so the cre
 | Removed at your request | You asked to remove this person. They're fully covered everywhere they appear. |
 | Added by the audit | The final check found this after rendering and covered it. |
 
-**"What Muse Spark said (n checks)".** One mark per vote in `votes`, each with its role word (Part of the story / Not part of the story / Child / Not sure); ✓ when it matches the final role, ✕ otherwise. Then Muse Spark's `evidence` text in quotes, with its frame references rewritten to clip times (below). If `escalated`: "The checks disagreed, so Muse Spark took a longer, closer look once." and then, from the track's `suggested_role` (PRE-A `docs/prompts/escalation.md`): when it isn't null, "A longer, closer look suggests: {role word}. You decide." followed by the escalation's evidence in quotes (frame references rewritten the same way); when it's null, "A longer, closer look couldn't settle it." A suggestion never changes the item's column or decision: only the creator's tap does. For objects (screens, documents, phones, badges **and plates**, which PRE-A `docs/prompts/role-pass.md` has Muse Spark judge as objects: `sensitive` + `content`): "Muse Spark read it as: {content}" and "Personal: yes/no" from `objects[].sensitive`, in place of the vote marks. For a plate, add "Number plates are hidden by default. Only you can keep one clear." A plate isn't locked: the creator can keep it clear with one tap, without the screen/document confirm (§3.4).
+**"What Muse Spark said (n checks)".** One mark per vote in `votes`, each with its role word (Part of the story / Not part of the story / Child / Not sure); ✓ when it matches the final role, ✕ otherwise. Then Muse Spark's `evidence` text in quotes, with its frame references rewritten to clip times (below). The quoted `evidence` is always the **role pass's** text; the escalation's own words live in separate fields, so neither overwrites the other. `escalated` is `true` only when the escalation call ran and returned a valid ruling (PRE-A `docs/prompts/escalation.md` rule 4); a failed call, invalid cited frames (rules 3 and 5) or a call skipped for budget leave `escalated: false` and `suggested_role: null`, and then the drawer shows **nothing** about escalation (it never claims a look that didn't happen). If `escalated`: "The checks disagreed, so Muse Spark took a longer, closer look once." and then, from the track's `suggested_role`: when it isn't null, "A longer, closer look suggests: {role word}. You decide." followed by `escalation_evidence` in quotes (frame references rewritten the same way; its `escalation_frames` become extra steps in the keyframe arrows); when it's null (the ruling was `unsure`), "A longer, closer look couldn't settle it." A suggestion never changes the item's column or decision: only the creator's tap does. For objects (screens, documents, phones, badges **and plates**, which PRE-A `docs/prompts/role-pass.md` has Muse Spark judge as objects: `sensitive` + `content`): "Muse Spark read it as: {content}" and "Personal: yes/no" from `objects[].sensitive`, in place of the vote marks. For a plate, add "Number plates are hidden by default. Only you can keep one clear." A plate isn't locked: the creator can keep it clear with one tap, without the screen/document confirm (§3.4).
 
-**Frame references in Muse Spark's text.** The role pass cites frames only by the number burned into each keyframe (PRE-A `docs/prompts/role-pass.md`), which is a prepared-frame index, so the drawer rewrites every reference before showing the text. Two patterns, applied in this order to the evidence string (case-insensitive):
-1. `\bframes?\s+(\d+)(?:\s*[–-]\s*(\d+))?` → `m:ss`, or `m:ss–m:ss` for a range ("frames 120–600" → "0:04–0:20" at 30 fps);
-2. `\bF\s?0*(\d+)\b` → `m:ss` ("F 000090" and "F90" → "0:03").
+**Frame references in Muse Spark's text.** The role pass cites frames only by the number burned into each keyframe (PRE-A `docs/prompts/role-pass.md`), which is a prepared-frame index, so the drawer rewrites every reference before showing the text. The rewrite works sentence by sentence (a sentence ends at `.`, `;` or the end of the string) and is case-insensitive. `N` below means a run of digits; each converted `N` becomes `m:ss` on §0's prepared clock, and a range `N–N` becomes `m:ss–m:ss` (an en dash, whether the source used `-` or `–`).
+1. **"frame"/"frames" followed by numbers.** `\bframes?\s+` followed by a **list** of numbers or ranges, separated by `,`, `and` or `, and` (regex for one element: `\d+(?:\s*[–-]\s*\d+)?`). The word "frame(s)" is dropped and every element is converted: "frames 90 and 120" → "0:03 and 0:04"; "frames 90, 120 and 150" → "0:03, 0:04 and 0:05"; "frames 120–600" → "0:04–0:20".
+2. **Burned-in labels.** `\bF\s?0*(\d+)\b` → `m:ss` ("F 000090" and "F90" → "0:03").
+3. **Bare ranges after a reference.** In a sentence where rule 1 or 2 converted something, a later bare range `\b(\d+)\s*[–-]\s*(\d+)\b` is also converted, if both numbers are **≥ 10** and `< job.frames` (numbers already turned into `m:ss` by rules 1–2 aren't bare, so they're never converted twice). That covers ARCHITECTURE §3.5's own example: "introduced at frame 90, speaks to camera 120–600" → "introduced at 0:03, speaks to camera 0:04–0:20". The ≥ 10 floor keeps counts like "2–3 people" as written.
 
-Times use §0's prepared clock. A number that isn't a valid frame (`≥ job.frames`) is left as written, never turned into an invented time. "Face 7" and other words starting with F don't match, because the pattern needs a digit right after `F` and an optional space. The unedited text stays in the Details row ("Muse Spark's words: …"). Test cases: §10.6.
+**Limits:**
+- A **bare single number** is never converted, even after "at", "from" or "to" ("speaks at 120" stays as written), because it can't be told apart from a count.
+- A number that isn't a valid frame (`≥ job.frames`) is left as written, never turned into an invented time.
+- "Face 7" and other words starting with F don't match rule 2, because it needs a digit right after `F` and an optional space.
+
+The role-pass prompt asks Muse Spark to cite frames as "F nnnnnn" (PRE-A `docs/prompts/role-pass.md`), so rule 2 is the common case. The unedited text stays in the Details row ("Muse Spark's words: …"). Test cases: §10.6.
 
 There's no "Hidden, votes disagreed" case: a track whose votes disagree becomes `role: unsure` and the item goes to **Needs you**, never to Hidden on its own ([DESIGN.md](DESIGN.md) §2.3; PRE-A `docs/prompts/escalation.md` rules 3–4).
 
@@ -659,7 +673,7 @@ There's no "Hidden, votes disagreed" case: a track whose votes disagree becomes 
 | Ring position | `tracks.json` `tracks[track_id].boxes[frame]` for the item's tracks on that frame |
 | Evidence frames | `decisions.items[].evidence_frames` (falls back to `roles.tracks[].frames`) |
 | Reason | `decisions.items[].reason` |
-| Votes, evidence, escalation | `roles.json` `tracks[]`: `votes`, `role`, `evidence`, `escalated`, `suggested_role` (nullable; PRE-A escalation.md) for each track in `track_ids`; show the primary track first |
+| Votes, evidence, escalation | `roles.json` `tracks[]`: `votes`, `role`, `evidence` (role pass only), `escalated` (true only for a returned ruling), `suggested_role` (nullable; PRE-A escalation.md), `escalation_evidence` and `escalation_frames` (nullable; *proposal*, request 3 in §8) for each track in `track_ids`; show the primary track first |
 | Object content | `roles.json` `objects[]`: `sensitive`, `content`, for screens, documents, phones, badges and plates (`license plate:` tracks; PRE-A role-pass.md) |
 | Transcript | `transcript.json` `turns[]` whose span overlaps the item's prepared-clock span `[first / job.fps, (last + 1) / job.fps)`: a turn overlaps when `turn.start < (last + 1) / job.fps` and `turn.end ≥ first / job.fps`. Turn times are prepared-clock seconds, because the ASR audio is extracted from `prepared.mp4` (PRE-A `docs/API-NOTES.md` §5b step 4) |
 | Speaker link | `roles.json` `tracks[].matches_participant` (nullable index into `scene.participants`; PRE-A role-pass.md) → `scene.json` `participants[k].speaker` |
@@ -726,10 +740,13 @@ Goal: the creator gets the redacted video, sees that it was checked, and has the
 | Element | Copy |
 |---|---|
 | Title | Your clip is ready |
-| Audit, clean | ✓ Checked · `{frames_scanned}` frames checked. No leaks found. |
-| Audit, fixed | ✓ Checked · `{frames_scanned}` frames checked. `{n}` leak(s) found and fixed. Nothing left to fix. |
-| Audit, unresolved | ⚠ Not ready to publish · `{frames_scanned}` frames checked. `{unresolved}` spot(s) couldn't be fixed automatically. Publishing is off until they're fixed. [Review them] (links to `/jobs/[id]?view=review`, §10.4) |
-| Audit detail link | What the check does → (expands: "Meta's EgoBlur looked for faces and number plates on every frame of the result. Muse Spark looked at sampled frames and tried to read or recognise anything. Anything they found that wasn't kept clear on purpose was covered, and the clip was rendered again.") |
+| Audit, clean | ✓ Checked · `{frames_scanned}` of `{frames}` frames checked. No leaks found. |
+| Audit, fixed | ✓ Checked · `{frames_scanned}` of `{frames}` frames checked. `{n}` leak(s) found and fixed. Nothing left to fix. |
+| Audit, unresolved | ⚠ Not ready to publish · `{frames_scanned}` of `{frames}` frames checked. `{unresolved}` spot(s) couldn't be fixed automatically. Publishing is off until they're fixed. [Review them] (links to `/jobs/[id]?view=review`, §10.4) |
+| Audit detail link | What the check does → (expands: "Meta's EgoBlur looked for faces and number plates on `{frames_scanned}` of the result's `{frames}` frames (on every frame when the two numbers match; otherwise on a sample plus every frame at an item's edges). Muse Spark looked at sampled frames and tried to read or recognise anything. Anything they found that wasn't kept clear on purpose was covered, and the clip was rendered again.") |
+| Audit, couldn't finish (`redteam_status: "failed"`) | ⚠ Not ready to publish · The final check couldn't finish. Publishing is off until it runs. [Check again] (`POST /v1/jobs/{id}/render` with `audit_only: true`, *proposal*: re-runs the audit on the existing render) |
+| Audit over budget (`redteam_status: "over_budget"`) | ⚠ Not ready to publish · The final check ran out of budget for this clip. Publishing is off. Try a shorter clip. |
+| `{frames}` wording rule | Never write "every frame" unless `frames_scanned == frames` (`frames` from `job.json`) |
 | Download | Download video |
 | Publish | Publish to Sigmora |
 | Publish disabled tooltip | Publishing is off until every spot is fixed. |
@@ -750,7 +767,9 @@ Goal: the creator gets the redacted video, sees that it was checked, and has the
 | Rendering (arrived early) | The progress list `render` → `receipt` from §2.5 |
 | Edited after rendering | The job is back in `review` (§10.4), so `/result` redirects to the review panel; Publish can't be reached until the new render is `done` |
 | Ready, clean / fixed | As wireframed |
-| Unresolved > 0 | Warning panel (above), Publish disabled, Download still allowed with the note "This version has `{unresolved}` unfixed spot(s)." |
+| Unresolved > 0 (with `redteam_status: "ok"`) | Warning panel (above), Publish disabled, Download still allowed with the note "This version has `{unresolved}` unfixed spot(s)." |
+| Audit couldn't finish (`redteam_status: "failed"`) | The "couldn't finish" panel (§5.3) instead of the unresolved one, whatever `unresolved` says (PRE-A `docs/prompts/redteam.md`: a failed red-team call adds the batch's frames to `unresolved`, so the count isn't a count of spots). [Check again]; no [Review them], because there's nothing to review. Publish disabled; Download allowed with the note "This version hasn't been fully checked." |
+| Audit over budget (`redteam_status: "over_budget"`) | The "ran out of budget" panel (§5.3). No [Check again] (it would fail the same way). Publish disabled; Download allowed with the same note |
 | Receipt failed to load | "The receipt didn't load. You can still download it as JSON." |
 | From Sigmora (`?from=sigmora`) | Publish button shows; header shows "Back to Sigmora" |
 | Not from Sigmora | No Publish button at all (not a disabled one) |
@@ -769,7 +788,7 @@ Goal: the creator gets the redacted video, sees that it was checked, and has the
 | Element | Source |
 |---|---|
 | Video, download | `GET /v1/jobs/{id}/result` → signed URL for `redacted.mp4` |
-| Audit summary | `audit.json`: `frames_scanned`; **leaks found and fixed = the number of distinct `patched_item` values** in `leaks[]` (one leaking person over 2 frames is 1 leak, not 2; `leaks[]` has one row per frame); `unresolved`; `passes` |
+| Audit summary | `audit.json`: `frames_scanned`; **leaks found and fixed = the number of distinct `patched_item` values** in `leaks[]` (one leaking person over 2 frames is 1 leak, not 2; `leaks[]` has one row per frame); `unresolved`; `passes`; `redteam_status` (`ok` \| `failed` \| `over_budget`, *proposal*, §8 request 11) picks the panel; `frames_scanned` and `job.frames` fill "`{frames_scanned}` of `{frames}`" |
 | Publish allowed | `audit.json` `unresolved == 0` ([ARCHITECTURE.md](ARCHITECTURE.md) §3.8) and `?from=sigmora` |
 | Receipt frame / download | signed URLs for `receipt.html` and `receipt.json` (§3.9: items, audit, models, data_handling, approved_by/at, cost_usd, hash) |
 | Deletion time | `deletes_at` from the API (WP5 computes it from its cleanup schedule) |
@@ -842,15 +861,18 @@ The API ([WP5](work-packages/WP5.md)) hasn't been written; these are the fields 
 | Deletion time | `job.json` `created_at` + WP5's cleanup schedule | `deletes_at` (required) |
 
 **Requests for other WPs** (also listed in the PRE-B PR):
-1. **WP5:** return the fields above, including `plan` with the review response, `mode` on every response, `status: failed` with the failed `stage`, and `status: retry_later` (PRE-A `docs/API-NOTES.md` §10.3: a transient failure in a stage needed to hide something; WP5 re-queues it after 5 minutes), ideally with `retry_at` (ISO time) *(proposal)*.
+1. **WP5:** return the fields above, including `plan` with the review response, `mode` on every response, `status: failed` with the failed `stage`, and `status: retry_later` (PRE-A `docs/API-NOTES.md` §10.3: a transient failure in a stage needed to hide something; WP5 re-queues it after 5 minutes), ideally with `retry_at` (ISO time) *(proposal)*. A `failed` job also carries `failure: {stage, reason}` with `reason` ∈ `budget` (PRE-A §10.3 `BudgetExceeded`), `code_cap` (the per-access-code pilot cap, PILOTS.md §5), `config` (`MetaAuthError` or `MetaConfigError`), `bad_request`, `refusal`, `incomplete`, `internal` *(proposal)*. `POST /start` answers `429 code_cap` when the code's budget is already used.
 2. **WP2:** draw each track's `<concept>:<n>` label on the Set-of-Mark keyframes exactly as PRE-A `docs/prompts/role-pass.md` specifies, using the track's own ID. The UI derives display labels from track IDs (§0), so no extra field is needed.
-3. **WP2:** fill `roles.tracks[].matches_participant` (nullable index into `scene.participants`) and `suggested_role` (nullable, escalation only) as PRE-A `docs/prompts/role-pass.md` and `escalation.md` specify. The drawer's speaker link ("said by {label}") and escalation suggestion read them (§4.3, §4.6).
+3. **WP2:** fill `roles.tracks[].matches_participant` (nullable index into `scene.participants`) and `suggested_role` (nullable, escalation only) as PRE-A `docs/prompts/role-pass.md` and `escalation.md` specify. The drawer's speaker link ("said by {label}") and escalation suggestion read them (§4.3, §4.6). Also write the escalation ruling's evidence and frames to `escalation_evidence` (string or null) and `escalation_frames` (int array or null) *(proposal; PRE-A escalation.md rule 4 says the ruling's evidence goes to the review card but names no field, so this is also a request to PRE-A)*, never into `evidence`, and set `escalated: true` only for a returned, valid ruling.
 4. **WP3:** keep `reason` strings short (≤ 90 characters), plain, lowercase-first, no trailing full stop; the UI capitalises.
-5. **WP3/WP5:** name the review edit types to match §3.4 and §10.5: `keep`, `hide`, `merge` (into an item ID), `remove_person`, and `undo` carrying the `edit_id` to revert. The server restores the item's state from before that edit (including `needs_you`, `decided_by` and an unmerge), so the UI never has to construct an inverse edit. After a `merge` is acknowledged, the server returns the target with the source's `track_ids` folded in and the source removed. An edit accepted while the job is `done` moves the job back to `review` (the previous render stays downloadable until a new one replaces it).
+5. **WP3/WP5:** name the review edit types to match §3.4 and §10.5: `keep`, `hide`, `merge` (into an item ID), `remove_person`, and `undo`, which has its own `edit_id` and names the edit to revert in `reverts` (an undo that reused the original `edit_id` would be swallowed by the idempotency check, §10.3). The server restores the item's state from before that edit (including `needs_you`, `decided_by` and an unmerge), so the UI never has to construct an inverse edit. After a `merge` is acknowledged, the server returns the target with the source's `track_ids` folded in and the source removed. An edit accepted while the job is `done` moves the job back to `review` (the previous render stays downloadable until a new one replaces it).
 6. **WP1:** implement PRE-A `docs/API-NOTES.md` §5b exactly: a constant-frame-rate prepared clip at `job.fps`, `job.frames` read back with ffprobe, and `job.times` as source seconds (non-decreasing, repeats allowed, `times[0]` possibly slightly above 0). The UI places everything on the prepared clock `i / job.fps` (§0, §3.6) and checks `times` only as §3.6 lists.
 7. **WP2:** keep `transcript.json` turn times on the prepared clock by transcribing audio extracted from `prepared.mp4`, as PRE-A §5b step 4 specifies; the Why drawer's transcript overlap (§4.6) depends on it.
 8. **WP5:** return `deletes_at` as the latest time the 24 h cleanup will have removed the job (it depends on how often the cleanup runs).
 9. **WP0/WP3 (contract change, [AGENTS.md](../AGENTS.md) rule 3):** add `removed_by_creator: boolean` (default `false`) to `decisions.json` `items[]` in ARCHITECTURE §3.6 and `contracts.py`. WP3's `apply_review` sets it on a `remove_person` edit and clears it on that edit's `undo`. Nothing else can tell a removed person from a prominent bystander, because both use the `person_solid` style (DESIGN §2.7b). The reducer reads it from the server (§10.5), and the drawer's "Removed at your request" sentence and the receipt's "removed at your request" mark use it.
+10. **WP5:** reset `SAFECUT_DAILY_USD_CAP` spending at **00:00 UTC** each day *(decision for the copy "Try again tomorrow", §2.6)*, and include `retry_at` on `daily_cap` errors.
+11. **WP4/WP5:** add `audit.redteam_status` (`ok` \| `failed` \| `over_budget`) *(proposal)*, so the result page can tell PRE-A redteam.md's "audit couldn't run" and "audit over budget" apart from real unresolved spots; and accept `POST /v1/jobs/{id}/render` with `audit_only: true` to re-run the audit on the existing render *(proposal)*.
+12. **WP6 brief owner:** WP6 step 4 says the overlay maps frames "via `job.times`"; that is superseded by PRE-A `docs/API-NOTES.md` §5b, where the player uses `i / job.fps` and `job.times` holds source seconds (§3.6 here).
 
 ---
 
@@ -900,7 +922,9 @@ One file per screen state. Component and page tests load these through the API c
 | `job-rendering-audit.json` | `GET /v1/jobs/{id}` (`stage: "audit"`) | §3.5 bottom bar replaced by the render stages; chips read-only |
 | `result-clean.json` | `GET /v1/jobs/{id}/result` | §5.3 "No leaks found." |
 | `result-fixed.json` | `GET /v1/jobs/{id}/result` | §5.3 "1 leak(s) found and fixed. Nothing left to fix." (two `leaks[]` rows with the same `patched_item`: proves the distinct-item count, §5.6) |
-| `result-unresolved.json` | `GET /v1/jobs/{id}/result` (`audit.unresolved: 1`) | §5.4 warning, Publish disabled |
+| `result-unresolved.json` | `GET /v1/jobs/{id}/result` (`audit.unresolved: 1`, `redteam_status: "ok"`) | §5.4 warning, Publish disabled |
+| `result-audit-failed.json` | `GET /v1/jobs/{id}/result` (`audit.redteam_status: "failed"`, `unresolved: 40`) | §5.3 "The final check couldn't finish. …" with [Check again]; no [Review them] |
+| `result-audit-over-budget.json` | `GET /v1/jobs/{id}/result` (`audit.redteam_status: "over_budget"`) | §5.3 "The final check ran out of budget …"; no [Check again] |
 | `review-ack.json` | `POST /v1/jobs/{id}/review` | an accepted edit returning updated `items` and `plan` |
 | `error-401.json` | any | "That code didn't work. …" |
 | `error-429-cap.json` | any (`error.code: "daily_cap"`) | "Safe Cut has reached today's limit …" |
@@ -956,11 +980,12 @@ Error body *(proposal)*: `{"error": {"code": "<snake_case>", "message": "<for lo
   "roles": {
     "tracks": [
       {"track_id": "face:2", "role": "participant", "votes": ["participant", "participant", "participant"], "escalated": false,
-       "suggested_role": null, "matches_participant": 0, "evidence": "introduced at F 000003, speaks to camera at F 000003 and F 000009", "frames": [3, 9]},
+       "suggested_role": null, "escalation_evidence": null, "escalation_frames": null, "matches_participant": 0, "evidence": "introduced at F 000003, speaks to camera at F 000003 and F 000009", "frames": [3, 9]},
       {"track_id": "face:4", "role": "child", "votes": ["child", "child", "child"], "escalated": false,
-       "suggested_role": null, "matches_participant": null, "evidence": "small person walking with an adult behind the guest at F 000006", "frames": [6]},
+       "suggested_role": null, "escalation_evidence": null, "escalation_frames": null, "matches_participant": null, "evidence": "small person walking with an adult behind the guest at F 000006", "frames": [6]},
       {"track_id": "face:6", "role": "unsure", "votes": ["bystander", "participant", "bystander"], "escalated": true,
-       "suggested_role": "bystander", "matches_participant": null, "evidence": "looks at the camera at frame 9, never speaks", "frames": [9]}
+       "suggested_role": "bystander", "escalation_evidence": "faces the lens at F 000009 but is never addressed and never speaks", "escalation_frames": [9],
+       "matches_participant": null, "evidence": "looks at the camera at frame 9, never speaks", "frames": [9]}
     ],
     "objects": [{"track_id": "license plate:1", "sensitive": true, "content": "number plate, characters legible", "frames": [1]}],
     "missed": [], "keyframes": ["som/000001.jpg", "som/000003.jpg", "som/000006.jpg", "som/000009.jpg"]
@@ -1010,7 +1035,7 @@ The `plan` lists only a few frames to stay short; frames it leaves out simply dr
   ],
   "roles": {
     "tracks": [{"track_id": "face:1", "role": "participant", "votes": ["participant", "participant", "participant"], "escalated": false,
-                "suggested_role": null, "matches_participant": null, "evidence": "speaks to camera at F 000002 and F 000007", "frames": [2, 7]}],
+                "suggested_role": null, "escalation_evidence": null, "escalation_frames": null, "matches_participant": null, "evidence": "speaks to camera at F 000002 and F 000007", "frames": [2, 7]}],
     "objects": [
       {"track_id": "screen:2", "sensitive": true, "content": "email inbox with names", "frames": [4]},
       {"track_id": "screen:3", "sensitive": false, "content": "café menu", "frames": [4, 7]}
@@ -1028,7 +1053,7 @@ The `plan` lists only a few frames to stay short; frames it leaves out simply dr
 
 `i_6` is in the plan because `needs_you` renders hidden until the creator decides (ARCHITECTURE §3.6).
 
-*(proposal)* fields beyond ARCHITECTURE §3: `job_id`, `mode`, `status`, `stage`, `progress` (0–1), `deletes_at`, `retry_at`, `job.prepared_url`, `keyframe_urls` (frame → signed URL), and `items[].removed_by_creator` (§8 request 9). **PRE-A's additions** (decided in its prompt specs; WP0 adds them to `contracts.py`): `roles.tracks[].matches_participant` (role-pass.md) and `suggested_role` (escalation.md); `scene.participants[].is_creator`, `scene.children[]`, `scene.others_present`, and the `approx_time` enum on `scene.candidate_objects[]` (scene-pass.md). Everything else is the ARCHITECTURE §3 contract shape.
+*(proposal)* fields beyond ARCHITECTURE §3: `job_id`, `mode`, `status`, `stage`, `progress` (0–1), `deletes_at`, `retry_at`, `job.prepared_url`, `keyframe_urls` (frame → signed URL), `items[].removed_by_creator` (§8 request 9), `failure: {stage, reason}` (§8 request 1), `roles.tracks[].escalation_evidence` and `escalation_frames` (§8 request 3), `audit.redteam_status` (§8 request 11), and on review edits `edit_id` plus `reverts` (§8 request 5). **PRE-A's additions** (decided in its prompt specs; WP0 adds them to `contracts.py`): `roles.tracks[].matches_participant` (role-pass.md) and `suggested_role` (escalation.md); `scene.participants[].is_creator`, `scene.children[]`, `scene.others_present`, and the `approx_time` enum on `scene.candidate_objects[]` (scene-pass.md). Everything else is the ARCHITECTURE §3 contract shape.
 
 **Mock invariants** (a mock test checks them): `job.fps` is an integer from 1 to 30; `times` has `frames` entries, all finite and non-decreasing (§3.6); every frame number is in `[0, frames − 1]`; every `track_ids` entry exists in `tracks`; every evidence frame is in `roles.keyframes` and in `keyframe_urls`, with a box for the item's primary track on that frame; every `plan` region's `item_id` exists; every `reentry_of` names an existing track; every item has `removed_by_creator`; `scene` has every field of PRE-A's scene-pass.md schema; every `roles.objects[]` entry names an existing track. `example.invalid` is a reserved non-resolving domain, so a mock can never fetch real media.
 
@@ -1059,7 +1084,8 @@ The Start button is enabled once a file passes every check above, but pressing i
 | Job expired | `404` with `code: "expired"` on a job route | §7 "This clip has been deleted. …" | [Try another clip] | none |
 | Job not found | `404` with any other code on a job route | §7 "We couldn't find that clip. …" | [Try another clip] | none |
 | Meta busy, retrying later | `status: "retry_later"` | §2.6 "Meta's service is busy right now. …" | stay on the page; [Copy link] · [Cancel and delete] | poll every **30 s**, or once at `retry_at` if the API gives one *(proposal)*; the page moves on when the status changes |
-| Stage failed | `status: "failed"` | §2.6 stage-failure message, filled with that stage's §2.5 row label | [Try again] = `POST /render` if the failed stage is `render`, `audit` or `receipt` (re-render with the creator's decisions); otherwise `POST /start` *(proposal, WP5)* · [Delete now] | none automatic |
+| Stage failed | `status: "failed"` + `failure: {stage, reason}` *(proposal, WP5; reason names follow PRE-A §10.3: `budget` is PRE-A's, the others are proposals)* | the §2.6 row for that `reason`, filled with the stage's §2.5 row label | Only when `reason` is `internal` (or `failure` is missing): [Try again] = `POST /render` if the failed stage is `render`, `audit` or `receipt` (re-render with the creator's decisions); otherwise `POST /start` *(proposal, WP5)*. Every other reason: no [Try again]. Always [Delete now] | none automatic |
+| Code budget used | `429` `code_cap` on `POST /start` | §2.6 "This access code has used its processing budget. …" | none | none |
 | Edit rejected | `POST /review` non-2xx, or timeout | §3.7 "That change didn't save. …" | chip reverts (§10.5 `SERVER_REJECT`) | **none automatic**: the creator presses [Try again] |
 | Render already running | `409` on `POST /render` | no message | keep polling | n/a |
 | Network error or timeout on a GET | fetch rejects, or no response in **15 s** | after 3 failed retries: §7 "Safe Cut's service isn't responding right now. …" | [Try again] restarts polling | retry after 2 s, 4 s, 8 s; then stop and show the message |
@@ -1068,7 +1094,7 @@ The Start button is enabled once a file passes every check above, but pressing i
 
 - **Timeouts:** every JSON request is aborted after 15 s (`AbortController`). Uploads have no overall timeout, only the 30 s stall rule.
 - **Polling:** `GET /v1/jobs/{id}` every 2 s for the first 60 s of a page view, then every 5 s. Stop polling when the tab is hidden (`visibilitychange`) and resume immediately when it's visible again. Polling **pauses** in `review` while no render is in flight, and **resumes** as soon as `POST /render` is sent (or answered `409`), so the render stages show. In `retry_later` it slows to every 30 s (row above). It **stops** in `done`, `failed`, `expired` and `not_found`; in `done` it restarts only when an edit made at `?view=review` is acknowledged with `status: "review"` (§10.4), and then follows the rules above.
-- **Idempotency:** each review edit carries an `edit_id` (a UUID v4 made in the browser) *(proposal; request to WP5)*. A manual retry resends the same `edit_id`, so the server can't apply it twice. `POST /render` is protected by disabling the button until the response, plus the `409` rule.
+- **Idempotency:** each review edit carries an `edit_id` (a UUID v4 made in the browser) *(proposal; request to WP5)*. A manual retry resends the same `edit_id`, so the server can't apply it twice. An `undo` is a new edit with a new `edit_id`, pointing at the edit it reverts through `reverts` (§10.5). `POST /render` is protected by disabling the button until the response, plus the `409` rule.
 - **Logging:** errors go to the console with the job ID and the HTTP status, never the access code or signed URLs.
 
 ### 10.4 Job page state machine
@@ -1081,6 +1107,7 @@ The Start button is enabled once a file passes every check above, but pressing i
 | `review` | `status: "review"` | `/jobs/[id]` | §3 review panel |
 | `rendering(stage)` | `status: "rendering"`, `stage` ∈ `render`, `audit`, `receipt` | `/jobs/[id]` · `/jobs/[id]/result` | on `/jobs/[id]`: review panel, read-only, with the render stages in the bottom bar (§3.5); on `/result`: §5.4 "Rendering (arrived early)" |
 | `done` | `status: "done"` | `/jobs/[id]/result`; also `/jobs/[id]?view=review` | on `/result`: §5. On `/jobs/[id]?view=review`: the §3 review panel, **editable** (reached only from "Back to review" or "[Review them]"). The first edit there is sent as usual; the server moves the job back to `review` *(proposal, §8 request 5)*, and the bottom bar shows §3.5's "You changed something after rendering. …" until a new render finishes |
+| `done`, audit not finished | `status: "done"` + `audit.redteam_status` `failed` or `over_budget` | `/jobs/[id]/result` | §5.3 "couldn't finish" or "ran out of budget" panel; Publish disabled. [Check again] (only for `failed`) sends `POST /v1/jobs/{id}/render` with `audit_only: true` *(proposal)*; the job goes to `rendering` with stage `audit`, and polling resumes as for any render |
 | `failed(stage)` | `status: "failed"` | either route | §2.6 stage-failure message with that stage's §2.5 label; [Try again] per §10.3 |
 | `expired` | `404` with `code: "expired"` | either route | §7 "This clip has been deleted. …" |
 | `not_found` | `404` with any other code | either route | §7 "We couldn't find that clip. …" (the route-level 404 "We couldn't find that page." is only for unknown URLs) |
@@ -1103,11 +1130,28 @@ Transitions follow the server: `loading → processing → review → rendering 
 | `HIDE(id)` | `merged_into = null`; `decision ≠ hide` | `decision = hide`, `decided_by = creator`; items merged into it follow (effective decision); edit sent |
 | `MERGE(src, dst)` | **all of:** `src ≠ dst`; `src.kind = person`; `src` not `locked`; `src.merged_into = null`; `src.reentry_target` is set **and** that item is `kind = person`, `decision = keep`, `role = participant` (this is when the chip offers the merge, §3.3); `dst.kind = person`; `dst.decision = keep`; `dst.role = participant`; `dst` not `locked`; `dst.merged_into = null` | `src.merged_into = dst`, `decided_by = creator`; `src` leaves the columns; `dst` shows `src`'s tracks (time range, overlay, drawer); header counts drop by one; edit sent |
 | `REMOVE_PERSON(id)` | `kind ∈ {person, child}` (sent only after the §3.4 dialog's [Remove]) | `removed = true`, `decision = hide`, style shown as Whole person covered; on a kept participant this hides them; edit sent |
-| `UNDO(edit_id)` | the edit is in `undo` and isn't pending | restores that edit's `prev` locally (for a merge: `src` back as a separate hidden NEW item with its own tracks) and sends an `undo` edit carrying `edit_id`; the server restores the prior state (§8 request 5) *(proposal, WP3/WP5)* |
+| `UNDO(edit_id)` | the edit is in `undo` and isn't pending | restores that edit's `prev` locally (for a merge: `src` back as a separate hidden NEW item with its own tracks) and sends an `undo` edit with **its own new `edit_id`** and `reverts: <edit_id of the edit being undone>`; the server restores the prior state (§8 request 5) *(proposal, WP3/WP5)*. Reusing the original `edit_id` would make the server's idempotency check (§10.3) treat the undo as a retry of the original and silently ignore it |
 | `SERVER_ACK(edit_id, items, plan)` | edit is pending | drop from `pending`; replace items and plan with the server's (after a merge, the server's `dst` already holds `src`'s `track_ids` and `src` is gone; because the re-entry track now belongs to the same item, `dst` shows no NEW badge, §3.3) |
 | `SERVER_REJECT(edit_id)` | edit is pending | restore `prev`; show the §3.7 edit-failed toast |
 
 Children are never `MERGE` sources or targets: a child is `kind = child`, which fails both `kind = person` checks, and is `locked`.
+
+**Reducer fixture** (`web/mocks/reducer-state.json`). This is the reducer's input state, not an API response, so the API-mock invariants in §10.1 don't apply to it. Unless a row names another mock, every R-row starts from this state, with `rendering: false`, no pending edits and an empty `undo` list. It uses the same item IDs and labels as the hero mock, plus the extra items the merge cases need:
+
+```json
+{"items": {
+  "i_1": {"label": "Face 2", "track_ids": ["face:2", "person:1"], "decision": "keep", "decided_by": "policy", "locked": false, "kind": "person", "role": "participant", "reentry_target": null, "merged_into": null, "removed": false},
+  "i_2": {"label": "Face 4", "track_ids": ["face:4"], "decision": "hide", "decided_by": "policy", "locked": true, "kind": "child", "role": "child", "reentry_target": null, "merged_into": null, "removed": false},
+  "i_3": {"label": "Plate 1", "track_ids": ["license plate:1"], "decision": "hide", "decided_by": "policy", "locked": false, "kind": "plate", "role": null, "reentry_target": null, "merged_into": null, "removed": false},
+  "i_4": {"label": "Face 6", "track_ids": ["face:6"], "decision": "needs_you", "decided_by": "model", "locked": false, "kind": "person", "role": "unsure", "reentry_target": null, "merged_into": null, "removed": false},
+  "i_5": {"label": "Face 5", "track_ids": ["face:5"], "decision": "hide", "decided_by": "policy", "locked": false, "kind": "person", "role": "bystander", "reentry_target": null, "merged_into": null, "removed": false},
+  "i_7": {"label": "Face 7", "track_ids": ["face:7"], "decision": "keep", "decided_by": "creator", "locked": false, "kind": "person", "role": "bystander", "reentry_target": null, "merged_into": null, "removed": false},
+  "i_8": {"label": "Face 8", "track_ids": ["face:8"], "decision": "hide", "decided_by": "policy", "locked": false, "kind": "person", "role": "bystander", "reentry_target": "i_5", "merged_into": null, "removed": false},
+  "i_9": {"label": "Face 9", "track_ids": ["face:9"], "decision": "hide", "decided_by": "policy", "locked": false, "kind": "person", "role": "unsure", "reentry_target": "i_1", "merged_into": null, "removed": false}
+}, "confirm": null, "pending": {}, "undo": [], "rendering": false}
+```
+
+`reentry_target` is the item that owns the track named in the re-entry track's `reentry_of` (i_9's `face:9` has `reentry_of: face:2`, which belongs to i_1; i_8's `face:8` has `reentry_of: face:5`, which belongs to i_5).
 
 **Test cases** (expected state and UI after the action):
 
@@ -1119,13 +1163,13 @@ Children are never `MERGE` sources or targets: a child is `kind = child`, which 
 | R2c | hero mock: i_3 plate, hide | `KEEP(i_3)` | i_3 keep, creator, **no confirm** (plates aren't screens or documents); toast "Plate 1 will be kept clear. [Undo]"; one request |
 | R3 | i_2 locked child | `KEEP(i_2)` | no change; **no request**; no toast (the button isn't rendered; this guards keyboard and devtools paths) |
 | R4 | i_4 needs_you | `HIDE(i_4)` | hide, creator; chip in Hidden; toast "Face 6 will be hidden. [Undo]" |
-| R5 | R4 state (acknowledged) | `UNDO(R4)` | i_4 back to needs_you, decided_by model; chip in Needs you; toast "Undone."; one `undo` edit sent with R4's `edit_id` |
+| R5 | R4 state (acknowledged) | `UNDO(R4)` | i_4 back to needs_you, decided_by model; chip in Needs you; toast "Undone."; one `undo` edit sent with a new `edit_id` and `reverts` = R4's `edit_id` |
 | R6 | i_1 keep | `HIDE(i_1)` twice quickly (double-click) | one state change, **one request** (the second fails the pending-edit guard) |
 | R7 | i_4 needs_you | `KEEP(i_4)` | keep, creator; Kept clear; toast "Face 6 will be kept clear. [Undo]" |
 | R8 | reentry mock: i_9 (`face:9`, hidden, `reentry_of: face:2`) and i_1 (`face:2`, kept guest) | `MERGE(i_9, i_1)` | `i_9.merged_into = i_1`; i_9 leaves the columns; i_1's range and overlay include `face:9`; header counts drop by one; toast "Face 9 merged into Face 2. They'll be kept clear like Face 2. [Undo]"; one request |
 | R8b | R8 state (acknowledged: server returns i_1 with `track_ids` `[face:2, person:1, face:9]`, no i_9) | `HIDE(i_1)` | i_1 hide, creator; the overlay covers `face:9`'s frames too; no NEW badge on i_1; toast "Face 2 will be hidden. [Undo]" |
-| R9 | R8 state (acknowledged) | `UNDO(R8)` | i_9 back in Hidden as its own item with `face:9`, NEW again with [Same as Face 2…]; i_1's range back; header counts back; toast "Undone."; one `undo` edit sent with R8's `edit_id` |
-| R9b | reentry-bystander mock: i_8 (`face:8`, hidden, `reentry_of: face:5`), i_5 (`face:5`, hidden bystander), i_1 kept guest | render the chip, then `MERGE(i_8, i_1)` | chip shows "The tracker lost this person and found them again. They stay hidden." and no merge button; the action is rejected (`reentry_target` isn't a kept participant); no request |
+| R9 | R8 state (acknowledged) | `UNDO(R8)` | i_9 back in Hidden as its own item with `face:9`, NEW again with [Same as Face 2…]; i_1's range back; header counts back; toast "Undone."; one `undo` edit sent with a new `edit_id` and `reverts` = R8's `edit_id` |
+| R9b | reducer fixture (i_8 re-entry of the hidden bystander i_5; i_1 kept guest); the chip is checked against the reentry-bystander mock | render the chip, then `MERGE(i_8, i_1)` | chip shows "The tracker lost this person and found them again. They stay hidden." and no merge button; the action is rejected (`reentry_target` isn't a kept participant); no request |
 | R10 | i_9, i_2 child | `MERGE(i_9, i_2)` | rejected; no request (child target) |
 | R11 | i_2 child | `MERGE(i_2, i_1)` | rejected; no request (child source) |
 | R12 | i_9, i_4 needs_you | `MERGE(i_9, i_4)` | rejected (target not kept) |
@@ -1188,6 +1232,13 @@ Children are never `MERGE` sources or targets: a child is `kind = child`, which 
 | `Face 7 is the host` | `Face 7 is the host` (no match: no digit right after `F`) |
 | `seen at F 001200` (frame ≥ `job.frames`) | `seen at F 001200` (left as written) |
 | `background, never addressed` | unchanged |
+| `introduced at frame 90, speaks to camera 120–600` (ARCHITECTURE §3.5's example) | `introduced at 0:03, speaks to camera 0:04–0:20` (rule 1, then rule 3) |
+| `seen in frames 90 and 120` | `seen in 0:03 and 0:04` |
+| `frames 90, 120 and 150, never addressed` | `0:03, 0:04 and 0:05, never addressed` |
+| `at F 000090 with 2–3 people nearby` | `at 0:03 with 2–3 people nearby` (rule 3 needs both numbers ≥ 10) |
+| `speaks at 120` (no frame word or F label) | `speaks at 120` (bare single numbers are never converted) |
+| `at frame 90. Later 120–240` | `at 0:03. Later 120–240` (rule 3 only applies within the sentence that had a reference) |
+| `frames 240-600` (hyphen) | `0:08–0:20` |
 
 ### 10.7 Edge states checklist
 

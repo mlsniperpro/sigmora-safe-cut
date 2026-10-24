@@ -17,16 +17,16 @@ labels/<split>/                       private: ~/SafeCutEval/labels/ (+ the priv
 clips.md                              the clip list: clip, split, category, status, labellers, CVAT version
 ```
 
-The **clip ID** is the first three parts of the file name in [SHOTLIST.md](../SHOTLIST.md): `SC-A-01-cbd-20261018.mp4` → `SC-A-01`. Test-split labels stay on the owner's Mac and its private backup; only the split hash (`eval/splits/test.sha256`, WP7) is committed.
+The **clip ID** is the first three parts of the file name in [SHOTLIST.md](../SHOTLIST.md): `SC-A-01-cbd-20261018.mp4` → `SC-A-01`. **Hero clips** (SHOTLIST's "Hero demo clips", which have no A–J category) are named `SC-HERO-<n><take>-<location>-<yyyymmdd>.mp4`, with `<n>` the hero clip number 1–3 and `<take>` the take letter A or B: `SC-HERO-1A-cbd-20261025.mp4` → clip ID `SC-HERO-1A` (hero clip 1, take A; STORYBOARD's `H1A`). Each take is its own clip with its own label file. The extension may be upper or lower case (`.mp4`, `.MP4`, `.mov`, `.MOV`), because phones and the DJI write either; rename nothing else. Test-split labels stay on the owner's Mac and its private backup; only the split hash (`eval/splits/test.sha256`, WP7) is committed.
 
 ## 2. The label JSON
 
 | Field | Type | Meaning |
 |---|---|---|
-| `clip` | string | the source file name, exactly as filmed |
+| `clip` | string | the source file name, exactly as filmed (pattern in §6.1; rename a camera's default name to the §1 pattern before labelling) |
 | `fps` | number | the source frame rate (ffprobe's average, e.g. `30` or `29.97`) |
 | `frames` | integer | number of frames in the source clip |
-| `width`, `height` | integer | source resolution in pixels |
+| `width`, `height` | integer | source resolution in pixels, **as displayed**: after the file's rotation is applied, i.e. what CVAT and a player show. When ffprobe reports a rotation of ±90° (the stream's display-matrix side data, common on portrait phone clips), the displayed size is the coded `width`/`height` **swapped**. A portrait clip coded 1920×1080 with rotation 90 has `width: 1080, height: 1920` |
 | `split` | `"dev"` \| `"test"` \| `"hero"` | the split the clip belongs to ([EVAL.md](../EVAL.md) §1) |
 | `entities[].id` | string | `e1`, `e2`, …, unique within the clip; the number is the MOT `id` |
 | `entities[].category` | string | one of the nine in [LABELING-GUIDE.md](LABELING-GUIDE.md) §2.1 |
@@ -46,7 +46,8 @@ The **clip ID** is the first three parts of the file name in [SHOTLIST.md](../SH
     - labels on **dropped** source frames (frames no prepared frame shows) are never sampled, because no viewer sees them;
     - an entity visible on **no** prepared frame is left out of recall and over-blur and counted separately as "not visible after prepare" in WP7's report.
   - **Visible frames, recall, exposure and leak bursts are all counted on prepared frames** (§9.3). `frames.first`/`last` in the label JSON stay source-frame indices.
-  - **Box scaling:** `x, w` by `prepared.width / source.width` and `y, h` by `prepared.height / source.height` (equal ratios when prepare keeps the aspect ratio). Keep the results as floats; never round.
+  - **Box scaling:** `x, w` by `prepared.width / source.width` and `y, h` by `prepared.height / source.height` (equal ratios when prepare keeps the aspect ratio), **using displayed (rotation-applied) sizes on both sides**: the label header's `width`/`height` and `job.json`'s `width`/`height`, which are the prepared clip's displayed size. Never use ffprobe's coded size for a rotated clip. Keep the results as floats; never round (§9.1 has a portrait vector).
+  - **`times` precision (request to WP1; PRE-A §5b owns the definition):** WP1 stores `job.times` as **full-precision doubles**, each computed as `(PTS × time_base) − t_0` from ffprobe's integer PTS and the stream's `time_base`, and written unrounded (JSON numbers with up to 17 significant digits, as Python's `json.dumps` writes a float). Never round them for readability. ARCHITECTURE §3.1's `0.0333` is an illustration, not a format. WP7 computes `t_k` from the same PTS list with **the same function in WP1's time module** (PRE-A §5b: "one module in WP1"), so a true match agrees to within 1e-9 by construction. The 1e-6 tolerance only absorbs JSON round-tripping, and a `times` list rounded to 4 decimals fails the match (§9.1 M8).
   - **player → prepared** (UI overlay): `i = clamp(floor(mediaTime × job.fps + 0.25), 0, job.frames − 1)`, on the prepared clock ([UI-SPEC.md](../UI-SPEC.md) §3.6; PRE-A vector T5).
   - **prepared → SAM proxy:** PRE-A §5b's `to_proxy` / `from_proxy`, not this doc's.
   - **If trimming is ever added,** `job.json` gains `source_offset_s` (PRE-A §5b, a contract change). Only source-clock conversions use it (matching `t_k` against `times[i] + source_offset_s`); the prepared clock and the player mapping don't change.
@@ -239,7 +240,7 @@ Three kinds of label file share one schema. The kind comes from the file name: `
   "additionalProperties": false,
   "required": ["clip", "fps", "frames", "width", "height", "split", "entities", "notes"],
   "properties": {
-    "clip":   {"type": "string", "pattern": "^SC-[A-J]-\\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*-\\d{8}\\.(?:mp4|mov)$"},
+    "clip":   {"type": "string", "pattern": "^SC-(?:[A-J]-\\d{2}|HERO-[1-3][AB])-[a-z0-9]+(?:-[a-z0-9]+)*-\\d{8}\\.(?:[mM][pP]4|[mM][oO][vV])$"},
     "fps":    {"type": "number", "exclusiveMinimum": 0, "maximum": 240},
     "frames": {"type": "integer", "minimum": 1},
     "width":  {"type": "integer", "minimum": 1},
@@ -264,7 +265,7 @@ Three kinds of label file share one schema. The kind comes from the file name: `
           "type": "object", "additionalProperties": false, "required": ["first", "last"],
           "properties": {"first": {"type": "integer", "minimum": 0}, "last": {"type": "integer", "minimum": 0}}
         },
-        "boxes": {"type": ["string", "null"], "pattern": "^tracks/SC-[A-J]-\\d{2}/e[1-9]\\d*\\.mot\\.txt$"}
+        "boxes": {"type": ["string", "null"], "pattern": "^tracks/SC-(?:[A-J]-\\d{2}|HERO-[1-3][AB])/e[1-9]\\d*\\.mot\\.txt$"}
       }
     }
   }
@@ -418,6 +419,7 @@ A 6-frame clip, invented for tests. `e1` is visible on all six frames; `e2` is v
 | V4 | `entities: []` in A, B and resolved; both MOT files deleted; track map `{}` | valid (a clip with nothing to label) |
 | V5 | `e2.difficulty: []` | valid (difficulty tags aren't cross-checked) |
 | V6 | `SC-A-91.labeller-B.json` deleted (single labeller, plan R3) | **warning** LBL032 only; the clip loads, and the agreement report says "not measured (single labeller)" (§9.2 K4) |
+| V7 | A hero clip: the files are renamed to clip ID `SC-HERO-1A` (`labels/hero/SC-HERO-1A.json`, `tracks/SC-HERO-1A/e1.mot.txt`, `tracks/SC-HERO-1A/e2.mot.txt`, and the A, B and track-map files to match), with `"clip": "SC-HERO-1A-cbd-20261025.MP4"` (upper-case extension, as the camera writes it), `"split": "hero"`, and both `boxes` paths set to `tracks/SC-HERO-1A/e{n}.mot.txt` | valid |
 
 ### 8.3 Invalid cases
 
@@ -477,6 +479,9 @@ Rule (§2): prepared frame `i` takes the label state of the source frame `k(i)` 
 | M5 | M3's clip; entity e1 has MOT rows for source frames 1 and 2 only (MOT frames 2, 3) | — | — | — | e1 visible on prepared frames **1, 2, 3**: 3 visible prepared frames (1 and 2 both come from source frame 1) | repeats count as visible frames |
 | M6 | M3's clip; entity e2 has a MOT row only for source frame 3 (MOT frame 4) | — | — | — | e2 visible on **no** prepared frame | left out of recall and over-blur; counted as "not visible after prepare" |
 | M7 | M1's `times`, but the source PTS list is from another clip (`t_k = k / 25`) | 30, 6 | as M1 | — | prepared frame 1 (`1/30`) matches no `t_k` within 1e-6 | **error**: WP7 stops scoring the clip and names it |
+| M8 | M1's source, but `job.times` was written **rounded to 4 decimals**: `[0, 0.0333, 0.0667, 0.1, 0.1333, 0.1667]` | 30, 6 | rounded | — | prepared frame 1: `|0.0333 − 1/30| = 1/30000 ≈ 3.33e-5` > 1e-6, so no match (frames 0 and 3 still match exactly) | **error** "times not at source precision": WP7 stops scoring the clip and names it. The fix is in WP1 (§2: store full-precision doubles); WP7 never widens the tolerance |
+
+**Portrait (rotated) clip:** the source is coded 1920×1080 with rotation 90, so it's displayed 1080×1920 (label header `width: 1080, height: 1920`) and prepared at 720×1280 (≤1280 px long edge). The ratios are 720/1080 = 2/3 and 1280/1920 = 2/3, so the box `[300, 900, 90, 120]` becomes exactly `[200, 600, 60, 80]`. Scaling with the coded size instead (720/1920 = 3/8 on x) would give x = 112.5, w = 33.75: wrong, and the reason §2 requires displayed sizes.
 
 Box scaling for a 1920×1080 source prepared at 1280×720 (ratios 2/3 and 2/3): the box `[860, 432, 40, 70]` (x, y, w, h) becomes exactly **`[1720/3, 288, 80/3, 140/3]`** (≈ `[573.3333, 288.0, 26.6667, 46.6667]`), kept as floats. The last bit depends on the order of operations (`860 × (1280/1920)` gives 573.3333333333333 and `860 × 2/3` gives 573.3333333333334), so compare with the 1e-9 tolerance, never with `==`.
 
