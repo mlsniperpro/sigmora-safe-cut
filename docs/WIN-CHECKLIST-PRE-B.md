@@ -84,16 +84,16 @@ Every finding from every round, with its fix. "Round" = which review found it.
 | 42 | win audit 2 | Reducer guards, CONFIRM_KEEP, MERGE precedence and UNDO undefined | UI-SPEC §10.5, §8 request 5 | ✅ |
 | 43 | win audit 2 | 404 on a job route mapped to two different pages | UI-SPEC §7, §10.3, §10.4 | ✅ |
 | 44 | win audit 2 | SoM mark given per item, needed per track | UI-SPEC §0, §8 request 2, §10.1 mock | ✅ |
-| 45 | win audit 3 | Chips showed numeric SoM marks; PRE-A burns `<concept>:<n>` labels on keyframes | UI-SPEC §0, mocks, copy; STORYBOARD 4.1/4.3 | 🔧 in progress |
-| 46 | win audit 3 | "Back to review" from a done job bounced back to the result page | UI-SPEC §5, §10.4 (`?view=review`) | 🔧 in progress |
+| 45 | win audit 3 | Chips showed numeric SoM marks; PRE-A burns `<concept>:<n>` labels on keyframes | UI-SPEC §0, mocks, copy; STORYBOARD 4.1/4.3 | ✅ |
+| 46 | win audit 3 | "Back to review" from a done job bounced back to the result page | UI-SPEC §5, §10.4 (`?view=review`) | ✅ |
 | 47 | win audit 3 | Pilot spend would hit PRE-A's $3/day public cap | PILOTS §5 (pilot codes outside the daily cap; WP5 request) | ✅ |
 | 48 | win audit 3 | κ vector K1 sat on a rounding tie | LABEL-FORMAT §9.2 K1 = 11/26; tie rule | ✅ |
-| 49 | win audit 3 | Escalation `suggested_role` not shown; impossible "Hidden, unsure" row; scene link already in PRE-A | UI-SPEC §4.3, §4.6, §8 | 🔧 in progress |
-| 50 | win audit 3 | Mock evidence frames had no keyframe or box | UI-SPEC §10.1 mocks | 🔧 in progress |
-| 51 | win audit 3 | Re-entry bystander offered a merge into a non-participant | UI-SPEC §3.3–3.4, §10.5 | 🔧 in progress |
-| 52 | win audit 3 | Merged items' counts, overlay and later edits undefined | UI-SPEC §10.5 | 🔧 in progress |
-| 53 | win audit 3 | Limit messages could show the limit itself (floor rounding) | UI-SPEC §2.6, §10.2 | 🔧 in progress |
-| 54 | win audit 3 | No single-labeller copy for the landing results footnote | UI-SPEC §1.3–1.4 | 🔧 in progress |
+| 49 | win audit 3 | Escalation `suggested_role` not shown; impossible "Hidden, unsure" row; scene link already in PRE-A | UI-SPEC §4.3, §4.6, §8 | ✅ |
+| 50 | win audit 3 | Mock evidence frames had no keyframe or box | UI-SPEC §10.1 mocks | ✅ |
+| 51 | win audit 3 | Re-entry bystander offered a merge into a non-participant | UI-SPEC §3.3–3.4, §10.5 | ✅ |
+| 52 | win audit 3 | Merged items' counts, overlay and later edits undefined | UI-SPEC §10.5 | ✅ |
+| 53 | win audit 3 | Limit messages could show the limit itself (floor rounding) | UI-SPEC §2.6, §10.2 | ✅ |
+| 54 | win audit 3 | No single-labeller copy for the landing results footnote | UI-SPEC §1.3–1.4 | ✅ |
 
 ## 4. Which builder reads what
 
