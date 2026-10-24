@@ -24,7 +24,7 @@ Legend: ✅ covered by a committed doc section · 🟡 covered, but depends on a
 | 1 | `should_hide` rules, 15+ edge cases (all 8 named) | LABELING-GUIDE §1–3 (31 cases: named ones are #1, #2, #4, #6, #8–9, #10, #12, #14) | ✅ |
 | 1 | Box conventions, resolving disagreements | LABELING-GUIDE §2.3, §5 | ✅ |
 | 1 | CVAT on a build box (not the Intel Mac), project, labels, interpolation, MOT export, privacy | CVAT-SETUP §1–7 | ✅ |
-| 1 | Label JSON + MOT, fully worked 10 s example | LABEL-FORMAT §2–5 (plus schema §6, validator §7, examples §8, test vectors §9) | ✅ |
+| 1 | Label JSON + MOT, fully worked 10 s example | LABEL-FORMAT §2–5 (plus schema §6, validator §7 with 29 codes incl. single-labeller LBL032–034, examples §8 with V1–V6 and X1–X29, test vectors §9) | ✅ |
 | 1 | Hours per clip; ~18-clip plan; reduced plan | [SCHEDULE.md](labeling/SCHEDULE.md) §2–4 | ✅ (estimates until timed) |
 | 2 | Every WP6 screen: wireframes desktop + mobile, copy deck, states, keyboard/a11y, contract fields | UI-SPEC §1–9, build contract §10 | ✅ |
 | 2 | The Why? drawer in detail; progress-stage labels | UI-SPEC §4, §2.5 | ✅ |
@@ -77,9 +77,9 @@ Every finding from every round, with its fix. "Round" = which review found it.
 | 35 | win audit 2 | Main review mock broke the spec's own `times` check; §10.6 used a 61 s time | UI-SPEC §10.1 mock, §10.6 | 🔧 in progress |
 | 36 | win audit 2 | Plates sent through the screen keep-confirm; §4.3 said plates are always hidden | UI-SPEC §4.3, §10.5 R1–R2; café mock added | 🔧 in progress |
 | 37 | win audit 2 | BLOCKED promised a café mock that didn't exist | UI-SPEC §10.1 `job-review-cafe`; BLOCKED-PRE-B | 🔧 in progress |
-| 38 | win audit 2 | κ vector K1 disagreed with IEEE float arithmetic | LABEL-FORMAT §9 tolerance and rounding rule | 🔧 in progress |
-| 39 | win audit 2 | No validator path for a missing labeller-B file (plan R3) | LABEL-FORMAT §7 warning code + cases | 🔧 in progress |
-| 40 | win audit 2 | Several §8.3 expected codes didn't follow from §7 | LABEL-FORMAT §7 stop rules, §8.3 | 🔧 in progress |
+| 38 | win audit 2 | κ vector K1 disagreed with IEEE float arithmetic | LABEL-FORMAT §9 tolerance and rounding rule | ✅ |
+| 39 | win audit 2 | No validator path for a missing labeller-B file (plan R3) | LABEL-FORMAT §7 warning code + cases | ✅ |
+| 40 | win audit 2 | Several §8.3 expected codes didn't follow from §7 | LABEL-FORMAT §7 stop rules, §8.3 | ✅ |
 | 41 | win audit 2 | State machine contradicted §5.4 and §10.3; missing states | UI-SPEC §10.4 | 🔧 in progress |
 | 42 | win audit 2 | Reducer guards, CONFIRM_KEEP, MERGE precedence and UNDO undefined | UI-SPEC §10.5, §8 request 5 | 🔧 in progress |
 | 43 | win audit 2 | 404 on a job route mapped to two different pages | UI-SPEC §7, §10.3, §10.4 | 🔧 in progress |

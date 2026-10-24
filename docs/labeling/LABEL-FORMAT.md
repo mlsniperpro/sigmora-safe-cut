@@ -42,7 +42,7 @@ The **clip ID** is the first three parts of the file name in [SHOTLIST.md](../SH
   - **label → prepared** (WP7): a label on source frame `k` sits at its **own** timestamp `t_k = PTS_k − PTS_0`, which WP7 reads per frame from the source file with ffprobe (it isn't stored in the label JSON). Its prepared frame is `argmin_i |times[i] − t_k|`, with a **tie going to the lower index**. `k / fps` is correct only for constant-frame-rate sources, so WP7 never uses it. Boxes scale per axis: `x, w` by `prepared.width / source.width` and `y, h` by `prepared.height / source.height` (equal ratios when prepare keeps the aspect ratio). Keep the results as floats; never round.
   - **player → prepared** (UI overlay): `i = max{ i : times[i] ≤ m + 0.001 }` for media time `m` ([UI-SPEC.md](../UI-SPEC.md) §3.6).
   - **prepared → SAM proxy:** PRE-A §5b's formula, not this doc's.
-  - **If trimming is ever added,** `job.json` gains `source_offset_s` (PRE-A §5b, a contract change), and every mapping above adds it.
+  - **If trimming is ever added,** `job.json` gains `source_offset_s` (PRE-A §5b, a contract change). Only conversions to and from **source time** add it: a label's prepared frame becomes `argmin_i |times[i] + source_offset_s − t_k|`. `times` itself and the player mapping stay relative to the prepared start and don't change.
 
 Labellers never resample anything; all of this is WP7's code.
 
@@ -308,19 +308,29 @@ Groups: frame, id, x, y, w, h.
 
 ## 7. Validator rules and error codes
 
-WP7's validator runs per clip and reports **every** problem it finds, not just the first. The exceptions: LBL001 and LBL002 stop the checks for that one file, and LBL006 or LBL012 stop the checks for that one MOT file. **Error:** the clip doesn't load; the test-split freezer and the eval runner refuse to proceed. **Warning:** the clip loads; the warning goes into the run report. Codes are stable: a new rule gets a new code, and a retired code is never reused.
+WP7's validator runs per clip and reports **every** problem it finds, not just the first, except where a stop rule below says a check is skipped. A skipped check reports nothing.
+
+**Which file each rule reads.** The resolved file is the source of truth for entities, `boxes` paths and MOT files: LBL010, LBL011, LBL013–LBL020 and LBL041–LBL045 use **the resolved file's** entities only. LBL003–LBL006 run on each label file separately. LBL007, LBL030 and LBL031 compare files.
+
+**Stop rules** (applied in this order):
+1. **A label file fails LBL001 or LBL002:** no other rule reads that file, and every cross-file rule involving it (LBL007, LBL030, LBL031) is skipped. If the failing file is the **resolved** file, every rule that uses the resolved file's entities is skipped too (LBL010–LBL020, LBL041–LBL045).
+2. **Missing labeller files:** with no labeller-B file the clip is single-labelled. LBL032 (a warning) is reported, LBL030 is skipped, and LBL007 and LBL031 compare only the files that exist. With no labeller-A file, LBL033 is reported, and LBL030 plus the A side of LBL007 and LBL031 are skipped. With no resolved file, LBL034 is reported and rule 1's resolved-file skips apply.
+3. **The track map fails LBL001 or LBL040:** LBL041–LBL045 are skipped.
+4. **An entity's MOT file:** LBL006 (wrong path) or LBL010 (missing file) skips every MOT check for that entity (LBL012–LBL020). LBL012 on any line skips the rest of that file's checks (LBL013–LBL020). LBL019 (no rows) skips LBL018 and LBL020.
+
+**Error:** the clip doesn't load; the test-split freezer and the eval runner refuse to proceed. **Warning:** the clip loads; the warning goes into the run report. Codes are stable: a new rule gets a new code, and a retired code is never reused.
 
 | Code | Severity | Rule | Message template |
 |---|---|---|---|
-| LBL001 | error | File is unreadable or not valid UTF-8 JSON | `{file}: not valid JSON ({parser_error})` |
-| LBL002 | error | Schema violation against §6.1 (variant chosen by file kind) or §6.2 | `{file}: {json_pointer}: {schema_message}` |
+| LBL001 | error | A JSON file (a label file or the track map) is unreadable or not valid UTF-8 JSON | `{file}: not valid JSON ({parser_error})` |
+| LBL002 | error | A label file (resolved, A or B) violates §6.1, using the variant for its kind. Track-map schema failures are LBL040, never LBL002 | `{file}: {json_pointer}: {schema_message}` |
 | LBL003 | error | Duplicate entity `id` within one file | `{file}: entity id {id} appears {n} times` |
 | LBL004 | error | `frames.first > frames.last`, or `frames.last ≥ frames` | `{file}: {id}: frames {first}–{last} invalid for a {frames}-frame clip` |
 | LBL005 | error | `category: child` with `should_hide: false` | `{file}: {id}: a child must have should_hide true` |
 | LBL006 | error | `boxes` path doesn't name this clip ID and this entity ID (`tracks/{clip_id}/{id}.mot.txt`) | `{file}: {id}: boxes path {path} should be tracks/{clip_id}/{id}.mot.txt` |
 | LBL007 | error | Clip header fields (`clip`, `fps`, `frames`, `width`, `height`, `split`) differ between the A, B and resolved files | `{clip_id}: {field} is {a} in A, {b} in B, {r} in resolved` |
-| LBL010 | error | Entity's MOT file doesn't exist | `{id}: missing {path}` |
-| LBL011 | error | A file in `tracks/{clip_id}/` that no entity references | `{path}: not referenced by any entity` |
+| LBL010 | error | A resolved-file entity's MOT file doesn't exist | `{id}: missing {path}` |
+| LBL011 | error | A file in `tracks/{clip_id}/` that no entity **in the resolved file** references | `{path}: not referenced by any entity` |
 | LBL012 | error | A MOT line fails the §6.3 grammar | `{path}:{line}: not a valid MOT row: "{text}"` |
 | LBL013 | error | MOT `id` column ≠ the entity's number | `{path}:{line}: id {got}, expected {want}` |
 | LBL014 | error | MOT `frame` outside `1 … frames` | `{path}:{line}: frame {f} outside 1–{frames}` |
@@ -329,10 +339,13 @@ WP7's validator runs per clip and reports **every** problem it finds, not just t
 | LBL017 | error | Box outside the image: `x < 0`, `y < 0`, `x + w > width + 0.01` or `y + h > height + 0.01` | `{path}:{line}: box [{x},{y},{w},{h}] outside {width}×{height}` |
 | LBL018 | error | `frames.first + 1` ≠ the first row's frame, or `frames.last + 1` ≠ the last row's frame (not evaluated when the file has no rows, LBL019) | `{id}: frames {first}–{last} but MOT rows run {r1}–{r2} (1-based)` |
 | LBL019 | error | MOT file has no rows (an entity must be visible on at least one frame) | `{path}: no rows` |
-| LBL020 | warning | Person entity (`participant`, `bystander`, `child`) whose box is under 24 px tall on **every** row (below the guide's threshold) | `{id}: tallest box is {h_max} px, under the 24 px threshold` |
+| LBL020 | warning | Person entity (`participant`, `bystander`, `child`) whose box is under 24 px tall on **every** row (below the guide's threshold). Not evaluated when the file has no rows (LBL019) | `{id}: tallest box is {h_max} px, under the 24 px threshold` |
 | LBL030 | error | B file is missing an entity ID that's in A's file | `{clip_id}: B has no label for {id}` |
 | LBL031 | error | Resolved file is missing an entity ID that's in A or B | `{clip_id}: resolved file has no {id} (in {A|B})` |
-| LBL040 | error | `track-map.json` fails §6.2 | `{file}: {json_pointer}: {schema_message}` |
+| LBL032 | warning | No labeller-B file: the clip is single-labelled, so agreement is not measured for it | `{clip_id}: no labeller-B file; agreement not measured` |
+| LBL033 | error | No labeller-A file (A builds the entity list, so a clip can't load without it) | `{clip_id}: missing {clip_id}.labeller-A.json` |
+| LBL034 | error | No resolved file | `{clip_id}: missing {clip_id}.json` |
+| LBL040 | error | `track-map.json` parses but fails the §6.2 schema | `{file}: {json_pointer}: {schema_message}` |
 | LBL041 | error | A track-map value isn't an entity in the resolved file | `{file}: track {t} maps to {id}, which isn't an entity` |
 | LBL042 | error | Two track-map keys share a value | `{file}: {id} is mapped from tracks {t1} and {t2}` |
 | LBL043 | error | Building from the CVAT zip: an entity in the resolved file has no track-map entry | `{clip_id}: {id} has no CVAT track in the map` |
@@ -395,6 +408,7 @@ A 6-frame clip, invented for tests. `e1` is visible on all six frames; `e2` is v
 | V3 | row `3,2,1494,300,40,50,…` written as `3,2,1.494e+03,300,40.0,50,1,-1,-1,-1` | valid (same box) |
 | V4 | `entities: []` in A, B and resolved; both MOT files deleted; track map `{}` | valid (a clip with nothing to label) |
 | V5 | `e2.difficulty: []` | valid (difficulty tags aren't cross-checked) |
+| V6 | `SC-A-91.labeller-B.json` deleted (single labeller, plan R3) | **warning** LBL032 only; the clip loads, and the agreement report says "not measured (single labeller)" (§9.2 K4) |
 
 ### 8.3 Invalid cases
 
@@ -402,14 +416,14 @@ Each is **one** change from 8.1. "Expected" is the exact set of codes the valida
 
 | # | Change from 8.1 | Expected |
 |---|---|---|
-| X1 | `e2.category: "passerby"` | LBL002 |
+| X1 | `e2.category: "passerby"` | LBL002 (resolved and A; stop rule 1 skips everything else) |
 | X2 | `e2.difficulty: ["reentry", "reentry"]` | LBL002 |
 | X3 | `e2` gains `"note": "x"` (unknown field) | LBL002 |
 | X4 | A third entity, an exact copy of `e2` | LBL003 |
 | X5 | `e2.category: "child"`, `should_hide: false` (rows unchanged) | LBL005 |
 | X6 | `e1.frames.last: 6` | LBL004, LBL018 |
 | X7 | `e2.frames.first: 0` | LBL018 |
-| X8 | `e2.boxes: "tracks/SC-A-90/e2.mot.txt"` | LBL006, LBL011 (the real `tracks/SC-A-91/e2.mot.txt` is now unreferenced) |
+| X8 | `e2.boxes: "tracks/SC-A-90/e2.mot.txt"` | LBL006, LBL011 (the real `tracks/SC-A-91/e2.mot.txt` is now unreferenced; LBL010 is skipped by stop rule 4) |
 | X9 | `tracks/SC-A-91/e2.mot.txt` deleted | LBL010 |
 | X10 | An extra file `tracks/SC-A-91/e3.mot.txt` | LBL011 |
 | X11 | `e2.mot.txt` starts with a header line `frame,id,x,y,w,h,1,-1,-1,-1` | LBL012 (line 1) |
@@ -420,20 +434,26 @@ Each is **one** change from 8.1. "Expected" is the exact set of codes the valida
 | X16 | `e1.mot.txt` row 1 has `w = 0` | LBL016 (line 1) |
 | X17 | `e1.mot.txt` row 1 has `x = 1900` (1900 + 80 > 1920) | LBL017 (line 1) |
 | X18 | `e1.mot.txt` row 1 has `x = -2` | LBL017 (line 1) |
-| X19 | `e2.mot.txt` emptied (0 bytes) | LBL019 |
+| X19 | `e2.mot.txt` emptied (0 bytes) | LBL019 (LBL018 and LBL020 skipped, stop rule 4) |
 | X20 | `e2` boxes all `h = 20` | **warning** LBL020 only; the clip loads |
 | X21 | B file has only `e1` | LBL030 |
-| X22 | Resolved file drops `e2` (A and B keep it) | LBL011, LBL031, LBL041 (the map still names `e2`) |
+| X22 | Resolved file drops `e2` (A and B keep it) | LBL011 (only the resolved file's references count, and it no longer references `e2.mot.txt`), LBL031, LBL041 (the map still names `e2`) |
 | X23 | B file says `"frames": 7` in the header | LBL007 |
 | X24 | Track map `{"1": "e1", "2": "e1"}` | LBL042 |
 | X25 | Track map `{"1": "e1", "2": "e9"}` | LBL041 |
-| X26 | Track map `{"0": "e1", "2": "e2"}` | LBL040 |
+| X26 | Track map `{"0": "e1", "2": "e2"}` | LBL040 (LBL041–LBL042 skipped, stop rule 3) |
 | X27 | A CVAT zip is added whose `gt.txt` has tracks 1, 2 and a third track 3; map unchanged | LBL044 |
 | X28 | A CVAT zip is added (tracks 1 and 2 only) where track 2's CVAT label is `participant` | LBL045 |
+| X29 | `SC-A-91.labeller-A.json` deleted | LBL033 (LBL030 and the A side of LBL007 and LBL031 are skipped, stop rule 2) |
 
 ## 9. Test vectors with expected outputs (for WP7)
 
-WP7 owns the code and its tests. These vectors pin the expected numbers so its unit tests and these docs can't drift apart. All the arithmetic is exact.
+WP7 owns the code and its tests. These vectors pin the expected numbers so its unit tests and these docs can't drift apart.
+
+**How to compare.** Each expected value is given exactly (a fraction where it isn't a whole number). WP7 computes in IEEE doubles and compares with an **absolute tolerance of 1e-9**:
+- **Ties** in the frame mapping are values within 1e-9 of each other, and go to the lower index.
+- **Threshold tests** (exposed `< 0.90`, hidden `≥ 0.95`) are done in integers where the inputs are counts (covered × 100 ≥ 95 × visible). Where coverage is a float, `coverage < 0.90 − 1e-9` counts as exposed, so a frame at exactly 0.90 isn't exposed.
+- **Displayed values** (the report strings) are formatted from the double result with 2 decimals, rounding half to even, so they match what Python's `f"{x:.2f}"` prints.
 
 ### 9.1 Label frame → prepared frame (PRE-A §5b)
 
@@ -448,7 +468,7 @@ Rule: `t_k = PTS_k − PTS_0` on the source; prepared frame `= argmin_i |times[i
 | M5 | **VFR**: raw PTS 0.067, 0.100, 0.137, 0.167, 0.233, 0.267, 0.300 s for frames 0–6; after subtracting PTS₀ = 0.067: 0, 0.033, 0.070, 0.100, 0.166, 0.200, 0.233 | CFR 30 fps, `times[i] = i/30` | 4 | 0.166 | **5** (\|5/30 − 0.166\| = 0.00067). The wrong formula `k / 30` gives 0.1333 → 4, one frame early |
 | M6 | same VFR | same | 6 | 0.233 | **7** (\|7/30 − 0.233\| = 0.00033); `k / 30` would give 6 |
 
-Box scaling for a 1920×1080 source prepared at 1280×720 (ratios 2/3 and 2/3): the box `[860, 432, 40, 70]` (x, y, w, h) becomes **`[573.333…, 288.0, 26.666…, 46.666…]`**, kept as floats (`860 × 2/3`, `432 × 2/3`, `40 × 2/3`, `70 × 2/3`).
+Box scaling for a 1920×1080 source prepared at 1280×720 (ratios 2/3 and 2/3): the box `[860, 432, 40, 70]` (x, y, w, h) becomes exactly **`[1720/3, 288, 80/3, 140/3]`** (≈ `[573.3333, 288.0, 26.6667, 46.6667]`), kept as floats. The last bit depends on the order of operations (`860 × (1280/1920)` gives 573.3333333333333 and `860 × 2/3` gives 573.3333333333334), so compare with the 1e-9 tolerance, never with `==`.
 
 ### 9.2 Agreement on `should_hide`
 
@@ -456,9 +476,9 @@ Box scaling for a 1920×1080 source prepared at 1280×720 (ratios 2/3 and 2/3): 
 
 | # | 2×2 counts (A true & B true / A true & B false / A false & B true / A false & B false) | `po` | `pe` | κ | Report |
 |---|---|---|---|---|---|
-| K1 | 7 / 1 / 1 / 1 (10 entities; each labeller says true for 8) | 8/10 = 0.80 | 0.8·0.8 + 0.2·0.2 = 0.68 | 0.12 / 0.32 = **0.375** | "80% agreement, κ = 0.38" (κ shown to 2 decimals; high agreement but low κ, from skewed prevalence) |
+| K1 | 7 / 1 / 1 / 1 (10 entities; each labeller says true for 8) | 8/10 = 0.80 | 0.8·0.8 + 0.2·0.2 = 0.68 | 0.12 / 0.32 = **3/8 = 0.375** (compare to this) | "80% agreement, κ = 0.37". In doubles `pe` = 0.6800000000000002 and κ = 0.37499999999999983, which prints as 0.37 under the display rule above. High agreement but low κ, from skewed prevalence |
 | K2 | 9 / 1 / 0 / 0 (A all true; B false once) | 9/10 = 0.90 | 1·0.9 + 0·0.1 = 0.90 | 0 / 0.10 = **0** | "90% agreement, κ = 0.00" |
-| K3 | 10 / 0 / 0 / 0 (both all true) | 1.00 | 1.00 | **not computable** (`1 − pe = 0`) | "100% agreement, κ not computable (no variation)". Never report it as 1 or 0 |
+| K3 | 10 / 0 / 0 / 0 (both all true) | 1.00 | 1.00 | **not computable** (`1 − pe` within 1e-9 of 0) | "100% agreement, κ not computable (no variation)". Never report it as 1 or 0 |
 | K4 | No labeller B | — | — | — | "not measured (single labeller)" |
 
 Entities B added that A missed are reported separately as a count; they never enter the 2×2 table.
