@@ -168,6 +168,13 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#132 (win audit 12)**: Over-budget audit button stayed enabled when a code or pool cap was the cause. Fix: UI-SPEC §5.3 banner by `audit_budget_cause`, mocks, request 20.
 - [x] **#133 (win audit 12)**: Pilot cap sized for 2 clips while the protocol runs 1. Fix: PILOTS §5 (one clip, 2 jobs allowed; estimate ≈ $8).
 - [x] **#134 (win audit 12)**: Daily-cap reasoning still cited 60 s pilot clips. Fix: PILOTS §5.
+- [x] **#135 (win audit 13)**: `code_job_limit` placed on two different endpoints. Fix: Simplified away: no job count; the $6 code cap and the $20 pool bound spend (UI-SPEC request 20, PILOTS §5).
+- [x] **#136 (win audit 13)**: Job limit couldn't be checked before prepare. Fix: Same simplification.
+- [x] **#137 (win audit 13)**: `audit_budget_cause` and `retry_at` missing from the audit request. Fix: UI-SPEC request 11 (PRE-B's one addition).
+- [x] **#138 (win audit 13)**: State machine always showed [Run the audit again]; §5.3 hid it for some causes. Fix: UI-SPEC §5.3: always shown, disabled only before `retry_at`.
+- [x] **#139 (win audit 13)**: A cap raised by the owner could never re-enable the audit; pool cap blamed the code. Fix: UI-SPEC §5.3 cause lines, mock.
+- [x] **#140 (win audit 13)**: "Hero line has room" was false at 45 s clip costs. Fix: STORYBOARD §3 (overrun noted; re-pricing request to PRE-A).
+- [x] **#141 (win audit 13)**: [Try again tomorrow] always restarted the whole pipeline. Fix: UI-SPEC §2.6, §10.3 (same stage routing as [Try again]).
 
 ## 4. Which builder reads what
 
