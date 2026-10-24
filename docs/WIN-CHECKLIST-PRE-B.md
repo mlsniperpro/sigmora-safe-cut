@@ -157,6 +157,11 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#121 (win audit 10)**: Duration rule still described a 422 path. Fix: UI-SPEC §10.2 (`failure.duration_s`, fallback copy).
 - [x] **#122 (win audit 10)**: Landing hero job would be deleted after 24 h and needs a code. Fix: UI-SPEC §1.6, request 19 (`GET /v1/demo/{hero_id}`, pinned).
 - [x] **#123 (win audit 10)**: Recording budget used withdrawn costs and undercounted runs. Fix: STORYBOARD §3 ($10 owner code from PRE-A's hero line).
+- [x] **#124 (win audit 11)**: Pilot estimate's margin ignored 60 s clips. Fix: PILOTS §5 (clips 15–45 s; ≈ $15–17 for 10 clips).
+- [x] **#125 (win audit 11)**: Early pilots could use up the shared $20 before later ones ran. Fix: PILOTS §5 (≤ 2 jobs per code), UI-SPEC request 20.
+- [x] **#126 (win audit 11)**: Running out of the shared pilot total pointed pilots to a new code. Fix: UI-SPEC §2.6 `pilot_pool_cap` copy.
+- [x] **#127 (win audit 11)**: Owner recording code existed only in STORYBOARD. Fix: UI-SPEC §8 request 20, BLOCKED-PRE-B Nov 3 step, WIN §4 WP5 row.
+- [x] **#128 (win audit 11)**: Recording budget priced hero runs at the 30 s rate. Fix: STORYBOARD §3 (45 s ≈ $1.5–1.7; $12 code).
 
 ## 4. Which builder reads what
 
@@ -165,7 +170,7 @@ Every finding from every round, with its fix. "Round" names the review that foun
 | WP0 | SCHEDULE §3 (split), BLOCKED-PRE-B (fixture fallbacks) | fixtures, probe clips |
 | WP2 | UI-SPEC §8 requests 2, 3, 7 | SoM numbers, speaker links, transcript timeline |
 | WP3 | UI-SPEC §3.4, §8 requests 4–5, §10.5 | reason strings, review edit names, reducer semantics |
-| WP5 | UI-SPEC §8, §10.1–10.3; PILOTS §4–5 | API fields, error codes, idempotency, per-code cap, deletion |
+| WP5 | UI-SPEC §8 (incl. request 20: pilot and recording codes), §10.1–10.3; PILOTS §4–5; STORYBOARD §3 | API fields, error codes, idempotency, per-code cap, deletion |
 | WP6 | UI-SPEC (all) | every screen |
 | WP7 | LABEL-FORMAT (all), LABELING-GUIDE §5, SCHEDULE §3, PILOTS §6 | loader, validator, agreement, metrics test vectors, pilot results |
 | WP8 | STORYBOARD, RULES-CHECKLIST §5–6, PILOTS §6 | video script, submission fields, launch |
