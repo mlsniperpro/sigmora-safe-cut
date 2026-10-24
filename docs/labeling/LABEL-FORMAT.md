@@ -17,7 +17,7 @@ labels/<split>/                       private: ~/SafeCutEval/labels/ (+ the priv
 clips.md                              the clip list: clip, split, category, status, labellers, CVAT version
 ```
 
-The **clip ID** is the match of the regular expression `^SC-(?:[A-J]-\d{2}|HERO-[1-3][AB])` at the start of `clip`. That's the only definition, and every rule and path below uses it. For an eval clip it's the first three dash-separated parts of the [SHOTLIST.md](../SHOTLIST.md) file name (`SC-A-01-cbd-20261018.mp4` → `SC-A-01`); for a hero clip it's `SC-HERO-<n><take>` (below). If `clip` doesn't match, the file fails the §6.1 `clip` pattern (LBL002), so no rule ever sees a clip without an ID. **Hero clips** (SHOTLIST's "Hero demo clips", which have no A–J category) are named `SC-HERO-<n><take>-<location>-<yyyymmdd>.mp4`, with `<n>` the hero clip number 1–3 and `<take>` the take letter A or B: `SC-HERO-1A-cbd-20261025.mp4` → clip ID `SC-HERO-1A` (hero clip 1, take A; STORYBOARD's `H1A`). Each take is its own clip with its own label file. The extension may be upper or lower case (`.mp4`, `.MP4`, `.mov`, `.MOV`), because phones and the DJI write either; rename nothing else. Test-split labels stay on the owner's Mac and its private backup; only the split hash (`eval/splits/test.sha256`, WP7) is committed.
+The **clip ID** is the match of the regular expression `^SC-(?:[A-J]-\d{2}|HERO-[1-9][AB])` at the start of `clip`. That's the only definition, and every rule and path below uses it. For an eval clip it's the first three dash-separated parts of the [SHOTLIST.md](../SHOTLIST.md) file name (`SC-A-01-cbd-20261018.mp4` → `SC-A-01`); for a hero clip it's `SC-HERO-<n><take>` (below). If `clip` doesn't match, the file fails the §6.1 `clip` pattern (LBL002), so no rule ever sees a clip without an ID. **Hero clips** (SHOTLIST's "Hero demo clips", which have no A–J category) are named `SC-HERO-<n><take>-<location>-<yyyymmdd>.mp4`, with `<n>` the hero clip number 1–9 (3 are planned; SHOTLIST allows 3–4) and `<take>` the take letter A or B: `SC-HERO-1A-cbd-20261025.mp4` → clip ID `SC-HERO-1A` (hero clip 1, take A; STORYBOARD's `H1A`). Each take is its own clip with its own label file. The extension may be upper or lower case (`.mp4`, `.MP4`, `.mov`, `.MOV`), because phones and the DJI write either; rename nothing else. Test-split labels stay on the owner's Mac and its private backup; only the split hash (`eval/splits/test.sha256`, WP7) is committed.
 
 ## 2. The label JSON
 
@@ -240,7 +240,7 @@ Three kinds of label file share one schema. The kind comes from the file name: `
   "additionalProperties": false,
   "required": ["clip", "fps", "frames", "width", "height", "split", "entities", "notes"],
   "properties": {
-    "clip":   {"type": "string", "pattern": "^SC-(?:[A-J]-\\d{2}|HERO-[1-3][AB])-[a-z0-9]+(?:-[a-z0-9]+)*-\\d{8}\\.(?:[mM][pP]4|[mM][oO][vV])$"},
+    "clip":   {"type": "string", "pattern": "^SC-(?:[A-J]-\\d{2}|HERO-[1-9][AB])-[a-z0-9]+(?:-[a-z0-9]+)*-\\d{8}\\.(?:[mM][pP]4|[mM][oO][vV])$"},
     "fps":    {"type": "number", "exclusiveMinimum": 0, "maximum": 240},
     "frames": {"type": "integer", "minimum": 1},
     "width":  {"type": "integer", "minimum": 1},
@@ -265,7 +265,7 @@ Three kinds of label file share one schema. The kind comes from the file name: `
           "type": "object", "additionalProperties": false, "required": ["first", "last"],
           "properties": {"first": {"type": "integer", "minimum": 0}, "last": {"type": "integer", "minimum": 0}}
         },
-        "boxes": {"type": ["string", "null"], "pattern": "^tracks/SC-(?:[A-J]-\\d{2}|HERO-[1-3][AB])/e[1-9]\\d*\\.mot\\.txt$"}
+        "boxes": {"type": ["string", "null"], "pattern": "^tracks/SC-(?:[A-J]-\\d{2}|HERO-[1-9][AB])/e[1-9]\\d*\\.mot\\.txt$"}
       }
     }
   }
@@ -286,7 +286,7 @@ The two variants narrow `boxes` by kind (resolved and A files need a path; B fil
  "properties": {"entities": {"items": {"properties": {"boxes": {"type": "null"}}}}}}
 ```
 
-`notes` is required and may be `""`. `entities` may be empty (a clip with nothing to label is valid, e.g. one whose only person stays below the size threshold of LABELING-GUIDE §2). The clip **ID** is the match of the regular expression `^SC-(?:[A-J]-\d{2}|HERO-[1-3][AB])` at the start of `clip` (§1): `SC-A-90-example-20261024.mp4` → `SC-A-90`, `SC-HERO-1A-cbd-20261025.MP4` → `SC-HERO-1A`. It is **not** a fixed number of characters, since hero IDs are 10 characters and eval IDs 7.
+`notes` is required and may be `""`. `entities` may be empty (a clip with nothing to label is valid, e.g. one whose only person stays below the size threshold of LABELING-GUIDE §2). The clip **ID** is the match of the regular expression `^SC-(?:[A-J]-\d{2}|HERO-[1-9][AB])` at the start of `clip` (§1): `SC-A-90-example-20261024.mp4` → `SC-A-90`, `SC-HERO-1A-cbd-20261025.MP4` → `SC-HERO-1A`. It is **not** a fixed number of characters, since hero IDs are 10 characters and eval IDs 7.
 
 ### 6.2 `cvat/<clip-id>.track-map.json`
 
@@ -320,7 +320,7 @@ Groups: frame, id, x, y, w, h.
 
 WP7's validator runs per clip and reports **every** problem it finds, not just the first, except where a stop rule below says a check is skipped. A skipped check reports nothing.
 
-**`{clip_id}` in the rules below** is the clip ID defined in §1 (the match of the regular expression `^SC-(?:[A-J]-\d{2}|HERO-[1-3][AB])` at the start of `clip`), taken from the resolved file's `clip` (from the A file's when only A is readable). The label files themselves are named `{clip_id}.json`, `{clip_id}.labeller-A.json` and `{clip_id}.labeller-B.json`, and the MOT files live in `tracks/{clip_id}/`.
+**`{clip_id}` in the rules below** is the clip ID defined in §1 (the match of the regular expression `^SC-(?:[A-J]-\d{2}|HERO-[1-9][AB])` at the start of `clip`), taken from the resolved file's `clip` (from the A file's when only A is readable). The label files themselves are named `{clip_id}.json`, `{clip_id}.labeller-A.json` and `{clip_id}.labeller-B.json`, and the MOT files live in `tracks/{clip_id}/`.
 
 **Which file each rule reads.** The resolved file is the source of truth for entities, `boxes` paths and MOT files: LBL010, LBL011, LBL013–LBL020 and LBL041–LBL045 use **the resolved file's** entities only. LBL003–LBL006 run on each label file separately. LBL007, LBL030 and LBL031 compare files.
 
@@ -351,7 +351,7 @@ WP7's validator runs per clip and reports **every** problem it finds, not just t
 | LBL017 | error | Box outside the image: `x < 0`, `y < 0`, `x + w > width + 0.01` or `y + h > height + 0.01` | `{path}:{line}: box [{x},{y},{w},{h}] outside {width}×{height}` |
 | LBL018 | error | `frames.first + 1` ≠ the first row's frame, or `frames.last + 1` ≠ the last row's frame (not evaluated when the file has no rows, LBL019) | `{id}: frames {first}–{last} but MOT rows run {r1}–{r2} (1-based)` |
 | LBL019 | error | MOT file has no rows (an entity must be visible on at least one frame) | `{path}: no rows` |
-| LBL020 | warning | Person entity (`participant`, `bystander`, `child`) whose box height is under the guide's threshold `h_min = 24 × min(width, height) / 1080` px (displayed size, §2) on **every** row. Compare `h < h_min − 1e-9`. Not evaluated when the file has no rows (LBL019) | `{id}: tallest box is {h_max} px, under the {h_min} px threshold for a {width}×{height} clip` |
+| LBL020 | warning | Person entity (`participant`, `bystander`, `child`) whose box height is under the guide's threshold `h_min = 24 × min(width, height) / 1080` px (displayed size, §2) on **every** row. Compare `h < h_min − 1e-9`. Not evaluated when the file has no rows (LBL019) | `{id}: tallest box is {h_max} px, under the {h_min} px threshold for a {width}×{height} clip`, with `{h_max}` and `{h_min}` formatted to 1 decimal (Python `f"{x:.1f}"`), e.g. "33.8" for a 2704×1520 clip. Tests match the message on that exact formatting |
 | LBL030 | error | B file is missing an entity ID that's in A's file | `{clip_id}: B has no label for {id}` |
 | LBL031 | error | Resolved file is missing an entity ID that's in A or B | `{clip_id}: resolved file has no {id} (in {A|B})` |
 | LBL032 | warning | No labeller-B file: the clip is single-labelled, so agreement is not measured for it | `{clip_id}: no labeller-B file; agreement not measured` |
@@ -516,6 +516,11 @@ All frame indices here are **prepared** frames (§2): a repeated prepared frame 
 The exposure rate pools entity-frames across all `should_hide: true` entities: R1 alone contributes 4 exposed out of 8 visible entity-frames.
 
 **Over-blur (the definition WP7 implements).** EVAL.md §2 counts a `should_hide: false` entity as over-blurred when it is hidden for more than 10% of its frames, but doesn't say when a single frame counts as "hidden" for an entity that should stay clear. **Decided:** on a visible prepared frame, a keep entity is **hidden** when **coverage ≥ 0.50** (half or more of its ground-truth box is under a redaction). It is **over-blurred** when hidden frames ÷ visible frames **> 0.10**, a strict inequality as EVAL says "more than", computed in integers: `hidden × 10 > visible`.
+
+**How Needs-you items are scored.** Harmless screens and objects go to `needs_you` (PRE-A TEST-VECTORS B1, UI-SPEC request 14), and `needs_you` renders hidden until the creator decides. So WP7 reports over-blur twice, from the same run:
+1. **As shipped without review** (the headline): every `needs_you` item counts as hidden, exactly as `plan.json` renders it. This is what a creator who approves without looking would publish, so the honest number.
+2. **With Muse Spark's suggestions accepted**, labelled as such: `needs_you` items whose votes or object ruling say harmless (e.g. `sensitive: false` 3/3) count as kept. This shows what one review tap per item recovers, together with the review-load metric ([EVAL.md](../EVAL.md) §2).
+Both rows appear in the results table next to each other, and the VO and landing page quote the first unless they name the second explicitly. This keeps EVAL.md §3's comparison with "detector only, all screens hidden" fair: the full system's advantage on harmless objects shows up in row 2 and in review load, never as an unlabelled headline.
 
 Why 0.50 and not EVAL's 0.90 exposure threshold: the two metrics fail in opposite directions. For a hidden entity, any leak matters, so a frame only counts as safe at ≥ 0.90. For a participant, the harm is being visibly obscured, and a sliver of a neighbour's padded box over a cheek (common in a two-shot interview) doesn't remove anyone from the video. Half the head covered does. A threshold near 0 would count every overlapping padding as over-blur and punish the leak guard's deliberate padding (DESIGN §2.6). Coverage is compared as `coverage ≥ 0.50 − 1e-9`, as §9's tolerance rule says.
 
