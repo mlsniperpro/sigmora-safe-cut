@@ -162,6 +162,12 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#126 (win audit 11)**: Running out of the shared pilot total pointed pilots to a new code. Fix: UI-SPEC §2.6 `pilot_pool_cap` copy.
 - [x] **#127 (win audit 11)**: Owner recording code existed only in STORYBOARD. Fix: UI-SPEC §8 request 20, BLOCKED-PRE-B Nov 3 step, WIN §4 WP5 row.
 - [x] **#128 (win audit 11)**: Recording budget priced hero runs at the 30 s rate. Fix: STORYBOARD §3 (45 s ≈ $1.5–1.7; $12 code).
+- [x] **#129 (win audit 12)**: `pilot_pool_cap` missing from the reason list, error table and mocks. Fix: UI-SPEC request 1, §10.3, §10.1.
+- [x] **#130 (win audit 12)**: Third job on a pilot code had no error; failed uploads used up jobs. Fix: UI-SPEC `code_job_limit`, request 20 (jobs count only past prepare).
+- [x] **#131 (win audit 12)**: Recording code described as resetting daily. Fix: STORYBOARD §3, BLOCKED-PRE-B (a total; owner raises it).
+- [x] **#132 (win audit 12)**: Over-budget audit button stayed enabled when a code or pool cap was the cause. Fix: UI-SPEC §5.3 banner by `audit_budget_cause`, mocks, request 20.
+- [x] **#133 (win audit 12)**: Pilot cap sized for 2 clips while the protocol runs 1. Fix: PILOTS §5 (one clip, 2 jobs allowed; estimate ≈ $8).
+- [x] **#134 (win audit 12)**: Daily-cap reasoning still cited 60 s pilot clips. Fix: PILOTS §5.
 
 ## 4. Which builder reads what
 
