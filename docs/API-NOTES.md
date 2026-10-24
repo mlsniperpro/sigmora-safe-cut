@@ -595,6 +595,7 @@ Not contract changes: a job's `retry_later` state lives in WP5's job record (API
 
 Requests to PRE-B (PR #2):
 - SHOTLIST: keep the test split's mean clip length ≤ 30 s (§9.2's test line is priced at 30 s);
+- UI-SPEC §5.3 "Audit, fixed" and the EgoBlur line: drop "otherwise on a sample plus every frame at an item's edges". The service always runs EgoBlur on every output frame, so a clean result has `frames_scanned == frames`; sampled scans exist only in the offline eval and are never publishable (`blocked_reason: "audit_failed"`, vector L10);
 - STORYBOARD §3: drop "PRE-A's hero line (§9.2: 6 runs × 3 renders)", "$20.16" and "overruns can come out of PRE-A's planned headroom". Recording runs are paid only by the $12 recording code; PRE-A's §9.2 has no hero line. UI-SPEC request 20, STORYBOARD §3 and BLOCKED-PRE-B let the owner raise that cap in WP5's config: bound the raise at **+$2.86 in total** (the §9.2 headroom, shared with every other overrun), and say so in all three;
 - adopted from PR #2 @ `32a349f`, no change needed: the $6 pilot code and $20 pool with `pilot_pool_cap`, the $12 recording code (but see the raise bound above), the `failure.reason` set, `blocked_reason` + `audit_budget_cause`, and `code_kind`/`code_id` in `cost.jsonl` (UI-SPEC requests 1, 11, 20);
 - show `suggested_role`, `escalation_evidence` and `escalation_frames` in the Why drawer next to the votes ("A second look suggests: Part of the story"). Adopted in PR #2 @ `e86a051`;
