@@ -118,6 +118,16 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#82 (win audit 6)**: Consent note promised per-call data handling the receipt doesn't record. Fix: PILOTS §4.
 - [x] **#83 (win audit 6)**: Cut plans kept VO that breaks 150 wpm. Fix: RULES-CHECKLIST §4 cut-version VO table.
 - [x] **#84 (win audit 6)**: Person size threshold ambiguous for 4K and portrait. Fix: LABELING-GUIDE §2, §4; LABEL-FORMAT LBL020, X20.
+- [x] **#85 (win audit 7)**: Server rule for clearing `removed_by_creator` on a later keep was missing. Fix: UI-SPEC request 9, request 5, §3.4.
+- [x] **#86 (win audit 7)**: Keyframe-mismatch fixture couldn't produce its state. Fix: UI-SPEC §4.3 checks, `keyframe_geometry` fields, stubbed image loading.
+- [x] **#87 (win audit 7)**: No "Hidden by you" sentence. Fix: UI-SPEC §4.3 table and precedence.
+- [x] **#88 (win audit 7)**: Over-blur counted Needs-you harmless objects as hidden with no stated rule. Fix: LABEL-FORMAT §9.3: two labelled rows (as shipped; suggestions accepted).
+- [x] **#89 (win audit 7)**: Kind `other` items (second-look finds) had no drawer path. Fix: UI-SPEC §4.3, request 15.
+- [x] **#90 (win audit 7)**: Speech-fallback fixture couldn't detect a missing ±1.5 s window. Fix: UI-SPEC §10.1 `job-review-speech-fallback.json`.
+- [x] **#91 (win audit 7)**: Limited-speech check keyed on a hard-coded model ID. Fix: UI-SPEC `source_kind` (request 16), AGENTS rule 8.
+- [x] **#92 (win audit 7)**: Reducer `confirm` still described as screen/document only. Fix: UI-SPEC §10.5.
+- [x] **#93 (win audit 7)**: Hero clip numbers limited to 1–3; SHOTLIST allows 3–4. Fix: LABEL-FORMAT §1, §6.1 (1–9).
+- [x] **#94 (win audit 7)**: LBL020 message had no number format. Fix: LABEL-FORMAT §7 (1 decimal).
 
 ## 4. Which builder reads what
 
