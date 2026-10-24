@@ -107,7 +107,7 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#71 (win audit 5)**: Label header: upper-case extensions, hero naming, rotated clips. Fix: LABEL-FORMAT §1, §2, §6.1, V7, portrait vector.
 - [x] **#72 (win audit 5)**: Unsupported claims shown to users ("doesn't train on it", "storage off", "every frame"). Fix: UI-SPEC §1.3, §2, §5; PILOTS §4; STORYBOARD 6.2.
 - [x] **#73 (win audit 5)**: Thumbnail used `track_ids[0]`, not the primary track. Fix: UI-SPEC §3.3.
-- [P] **#74 (win audit 5)**: Stale cross-doc statements (WIN #25/#31, SCHEDULE 4-clip subset, WP6 step 4; PRE-A's BLOCKED-PRE-A line 3 and WIN row 56). Fix: PRE-B side fixed (WIN #25/#31, SCHEDULE §3, UI-SPEC request 12). PRE-A side: BLOCKED-PRE-A line 3 still points to the old root BLOCKED.md and PRE-A WIN row 56 is still open; both are PRE-A's files, and PRE-A's session isn't reachable from here, so they're listed for PRE-A in PR #2.
+- [x] **#74 (win audit 5)**: Stale cross-doc statements (WIN #25/#31, SCHEDULE 4-clip subset, WP6 step 4; PRE-A's BLOCKED-PRE-A line 3 and WIN row 56). Fix: PRE-B side fixed (WIN #25/#31, SCHEDULE §3, UI-SPEC request 12). PRE-A side resolved by PRE-A itself at `948b678`: its BLOCKED pointer now names `docs/BLOCKED-PRE-B.md` (PRE-A WIN row 66), and its shared-facts list (§4) marks the time axes and UI fields as matching.
 - [x] **#75 (win audit 6)**: Clip ID = "first 7 characters" broke hero IDs. Fix: LABEL-FORMAT §1, §6.1, §7 (one regex).
 - [x] **#76 (win audit 6)**: Ring and thumbnail ignored the keyframe's 40 px frame-number bar. Fix: UI-SPEC §4.3 geometry, `keyframe_geometry`, request 13.
 - [x] **#77 (win audit 6)**: Removed person kept clear still counted as removed. Fix: UI-SPEC §3.4, §10.5 R13b.
@@ -147,6 +147,16 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#111 (win audit 9)**: `{h1a_seconds}` sourced from a run without a `job.json`. Fix: STORYBOARD §2 (hero-live run).
 - [x] **#112 (win audit 9)**: No state for a job created but never uploaded. Fix: UI-SPEC §10.4 `created`.
 - [x] **#113 (win audit 9)**: Labelling guide would fork into two master copies at kickoff. Fix: LABELING-GUIDE header (single master; WP7 links).
+- [x] **#114 (win audit 10)**: Over-budget audit path contradicted PRE-A (it adds to `unresolved`). Fix: UI-SPEC §5 mocks, PRE-A invariant.
+- [x] **#115 (win audit 10)**: Invented `redteam_status`; PRE-A already defines `blocked_reason` and "Run the audit again". Fix: UI-SPEC §5, request 11 (PRE-A's fields).
+- [x] **#116 (win audit 10)**: Audit failure modelled as `done`; PRE-A sends it to job status `needs_you`. Fix: UI-SPEC §10.4 `needs_you` row, banner.
+- [x] **#117 (win audit 10)**: Pilot caps used withdrawn PRE-A figures; PRE-A asked for $6 per code. Fix: PILOTS §5 ($6 per code, $20 total; $1.12 / $11.20), BLOCKED-PRE-B.
+- [x] **#118 (win audit 10)**: Bottom bar called uncovered leaks "hidden". Fix: UI-SPEC §3.5 (disabled until covered).
+- [x] **#119 (win audit 10)**: `cover_spot` had no reducer action; audit missing from the job response. Fix: UI-SPEC §10.5 COVER_SPOT, R19–R22, §8.
+- [x] **#120 (win audit 10)**: A-labels collided between audit items and unfixed spots. Fix: UI-SPEC §0, §3.3 (U1… for spots).
+- [x] **#121 (win audit 10)**: Duration rule still described a 422 path. Fix: UI-SPEC §10.2 (`failure.duration_s`, fallback copy).
+- [x] **#122 (win audit 10)**: Landing hero job would be deleted after 24 h and needs a code. Fix: UI-SPEC §1.6, request 19 (`GET /v1/demo/{hero_id}`, pinned).
+- [x] **#123 (win audit 10)**: Recording budget used withdrawn costs and undercounted runs. Fix: STORYBOARD §3 ($10 owner code from PRE-A's hero line).
 
 ## 4. Which builder reads what
 
