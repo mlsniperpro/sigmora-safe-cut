@@ -72,7 +72,7 @@ Frame 50 has one approved kept-clear item, `A` (a participant's face), visible a
 | L5 | a box with 3 integers | **leak**, with the whole-frame box [0, 0, 1280, 720] |
 | L6 | frame 50 missing from the output; also missing after one re-send | `unresolved += 1` for frame 50 only; `blocked_reason: "audit_failed"` |
 | L9 | a red-team pass over 40 frames is skipped because its estimate exceeds the job cap | `unresolved += 40`, `blocked_reason: "over_budget"`, `audit_budget_cause: "job_cap"`; publishing is off (invariant: `blocked_reason != null` ⇔ `unresolved > 0`) |
-| L10 | eval-only CPU sampled EgoBlur (`frames_scanned` 300 of `frames` 900) | `unresolved` ≥ 600 (every skipped frame), `blocked_reason: "audit_failed"`; publishing is off. The deployed service refuses this mode |
+| L10 | EgoBlur reports `frames_scanned` 300 of `frames` 900 (any cause: a crash, a timeout) | the 600 unscanned frames count in `unresolved`, `blocked_reason: "audit_failed"`; publishing is off. There is no sampled EgoBlur mode |
 | L7 | `text` read *through* a redaction (inside a hidden item's region) | **leak** + flag `redaction_too_weak` → that item is re-rendered as `solid` |
 | L8 | no findings on any frame | `unresolved` unchanged; every frame logged `finding: "none"` |
 
