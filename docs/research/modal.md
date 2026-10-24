@@ -25,7 +25,7 @@ A Starter region-selection surcharge (1.5–1.75×) is mentioned by one tracker 
 - **Cron:** `@app.function(schedule=modal.Cron("0 * * * *"))` or `modal.Period(hours=1)`. Starter allows **5 crons**; we need 1 (the 24 h deletion sweep, run hourly). [3P] (API mirror)
 - **Secrets:** `modal.Secret.from_name("safecut")`. Keys ≤16,384 chars, values ≤32,768 chars. **[SNIP]** [modal.com/docs/guide/secrets](https://modal.com/docs/guide/secrets). The CLI is `modal secret create safecut MODEL_API_KEY=…`; the owner runs it, never an agent printing the key.
 - **Volumes:** persistent file storage with `.commit()` / `.reload()` for cross-container visibility [3P]. Job directories (`jobs/<id>/`) live here; the cron deletes them after 24 h. Size limits and pricing weren't found. **Check before launch.**
-- **Cold starts:** no official number found. The third-party guidance is that cold starts plus heavy imports can exceed the 150 s web timeout → keep the web function light (FastAPI only) and do the heavy imports (torch, cv2) in the worker function. Use `min_containers=1` on the web function only during judging (Nov 4–9), at ≈ $0.047/h for 1 core.
+- **Cold starts:** no official number found. The third-party guidance is that cold starts plus heavy imports can exceed the 150 s web timeout → keep the web function light (FastAPI only) and do the heavy imports (torch, cv2) in the worker function. Use `min_containers=1` on the web function only during the public window (Nov 5–10 UTC, API-NOTES §9.2), at ≈ $0.047/h for 1 core.
 
 ## API names for WP5 (`modal` 1.6.2 from PyPI, signatures inspected in a scratch venv, 2026-10-24)
 These are a primary source: the installed package's own signatures and docstrings. Pin `modal==1.6.2` in the `deploy` group.
