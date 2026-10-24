@@ -326,7 +326,7 @@ Assumptions:
 
 **Reading:**
 - At 30 fps, SAM is 77% of the cost and a clip costs $2.57, over the cap. So SAM always gets the proxy (§5b, §10.6). Per minute of footage: **$2.24 at 8 fps**.
-- **A 60 s clip** (the upload limit, ARCHITECTURE §5) models at **$1.91 with 8 tracks, $1.99 with 16**. That's under `SAFECUT_JOB_USD_CAP = 2.00`, but with almost no margin once pre-call reservations are in flight (§10.5). **Decided:** request WP0 to raise the default `SAFECUT_JOB_USD_CAP` to **$3.00**. The daily cap still bounds total spend. *Rejected:* keeping $2.00, under which a busy 60 s clip ends "audit over budget" and can never be published.
+- **A 60 s clip** (the upload limit, ARCHITECTURE §5) models at **$1.91 with 8 tracks, $1.99 with 16**. That's under `SAFECUT_JOB_USD_CAP = 2.00`, but with almost no margin once pre-call reservations are in flight (§10.5). **Decided:** request WP0 to raise the default `SAFECUT_JOB_USD_CAP` to **$3.00**. The daily cap (public), per-code caps (pilots) and per-WP budgets (owner runs) still bound total spend (§9.2). *Rejected:* keeping $2.00, under which a busy 60 s clip ends "audit over budget" and can never be published.
 - **Pilot codes** (PR #2: $4 per code, 2 clips, a $20 total) cover two 30 s clips ($2.24) with margin, but not two busy 60 s clips ($3.82–3.98 against $4, with reservations in flight). Request to PRE-B: raise the per-code cap to **$6** (2 × the $3.00 job cap), keeping the **$20 total** that WP5 enforces separately.
 
 ### 9.2 The whole $150: every line, and the WP that spends it
