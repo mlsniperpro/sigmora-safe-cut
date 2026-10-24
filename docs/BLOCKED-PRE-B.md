@@ -12,7 +12,7 @@ PRE-B's documents are complete. Everything Claude could decide is decided; the d
 - [ ] **Film hero clips 2 (café) and 3 (walk-through).** By Oct 26.
   - Default for the café: laptop A shows a fabricated inbox, laptop B a menu. It will appear under **Needs you** and then be kept clear with one tap ([STORYBOARD.md](STORYBOARD.md) rule 4).
   - Default for the home tour: the TV shows a fabricated video call with a consenting actor, not broadcast TV (LABELING-GUIDE.md case 9).
-  - Until they arrive: the café context test is covered in WP6 by the `job-review-hero1` mock's screen items (UI-SPEC §10.1), and in WP3 by policy table tests on fixture `roles.json` (a harmless screen → `needs_you`, never `keep`).
+  - Until they arrive: the café context test is covered in WP6 by the `job-review-cafe` mock (UI-SPEC §10.1: an inbox screen hidden, a menu screen in Needs you), and in WP3 by policy table tests on fixture `roles.json` (a harmless screen → `needs_you`, never `keep`).
 - [ ] **Film the eval clips** in this order: A × 4, C × 3, D × 3, G × 2, J × 3. By **Oct 24 evening** for the 18-clip plan (SCHEDULE.md §3); by **Oct 25** for plan R1; if they can't exist before Oct 28, plan R2 applies (an 8-clip test split, SCHEDULE.md §4).
   - Default split: SCHEDULE.md §3 (`dev` = C, G, J × 1 each, all staged; everything real-public goes to `test`).
   - Until they arrive: WP7 develops metrics on the test vectors in LABEL-FORMAT.md §9, and its tracking and leak-guard numbers on SA-Co/VEval SmartGlasses (CC BY 4.0; PRE-A `docs/research/sa-co-veval.md`). The test split is frozen only once its labels exist; nothing is estimated in the meantime.
@@ -22,7 +22,7 @@ PRE-B's documents are complete. Everything Claude could decide is decided; the d
   - Until it's set up: no code depends on it. WP7's CVAT-zip loader is tested against the export format documented from source in CVAT-SETUP.md §7.1 and the examples in LABEL-FORMAT.md §8.
 - [ ] **Recruit labeller B** for about 4 hours: a 1 h calibration session plus about 3 h labelling roles. By **Oct 25 09:00 EAT**.
   - Default if nobody has started by then: switch to single-labeller plan R3. Agreement is then reported as "not measured" (SCHEDULE.md §4).
-  - Until then: WP7's agreement report has a tested "no labeller-B file" path that prints "not measured (single labeller)" (LABEL-FORMAT.md §9), so nothing breaks if B never arrives.
+  - Until then: a clip with no labeller-B file still loads. The validator emits a single-labeller warning instead of an error (LABEL-FORMAT.md §7), and the agreement report prints "not measured (single labeller)" (test vector K4, §9.2), so nothing breaks if B never arrives.
 - [ ] **Upload the consented clips** (hero and dev only) and their labels to the private bucket. This needs `SAFECUT_CLIPS_URL` and a read token as environment secrets (owner step O3).
   - Default: test-split clips and labels stay on the owner's Mac and its private backup. Only the split hash is committed.
   - Until the secrets exist: agents use only `fixtures/` (WP0's synthetic clips and saved responses) and replay mode (`SAFECUT_REPLAY=1`, [ARCHITECTURE.md](ARCHITECTURE.md) §5). WP0 writes its own `BLOCKED.md` line for the missing bucket rather than fetching footage any other way.
