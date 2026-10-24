@@ -17,6 +17,9 @@ Setup: track `face:7` is present in keyframes F90, F120, F150, and all three wer
 | A8 | participant | participant | *(call failed after retry)* | F90, F120 | `unsure` | escalate |
 | A9 | unsure | unsure | unsure | — | `unsure` | escalate |
 | A10 | participant ×3 for `face:99` | — | — | — | track dropped (not in the input list); hallucination count +1 | — |
+| A11 | participant (F90, F120; idx 0) | participant (F120, F150; idx 0) | participant (F90; idx 0) | — | `participant`; `frames` [90, 120, 150]; `evidence` = vote 1's; `matches_participant` **0** | — |
+| A12 | participant (idx 0) | participant (idx 1) | participant (idx 0) | F90, F120 | `participant`; `matches_participant` **null** (the votes disagree on who) | — |
+| A13 | participant (F90, "speaks to host") | bystander (F120, "background") | participant (F150) | — | `unsure`; `frames` [90, 120, 150]; `evidence` "Judges disagreed: speaks to host" | escalate |
 
 Objects (`screen:2`):
 | # | Votes (`sensitive`) | Expected |
@@ -31,7 +34,7 @@ Objects (`screen:2`):
 | E1 | participant, participant, child | *(not called)* | `child`, locked |
 | E2 | participant, participant, unsure | ruling `child` | `child`, locked |
 | E3 | participant, participant, unsure | call failed | `unsure`, `needs_you`, `suggested_role: null` |
-| E4 | participant, participant, unsure | ruling `participant`, frames F210, F240 (both sent, track present) | `unsure`, `needs_you`, `suggested_role: "participant"`, `escalated: true`. **Not kept.** |
+| E4 | participant, participant, unsure | ruling `participant`, frames F210, F240 (both sent, track present) | `unsure`, `needs_you`, `suggested_role: "participant"`, `escalation_ruling.frames: [210, 240]`, `escalated: true`. **Not kept.** |
 | E5 | participant, bystander, bystander | ruling `bystander` | `unsure`, `needs_you`, `suggested_role: "bystander"` |
 | E6 | participant, participant, unsure | ruling `participant`, citing F205 (not sent) | same as E3 (invalid citation) |
 
@@ -63,8 +66,9 @@ Frame 50 has one approved kept-clear item, `A` (a participant's face), visible a
 | L3 | `text` "AMINA K." at [110, 110, 190, 190] | kind doesn't match A's (face) → **leak** |
 | L4 | `face`, `confidence: low`, at [600, 300, 650, 360] | **leak** (confidence never filters) |
 | L5 | a box with 3 integers | **leak**, with the whole-frame box [0, 0, 1280, 720] |
-| L6 | frame 50 missing from the output; also missing after one re-send | `unresolved += 1` for frame 50 only |
+| L6 | frame 50 missing from the output; also missing after one re-send | `unresolved += 1` for frame 50 only; `blocked_reason: "audit_failed"` |
+| L9 | a red-team pass over 40 frames is skipped because its estimate exceeds the job cap | `unresolved += 40`, `blocked_reason: "over_budget"`; publishing is off (invariant: `blocked_reason != null` ⇔ `unresolved > 0`) |
 | L7 | `text` read *through* a redaction (inside a hidden item's region) | **leak** + flag `redaction_too_weak` → that item is re-rendered as `solid` |
 | L8 | no findings on any frame | `unresolved` unchanged; every frame logged `finding: "none"` |
 
-Publishing is allowed only when `audit.json.unresolved == 0` after at most 2 passes (ARCHITECTURE §3.8).
+Publishing is allowed only when `audit.json.unresolved == 0` after at most 3 passes (WP4.md step 2; ARCHITECTURE §3.8's `passes: 2` is only an example).

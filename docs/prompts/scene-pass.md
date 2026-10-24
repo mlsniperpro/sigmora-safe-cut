@@ -60,12 +60,12 @@ Message order (cache-friendly): system text → user message `[input_text: instr
   }
 }
 ```
-`scene.json` adds `model`. **Decided:** add `children` to the ARCHITECTURE §3.4 contract (children are locked hidden, so an early flag is safety-relevant), and drop the earlier draft's `video_type` (the summary already says it, and nothing downstream branches on it). WP0 implements `children` in `contracts.py`.
+`scene.json` adds `model`, and stores every schema field; the contract changes are listed once in API-NOTES §12. **Decided:** add `children` to the ARCHITECTURE §3.4 contract (children are locked hidden, so an early flag is safety-relevant), and drop the earlier draft's `video_type` (the summary already says it, and nothing downstream branches on it). WP0 implements `children` in `contracts.py`.
 
 ## Failure handling
 - HTTP or refusal failure after retries → write `scene.json` with an empty `participants` list and `summary: "scene pass failed: <reason>"`. The role pass still runs; with no context it will tend to return `unsure`, which is the safe direction.
 - Video too long or rejected → WP0 measures the limit. Above it, split into windows and merge the participant lists (dedupe by description).
-- Video tokens dominate the cost (API-NOTES §9): one call per clip, never retried more than once.
+- Video tokens dominate the cost (API-NOTES §9): one scene-pass call per clip, retried only by the transport policy (API-NOTES §10.2), never re-run as a stage.
 
 ## Tricky cases it must get right
 1. **The off-camera creator.** A first-person vlog where the creator's face shows only in a mirror reflection at 0:12. They must be listed (`is_creator: true`, described as "the person filming, seen in the mirror"), or the role pass will hide the creator's own face.

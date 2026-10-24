@@ -27,6 +27,21 @@ A Starter region-selection surcharge (1.5–1.75×) is mentioned by one tracker 
 - **Volumes:** persistent file storage with `.commit()` / `.reload()` for cross-container visibility [3P]. Job directories (`jobs/<id>/`) live here; the cron deletes them after 24 h. Size limits and pricing weren't found. **Check before launch.**
 - **Cold starts:** no official number found. The third-party guidance is that cold starts plus heavy imports can exceed the 150 s web timeout → keep the web function light (FastAPI only) and do the heavy imports (torch, cv2) in the worker function. Use `min_containers=1` on the web function only during judging (Nov 4–9), at ≈ $0.047/h for 1 core.
 
+## API names for WP5 (`modal` 1.6.2 from PyPI, signatures inspected in a scratch venv, 2026-10-24)
+These are a primary source: the installed package's own signatures and docstrings. Pin `modal==1.6.2` in the `deploy` group.
+
+| Need | API (1.6.2) | Notes and decision |
+|---|---|---|
+| Worker function | `@app.function(image=…, cpu=2, memory=4096, timeout=7200, secrets=[modal.Secret.from_name("safecut")], volumes={"/jobs": vol}, max_containers=…, retries=0)` | `timeout` covers execution and startup ("Maximum execution time for inputs and startup time in seconds"). **7,200 s = the 2 h job wall clock** of API-NOTES §10.1. `retries=0`, because stage retries are the client's job (§10.2) and a Modal retry would double-bill Meta calls |
+| GPU audit function | the same, with `gpu="T4"` (or `"L4"`) | holds the EgoBlur weights in the Volume; `enable_memory_snapshot=True` can cut cold starts. Measure both |
+| Public API | `@modal.asgi_app(custom_domains=[...])` on a light function (FastAPI only) | `asgi_app` takes `custom_domains`. The 150 s web timeout (§ "Features") means: return the job id at once |
+| Start a job, then poll | worker `.spawn(...)` → `FunctionCall`; `FunctionCall.get(timeout=0)` to poll | job state also goes in the Volume, so `GET /jobs/{id}` reads it without holding a call open |
+| 24 h deletion and file sweeper | `schedule=modal.Cron("0 * * * *")` (signature `Cron(cron_string, timezone="UTC")`) or `modal.Period(hours=1)` | one hourly function does both: purge jobs older than 24 h, and delete Meta files older than 6 h (API-NOTES §10.4). Starter allows 5 crons [3P] |
+| Job storage | `modal.Volume.from_name("safecut-jobs", create_if_missing=True)`; `vol.commit()` after writes, `vol.reload()` before reads in another container | without `commit`/`reload`, another container doesn't see the files |
+| Secrets | `modal.Secret.from_name("safecut")` → env vars (`MODEL_API_KEY`, …) | created by the owner with the `modal secret create` CLI |
+| Warm container during judging | `min_containers=1` on the web function, Nov 4–9 only | ≈ $0.047/h for 1 core [3P price] |
+| Cost ceiling | `max_containers` on the worker (e.g. 4) | bounds Modal spend and Meta concurrency together (§10.1) |
+
 ## Estimate: one 30 s clip
 Assumptions: the CPU worker gets **2 cores + 4 GiB** for **3 minutes** (prepare, render, receipts, waiting on Meta calls), plus **1 GPU-minute** for EgoBlur Gen 2 (≈900 frames × 21 ms ≈ 19 s of inference + model load; `egoblur-gen2.md`).
 
@@ -38,7 +53,7 @@ Assumptions: the CPU worker gets **2 cores + 4 GiB** for **3 minutes** (prepare,
 | GPU (L4, alternative) | 60 s × $0.000222 | (0.0133) |
 | **Total per clip** | T4 | **≈ $0.016** |
 
-- With $30/mo Starter credits that's **≈1,850 clips/month**, so Modal isn't the constraint; Meta credits are (≈$0.87/clip, API-NOTES §9).
+- With $30/mo Starter credits that's **≈1,850 clips/month**, so Modal isn't the constraint; Meta credits are (≈$1.12 per 30 s clip, API-NOTES §9).
 - The waiting-on-Meta time is billed CPU. If WP0 measures SAM latency well above a minute, move the wait into the async client with many jobs per container, or lower the cores while waiting.
 - GPU container cold start (pulling torch + weights) may dominate the 1 GPU-minute. Keep the weights in a Volume and measure.
 

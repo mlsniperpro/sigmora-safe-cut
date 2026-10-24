@@ -83,6 +83,11 @@ WP2 inlines the `missed` item schema from `miss-loop.md`; strict mode needs it f
 4. Objects: `sensitive = false` only if **3/3** say false. Any `true` → true.
 5. Validate the cited frames against the frames actually sent. A vote citing a frame it wasn't shown, or a label absent from that frame, is **discarded** (counted as `unsure`).
 6. Drop any `track_id` not in the input list, and log it as a hallucination metric for EVAL.
+7. **Collapse the three votes' per-track fields into one `roles.json` entry** (deterministic, and the same order as the votes):
+   - `votes`: the 3 roles in vote order (missing or discarded votes = `unsure`);
+   - `frames`: the sorted union of every valid frame cited by any vote **whose role equals the final `role`**. For `unsure`, the union over all votes;
+   - `evidence`: the evidence string of the **first vote (in vote order) whose role equals the final `role`**. For `unsure`, the first non-empty evidence, prefixed "Judges disagreed: ";
+   - `matches_participant`: set **only if the final role is `participant` and all three votes gave the same non-null index**. Otherwise `null`, so the UI never links speech on a guess.
 
 ## Points (when the model gives coordinates)
 Only `missed[].point` carries coordinates. They're on the **0–1000 grid of the image sent**, which includes the frame-number bar. Convert with the single rule in API-NOTES §5: clamp, scale by the **sent** image size, subtract the bar offset, floor, then clamp to the frame.

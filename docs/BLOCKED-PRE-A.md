@@ -1,13 +1,22 @@
 # BLOCKED (PRE-A): inputs only the owner can supply
 
-**Updated:** 2026-10-24 · **Branch:** `pre-a-research` · **WP:** `docs/work-packages/PRE-A.md`. This file lives in `docs/` because PRE-B's PR #2 has the root `BLOCKED.md`, which covers footage, labels, pilots, the API key and making the repo public. Those items aren't repeated here.
+**Updated:** 2026-10-24 · **Branch:** `pre-a-research` · **WP:** `docs/work-packages/PRE-A.md`. This file lives in `docs/`. PRE-B's owner checklist is **`docs/BLOCKED-PRE-B.md`** on PR #2 (footage, labels, pilots, the API key, making the repo public). Those items aren't repeated here, so read both.
 
 PRE-A's documents are all written. Each item below needs the owner, either through an account action or by changing this cloud environment's settings. Nothing waits on them: the affected facts are tagged in the docs for WP0 to verify, and the code WPs build behind stubs or replay fixtures (noted per item).
 
 ## Checklist (most urgent first)
 
 - [ ] **Request SA-Co/VEval access on Hugging Face now.** The dataset is gated and approval is manual, so the wait is open-ended. Use the owner's own HF account on the `facebook/SACo-VEval` dataset page, then add a read-scoped token as the environment secret `HF_TOKEN`. *Meanwhile:* WP7 builds the loader against the documented format with a synthetic fixture. Details: `docs/research/sa-co-veval.md`.
-- [ ] **Request the EgoBlur Gen 2 weights** (O8) using the email request form at <https://www.projectaria.com/tools/egoblur/>, with the owner's own name and email. When the download arrives, put `ego_blur_face_gen2` and `ego_blur_lp_gen2` in the private bucket under `models/egoblur/gen2/`, never in this repo. *Meanwhile:* WP4's audit runs on a replay stub of saved detections. Details: `docs/research/egoblur-gen2.md`.
+- [ ] **Request the EgoBlur weights** (O8) using the email request form at <https://www.projectaria.com/tools/egoblur/>, with your own name and email. When the download arrives, put all four zips (`ego_blur_{face,lp}_gen{1,2}`) in the private bucket under `models/egoblur/gen1/` and `models/egoblur/gen2/`, never in this repo. *Meanwhile:* WP4's audit runs on a replay stub of saved detections. Details: `docs/research/egoblur-gen2.md`.
+- [ ] **Provide a Linux x86-64 machine with an NVIDIA GPU, owned by you, for the test-split eval runs.** Nothing on it can run before you set it up.
+  - **Why not the Intel Mac:** EgoBlur Gen 2 hard-pins `torch==2.9.1`, which has no Intel-macOS wheel (PyPI file list, 2026-10-24). So the audit and the EgoBlur baseline can't run on the Intel dev Mac, which MAXXING §4 and WP7.md currently name for `eval/run.py --split test`.
+  - **Why not the cloud:** real-public test clips must never enter the cloud sandbox (AGENTS rule 5).
+  - **Why a GPU:** on CPU, EgoBlur needs about 1–3 s per frame for each detector (`docs/research/egoblur-gen2.md` "Speed"). That's 30–90 min per 30 s clip-run for face and plate, or about 18–54 h for 12 test clips × 3 runs, so a CPU-only machine isn't viable for full-frame audits. With a GPU it's about 20 s per detector per clip.
+  - **Which machine:** PR #2's CVAT decision prefers a Linux or WSL2 machine the owner controls. If that machine has an NVIDIA GPU, use it, since it already holds the private set. Never a third party's machine (e.g. labeller B's), because these runs use `MODEL_API_KEY`.
+  - **Setup:** Python 3.12, `uv`, and ffmpeg from `imageio-ffmpeg`.
+  - **If no GPU machine exists:** the test split runs the audit on every 3rd frame plus every track-edge frame on CPU, and the README states that limit next to every audited number.
+  - *Meanwhile:* dev and hero runs (consented clips) use the sandbox or Modal. WP7's runner refuses `--split test` inside the sandbox.
+
 - [ ] **Network allowlist for this cloud environment** (O3). Under claude.ai/code → environment → Edit → Network access → Allowed domains, leave "Allow package managers" ticked and add:
   - [ ] `dev.meta.ai`: Meta's docs. From this session it fails (`curl: (56) CONNECT tunnel failed, response 403`)
   - [ ] `developer.meta.com`
