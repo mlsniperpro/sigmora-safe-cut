@@ -136,11 +136,11 @@ Goal: in 20 seconds a judge sees the product working on real footage, understand
 | Toggle hint (screen reader) | Switch between the original clip and the Safe Cut result. |
 | Under the video | Staged demo. Everyone shown signed a release. |
 | Step 1 title | Muse Spark decides who |
-| Step 1 body | Muse Spark watches the clip, listens to who's speaking, and rules on each person and object SAM 3.1 has numbered: part of the story, or not. |
+| Step 1 body | Muse Spark watches the clip, reads who said what (from Muse Voice Transcribe), and rules on each person and object SAM 3.1 has numbered: part of the story, or not. |
 | Step 2 title | SAM 3.1 keeps them hidden |
 | Step 2 body | SAM 3.1 follows each hidden person and item frame by frame. Anyone the tracker loses and finds again starts hidden. Anything uncertain stays hidden. |
 | Step 3 title | An audit checks the render |
-| Step 3 body | Before anything is published, Meta's EgoBlur and a second Muse Spark pass check every frame of the result. Any leak is fixed and recorded on your privacy receipt. |
+| Step 3 body | Before anything is published, Meta's EgoBlur checks every frame of the result and a second Muse Spark pass tries to read or recognise anything left. Any leak is fixed and recorded on your privacy receipt. |
 | Side-by-side title | Blur every face vs Safe Cut |
 | Side-by-side captions | Blur every face: your guest is hidden, the number plate isn't. · Safe Cut: your guest stays clear, the plate and the passer-by are hidden. |
 | Results title | Results on our labelled test set |
