@@ -65,13 +65,13 @@ Every placeholder, timings and audit counts included, must resolve to a value in
 | `{manual_minutes}` | owner's timed manual masking of H1A | EVAL.md §2 "Creator time", timed once on 3 clips; committed as `eval/results/creator-time-<date>/metrics.json` |
 | `{upload_to_review_s}` | real wall-clock from upload to "Ready for you" on the recorded H1A run | `eval/results/hero-live-<date>/metrics.json` (stage timings from WP5's `job_log.jsonl`) |
 | `{speedup}` | the time-lapse factor applied in the edit | derived from committed numbers only: `{upload_to_review_s}` (committed above) ÷ the shot's on-screen seconds. It describes the edit, not the product, so it needs no metrics file of its own |
-| `{h1a_seconds}` | the length of H1A | the same `creator-time-<date>` run's `config.json` (clip duration from `job.json`) |
+| `{h1a_seconds}` | the length of H1A | the `hero-live-<date>` run (above): `job.json` `frames / fps`, copied into that run's `metrics.json` as `h1a_seconds` |
 | `{h1_frames_scanned}`, `{h1_leaks_fixed}` | the audit on the recorded H1 run | the same `hero-live-<date>` run, copied from its `audit.json` |
 | `{pilot_*}` | pilot results, quotes and names | numbers from `eval/results/pilots-<date>/metrics.json`; quotes and names only with written permission ([PILOTS.md](PILOTS.md) §6) |
 
 ## 3. Screen recordings to capture on Nov 3
 
-**Setup for every recording:** the deployed app on the custom domain (not localhost, not a preview URL); a fresh Chrome profile with no extensions, bookmarks or notifications; window content exactly 1920×1080 at 100% zoom; cursor visible; 30 fps; system audio off (VO is added later). Use the hero jobs run **live** on Nov 3 where possible; if the API is down and replay is used, the demo-mode banner is visible and stays in the edit. Record each one at least twice.
+**Setup for every recording:** the deployed app on the custom domain (not localhost, not a preview URL); a fresh Chrome profile with no extensions, bookmarks or notifications; window content exactly 1920×1080 at 100% zoom; cursor visible; 30 fps; system audio off (VO is added later). Use the hero jobs run **live** on Nov 3 where possible; if the API is down and replay is used, the demo-mode banner is visible and stays in the edit. Record each one at least twice. **Budget:** only `SR-01` (upload → review) and `SR-08` (render) start paid work; every other recording re-opens a job that has already run, which costs nothing. The live runs on Nov 3 are H1A, H1B and H2, once each (≈ 3 × PRE-A's $0.87 per 30 s clip, API-NOTES §9.1). They use an **owner recording code** with its own $6 cap, kept outside the $3/day public cap the same way pilot codes are ([PILOTS.md](PILOTS.md) §5; a WP5 request), so recording never locks judges out. A retake of `SR-01` reuses the code; if the code's cap is reached, the retake waits for the next day, and is never moved onto the public cap.
 
 | ID | What to capture | Clip / job | Length to record | Shots |
 |---|---|---|---|---|

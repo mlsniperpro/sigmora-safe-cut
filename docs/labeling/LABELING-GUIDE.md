@@ -1,6 +1,6 @@
 # Safe Cut labelling guide
 
-Status: **v1, written 2026-10-24 (PRE-B, before kickoff).** Source rules: [EVAL.md](../EVAL.md) §1 (entities and labels) and §6 (schedule), [DESIGN.md](../DESIGN.md) §2.5 (policy) and §2.7b (identifiability), [SHOTLIST.md](../SHOTLIST.md) (the clip categories). WP7 copies this file to `eval/LABELING-GUIDE.md` at kickoff; until then this is the master copy.
+Status: **v1, written 2026-10-24 (PRE-B, before kickoff).** Source rules: [EVAL.md](../EVAL.md) §1 (entities and labels) and §6 (schedule), [DESIGN.md](../DESIGN.md) §2.5 (policy) and §2.7b (identifiability), [SHOTLIST.md](../SHOTLIST.md) (the clip categories). **This file is the only master copy, before and after kickoff.** WP7's `eval/LABELING-GUIDE.md` (owned by WP7) holds a single line linking here instead of a copy, so new worked cases (§5 step 2) are only ever added here and every relative link keeps working (a request to WP7 in the PRE-B PR).
 
 Related files in this folder: [CVAT-SETUP.md](CVAT-SETUP.md) (the tool), [LABEL-FORMAT.md](LABEL-FORMAT.md) (the files you produce), [SCHEDULE.md](SCHEDULE.md) (how long it takes and in what order).
 
