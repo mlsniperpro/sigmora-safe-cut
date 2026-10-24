@@ -177,17 +177,26 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#141 (win audit 13)**: [Try again tomorrow] always restarted the whole pipeline. Fix: UI-SPEC §2.6, §10.3 (same stage routing as [Try again]).
 - [x] **#142 (win audit 14)**: SR-01 would show the access code in the public video. Fix: UI-SPEC §10.2 masked field; STORYBOARD SR-01 and §4 checklist; BLOCKED-PRE-B revoke step.
 - [x] **#143 (win audit 14)**: Code-kind caps requested only of WP5; the budget guard lives in WP0's client. Fix: UI-SPEC request 20 (WP0 + `cost.jsonl` code fields; request to PRE-A).
-- [x] **#144 (win audit 14)**: Edits in the `needs_you` state could be lost by re-running only the audit. Fix: UI-SPEC §3.5 (an edit switches to Approve & render).
+- [-] **#144 (win audit 14)**: Edits in the `needs_you` state could be lost by re-running only the audit. Fix: UI-SPEC §3.5 (an edit switches to Approve & render). **Superseded by #157:** `needs_you` is now read-only, and edits go through an explicit reopen.
 - [x] **#145 (win audit 14)**: `job_cap` audit offered an endless re-run. Fix: UI-SPEC §5.3 (no button; shorter clip).
 - [x] **#146 (win audit 14)**: `daily_cap` retry button described two ways. Fix: UI-SPEC §10.3 aligned with §2.6.
 - [x] **#147 (win audit 14)**: Superseded job-count fixes still marked [x]. Fix: WIN #125, #130, #133 → [-].
-- [x] **#148 (win audit 15)**: An edit in `needs_you` didn't change the server state. Fix: UI-SPEC request 5, §3.5, §10.4 transitions, R24.
+- [-] **#148 (win audit 15)**: An edit in `needs_you` didn't change the server state. Fix: UI-SPEC request 5, §3.5, §10.4 transitions, R24. **Superseded by #157:** `needs_you` is now read-only, and edits go through an explicit reopen.
 - [x] **#149 (win audit 15)**: `job_cap` in `needs_you` left the bar empty or allowed a doomed re-render. Fix: UI-SPEC §3.3, §3.5, §5.3–5.4, §10.4, mock, R23.
 - [x] **#150 (win audit 15)**: `job_cap` exception missing from three other sections and mocks. Fix: Same propagation as #149.
 - [x] **#151 (win audit 15)**: Code kinds and caps had no config home; risk of codes in the public repo. Fix: UI-SPEC request 20 (`SAFECUT_ACCESS_CODES` JSON secret, `SAFECUT_PILOT_POOL_USD`); BLOCKED-PRE-B, STORYBOARD.
 - [x] **#152 (win audit 15)**: `type=password` would trigger Chrome's save prompt inside SR-01. Fix: UI-SPEC §10.2 text input with CSS masking.
 - [x] **#153 (win audit 15)**: A stage failing on `code_cap` couldn't recover after the cap was raised. Fix: UI-SPEC §2.6, §10.3, mock.
 - [x] **#154 (win audit 15)**: `retry_later` promised open-ended retries; PRE-A re-queues once. Fix: UI-SPEC §2.6, request 1, §10.3–10.4, `upstream` failure, mock.
+- [x] **#155 (win audit 16)**: Read-only chips under `job_cap` had no reducer guard. Fix: UI-SPEC §10.5 `readOnly` (rendering, needs_you), R23, R25.
+- [x] **#156 (win audit 16)**: Bar chosen by `blocked_reason` showed the wrong action after a reload. Fix: UI-SPEC §3.5 (by job status + cause).
+- [x] **#157 (win audit 16)**: Approve & render after an edit could only fail on an exhausted cap. Fix: Simplified: `needs_you` is read-only; [Edit and render again] reopens with a budget confirm.
+- [x] **#158 (win audit 16)**: 429 cap codes mapped only on POST /start. Fix: UI-SPEC §10.3 (one mapping for /start, /render, /audit, /reopen).
+- [x] **#159 (win audit 16)**: [Run the audit again] had no endpoint. Fix: UI-SPEC request 11 (`POST /v1/jobs/{id}/audit`, `/reopen`), mocks.
+- [x] **#160 (win audit 16)**: Download promised in `needs_you` had no URL or button. Fix: UI-SPEC request 1 (`result.video_url` on the job), §3.5.
+- [x] **#161 (win audit 16)**: No fixture for the reload-after-edit state. Fix: UI-SPEC §10.1 `job-reopened-review.json`; R24 replaced.
+- [x] **#162 (win audit 16)**: BLOCKED said WP5 issues the recording code. Fix: BLOCKED-PRE-B (the owner adds it to the deploy secret).
+- [x] **#163 (win audit 16)**: /start code-cap copy left the pilot at a dead end. Fix: UI-SPEC §2.6 (Start stays enabled).
 
 ## 4. Which builder reads what
 
