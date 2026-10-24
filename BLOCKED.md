@@ -1,25 +1,23 @@
-# BLOCKED (PRE-A): Meta's docs site isn't reachable from the cloud environment
+# BLOCKED (PRE-A): inputs only the owner can supply
 
-**Date:** 2026-10-24 09:40 UTC · **Branch:** `pre-a-research` · **WP:** `docs/work-packages/PRE-A.md`
+**Updated:** 2026-10-24 · **Branch:** `pre-a-research` · **WP:** `docs/work-packages/PRE-A.md`
 
-## What's blocked
-PRE-A step 1 says to build `docs/API-NOTES.md` **from Meta's public docs at `dev.meta.ai/docs`**. The cloud environment's network policy denies that host:
+PRE-A's documents are all written. Each item below needs the owner, either through an account action or by changing this cloud environment's settings. Nothing waits on them: every affected fact is already in the docs, tagged with the source it came from and marked for WP0 to verify, and the code WPs build behind stubs or replay fixtures (noted per item).
 
-```
-curl https://dev.meta.ai/docs  →  CONNECT tunnel failed, response 403   (agent proxy)
-WebFetch dev.meta.ai           →  getaddrinfo ENOTFOUND
-```
+## Checklist
 
-These hosts are denied the same way: `developer.meta.com`, `www.projectaria.com` (EgoBlur weights page), `modal.com` (pricing and docs), `huggingface.co` (SA-Co/VEval dataset page), and most third-party sites. Only `github.com` (fetch and `git clone`), `pypi.org`, `registry.npmjs.org` and the web-search tool work.
+- [ ] **Network allowlist for this cloud environment** (owner step O3). Add these under claude.ai/code → environment → Edit → Network access → Allowed domains, leaving "Allow package managers" ticked:
+  - [ ] `dev.meta.ai`: Meta's docs. **Today it returns a 403 from the agent proxy** (`curl: (56) CONNECT tunnel failed, response 403`), and WebFetch gets `getaddrinfo ENOTFOUND dev.meta.ai`
+  - [ ] `developer.meta.com`: Meta model pages and blog
+  - [ ] `api.meta.ai`: the API itself (WP0 probes)
+  - [ ] `www.projectaria.com`: EgoBlur Gen 2 weights page
+  - [ ] `modal.com`: pricing and docs
+  - [ ] `huggingface.co`: SA-Co/VEval
+  - Steps: <https://code.claude.com/docs/en/cloud-environments#network-access>
+  - Effect once done: WP0 re-reads each `dev.meta.ai` URL listed in `docs/API-NOTES.md` and replaces the `[SNIP]`/`[3P]` tags with `[dev.meta.ai, read <date>]`.
+- [ ] **EgoBlur Gen 2 weights** (O8). If the projectaria.com download sits behind a form, the owner fills it in with their own identity, downloads `ego_blur_face_gen2` and `ego_blur_lp_gen2`, and uploads them to the private bucket under `models/egoblur/gen2/`. Details: `docs/research/egoblur-gen2.md`. *Meanwhile:* WP4's audit runs on a replay stub of saved detections.
+- [ ] **SA-Co/VEval access on Hugging Face** if the dataset is gated: the owner requests access with their own HF account, then stores a read token as the environment secret `HF_TOKEN`. *Meanwhile:* WP7 builds the loader against the documented YTVIS-like format (`docs/research/sa-co-veval.md`) with a tiny synthetic fixture.
+- [ ] **`MODEL_API_KEY`** with the hackathon credits (O6, at kickoff), as an environment secret. *Meanwhile:* the cost model in API-NOTES §9 stands in, until WP0's probes replace it with measured `cost.jsonl`.
 
-## What was done instead (nothing faked)
-- Every file PRE-A asks for exists. API facts come from **Meta's own GitHub repos**: `meta-models/meta-model-cookbook` (commit `0a99b98`, 2026-10-07) and `meta-models/meta-sam` (commit `4031897`, 2026-10-06, including the normative `protocol/sam3.md`). The remaining facts come from search-engine summaries and third-party sources. **Every fact is tagged with its source tier** (`[GH-…]`, `[SNIP]`, `[3P]`, `[DESIGN]`) and marked "per docs, unverified; WP0 verifies live".
-- Facts no reachable source gave are listed as unknown, not guessed: the SAM price on Meta's own page, Muse Spark 1.2 pricing, the `input_video.fps` field, Standard-mode retention periods, Meta's Muse prompting-guide URL, EgoBlur gating and file sizes, and the SA-Co/VEval size.
-
-## What's needed to finish (owner, ≈2 min)
-1. In claude.ai/code → this environment → **Edit → Network access**, add under *Allowed domains* (leave "Allow package managers" ticked):
-   `dev.meta.ai`, `developer.meta.com`, `api.meta.ai`, `www.projectaria.com`, `modal.com`, `huggingface.co`. All but `developer.meta.com` are already in MAXXING §6's allowlist; this environment doesn't have it applied yet (owner step O3). Steps: <https://code.claude.com/docs/en/cloud-environments#network-access>
-2. Re-run PRE-A (or let WP0 do it on Oct 26). The agent re-reads each `dev.meta.ai` URL listed in `docs/API-NOTES.md`, replaces `[SNIP]`/`[3P]` tags with `[dev.meta.ai, read <date>]`, and fills in the unknowns above.
-
-## Not blocked
-Prompt specs (`docs/prompts/`) and the research files are complete as drafts. The EgoBlur and SA-Co/VEval facts come mostly from Meta's GitHub repos.
+## Already decided (no owner input needed)
+Where the sources were silent, the docs record a decision instead of a question: see the "Decisions" section of PR #1.

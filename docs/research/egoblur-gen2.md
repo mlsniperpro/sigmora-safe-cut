@@ -9,10 +9,10 @@ Read 2026-10-24. **Source:** Meta's official repo [`facebookresearch/EgoBlur`](h
 - Release history (CHANGELOG): **2.0.0 on 2025-12-11 (the Gen 2 release)**; 2.0.1 on 2026-04-13 (a VRS end-to-end blur tool).
 - Model details: the README points to the Gen 1 paper, [EgoBlur: Responsible Innovation in Aria (arXiv 2308.13093)](https://arxiv.org/abs/2308.13093). There's no Gen 2 paper link. Gen 2 bundles a `detectron2` copy under `gen2/script/detectron2`, so it's a detectron2-style detector.
 
-## Gated?
+## Gating
 **Unknown.** Every weight link goes to `projectaria.com/tools/egoblur`. The README says only "download the zipped models from the links provided", with no mention of a form, an account or Hugging Face. Historically (Gen 1, 2023) the Aria page asked for a name and email and agreement to the licence before showing download links; **that's from memory and wasn't verified this session**.
 
-**Owner steps (O8) if it's gated:**
+**Decided:** WP4 builds the audit behind a detector interface with a **replay stub** (saved EgoBlur detections as fixtures), so the pipeline and tests run before the weights arrive. The real model plugs in when the weights are available. **Owner steps (O8) if it's gated** (also in `BLOCKED.md`):
 1. On the Mac, open <https://www.projectaria.com/tools/egoblur/> and find the Gen 2 download section.
 2. Fill in whatever form it shows (name, email, licence acceptance). Use the owner's own identity, never an agent's.
 3. Download `ego_blur_face_gen2` and `ego_blur_lp_gen2` (zips), and record the page's licence text and the date.
@@ -57,7 +57,7 @@ Read 2026-10-24. **Source:** Meta's official repo [`facebookresearch/EgoBlur`](h
 
 For Safe Cut: **Gen 2 with `camera-rgb`**. Our prepared clips must carry a valid constant FPS (`prepare.py` already sets it).
 
-## Open questions for WP4 (on Oct 26)
+## Verification tasks for WP4 (on Oct 26)
 1. Gating, the licence text on the page, and the zip sizes.
 2. ~~Short or long edge~~: resolved from `predictor.py`, the long edge ends at 1200.
 3. Measured ms/frame on Modal T4 vs L4 vs CPU at 1280×720.

@@ -7,7 +7,7 @@ Close the loop between Meta's two models. Muse Spark looks at the numbered keyfr
 - **(a) a noun phrase** for a new concept sweep over the whole clip (e.g. `envelope`), or
 - **(b) an object prompt**: a point (and optionally a box) on the exact frame, propagated `both` ways. SAM 3.1 accepts these per `meta-sam/protocol/sam3.md` (API-NOTES §1.3). This contradicts DESIGN's "text prompts only".
 
-(b) is preferred when the thing is a one-off (one envelope), and (a) when it's a class that likely recurs (`tattoo`, `house number`). The model proposes both, and WP1 decides which to run.
+(b) is preferred when the thing is a one-off (one envelope), and (a) when it's a class that likely recurs (`tattoo`, `house number`). The model proposes both. The rule for which runs is fixed in step 3 below: the point prompt always runs, and a phrase sweep runs only for recurring kinds.
 
 ## Inputs
 - The same Set-of-Mark keyframes as the role pass (shared prefix), plus the list of concepts already swept: `face, person, license plate, screen, phone, document, name badge` and any earlier loop phrases.
@@ -27,7 +27,7 @@ Close the loop between Meta's two models. Muse Spark looks at the numbered keyfr
 ## Output schema (the `missed` item, strict)
 ```json
 {
-  "type": "array", "maxItems": 8, "items": {
+  "type": "array", "items": {
     "type": "object", "additionalProperties": false,
     "required": ["what", "sam_phrase", "frame", "point", "box", "recurs"],
     "properties": {
@@ -36,12 +36,12 @@ Close the loop between Meta's two models. Muse Spark looks at the numbered keyfr
       "frame": {"type": "integer"},
       "point": {"type": "object", "additionalProperties": false, "required": ["x", "y"],
                 "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}},
-      "box": {"type": ["array", "null"], "items": {"type": "integer"}, "minItems": 4, "maxItems": 4},
+      "box": {"type": ["array", "null"], "items": {"type": "integer"}},
       "recurs": {"type": "boolean"}
     }}
 }
 ```
-`maxItems`/`minItems` support under `strict` is unverified. If WP0 finds they're rejected, drop them and enforce in pydantic. `roles.json.missed` in ARCHITECTURE §3.5 stores `point` in **prepared-clip pixels**, so convert before writing (below). `box` and `recurs` are additions needing a contracts decision.
+**Decided:** the strict schema leaves out `maxItems`/`minItems`, because their support under `strict` is unverified and a 400 would cost a whole call. Pydantic enforces them instead: at most 8 items (extras are dropped, lowest-listed first, and logged), and a `box` must have exactly 4 integers or it becomes null. `roles.json.missed` in ARCHITECTURE §3.5 stores `point` in **prepared-clip pixels**, so convert before writing (below). **Decided:** add `box` (a better SAM object prompt) and `recurs` (it gates the paid phrase sweeps) to the `missed` contract as optional fields. WP0 implements them in `contracts.py`.
 
 ## Post-processing (WP1/WP2, deterministic)
 1. Validate that `frame` was among the images sent, or drop the item.

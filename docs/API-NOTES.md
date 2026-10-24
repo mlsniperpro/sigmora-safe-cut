@@ -93,7 +93,7 @@ Grammar (normative summary):
 
 ### 1.7 Pricing
 - Video: **$0.20 per 1,000 frames**; image: $2.50 per 1,000 images. **[3P]** (search summary of a third-party guide; the Meta pricing-page excerpt didn't include SAM figures) and **[DESIGN]**. Read [pricing-rate-limits](https://dev.meta.ai/docs/getting-started/pricing-rate-limits) on D1.
-- Which frames are billed (all source frames, or only frames with output lines?) is **unknown**. WP0 compares the frame count against billing.
+- Which frames are billed (all source frames, or only frames with output lines) is **unknown**. **Decided:** the cost model and the spend guard assume **every uploaded frame is billed** (the worst case, and the safe one). WP0 compares against real billing and relaxes this only on evidence.
 
 ---
 
@@ -186,7 +186,7 @@ Docs: [speech-to-text](https://dev.meta.ai/docs/speech-to-text) · [api-referenc
 - `turns` is present only in speech modes. `speaker` appears only in `DIARIZATION` and is a **bare letter** (`"A"`, not `speaker_a`).
 - `endMs` is used by the cookbook's caption recipe (`07_sam/03…/build-demo-data.py`).
 - "Diarization covers non-overlapping speech." Overlapping talk is a known gap.
-- **Mapping to `transcript.json`:** `speaker` `"A"` → `"S1"`, or keep the letters and update the ARCHITECTURE §3.3 example. `startMs/1000` → `start`, and `transcript` → `text`. WP2 decides.
+- **Mapping to `transcript.json` (decided):** speaker letters map to `S1`, `S2`, … in order of first appearance (`"A"` → `"S1"` if A speaks first). That keeps the ARCHITECTURE §3.3 contract and the spark-1.2 fallback on one label scheme. `startMs/1000` → `start`, `endMs/1000` → `end`, and `transcript` → `text`.
 
 ### 4.3 Limits and errors
 - One-shot: **≤10 min of audio or ≤32 MB**, whichever comes first. 413 = body too big; 400 = too long (after decode) or malformed.

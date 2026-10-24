@@ -57,7 +57,7 @@ Give tracks whose three role votes disagreed one more careful look, with the dis
 3. Escalation call failed, or its cited frames are invalid → `unsure`, hidden, `needs_you`, with no suggestion.
 4. Otherwise → `unsure`, hidden, `needs_you`, with `suggested_role` = the ruling, plus its evidence and frames for the review card (`escalated: true`). The creator's tap decides; `decided_by: "creator"`.
 
-There's deliberately no rule that yields `keep`. A creator who accepts a `participant` suggestion is the only way a disputed track is shown. `suggested_role` is a proposed addition to `roles.json` (contracts decision for WP0).
+There's deliberately no rule that yields `keep`. A creator who accepts a `participant` suggestion is the only way a disputed track is shown. **Decided:** `suggested_role` (nullable) is added to `roles.json.tracks[]`, because the review card needs it to show the suggestion. WP0 implements it in `contracts.py`.
 
 ## Failure handling
 - One attempt plus one retry on a transient error. Escalation is never re-run (DESIGN: "once").

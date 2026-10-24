@@ -47,12 +47,12 @@ Provide speech evidence ("Hi, I'm Amina") when the primary sensor, `muse-voice-t
   }
 }
 ```
-`transcript.json` keeps `speaker/start/end/text`. `self_intro` and `addresses` are evidence hints for the role pass and would need a contracts decision (or can be dropped, since the role pass reads `text` anyway).
+**Decided:** `transcript.json` keeps only `speaker/start/end/text`, so the ARCHITECTURE §3.3 contract stays unchanged for both speech sources. `self_intro` and `addresses` are asked for only because naming them makes the model attend to names. They're used to sanity-check `text` (the name must appear in it), then dropped. The role pass reads `text`, which is the same evidence.
 
 ## Trust and post-processing
 - **Timestamps from the LLM are untrusted** (the same rule as DESIGN §2.3 for video times). Use them only to place a turn on the role pass's frame axis with a **±1.5 s tolerance**, widening the frame range of each turn accordingly. A turn's timing must never be the only evidence for a `participant` vote. The burned-in frame numbers on the keyframes stay authoritative.
 - Clamp start and end to [0, clip duration]. Drop turns with `end < start`. Sort by `start`.
-- **Dropped-audio check:** if `usage.input_tokens` is below a WP0-measured floor for the clip's duration (i.e. the audio wasn't ingested), or if `has_speech == false` while the creator's note or the scene pass says there's dialogue, mark the transcript `source: "muse-spark-1.2", degraded: true`. `degraded` is a **proposed contract field** (ARCHITECTURE §3.3 doesn't have it yet). WP0 adds it to `contracts.py` before WP2 writes it, or WP2 can't emit it. The role pass then gets "speech unavailable", and participants can only be supported by visual evidence. That tends toward `unsure` → hidden, the safe direction.
+- **Dropped-audio check:** if `usage.input_tokens` is below a WP0-measured floor for the clip's duration (i.e. the audio wasn't ingested), or if `has_speech == false` while the creator's note or the scene pass says there's dialogue, mark the transcript `source: "muse-spark-1.2", degraded: true`. **Decided:** add `degraded: bool = false` to the `transcript.json` contract (ARCHITECTURE §3.3), so a dropped soundtrack is visible and never silent. WP0 implements it in `contracts.py`, and WP2 must not emit it before that lands. The role pass then gets "speech unavailable", and participants can only be supported by visual evidence. That tends toward `unsure` → hidden, the safe direction.
 
 ## Failure handling
 - HTTP or schema failure → one retry, then an empty `turns` list with `degraded: true`. Never block the pipeline on speech.

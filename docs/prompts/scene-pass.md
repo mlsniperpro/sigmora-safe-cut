@@ -19,7 +19,7 @@ Message order (cache-friendly): system text → user message `[input_text: instr
 
 **User**
 > Watch this clip and read its transcript. Answer these questions:
-> 1. **Summary:** in one or two sentences, what kind of video is this (vlog, street interview, tutorial, event…) and what happens?
+> 1. **Summary:** in one or two sentences, say what kind of video this is (vlog, street interview, tutorial, event…) and what happens.
 > 2. **Participants:** who is deliberately part of the video? The creator or host (the person filming or presenting), anyone introduced by name or role, anyone interviewed or addressed, and anyone performing for the camera. For each, give a **visual description** someone could use to find them in a still frame (clothing, hair, position, held objects), the **evidence** (what they say or do, or what is said about them, quoting the transcript when you can), and the transcript **speaker label** if you can tell which voice is theirs (otherwise null).
 > 3. **Not participants:** briefly note the kinds of other people present (passers-by, shop staff, audience), without describing individuals.
 > 4. **Children:** does anyone appear to be under 18? Describe them as you would a participant. Children are always hidden, whatever their role.
@@ -34,10 +34,9 @@ Message order (cache-friendly): system text → user message `[input_text: instr
 ```json
 {
   "type": "object", "additionalProperties": false,
-  "required": ["summary", "video_type", "participants", "children", "others_present", "candidate_objects"],
+  "required": ["summary", "participants", "children", "others_present", "candidate_objects"],
   "properties": {
     "summary": {"type": "string"},
-    "video_type": {"type": "string", "enum": ["vlog", "interview", "tutorial", "event", "travel", "review", "other"]},
     "participants": {"type": "array", "items": {
       "type": "object", "additionalProperties": false,
       "required": ["description", "evidence", "speaker", "is_creator"],
@@ -61,7 +60,7 @@ Message order (cache-friendly): system text → user message `[input_text: instr
   }
 }
 ```
-`scene.json` adds `model`. `children` and `video_type` are additions to ARCHITECTURE §3.4, so WP0 must add them to `contracts.py` (rule 3) or drop them here.
+`scene.json` adds `model`. **Decided:** add `children` to the ARCHITECTURE §3.4 contract (children are locked hidden, so an early flag is safety-relevant), and drop the earlier draft's `video_type` (the summary already says it, and nothing downstream branches on it). WP0 implements `children` in `contracts.py`.
 
 ## Failure handling
 - HTTP or refusal failure after retries → write `scene.json` with an empty `participants` list and `summary: "scene pass failed: <reason>"`. The role pass still runs; with no context it will tend to return `unsure`, which is the safe direction.
