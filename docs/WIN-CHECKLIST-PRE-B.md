@@ -216,8 +216,14 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#180 (win audit 19)**: "No re-render" contradicted WP4's auto-patch loop. Fix: UI-SPEC request 11, §3.5 (patch passes may re-render segments).
 - [x] **#181 (win audit 19)**: No delete in `needs_you`; pilot deletion promise broken. Fix: UI-SPEC §3.5, §5.4, §10.1, §10.4, R22–R24 ([Delete everything now] always shown).
 - [x] **#182 (win audit 19)**: Same gap seen from PILOTS §4. Fix: Fixed by #181.
-- [x] **#183 (win audit 19)**: R24's COVER_SPOT couldn't prove the readOnly guard. Fix: UI-SPEC `result-audit-failed.json` gains U1; R24.
+- [x] **#183 (win audit 19)**: R24's COVER_SPOT couldn't prove the readOnly guard. Fix: UI-SPEC R24 (later moved to `result-audit-failed-with-leak.json`, #186).
 - [x] **#184 (win audit 19)**: R25 duplicated R24. Fix: R25 merged into R24.
+- [x] **#185 (win audit 20)**: Banner counted a leak as an unchecked frame. Fix: UI-SPEC §5.3 `{unchecked_frames}`, `{unfixed_spots}`.
+- [x] **#186 (win audit 20)**: Audit-failed fixture contradicted R22 on U chips. Fix: Fixture reverted; separate `result-audit-failed-with-leak.json`.
+- [x] **#187 (win audit 20)**: §5.4 hid U chips in `needs_you`. Fix: UI-SPEC §5.4 (read-only U chips).
+- [x] **#188 (win audit 20)**: Re-run stages omitted the auto-patch render; wrong progress label. Fix: UI-SPEC §2.5 `stage_reason: audit_patch` label, §10.3–10.4, fixture.
+- [x] **#189 (win audit 20)**: R24's UNDO couldn't prove the readOnly guard. Fix: UI-SPEC R24 (seeded undo stack).
+- [x] **#190 (win audit 20)**: Spec promised the re-run would cover U chips. Fix: UI-SPEC §3.3, R22 (covered later via [Cover it]).
 
 ## 4. Which builder reads what
 
