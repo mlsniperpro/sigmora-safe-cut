@@ -81,6 +81,7 @@ Goal: in 20 seconds a judge sees the product working on real footage, understand
 │  │ Detector only    │ …        │ …        │ …           │ …         │               │
 │  │ Muse, no tracking│ …        │ …        │ …           │ …         │               │
 │  │ Safe Cut         │ …        │ …        │ …           │ …         │               │
+│  │ …suggestions acc.│ …        │ …        │ …           │ …         │               │
 │  │ (no audit)*      │ …        │ …        │ …           │ …         │               │
 │  └──────────────────┴──────────┴──────────┴─────────────┴───────────┘               │
 │  n clips · who labelled them (2 variants, §1.3) · run ID ↗ · *if WP7 ran it          │
@@ -149,11 +150,11 @@ Goal: in 20 seconds a judge sees the product working on real footage, understand
 | Side-by-side captions | Blur every face: your guest is hidden, the number plate isn't. · Safe Cut: your guest stays clear, the plate and the passer-by are hidden. |
 | Results title | Results on our labelled test set |
 | Results columns | Method · Recall · Exposure · Leak bursts · Over-blur |
-| Results rows | Blur every face · EgoBlur Gen 2 · Detector only · Muse Spark, no tracking · Safe Cut · Safe Cut, no audit (if run) |
+| Results rows | Blur every face · EgoBlur Gen 2 · Detector only · Muse Spark, no tracking · Safe Cut (as shipped, the headline) · Safe Cut, suggestions accepted (labelled; LABEL-FORMAT §9.3: Needs-you items Muse Spark ruled harmless counted as kept; over-blur differs, other columns as WP7 reports them) · Safe Cut, no audit (if run) |
 | Column help (tooltip and footnote) | Recall: of the people and things that should be hidden, the share that were hidden on at least 95% of the frames they're visible in. · Exposure: counting each should-be-hidden person or thing on each frame it's visible in, the share where less than 90% of it was covered. · Leak bursts: the number of times something that should be hidden was exposed for 3 or more frames in a row. · Over-blur: of the people and things that should stay clear, the share that were hidden on more than 10% of their frames. |
-| Results footnote (two labellers) | `{n_clips}` clips filmed in public, labelled by two people. They agreed on `{percent_agreement}` of `{n_entities}` decisions (both said hide: `{a}` · only the first said hide: `{b}` · only the second said hide: `{c}` · both said keep: `{d}`); κ = `{kappa}`. Run `{run_id}`. How we measured ↗ |
-| Results footnote (two labellers, κ not computable) | `{n_clips}` clips filmed in public, labelled by two people. They agreed on `{percent_agreement}` of `{n_entities}` decisions (both said hide: `{a}` · only the first said hide: `{b}` · only the second said hide: `{c}` · both said keep: `{d}`). κ can't be computed: both labellers made the same call on every item. Run `{run_id}`. How we measured ↗ |
-| Results footnote (one labeller, plan R3) | `{n_clips}` clips filmed in public, labelled by one person. Agreement between two labellers wasn't measured. Run `{run_id}`. How we measured ↗ |
+| Results footnote (two labellers) | `{n_clips}` test clips (`{n_public}` filmed in public, `{n_staged}` staged with consenting actors; counts from WP7's `config.json` split metadata), labelled by two people. They agreed on `{percent_agreement}` of `{n_entities}` decisions (both said hide: `{a}` · only the first said hide: `{b}` · only the second said hide: `{c}` · both said keep: `{d}`); κ = `{kappa}`. Run `{run_id}`. How we measured ↗ |
+| Results footnote (two labellers, κ not computable) | `{n_clips}` test clips (`{n_public}` filmed in public, `{n_staged}` staged with consenting actors; counts from WP7's `config.json` split metadata), labelled by two people. They agreed on `{percent_agreement}` of `{n_entities}` decisions (both said hide: `{a}` · only the first said hide: `{b}` · only the second said hide: `{c}` · both said keep: `{d}`). κ can't be computed: both labellers made the same call on every item. Run `{run_id}`. How we measured ↗ |
+| Results footnote (one labeller, plan R3) | `{n_clips}` test clips (`{n_public}` filmed in public, `{n_staged}` staged with consenting actors; counts from WP7's `config.json` split metadata), labelled by one person. Agreement between two labellers wasn't measured. Run `{run_id}`. How we measured ↗ |
 | Results placeholder (before WP8 fills it) | Numbers appear here after our frozen test runs. We publish them whether they're good or not. |
 | Bottom links | Try it · Source on GitHub · Use it inside Sigmora |
 
@@ -317,7 +318,8 @@ The `miss_loop` row appears only if that stage runs. `~N s left` shows only when
 | No rights tick | Tick the box to confirm you can use this clip. | |
 | Upload interrupted | The upload stopped. Check your connection and try again; nothing was processed. | [Try again] |
 | A stage fails (`status: "failed"`, `failure.reason` = `internal`, or no `failure` given) | Something went wrong while `{row label, lowercase}`. Your clip hasn't been published anywhere. You can try again, or delete it now. | [Try again] [Delete now] |
-| A stage fails for budget (`failure.reason` = `budget`, PRE-A §10.3 `BudgetExceeded`) | This clip needs more processing than one job allows. Your clip hasn't been published anywhere. Try a shorter clip. | [Try another clip] [Delete now] (no [Try again]: re-running would fail the same way and bill again) |
+| A stage fails on the per-job cap (`failure.reason` = `job_cap`, PRE-A §10.3 `BudgetExceeded` against `SAFECUT_JOB_USD_CAP`) | This clip needs more processing than one job allows. Your clip hasn't been published anywhere. Try a shorter clip. | [Try another clip] [Delete now] (no [Try again]: re-running would fail the same way and bill again) |
+| A stage fails on the service's daily cap (`failure.reason` = `daily_cap`, PRE-A §10.3 `BudgetExceeded` against `SAFECUT_DAILY_USD_CAP`) | Safe Cut has reached today's limit for the public demo. Your clip is fine; try it again tomorrow. Nothing has been published. | [Try again tomorrow] (disabled until `retry_at`, then `POST /start`) [Delete now] |
 | A stage fails on the code's budget (`failure.reason` = `code_cap`) | This access code has used its processing budget. Ask the person who gave it to you for a new one. Your clip hasn't been published anywhere. | [Delete now] |
 | A stage fails for any other deterministic reason (`failure.reason` = `config`, `bad_request`, `refusal` or `incomplete`; PRE-A §10.3) | Safe Cut couldn't process this clip. Your clip hasn't been published anywhere. We've logged the problem. | [Try another clip] [Delete now] (no [Try again]) |
 | Job cap would be exceeded | This clip would cost more than the per-clip limit to process. Try a shorter clip. | |
@@ -400,7 +402,7 @@ The heart of the demo ([DEMO.md](DEMO.md) beats 3–4). Goal: the creator unders
 └──────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Each chip's overflow menu (`⋯`, not drawn above) holds: "Remove this person from the video" (person items only) and "Jump to first appearance".
+Each chip's overflow menu (`⋯`, not drawn above) holds: "Remove this person from the video" (person and child items) and "Jump to first appearance".
 
 ### 3.2 Wireframe: mobile (≤ 480 px)
 
@@ -631,11 +633,12 @@ On mobile, the drawer repeats the chip's action buttons at the bottom so the cre
 | Kept clear by you (`decided_by = creator`, `decision = keep`) | You chose to keep this clear. |
 | Hidden by you (`decided_by = creator`, `decision = hide`, not removed) | You chose to hide this. |
 | Needs you, harmless object (plate, screen or document: all three checks said `sensitive: false`, PRE-A TEST-VECTORS B1; never used for `other`) | Muse Spark read this as nothing personal, but {kind word, plural} are only kept clear when you confirm. (e.g. "…but number plates are only kept clear when you confirm.") |
+| Needs you, all three said part of the story but on fewer than 2 keyframes (`role: unsure`, votes 3/3 `participant`; PRE-A role-pass.md rule 3) | All three checks said part of the story, but on only one keyframe, so Safe Cut wants you to confirm. It stays hidden unless you keep it clear. |
 | Needs you, votes disagreed (`role: unsure`) or any other reason | The checks didn't all agree, so Safe Cut couldn't decide on its own. It stays hidden unless you keep it clear. |
 | Removed at your request (only while `removed` and `decision = hide`) | You asked to remove this person. They're fully covered everywhere they appear. |
 | Added by the audit | The final check found this after rendering and covered it. |
 
-**"What Muse Spark said (n checks)".** One mark per vote in `votes`, each with its role word (Part of the story / Not part of the story / Child / Not sure); ✓ when it matches the final role, ✕ otherwise. Then Muse Spark's `evidence` text in quotes, with its frame references rewritten to clip times (below). The quoted `evidence` is always the **role pass's** text; the escalation's own words live in separate fields, so neither overwrites the other. `escalated` is `true` only when the escalation call ran and returned a valid ruling (PRE-A `docs/prompts/escalation.md` rule 4); a failed call, invalid cited frames (rules 3 and 5) or a call skipped for budget leave `escalated: false` and `suggested_role: null`, and then the drawer shows **nothing** about escalation (it never claims a look that didn't happen). If `escalated`: "The checks disagreed, so Muse Spark took a longer, closer look once." and then, from the track's `suggested_role`: when it isn't null, "A longer, closer look suggests: {role word}. You decide." followed by `escalation_evidence` in quotes (frame references rewritten the same way; its `escalation_frames` become extra steps in the keyframe arrows); when it's null (the ruling was `unsure`), "A longer, closer look couldn't settle it." A suggestion never changes the item's column or decision: only the creator's tap does. For objects (screens, documents, phones, badges **and plates**, which PRE-A `docs/prompts/role-pass.md` has Muse Spark judge as objects: `sensitive` + `content`): "Muse Spark read it as: {content}" and "Personal: yes/no" from `objects[].sensitive`, in place of the vote marks. For a plate, add "Number plates are hidden by default. Only you can keep one clear." A plate isn't locked: the creator can keep it clear, after the same one-line confirm as every object (§3.4).
+**"What Muse Spark said (n checks)".** One mark per vote in `votes`, each with its role word (Part of the story / Not part of the story / Child / Not sure); ✓ when it matches the **majority vote** (the role at least 2 of the 3 checks gave), ✕ otherwise, and no marks when all three differ. Marks never compare against the final role, which can be `unsure` even when all three votes agree (the one-keyframe case above). Then Muse Spark's `evidence` text in quotes, with its frame references rewritten to clip times (below). The quoted `evidence` is always the **role pass's** text; the escalation's own words live in separate fields, so neither overwrites the other. `escalated` is `true` only when the escalation call ran and returned a valid ruling (PRE-A `docs/prompts/escalation.md` rule 4); a failed call, invalid cited frames (rules 3 and 5) or a call skipped for budget leave `escalated: false` and `suggested_role: null`, and then the drawer shows **nothing** about escalation (it never claims a look that didn't happen). If `escalated`: "The checks disagreed, so Muse Spark took a longer, closer look once." and then, from the track's `suggested_role`: when it isn't null, "A longer, closer look suggests: {role word}. You decide." followed by `escalation_evidence` in quotes (frame references rewritten the same way; its `escalation_frames` become extra steps in the keyframe arrows); when it's null (the ruling was `unsure`), "A longer, closer look couldn't settle it." A suggestion never changes the item's column or decision: only the creator's tap does. For objects (screens, documents, phones, badges **and plates**, which PRE-A `docs/prompts/role-pass.md` has Muse Spark judge as objects: `sensitive` + `content`): "Muse Spark read it as: {content}" and "Personal: yes/no" from `objects[].sensitive`, in place of the vote marks. For a plate, add "Number plates are hidden by default. Only you can keep one clear." A plate isn't locked: the creator can keep it clear, after the same one-line confirm as every object (§3.4).
 
 **Other items (`kind = other`).** These come from the miss loop: Muse Spark named something unboxed, and SAM 3.1 tracked it under a new concept such as `envelope` (PRE-A `docs/prompts/miss-loop.md` step 5: new tracks are hidden by default). PRE-A's role-pass prompt asks for `objects[]` rulings only on `screen:`, `document:`, `phone:`, `license plate:` and `name badge:` tracks, so an `other` track has no object ruling to quote, and any role votes recorded for it aren't meaningful for a thing. So for `other` the drawer shows **no votes section**. Instead it shows "Found when Muse Spark looked again for anything missed: {what}", with `what` from the `roles.missed[]` entry that created the track (located by `missed[].track_ids`, *proposal*, §8 request 15), then the fixed sentence from the table above. If no `missed` entry names the track, the line is left out. Keep clear still asks the object confirm (§3.4), and the harmless-object row is never used for `other`.
 
@@ -682,7 +685,7 @@ Precedence: "This clip has no sound." (`job.audio: false`) → limited-check cop
 - Opens as a modal dialog (`role="dialog"`, `aria-modal="true"`, labelled by its header); focus moves to the header; focus is trapped; `Esc` closes and returns focus to the chip.
 - `←` / `→` step evidence frames when the keyframe has focus.
 - The keyframe has alt text built from the data: "Keyframe at 0:06. face:4 is ringed, in the back right. Other labelled objects: face:1, face:2, license plate:1."
-- Vote marks have text, not just ✓/✕ ("Check 1: Child, agrees").
+- Vote marks have text, not just ✓/✕ ("Check 1: Child, agrees with the majority").
 - Mobile bottom sheet: the drag handle is also a button ("Expand" / "Collapse").
 
 ### 4.6 Data
@@ -715,7 +718,7 @@ Goal: the creator gets the redacted video, sees that it was checked, and has the
 ├──────────────────────────────────────────────────────────────────────────────────────┤
 │ Your clip is ready                                                                   │
 │ ┌───────────────────────────────────────────────────────┐  ✓ Checked                 │
-│ │                                                       │  900 frames checked.       │
+│ │                                                       │  930 of 930 frames checked.│
 │ │                 redacted.mp4                          │  1 leak found and fixed.   │
 │ │                                                       │  Nothing left to fix.      │
 │ └───────────────────────────────────────────────────────┘                            │
@@ -745,7 +748,7 @@ Goal: the creator gets the redacted video, sees that it was checked, and has the
 │ │ redacted.mp4                 │ │
 │ └──────────────────────────────┘ │
 │ ✓ Checked                        │
-│ 900 frames checked. 1 leak       │
+│ 930 of 930 frames checked. 1 leak│
 │ found and fixed.                 │
 │ [ Download video ]               │
 │ [ Publish to Sigmora ]           │
@@ -810,7 +813,7 @@ Goal: the creator gets the redacted video, sees that it was checked, and has the
 |---|---|
 | Video, download | `GET /v1/jobs/{id}/result` → signed URL for `redacted.mp4` |
 | Audit summary | `audit.json`: `frames_scanned`; **leaks found and fixed = the number of distinct `patched_item` values** in `leaks[]` (one leaking person over 2 frames is 1 leak, not 2; `leaks[]` has one row per frame); `unresolved`; `passes`; `redteam_status` (`ok` \| `failed` \| `over_budget`, *proposal*, §8 request 11) picks the panel; `frames_scanned` and `job.frames` fill "`{frames_scanned}` of `{frames}`" |
-| Publish allowed | `audit.json` `unresolved == 0` ([ARCHITECTURE.md](ARCHITECTURE.md) §3.8) and `?from=sigmora` |
+| Publish allowed | `audit.json` `unresolved == 0` ([ARCHITECTURE.md](ARCHITECTURE.md) §3.8) **and** `audit.redteam_status == "ok"` **and** `?from=sigmora`. PRE-A redteam.md's over-budget path blocks publishing without adding to `unresolved`, so `unresolved == 0` alone isn't enough |
 | Receipt frame / download | signed URLs for `receipt.html` and `receipt.json` (§3.9: items, audit, models, data_handling, approved_by/at, cost_usd, hash) |
 | Deletion time | `deletes_at` from the API (WP5 computes it from its cleanup schedule) |
 | Delete | `DELETE /v1/jobs/{id}` |
@@ -882,7 +885,7 @@ The API ([WP5](work-packages/WP5.md)) hasn't been written; these are the fields 
 | Deletion time | `job.json` `created_at` + WP5's cleanup schedule | `deletes_at` (required) |
 
 **Requests for other WPs** (also listed in the PRE-B PR):
-1. **WP5:** return the fields above, including `plan` with the review response, `mode` on every response, `status: failed` with the failed `stage`, and `status: retry_later` (PRE-A `docs/API-NOTES.md` §10.3: a transient failure in a stage needed to hide something; WP5 re-queues it after 5 minutes), ideally with `retry_at` (ISO time) *(proposal)*. A `failed` job also carries `failure: {stage, reason}` with `reason` ∈ `budget` (PRE-A §10.3 `BudgetExceeded`), `code_cap` (the per-access-code pilot cap, PILOTS.md §5), `config` (`MetaAuthError` or `MetaConfigError`), `bad_request`, `refusal`, `incomplete`, `internal` *(proposal)*. `POST /start` answers `429 code_cap` when the code's budget is already used.
+1. **WP5:** return the fields above, including `plan` with the review response, `mode` on every response, `status: failed` with the failed `stage`, and `status: retry_later` (PRE-A `docs/API-NOTES.md` §10.3: a transient failure in a stage needed to hide something; WP5 re-queues it after 5 minutes), ideally with `retry_at` (ISO time) *(proposal)*. A `failed` job also carries `failure: {stage, reason}` with `reason` ∈ `job_cap` or `daily_cap` (PRE-A §10.3 raises one `BudgetExceeded` for both; WP5 tells them apart by which cap the pre-call estimate failed, and sets `retry_at` to the next 00:00 UTC for `daily_cap`), `code_cap` (the per-access-code pilot cap, PILOTS.md §5), `config` (`MetaAuthError` or `MetaConfigError`), `bad_request`, `refusal`, `incomplete`, `internal` *(proposal)*. `POST /start` answers `429 code_cap` when the code's budget is already used.
 2. **WP2:** draw each track's `<concept>:<n>` label on the Set-of-Mark keyframes exactly as PRE-A `docs/prompts/role-pass.md` specifies, using the track's own ID. The UI derives display labels from track IDs (§0), so no extra field is needed.
 3. **WP2:** fill `roles.tracks[].matches_participant` (nullable index into `scene.participants`) and `suggested_role` (nullable, escalation only) as PRE-A `docs/prompts/role-pass.md` and `escalation.md` specify. The drawer's speaker link ("said by {label}") and escalation suggestion read them (§4.3, §4.6). Also write the escalation ruling's evidence and frames to `escalation_evidence` (string or null) and `escalation_frames` (int array or null) *(proposal; PRE-A escalation.md rule 4 says the ruling's evidence goes to the review card but names no field, so this is also a request to PRE-A)*, never into `evidence`, and set `escalated: true` only for a returned, valid ruling.
 4. **WP3:** keep `reason` strings short (≤ 90 characters), plain, lowercase-first, no trailing full stop; the UI capitalises.
@@ -948,11 +951,11 @@ One file per screen state. Component and page tests load these through the API c
 | `job-review-keyframe-mismatch.json` | hero mock with `keyframe_geometry.image_height` 720 and the stub loader reporting a 1280×720 natural size (an image with no bar) | drawer shows the image without a ring and "The keyframe's size doesn't match this clip, so the outline is hidden." (§4.3) |
 | `job-replay.json` | `GET /v1/jobs/{id}` (`mode: "replay"`) | demo-mode banner (§6) on the review panel |
 | `job-rendering-audit.json` | `GET /v1/jobs/{id}` (`stage: "audit"`) | §3.5 bottom bar replaced by the render stages; chips read-only |
-| `result-clean.json` | `GET /v1/jobs/{id}/result` | §5.3 "No leaks found." |
+| `result-clean.json` | `GET /v1/jobs/{id}/result` (`unresolved: 0`, `redteam_status: "ok"`) | §5.3 "No leaks found." |
 | `result-fixed.json` | `GET /v1/jobs/{id}/result` | §5.3 "1 leak(s) found and fixed. Nothing left to fix." (two `leaks[]` rows with the same `patched_item`: proves the distinct-item count, §5.6) |
 | `result-unresolved.json` | `GET /v1/jobs/{id}/result` (`audit.unresolved: 1`, `redteam_status: "ok"`) | §5.4 warning, Publish disabled |
 | `result-audit-failed.json` | `GET /v1/jobs/{id}/result` (`audit.redteam_status: "failed"`, `unresolved: 40`) | §5.3 "The final check couldn't finish. …" with [Check again]; no [Review them] |
-| `result-audit-over-budget.json` | `GET /v1/jobs/{id}/result` (`audit.redteam_status: "over_budget"`) | §5.3 "The final check ran out of budget …"; no [Check again] |
+| `result-audit-over-budget.json` | `GET /v1/jobs/{id}/result` (`audit.redteam_status: "over_budget"`, `unresolved: 0` set explicitly, so the test proves Publish stays off) | §5.3 "The final check ran out of budget …"; no [Check again] |
 | `review-ack.json` | `POST /v1/jobs/{id}/review` | an accepted edit returning updated `items` and `plan` |
 | `error-401.json` | any | "That code didn't work. …" |
 | `error-429-cap.json` | any (`error.code: "daily_cap"`) | "Safe Cut has reached today's limit …" |
@@ -960,6 +963,11 @@ One file per screen state. Component and page tests load these through the API c
 | `error-404-expired.json` | `GET /v1/jobs/{id}` (`error.code: "expired"`) | §7 "This clip has been deleted. …" |
 | `error-404-not-found.json` | `GET /v1/jobs/{id}` (`error.code: "not_found"`) | §7 "We couldn't find that clip. …" |
 | `job-retry-later.json` | `GET /v1/jobs/{id}` (`status: "retry_later"`, `stage: "track"`, `retry_at`) | §2.6 "Meta's service is busy right now. …" above the stage list; polling every 30 s (§10.3) |
+| `job-failed-job-cap.json` | `GET /v1/jobs/{id}` (`status: "failed"`, `failure: {stage: "track", reason: "job_cap"}`) | §2.6 per-job-cap copy; no [Try again] |
+| `job-failed-daily-cap.json` | `GET /v1/jobs/{id}` (`failure.reason: "daily_cap"`, `retry_at` set) | §2.6 daily-cap copy; [Try again tomorrow] disabled until `retry_at` |
+| `job-failed-code-cap.json` | `GET /v1/jobs/{id}` (`failure.reason: "code_cap"`) | §2.6 code-budget copy; no [Try again] |
+| `job-failed-deterministic.json` | `GET /v1/jobs/{id}` (`failure.reason: "refusal"`) | §2.6 deterministic-failure copy, shared by `config`, `bad_request`, `refusal` and `incomplete` (tests swap the reason and expect the same copy); no [Try again] |
+| `error-429-code-cap.json` | `POST /v1/jobs/{id}/start` (`429`, `error.code: "code_cap"`) | §2.6 "This access code has used its processing budget. …" |
 | `job-failed-render.json` | `GET /v1/jobs/{id}` (`status: "failed"`, `stage: "render"`) | stage-failure message; [Try again] re-renders (§10.4) |
 | `error-413.json` | `POST /v1/jobs` (`error.code: "too_large"`, `error.size_bytes`) | "This file is {size} MB. …" |
 | `error-422-duration.json` | `POST /v1/jobs` (`error.code: "too_long"`, `error.duration_s`) | "This clip is {duration} seconds long. …" |
@@ -1119,7 +1127,7 @@ The Start button is enabled once a file passes every check above, but pressing i
 | Job expired | `404` with `code: "expired"` on a job route | §7 "This clip has been deleted. …" | [Try another clip] | none |
 | Job not found | `404` with any other code on a job route | §7 "We couldn't find that clip. …" | [Try another clip] | none |
 | Meta busy, retrying later | `status: "retry_later"` | §2.6 "Meta's service is busy right now. …" | stay on the page; [Copy link] · [Cancel and delete] | poll every **30 s**, or once at `retry_at` if the API gives one *(proposal)*; the page moves on when the status changes |
-| Stage failed | `status: "failed"` + `failure: {stage, reason}` *(proposal, WP5; reason names follow PRE-A §10.3: `budget` is PRE-A's, the others are proposals)* | the §2.6 row for that `reason`, filled with the stage's §2.5 row label | Only when `reason` is `internal` (or `failure` is missing): [Try again] = `POST /render` if the failed stage is `render`, `audit` or `receipt` (re-render with the creator's decisions); otherwise `POST /start` *(proposal, WP5)*. Every other reason: no [Try again]. Always [Delete now] | none automatic |
+| Stage failed | `status: "failed"` + `failure: {stage, reason}` *(proposal, WP5; reason names: `job_cap` and `daily_cap` split PRE-A §10.3's `BudgetExceeded` by cap, the others are proposals)* | the §2.6 row for that `reason`, filled with the stage's §2.5 row label | Only when `reason` is `internal` (or `failure` is missing): [Try again] = `POST /render` if the failed stage is `render`, `audit` or `receipt` (re-render with the creator's decisions); otherwise `POST /start` *(proposal, WP5)*. Every other reason: no [Try again]. Always [Delete now] | none automatic |
 | Code budget used | `429` `code_cap` on `POST /start` | §2.6 "This access code has used its processing budget. …" | none | none |
 | Edit rejected | `POST /review` non-2xx, or timeout | §3.7 "That change didn't save. …" | chip reverts (§10.5 `SERVER_REJECT`) | **none automatic**: the creator presses [Try again] |
 | Render already running | `409` on `POST /render` | no message | keep polling | n/a |

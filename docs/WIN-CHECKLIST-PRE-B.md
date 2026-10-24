@@ -128,6 +128,16 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#92 (win audit 7)**: Reducer `confirm` still described as screen/document only. Fix: UI-SPEC §10.5.
 - [x] **#93 (win audit 7)**: Hero clip numbers limited to 1–3; SHOTLIST allows 3–4. Fix: LABEL-FORMAT §1, §6.1 (1–9).
 - [x] **#94 (win audit 7)**: LBL020 message had no number format. Fix: LABEL-FORMAT §7 (1 decimal).
+- [x] **#95 (win audit 8)**: `budget` failure copy wrong when the daily cap (not the job cap) ran out. Fix: UI-SPEC §2.6, §10.3 (`job_cap` vs `daily_cap`), request 1.
+- [x] **#96 (win audit 8)**: Publish could be enabled when the red-team check never ran. Fix: UI-SPEC §5.6 (`redteam_status == "ok"`).
+- [x] **#97 (win audit 8)**: 3/3 participant on one keyframe shown as "checks didn't agree". Fix: UI-SPEC §4.3 sentence; marks vs majority vote.
+- [x] **#98 (win audit 8)**: Landing said all test clips were filmed in public. Fix: UI-SPEC §1.3 footnotes (`n_public` / `n_staged`).
+- [x] **#99 (win audit 8)**: Results table had no row for over-blur with suggestions accepted. Fix: UI-SPEC §1 table; STORYBOARD §2 placeholder note.
+- [x] **#100 (win audit 8)**: 7.2 VO described over-blur as people only. Fix: STORYBOARD 7.2.
+- [x] **#101 (win audit 8)**: No mocks for budget, code-cap or deterministic failures. Fix: UI-SPEC §10.1 (5 mocks).
+- [x] **#102 (win audit 8)**: Sunday labelling hours didn't follow the table. Fix: SCHEDULE §3 (≈ 8 h).
+- [x] **#103 (win audit 8)**: Remove person: person-only in one place, person and child in another. Fix: UI-SPEC §3.1 overflow menu.
+- [x] **#104 (win audit 8)**: Result wireframe dropped the "of {frames}" denominator. Fix: UI-SPEC §5.1–5.2.
 
 ## 4. Which builder reads what
 
