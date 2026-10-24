@@ -55,7 +55,7 @@ Give tracks whose three role votes disagreed one more careful look, with the dis
 1. Any role-pass vote was `child` → `child`, locked, hidden. Escalation doesn't run for these tracks.
 2. Escalation ruled `child` → `child`, locked, hidden.
 3. Escalation call failed, or its cited frames are invalid → `unsure`, hidden, `needs_you`, with no suggestion.
-4. Otherwise → `unsure`, hidden, `needs_you`, with `suggested_role` = the ruling, and `escalation_ruling` = `{evidence, frames, why_others_wrong}` for the review card (`escalated: true`; fields in API-NOTES §12). The creator's tap decides; `decided_by: "creator"`.
+4. Otherwise → `unsure`, hidden, `needs_you`, with `suggested_role` = the ruling, and `escalation_evidence` / `escalation_frames` = the ruling's evidence and frames for the review card (`why_others_wrong` is logged) (`escalated: true`; fields in API-NOTES §12). The creator's tap decides; `decided_by: "creator"`.
 
 There's deliberately no rule that yields `keep`. A creator who accepts a `participant` suggestion is the only way a disputed track is shown. **Decided:** `suggested_role` (nullable) is added to `roles.json.tracks[]`, because the review card needs it to show the suggestion. WP0 implements it in `contracts.py`.
 

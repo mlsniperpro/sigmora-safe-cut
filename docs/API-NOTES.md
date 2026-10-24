@@ -571,7 +571,7 @@ Nothing is implemented yet (there's no code before kickoff), so these are **chan
 | `scene.json` | `candidate_objects[].approx_time` | **required** enum `beginning\|middle\|end\|throughout\|unknown` | WP2 → miss loop | replaces free text; WP0 changes ARCHITECTURE §3.4's example `"mid-clip"` to `"middle"` |
 | `roles.json` | `tracks[].matches_participant` | int \| null, optional, `null` | WP2 → UI | index into `scene.participants`. The UI's speech link is `scene.participants[matches_participant].speaker` |
 | `roles.json` | `tracks[].suggested_role` | enum role \| null, optional, `null` | WP2 (escalation) → Needs-you card | advisory only, never a keep (`escalation.md`) |
-| `roles.json` | `tracks[].escalation_ruling` | `{evidence: str, frames: [int], why_others_wrong: str}` \| null, optional, `null` | WP2 → Why drawer | escalation's own evidence, kept apart from the role pass's `evidence` |
+| `roles.json` | `tracks[].escalation_evidence`, `tracks[].escalation_frames` | str \| null and `[int]` \| null, optional, `null` | WP2 → Why drawer | escalation's own evidence and cited frames, kept apart from the role pass's `evidence` (field names as PR #2 UI-SPEC §4.6 adopted them). The ruling's `why_others_wrong` goes to the job log only |
 | `roles.json` | `missed[].box` | `[x1,y1,x2,y2]` half-open px \| null, optional, `null` | WP2 → WP1 object prompt | better SAM prompt |
 | `roles.json` | `missed[].recurs` | bool, optional, `false` | WP2 → WP1 | gates paid phrase sweeps |
 | `transcript.json` | `degraded` | bool, optional, `false` | WP2 → role pass, receipt | a dropped soundtrack is visible, never silent |
@@ -588,6 +588,6 @@ Nothing is implemented yet (there's no code before kickoff), so these are **chan
 Not contract changes: a job's `retry_later` state lives in WP5's job record (API), not in a stage file. `job.json` keeps ARCHITECTURE §3.1's fields, with the meanings in §5b.
 
 Requests to PRE-B (UI, PR #2):
-- show `suggested_role` and `escalation_ruling` in the Why drawer next to the votes ("A second look suggests: Part of the story");
+- show `suggested_role`, `escalation_evidence` and `escalation_frames` in the Why drawer next to the votes ("A second look suggests: Part of the story"). Adopted in PR #2 @ `e86a051`;
 - show `blocked_reason` in the audit panel's not-ready message;
 - take a track's speech link from `roles.tracks[].matches_participant` → `scene.participants[i].speaker`, which replaces UI-SPEC §8 request 3 (a track ID in `scene.json`), so the link lives in one place.

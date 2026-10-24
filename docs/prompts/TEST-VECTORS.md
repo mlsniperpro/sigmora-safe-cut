@@ -34,7 +34,7 @@ Objects (`screen:2`):
 | E1 | participant, participant, child | *(not called)* | `child`, locked |
 | E2 | participant, participant, unsure | ruling `child` | `child`, locked |
 | E3 | participant, participant, unsure | call failed | `unsure`, `needs_you`, `suggested_role: null` |
-| E4 | participant, participant, unsure | ruling `participant`, frames F210, F240 (both sent, track present) | `unsure`, `needs_you`, `suggested_role: "participant"`, `escalation_ruling.frames: [210, 240]`, `escalated: true`. **Not kept.** |
+| E4 | participant, participant, unsure | ruling `participant`, frames F210, F240 (both sent, track present) | `unsure`, `needs_you`, `suggested_role: "participant"`, `escalation_frames: [210, 240]`, `escalated: true`. **Not kept.** |
 | E5 | participant, bystander, bystander | ruling `bystander` | `unsure`, `needs_you`, `suggested_role: "bystander"` |
 | E6 | participant, participant, unsure | ruling `participant`, citing F205 (not sent) | same as E3 (invalid citation) |
 

@@ -50,10 +50,10 @@ Named `-PRE-A` so it can't collide with PR #2. **Updated:** 2026-10-24.
 - [x] **Impact (30%):** the eval plan cost on the final split (§9.2); baselines named the way judges expect, i.e. the public "SAM blur-everything" approach (`research/winning-patterns.md` R1); prior-art gap (`research/prior-art.md`); SA-Co/VEval mapping. The numbers themselves come only from WP7 runs (AGENTS rule 9)
 - [x] **Use of Meta AI tooling (25%):** the SAM grammar with confidences and object prompts (§1); a closed miss loop with point prompts (`prompts/miss-loop.md`); 3× rephrased votes (`prompts/role-pass.md`); escalation at `max`; EgoBlur as the auditor with Gen 1 vs Gen 2 measured (`research/egoblur-gen2.md`); Voice Transcribe (§4)
 - [x] **Technical depth (20%):** §5, §5b, §10, §11, §12, and the TEST-VECTORS
-- [x] **Demo (25%):** `suggested_role` and `escalation_ruling` for the Needs-you card; audit catches that can be demoed (`prompts/redteam.md` cases); a live-finals plan and a declared replay fallback (`research/winning-patterns.md` R4); the demo budget reserve (§9.2)
+- [x] **Demo (25%):** `suggested_role`, `escalation_evidence` and `escalation_frames` for the Needs-you card; audit catches that can be demoed (`prompts/redteam.md` cases); a live-finals plan and a declared replay fallback (`research/winning-patterns.md` R4); the demo budget reserve (§9.2)
 - [x] **Startup, "holds up in production":** caps and reservations (§10.5); the $3/day demo cap (§9.2); startup probe and `/healthz` (§10.7); breaker and `retry_later` (§10.2–10.3); the file sweeper (§10.4); `store` honesty (§12)
 
-## 4. PRE-A ↔ PRE-B shared facts (checked against `origin/pre-b-product` @ `f6815a5`)
+## 4. PRE-A ↔ PRE-B shared facts (checked against `origin/pre-b-product` @ `e86a051`)
 - [x] Child = anyone who may be under 18: PRE-B `LABELING-GUIDE.md` §2; PRE-A `scene-pass`, `role-pass`, `escalation`
 - [x] Two clocks, a constant-frame-rate prepared clip, `job.fps = min(30, round(source average fps))`: PRE-B `LABEL-FORMAT.md` §2 and UI-SPEC §3.6; PRE-A §5b
 - [x] `times` is source-clock seconds, non-decreasing, and `times[0]` may be > 0: PRE-B `LABEL-FORMAT.md` §2 (citing T6c); PRE-A §5b step 5, T6a–T6c
@@ -62,10 +62,10 @@ Named `-PRE-A` so it can't collide with PR #2. **Updated:** 2026-10-24.
 - [x] The SAM proxy mapping belongs to PRE-A: PRE-B `LABEL-FORMAT.md` §2 defers to PRE-A's `to_proxy`/`from_proxy`
 - [x] Split of 12 test, 3 dev, 3 hero: PRE-B `SCHEDULE.md` §3; PRE-A §9.2
 - [x] Pilot money cap: PRE-B owns the $20 cap and $4 per code; PRE-A §9.2 budgets the full $20
-- [P] Pilot money *estimate*: PRE-A's v3 cost model now estimates **$11.20** (it was $8.70), still within the $20 cap. PRE-B's `PILOTS.md` §5 / checklist #31 still cite $8.70. Pending: PRE-B's next pass picks up this push. The fact that matters (cap $20, estimate under it) is unchanged
+- [x] Pilot money estimate: PR #2 `PILOTS.md` §5 @ `e86a051` now refers to "PRE-A's figure" (currently $11.20, §9.2) inside its $20 cap, and no longer quotes a stale number
 - [x] CVAT machine: PRE-B decides (Linux/WSL2, never the Intel Mac). PRE-A's test-split GPU machine prefers that same owner-controlled box but never a third party's (`BLOCKED-PRE-A.md`); pointer to `docs/BLOCKED-PRE-B.md` fixed
 - [x] `retry_later` job state: PRE-B UI-SPEC (`f6815a5` adds it); PRE-A §10.3
-- [P] UI fields PRE-A added (`suggested_role`, `escalation_ruling`, `blocked_reason`, `matches_participant` as the speech link) and "Run the audit again": requested of PRE-B in PR #1 and in API-NOTES §12/§10.3. They're additive, so PRE-B's current UI stays valid without them. Pending: PRE-B's next pass
+- [x] UI fields PRE-A added: `suggested_role`, `escalation_evidence`/`escalation_frames` (PRE-B's names, adopted by PRE-A) and `matches_participant` as the speech link are in PR #2 UI-SPEC §4.6, §5 and §8 @ `e86a051`. `blocked_reason` and "Run the audit again" are additive PRE-A fields that PR #2 doesn't contradict; its audit panel still keys off `unresolved`, which remains the one publish gate
 
 ## 5. Audit findings → fix (full trail)
 - [x] Owner audit 1: effort levels → §3.4 per the live reasoning page; escalation `max`
