@@ -37,12 +37,19 @@ The **clip ID** is the first three parts of the file name in [SHOTLIST.md](../SH
 | `entities[].boxes` | string \| null | path to the entity's MOT file, relative to `labels/<split>/`. `null` only in a labeller-B file |
 | `notes` | string | anything a reader needs: things below threshold, harmless items that must stay clear, filming problems |
 
-**Coordinates and frames are in the source clip** (e.g. 1920×1080 at 30 fps). The pipeline works on the prepared clip (≤1280 px, its own frame list, [ARCHITECTURE.md](../ARCHITECTURE.md) §3.1). WP7 maps labels onto it. **The time axes follow PRE-A `docs/API-NOTES.md` §5b, which owns the definition**; this doc doesn't redefine anything:
-  - **No trim in Safe Cut.** The prepared clip covers the whole source, and `times[0] = 0.0`. `times[i]` is the presentation time of prepared frame `i` on the source timeline, where `t = 0` is the first decoded source frame (its PTS, after the edit list, is subtracted).
-  - **label → prepared** (WP7): a label on source frame `k` sits at its **own** timestamp `t_k = PTS_k − PTS_0`, which WP7 reads per frame from the source file with ffprobe (it isn't stored in the label JSON). Its prepared frame is `argmin_i |times[i] − t_k|`, with a **tie going to the lower index**. `k / fps` is correct only for constant-frame-rate sources, so WP7 never uses it. Boxes scale per axis: `x, w` by `prepared.width / source.width` and `y, h` by `prepared.height / source.height` (equal ratios when prepare keeps the aspect ratio). Keep the results as floats; never round.
-  - **player → prepared** (UI overlay): `i = max{ i : times[i] ≤ m + 0.001 }` for media time `m` ([UI-SPEC.md](../UI-SPEC.md) §3.6).
-  - **prepared → SAM proxy:** PRE-A §5b's formula, not this doc's.
-  - **If trimming is ever added,** `job.json` gains `source_offset_s` (PRE-A §5b, a contract change). Only conversions to and from **source time** add it: a label's prepared frame becomes `argmin_i |times[i] + source_offset_s − t_k|`. `times` itself and the player mapping stay relative to the prepared start and don't change.
+**Coordinates and frames are in the source clip** (e.g. 1920×1080 at 30 fps). The pipeline works on the prepared clip (≤1280 px, its own frame list, [ARCHITECTURE.md](../ARCHITECTURE.md) §3.1). **The time axes are PRE-A's: `docs/API-NOTES.md` §5b (`origin/pre-a-research` @ `3d33e5f`, read 2026-10-24) owns the definition**, and this doc only applies it to labels:
+  - **Two clocks.** The **prepared clock** (prepared frame `i` at `i / job.fps`, constant frame rate, `job.fps = min(30, round(source average fps))`) drives the player, the overlay, the transcript and every displayed time. The **source clock** (`t = 0` at the first decoded source frame, its PTS after the edit list subtracted) is where labels live. `job.times[i]` is the source-clock time of the source frame that prepared frame `i` shows.
+  - **`times` is non-decreasing, not strictly increasing** (a gap in a variable-frame-rate source repeats a frame), and **`times[0]` may be > 0** (PRE-A vector T6c: 0.04). `job.frames` is the count ffmpeg actually wrote, read back with ffprobe. Never "fix" either.
+  - **Ground truth per prepared frame (WP7), prepared → label:** each source frame `k` has its own source time `t_k = PTS_k − PTS_0`, which WP7 reads per frame from the source file with ffprobe (it isn't stored in the label JSON; `k / fps` is right only for constant-frame-rate sources). For each prepared frame `i`, find the source frame `k(i)` with `|t_k − times[i]| ≤ 1e-6` s. By §5b's construction, `times[i]` is exactly one source frame's time, so there is exactly one. If none matches, WP7 stops scoring that clip with an error naming the clip, because the job and the source don't belong together. Then:
+    - the entity is **visible on prepared frame `i`** if and only if its MOT file has a row for source frame `k(i)` (MOT frame `k(i) + 1`), with that box scaled to the prepared size;
+    - a **repeated** prepared frame (`times[i] = times[i−1]`) repeats the same ground truth and counts as its own prepared frame, because the viewer sees it;
+    - labels on **dropped** source frames (frames no prepared frame shows) are never sampled, because no viewer sees them;
+    - an entity visible on **no** prepared frame is left out of recall and over-blur and counted separately as "not visible after prepare" in WP7's report.
+  - **Visible frames, recall, exposure and leak bursts are all counted on prepared frames** (§9.3). `frames.first`/`last` in the label JSON stay source-frame indices.
+  - **Box scaling:** `x, w` by `prepared.width / source.width` and `y, h` by `prepared.height / source.height` (equal ratios when prepare keeps the aspect ratio). Keep the results as floats; never round.
+  - **player → prepared** (UI overlay): `i = clamp(floor(mediaTime × job.fps + 0.25), 0, job.frames − 1)`, on the prepared clock ([UI-SPEC.md](../UI-SPEC.md) §3.6; PRE-A vector T5).
+  - **prepared → SAM proxy:** PRE-A §5b's `to_proxy` / `from_proxy`, not this doc's.
+  - **If trimming is ever added,** `job.json` gains `source_offset_s` (PRE-A §5b, a contract change). Only source-clock conversions use it (matching `t_k` against `times[i] + source_offset_s`); the prepared clock and the player mapping don't change.
 
 Labellers never resample anything; all of this is WP7's code.
 
@@ -202,6 +209,8 @@ In CVAT this took three keyframes (frames 165, 180 and 194 in the UI); the rest 
 
 ### 5.4 How the metrics read this clip
 
+This clip is constant 30 fps, so prepare keeps every frame (`job.fps` 30, `times[i] = i / 30`, §9.1 M1): prepared frame `i` shows source frame `i`, and the frame numbers below are the same on both clocks.
+
 - **should_hide entities:** e3, e4, e5, e7 (4). Recall counts each one hidden if ≥95% of its visible frames are covered; for e3 that's ≥114 of its 120 frames. Frames 120–149 don't count either way.
 - **should_keep entities:** e1, e2, e6 (3). Over-blur counts any of them hidden on >10% of their frames; e6 hidden on more than 9 of its 90 frames is an over-blur.
 - **Leak bursts:** any run of ≥3 consecutive visible frames of e3, e4, e5 or e7 with less than 90% of the box covered. For e3, a run can't span the gap: frame 119 and frame 150 aren't consecutive.
@@ -316,7 +325,7 @@ WP7's validator runs per clip and reports **every** problem it finds, not just t
 1. **A label file fails LBL001 or LBL002:** no other rule reads that file, and every cross-file rule involving it (LBL007, LBL030, LBL031) is skipped. If the failing file is the **resolved** file, every rule that uses the resolved file's entities is skipped too (LBL010–LBL020, LBL041–LBL045).
 2. **Missing labeller files:** with no labeller-B file the clip is single-labelled. LBL032 (a warning) is reported, LBL030 is skipped, and LBL007 and LBL031 compare only the files that exist. With no labeller-A file, LBL033 is reported, and LBL030 plus the A side of LBL007 and LBL031 are skipped. With no resolved file, LBL034 is reported and rule 1's resolved-file skips apply.
 3. **The track map fails LBL001 or LBL040:** LBL041–LBL045 are skipped.
-4. **An entity's MOT file:** LBL006 (wrong path) or LBL010 (missing file) skips every MOT check for that entity (LBL012–LBL020). LBL012 on any line skips the rest of that file's checks (LBL013–LBL020). LBL019 (no rows) skips LBL018 and LBL020.
+4. **An entity's MOT file:** LBL006 (wrong path) skips LBL010 and every MOT check for that entity (LBL012–LBL020), because the path it names isn't the entity's file. LBL010 (missing file) skips LBL012–LBL020 for that entity. LBL012 on any line skips the rest of that file's checks (LBL013–LBL020). LBL019 (no rows) skips LBL018 and LBL020.
 
 **Error:** the clip doesn't load; the test-split freezer and the eval runner refuse to proceed. **Warning:** the clip loads; the warning goes into the run report. Codes are stable: a new rule gets a new code, and a retired code is never reused.
 
@@ -423,7 +432,7 @@ Each is **one** change from 8.1. "Expected" is the exact set of codes the valida
 | X5 | `e2.category: "child"`, `should_hide: false` (rows unchanged) | LBL005 |
 | X6 | `e1.frames.last: 6` | LBL004, LBL018 |
 | X7 | `e2.frames.first: 0` | LBL018 |
-| X8 | `e2.boxes: "tracks/SC-A-90/e2.mot.txt"` | LBL006, LBL011 (the real `tracks/SC-A-91/e2.mot.txt` is now unreferenced; LBL010 is skipped by stop rule 4) |
+| X8 | `e2.boxes: "tracks/SC-A-90/e2.mot.txt"` | LBL006, LBL011 (the real `tracks/SC-A-91/e2.mot.txt` is now unreferenced; stop rule 4: LBL006 skips LBL010 and the MOT checks for `e2`) |
 | X9 | `tracks/SC-A-91/e2.mot.txt` deleted | LBL010 |
 | X10 | An extra file `tracks/SC-A-91/e3.mot.txt` | LBL011 |
 | X11 | `e2.mot.txt` starts with a header line `frame,id,x,y,w,h,1,-1,-1,-1` | LBL012 (line 1) |
@@ -455,18 +464,19 @@ WP7 owns the code and its tests. These vectors pin the expected numbers so its u
 - **Threshold tests** (exposed `< 0.90`, hidden `≥ 0.95`) are done in integers where the inputs are counts (covered × 100 ≥ 95 × visible). Where coverage is a float, `coverage < 0.90 − 1e-9` counts as exposed, so a frame at exactly 0.90 isn't exposed.
 - **Displayed values** (the report strings) are formatted from the double result with 2 decimals (percentages with 0), as Python's `f"{x:.2f}"` prints. The vectors deliberately avoid exact `.xx5` ties: on a tie, two correct formulas can print different strings (e.g. κ = 3/8 prints as 0.37 or 0.38 depending on evaluation order), so a tie is never used as a test of formatting.
 
-### 9.1 Label frame → prepared frame (PRE-A §5b)
+### 9.1 Prepared frame → label state (PRE-A §5b)
 
-Rule: `t_k = PTS_k − PTS_0` on the source; prepared frame `= argmin_i |times[i] − t_k|`, tie → lower index.
+Rule (§2): prepared frame `i` takes the label state of the source frame `k(i)` with `|t_k − times[i]| ≤ 1e-6`. WP7's inputs are the source PTS list (ffprobe) and `job.times`; it never recomputes `times`. For context, the "How `times` arose" column applies PRE-A's slot rule (`s_k = round_half_up(t_k × job.fps)`; output frame `n` shows the last source frame with `s_k ≤ n`), computed with exact fractions. The two variable-frame-rate cases reuse PRE-A's ffmpeg-verified vectors T6a and T6c unchanged.
 
-| # | Source | Prepared `times` | Label frame `k` | `t_k` (s) | Expected prepared frame |
-|---|---|---|---|---|---|
-| M1 | CFR 30 fps | 30 fps, `times[i] = i/30` | 45 | 1.5 | **45** |
-| M2 | CFR 30 fps | resampled to 15 fps, `times[i] = i/15` | 44 | 1.4667 (= 44/30) | **22** (\|22/15 − 44/30\| = 0) |
-| M3 | CFR 30 fps | 15 fps | 45 | 1.5 | **22** (tie: \|1.4667 − 1.5\| = \|1.5333 − 1.5\| = 0.0333; lower index wins) |
-| M4 | CFR 30 fps | 15 fps | 46 | 1.5333 | **23** (exact) |
-| M5 | **VFR**: raw PTS 0.067, 0.100, 0.137, 0.167, 0.233, 0.267, 0.300 s for frames 0–6; after subtracting PTS₀ = 0.067: 0, 0.033, 0.070, 0.100, 0.166, 0.200, 0.233 | CFR 30 fps, `times[i] = i/30` | 4 | 0.166 | **5** (\|5/30 − 0.166\| = 0.00067). The wrong formula `k / 30` gives 0.1333 → 4, one frame early |
-| M6 | same VFR | same | 6 | 0.233 | **7** (\|7/30 − 0.233\| = 0.00033); `k / 30` would give 6 |
+| # | Source frames `t_k` (s) | `job.fps`, `job.frames` | `job.times` | How `times` arose | Expected `k(i)` for i = 0, 1, … | What it tests |
+|---|---|---|---|---|---|---|
+| M1 | CFR 30 fps: `k / 30`, k = 0–5 | 30, 6 | `[0, 1/30, 2/30, 3/30, 4/30, 5/30]` | slots 0–5, one frame each | **0, 1, 2, 3, 4, 5** | identity |
+| M2 | CFR 45 fps: `k / 45`, k = 0–8 | 30 (= min(30, 45)), 6 | `[0, 2/45, 3/45, 5/45, 6/45, 8/45]` | slots 0, 1, 1, 2, 3, 3, 4, 5, 5: source frames 1, 4 and 7 share a slot with a later frame and are dropped | **0, 2, 3, 5, 6, 8** | downsampling; labels on source frames 1, 4, 7 are never sampled |
+| M3 | PRE-A **T6a**: 0.00, 0.10, 0.26, 0.40 | 10, 4 | `[0.00, 0.10, 0.10, 0.26]` | slots 0, 1, 3, 4; slot 2 is empty and repeats; the 0.40 frame isn't emitted at end of stream | **0, 1, 1, 2** | a **repeat**: prepared frames 1 and 2 share source frame 1's ground truth; source frame 3 is never sampled |
+| M4 | PRE-A **T6c**: 0.00, 0.03, 0.04, 0.09, 0.10, 0.40 | 10, 4 | `[0.04, 0.10, 0.10, 0.10]` | slots 0, 0, 0, 1, 1, 4 | **2, 4, 4, 4** | **`times[0] > 0`**; source frames 0, 1, 3, 5 never sampled |
+| M5 | M3's clip; entity e1 has MOT rows for source frames 1 and 2 only (MOT frames 2, 3) | — | — | — | e1 visible on prepared frames **1, 2, 3**: 3 visible prepared frames (1 and 2 both come from source frame 1) | repeats count as visible frames |
+| M6 | M3's clip; entity e2 has a MOT row only for source frame 3 (MOT frame 4) | — | — | — | e2 visible on **no** prepared frame | left out of recall and over-blur; counted as "not visible after prepare" |
+| M7 | M1's `times`, but the source PTS list is from another clip (`t_k = k / 25`) | 30, 6 | as M1 | — | prepared frame 1 (`1/30`) matches no `t_k` within 1e-6 | **error**: WP7 stops scoring the clip and names it |
 
 Box scaling for a 1920×1080 source prepared at 1280×720 (ratios 2/3 and 2/3): the box `[860, 432, 40, 70]` (x, y, w, h) becomes exactly **`[1720/3, 288, 80/3, 140/3]`** (≈ `[573.3333, 288.0, 26.6667, 46.6667]`), kept as floats. The last bit depends on the order of operations (`860 × (1280/1920)` gives 573.3333333333333 and `860 × 2/3` gives 573.3333333333334), so compare with the 1e-9 tolerance, never with `==`.
 
@@ -485,7 +495,7 @@ Entities B added that A missed are reported separately as a count; they never en
 
 ### 9.3 Visible frames, recall and leak bursts
 
-Per frame: **exposed** means less than 90% of the ground-truth box area is covered (exactly 0.90 is *not* exposed); **covered** means not exposed. An entity is **hidden** (recall) when covered frames ÷ visible frames ≥ 0.95. A **leak burst** is a run of ≥ 3 exposed frames that are consecutive **visible** frames: a frame where the entity isn't visible ends the run.
+All frame indices here are **prepared** frames (§2): a repeated prepared frame counts as its own frame. Per frame: **exposed** means less than 90% of the ground-truth box area is covered (exactly 0.90 is *not* exposed); **covered** means not exposed. An entity is **hidden** (recall) when covered frames ÷ visible frames ≥ 0.95. A **leak burst** is a run of ≥ 3 exposed frames that are consecutive **visible** frames: a frame where the entity isn't visible ends the run.
 
 | # | Visible frames (0-based) and coverage per frame | Exposed frames | Covered ÷ visible | Hidden? | Leak bursts |
 |---|---|---|---|---|---|
