@@ -8,7 +8,7 @@
 Give tracks whose three role votes disagreed one more careful look, with the disagreement shown, so the creator's **Needs you** card carries a sharper suggestion and the evidence frames. **Escalation can never produce `keep`.** DESIGN §2.3–2.5 says `keep` needs 3/3 votes and that any disagreement → `unsure` → hidden + Needs you. Escalation can only (a) **tighten** a track to `child` (locked), or (b) attach a `suggested_role` and evidence for the creator. Disputed objects (screens) are handled the same way: the creator decides.
 
 ## Inputs
-- Only the keyframes where at least one disputed track appears (≤50), with the same Set-of-Mark rendering as the role pass.
+- Only the keyframes where at least one disputed track appears, with the same Set-of-Mark rendering as the role pass. **≤50 per call.** More than 50 → consecutive windows of ≤50 keyframes, one call each, each carrying only the disputed tracks present in it. A track's suggestion counts only if every window it appears in gives the same ruling; otherwise `suggested_role: null`. Each window is reserved and capped separately (API-NOTES §10.5).
 - Scene context and transcript, as in the role pass.
 - For each disputed track: the three votes with their evidence strings, e.g. `face:9: [participant: "speaks at F210", bystander: "background, never addressed", unsure: "too small"]`.
 

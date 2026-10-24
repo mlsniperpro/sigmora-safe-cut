@@ -41,7 +41,7 @@ Close the loop between Meta's two models. Muse Spark looks at the numbered keyfr
     }}
 }
 ```
-**Decided:** the strict schema leaves out `maxItems`/`minItems`, because their support under `strict` is unverified and a 400 would cost a whole call. Pydantic enforces them instead: at most 8 items (items after the 8th in output order are dropped and logged), and a `box` must have exactly 4 integers or it becomes null. `roles.json.missed` in ARCHITECTURE §3.5 stores `point` in **prepared-clip pixels**, so convert before writing (below). **Decided:** add `box` (a better SAM object prompt) and `recurs` (it gates the paid phrase sweeps) to the `missed` contract as optional fields. WP0 implements them in `contracts.py`.
+**Decided:** the strict schema leaves out `maxItems`/`minItems`, because their support under `strict` is unverified and a 400 would cost a whole call. Pydantic enforces them instead: at most 8 items get SAM prompts (items after the 8th in output order get no SAM call; they take the static-box fallback below and are logged `item_cap`), and a `box` must have exactly 4 integers or it becomes null. `roles.json.missed` in ARCHITECTURE §3.5 stores `point` in **prepared-clip pixels**, so convert before writing (below). **Decided:** add `box` (a better SAM object prompt) and `recurs` (it gates the paid phrase sweeps) to the `missed` contract as optional fields. WP0 implements them in `contracts.py`.
 
 ## Post-processing (WP1/WP2, deterministic)
 1. Validate that `frame` was among the images sent, or drop the item.
@@ -58,6 +58,7 @@ Close the loop between Meta's two models. Muse Spark looks at the numbered keyfr
 ## Failure handling
 - An empty or failed miss list means no new sweeps. Not an error.
 - A phrase sweep that returns zero matches is logged (`requests[].matches = 0`); the point prompt is still tried.
+- **Every validated miss item is covered, swept or not (fail closed).** An item that never gets a SAM result (past the 8-item cap, proposed in the last allowed loop, stopped by the budget check in step 6, or whose object-prompt request failed after the API-NOTES §10.2 retries) gets the static hidden box below and marks the job `needs_you` with the note "possible missed object at F{frame}". The miss loop may stop early; a reported miss is never silently dropped. Only items failing step 1 or 2 (frame not sent, no usable point) are dropped.
 - A point that SAM can't segment (empty response) → add a **static hidden box** on that frame ±`temporal.extend`, from `box` if given, else a 6% square around the point. Fail closed.
 
 ## Tricky cases it must get right

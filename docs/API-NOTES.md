@@ -329,36 +329,37 @@ Assumptions:
 - **A 60 s clip** (the upload limit, ARCHITECTURE §5) models at **$1.91 with 8 tracks, $1.99 with 16**. That's under `SAFECUT_JOB_USD_CAP = 2.00`, but with almost no margin once pre-call reservations are in flight (§10.5). **Decided:** request WP0 to raise the default `SAFECUT_JOB_USD_CAP` to **$3.00**. The daily cap still bounds total spend. *Rejected:* keeping $2.00, under which a busy 60 s clip ends "audit over budget" and can never be published.
 - **Pilot codes** (PR #2: $4 per code, 2 clips, a $20 total) cover two 30 s clips ($2.24) with margin, but not two busy 60 s clips ($3.82–3.98 against $4, with reservations in flight). Request to PRE-B: raise the per-code cap to **$6** (2 × the $3.00 job cap), keeping the **$20 total** that WP5 enforces separately.
 
-### 9.2 The whole eval plan (EVAL.md §5) against $150
-Split sizes are PRE-B's final assignment (PR #2 `docs/labeling/SCHEDULE.md` §3): **12 test, 3 dev, 3 hero** (2 takes each). PRE-B owns labels and pilots; these are this doc's API cost estimates for them.
+### 9.2 The whole $150: every line, and the WP that spends it
+Split sizes are PRE-B's final assignment (PR #2 `docs/labeling/SCHEDULE.md` §3): **12 test, 3 dev, 3 hero** (2 takes each). PRE-B owns labels and pilots; these are this doc's API cost estimates for them. Each WP's own budget (its WP file, AGENTS rule 10) is a **cap**, counted here at its full value.
 
-| Item | Calc | USD |
-|---|---|---|
-| WP0 probes | WP0 budget | 6.00 |
-| Test split: full Safe Cut | 12 clips × $1.12 × 3 runs | 40.32 |
-| Baselines 1, 1b, 2 and the no-audit ablation | reuse the full run's SAM sweeps; EgoBlur runs locally | 0.00 |
-| Baseline 3 (Muse without tracking) | 12 × $0.08 × 3 runs | 2.88 |
-| Dev split, first run | 3 × $1.12 | 3.36 |
-| Dev iterations (prompt tuning; SAM replayed) | 9 × 3 clips × $0.59 (Muse only) | 15.93 |
-| Hero clips (3 clips × 2 takes; ~3 renders each, demo included) | 6 × $1.12 × 3 | 20.16 |
-| Creator pilots | **PR #2's hard cap: $20** ($4 per code). Our estimate is 10 clips × $1.12 = **$11.20**, within it | 20.00 |
-| Public "Try it" demo reserve | judges' and visitors' runs, **Nov 4–9**, at a `SAFECUT_DAILY_USD_CAP` of **$3/day** (6 × $3) | 18.00 |
-| **Planned total** | | **$126.65** |
-| **Headroom vs $150** | | **$23.35** |
+| Line | Spent by (budget cap) | Calc | USD |
+|---|---|---|---|
+| Probes | WP0 (≤ $6) | WP0 budget | 6.00 |
+| Build and integration tests | WP1 (≤ $8), WP4 (≤ $6), WP5 (≤ $6, includes deployed smoke runs) | their caps | 20.00 |
+| Prompt tuning on the dev split (SAM replayed) | WP2 (≤ $15) | **8** iterations × 3 clips × $0.59 (Muse only) | 14.16 |
+| Dev first run + SA-Co/VEval SmartGlasses runs | WP7 sandbox (≤ $12) | 3 × $1.12, plus a **$5 cap** on SA-Co SAM sweeps (≈ 6,250 frames: 4 phrases at 6 fps, about 4 min of SmartGlasses video; WP7 sizes the subset to fit) | 8.36 |
+| Test split: full Safe Cut + baseline 3 | WP7, run by the owner on the Linux GPU box (BLOCKED) | 12 × $1.12 × 3 runs; 12 × $0.08 × 3 | 43.20 |
+| Baselines 1, 1b, 2 and the no-audit ablation | WP7 | reuse the full run's SAM sweeps; EgoBlur runs locally | 0.00 |
+| Hero renders (demo and video) | owner / WP8, outside the WP caps | 6 takes × $1.12 × **2** renders (one after review, one final) | 13.44 |
+| Creator pilots | PRE-B's hard cap (PR #2 PILOTS §5) | our estimate is 10 clips × $1.12 = $11.20 | 20.00 |
+| Public "Try it" (judges, Nov 4–9) | the deployed service's daily cap | 6 days × $3 | 18.00 |
+| **Planned total** | | | **$143.16** |
+| **Headroom vs $150** | | | **$6.84** |
 
 **Decisions in this table:**
-- **Daily cap: $3/day for the whole deployed window (Oct 29 – Nov 9).** Before Nov 4 the deployed service is used only by the owner's hero and smoke renders, which are already counted in the hero line, and by pilots, whose codes have their own caps. So only Nov 4–9 needs a public reserve. $3/day leaves $2.866 a day after `/healthz` (§10.7), which is room for two 30 s runs. *Rejected:* ARCHITECTURE §4's $10/day default, under which 12 days could spend $120 and take the plan to **$228.65, over the $150**. *Also rejected:* $1/day before judging, which is below one clip ($1.12) and would block WP5's first deployed end-to-end run. Request to WP5: deploy with `SAFECUT_DAILY_USD_CAP=3.00`.
-- **Wonder doesn't fit as planned.** Measured over the 84 non-pilot runs above (pilots stay under their own $20 cap):
-  - scene pass only: +$0.24 per run, +$20.31 in total;
-  - escalation only: +$0.30, +$25.10;
-  - both: +$45.40.
+- **Fit every cap inside $150.** Dev tuning is **8** rounds (it fits WP2's $15); there are **2** hero renders per take (not 3); SA-Co gets a **$5** cap. *Rejected:* the earlier plan, which left the WP1/WP4/WP5 build budgets ($20) out of the total and quietly over-committed the credits.
+- **Spending caps by who is calling** (also §10.2):
+  - **`SAFECUT_DAILY_USD_CAP` ($3/day) covers only public "Try it" traffic** (judge access codes) and `/healthz`;
+  - **pilot codes** sit outside it, with their own per-code cap and PRE-B's $20 total (as PR #2 PILOTS §5 asks);
+  - **owner, eval and WP runs** are bounded by the per-job cap and their WP caps.
 
-  The $23.35 headroom fits **Wonder for the scene pass** (+$20.31 across all 84 runs, or +$13.05 on test and hero runs only). It doesn't fit escalation-only (+$25.10) or both (+$45.40). So the only adoptable option is the scene pass, and only if WP0's probe f shows a gain (H1).
+  The cap is $3/day over the whole deployed window. *Rejected:* ARCHITECTURE §4's $10/day default, under which 12 days could spend $120. Request to WP5: deploy with `SAFECUT_DAILY_USD_CAP=3.00`, apply it to access-code traffic only, and add a per-code cap for pilot codes.
+- **Wonder isn't pre-approved.** The $6.84 headroom fits none of the options: Wonder for the scene pass on test and hero runs is +$11.60, and the larger options are more (§9.1 deltas: scene +$0.24, escalation +$0.30 per run). WP0 adopts Wonder only if probe f shows a gain (H1/H2) **and** the measured spend in `cost.jsonl` by then (WP caps are maxima, and replay-heavy WPs usually come in under) leaves room for the extra. If Wonder escalation is ever used, its `max_output_tokens` is 24,000 (§10.5).
 
 **Risks to this budget:**
 - **30 fps SAM** would make the test runs alone $92.53. Never send `prepared.mp4` to SAM (§10.6).
-- **Busy clips:** with 16 tracks, red-team pass 1 needs 96 frames instead of 64. That's +$0.06 per run, or +$2.16 over the 36 test runs (+$5.04 across all 84 non-pilot runs).
-- **Dev iteration** beyond 9 rounds costs $1.77 per round (3 clips × $0.59).
+- **Busy clips:** with 16 tracks, red-team pass 1 needs 96 frames instead of 64. That's +$0.06 per run, or +$2.16 over the 36 test runs, a third of the headroom.
+- **Dev iteration** beyond 8 rounds costs $1.77 per round (3 clips × $0.59) and would breach WP2's $15 cap.
 
 ---
 
@@ -378,7 +379,7 @@ Everything here is either sourced (tagged) or a **decision** for the build. WP0'
 | Responses (stream) | read idle 300 s (`medium`), 600 s (`max`, which reasons silently before output); total ≤ 900 s | decision *(probe)*; [3P] reasoning precedes output (§3.5) |
 | ASR one-shot | total 180 s for ≤60 s of audio (upload + transcription) | decision; [GH-cookbook] uses 300 s for up to 10 min |
 | Files upload | total `30 s + size_MB × 2 s` | decision |
-| Job wall clock (WP5) | 2 h, then the job is cancelled and its files deleted | decision; must stay below the 6 h file expiry (§10.4) |
+| Processing-segment wall clock (WP5) | 2 h for each processing segment: (a) upload → review-ready, (b) creator approval → render + audit done. The creator's review time doesn't count. A segment running longer is cancelled and its files deleted | decision; matches the Modal worker `timeout=7200` (one worker call per segment) and stays below the 6 h file expiry (§10.4) |
 | Files delete | total 15 s | decision |
 
 ### 10.2 Retries (one policy, `safecut/meta/retry.py`)
@@ -388,7 +389,7 @@ Everything here is either sourced (tagged) or a **decision** for the build. WP0'
 - **Throttle before a 429:** read `x-ratelimit-remaining-requests` and `x-ratelimit-remaining-tokens` [GH-cookbook]. When either is below 5% of its `x-ratelimit-limit-*`, delay new requests by 1 s and log `throttled`.
 - **Circuit breaker:** counts **calls** that failed after exhausting their attempts, not individual attempts. Five such failures within 60 s open the breaker for 60 s. Then it's half-open: one trial call is allowed; success closes it, failure re-opens it for 60 s. While it's open, calls fail fast with `MetaUnavailable`. A hide-critical stage that fails transiently sends the job to **`retry_later`** (rules below the typed-error table). `/healthz` reports degraded while the breaker is open.
 - **Cost accounting (honest numbers, AGENTS rule 9):**
-  - Before each attempt, **reserve** its pre-call estimate (§10.5) against the job and daily caps.
+  - Before each attempt, **reserve** its pre-call estimate (§10.5) against the **job cap**, and against the cap of **who started the job**: a public access code → `SAFECUT_DAILY_USD_CAP`; a pilot code → its per-code cap and the $20 pilot total (PR #2 PILOTS §5); the owner, eval and WP runs → the job cap only. `/healthz` counts against the daily cap (§9.2).
   - On success, replace the reservation with the actual cost from `usage`, logged `estimated: false`.
   - On a failure where the request was **rejected before processing** (any non-200 HTTP status received **before the first stream event**, which covers 429, other 4xx and an immediate 5xx, or a connect error), release the reservation and log `usd: 0`. Assumption: Meta doesn't bill requests that error before producing output. WP0 checks this against the console's billing after the probes.
   - On a failure **after** the request was accepted (read timeout or stream drop **after** the first event), billing is unknown. Keep the reservation as a charge against the **caps**, and log it with `estimated: true`.
@@ -406,18 +407,18 @@ Everything here is either sourced (tagged) or a **decision** for the build. WP0'
 | `MetaRefusal` | a refusal part or event (§3.6, [GH-sam]) | the stage fails closed; logged |
 | *(parser exceptions, `meta-sam-parser` 0.1.0)* | `ResponsesStreamSourceError` wraps the transport's exception (read it from `__cause__`, or the error's wrapped exception): map that inner exception as above (an `httpx` timeout or reset → retryable). `ResponsesStreamFailedError` (a `response.failed` event) and `ResponsesStreamEventError` (an `error` event) → retryable as `MetaUnavailable` within the SAM attempt count. `ResponsesStreamLaneError` (no or interleaved output lane) and `ResponsesStreamParserError` → non-eof `MetaIncomplete`. `ResponsesStreamRefusalError` → `MetaRefusal` | as for the mapped type |
 | `MetaIncomplete` | the server declares `status: "incomplete"` (e.g. `incomplete_details.reason: "max_output_tokens"`), or a SAM stream still ends without a terminal event after its last attempt (S7), or the parser reports an `error` diagnostic (S5) | the stage fails closed; not retried |
-| `BudgetExceeded` | the pre-call estimate exceeds the remaining `SAFECUT_JOB_USD_CAP` or `SAFECUT_DAILY_USD_CAP` | the call isn't made; the stage fails closed with reason `over_budget` (the same word as `audit.json` `blocked_reason`). For the audit, the frames count in `unresolved` (§12) |
+| `BudgetExceeded` | the pre-call estimate exceeds the remaining job cap or the caller's cap (§10.2: daily cap for public codes, the per-code cap for pilots) | the call isn't made; the stage fails closed with reason `over_budget` (the same word as `audit.json` `redteam_status`). For the audit, the frames count in `unresolved` (§12) |
 
 "Fails closed" means: for a stage that could only *add* keep evidence (role pass, escalation, scene pass, speech), the job continues with everything hidden and `needs_you` (docs/prompts/README.md rule 3). For a stage that's needed to *hide* (SAM base sweep, render), the job can't be published. It goes to **`retry_later`** when the cause is transient (`MetaUnavailable`, `MetaRateLimited`, or an eof `MetaIncomplete`); WP5 re-queues it once after 5 min. Otherwise it goes to **`failed`**: `MetaAuthError`, `MetaConfigError`, `MetaBadRequest`, `MetaRefusal`, `BudgetExceeded`, and a **non-eof** `MetaIncomplete` (a server-declared incomplete, or a parser `error` diagnostic, S5), which is deterministic, so re-running wouldn't help.
 
-**The audit is the exception, because a rendered output already exists.** Any audit pass that can't run or finish (transient failure after its attempts, `BudgetExceeded`, or a refusal after the red-team's one rephrased re-ask) adds **every frame it should have audited** to `unresolved`, with `blocked_reason` set to `audit_failed` or `over_budget` (§12 invariant). The job goes to **`needs_you`**, never `failed` or `retry_later`, and the review page offers "Run the audit again" (request to WP5/WP6), which re-runs only the audit. Publishing stays off through the one gate, `unresolved == 0`.
+**The audit is the exception, because a rendered output already exists.** Any audit pass that can't run or finish (transient failure after its attempts, `BudgetExceeded`, or a refusal after the red-team's one rephrased re-ask) adds **every frame it should have audited** to `unresolved`, with `audit.redteam_status` set to `failed` or `over_budget` (PR #2's field, §12). The job goes to **`needs_you`**, never `failed` or `retry_later`, and the result page offers PR #2's **[Check again]** (UI-SPEC §5.3: `POST /v1/jobs/{id}/render` with `audit_only: true`) for `failed` only, which re-runs only the audit. `over_budget` gets no retry, since it would fail the same way. Publishing stays off through the one gate, `unresolved == 0`.
 
 ### 10.4 Files: idempotency and cleanup
 - No idempotency key is documented for any endpoint, so idempotency is done **client-side through the job directory**:
   - before uploading, compute `sha256(file)`; if `jobs/<id>/files.json` already maps that hash to a live `file_id`, reuse it;
-  - write `{sha256, file_id, created_at, purpose}` to `files.json` **before** the first use;
-  - on job end (success, failure or cancel), `DELETE /v1/files/{id}` for every entry. A 404 on delete counts as deleted. Then set `deleted_at`;
-  - an hourly sweeper (the WP5 cron) deletes anything in any `files.json` older than **6 h** that has no `deleted_at`. Upload with **`expires_after` 21,600 s (6 h)** as the backstop. That's well above WP5's per-job wall-clock limit of 2 h (a job running longer is cancelled), so a live job never loses its file. If one does anyway, `MetaFileGone` re-uploads it.
+  - write `{name, sha256, file_id, purpose, created_at, deleted_at: null}` to `files.json` (the §12 fields) **before** the first use;
+  - at the **end of each processing segment** (§10.1: review-ready, or render + audit done), and on cancel or failure, `DELETE /v1/files/{id}` for every entry. A 404 on delete counts as deleted. Then set `deleted_at`. Segment (b) re-uploads `sam_proxy.mp4` only if an audit patch needs a SAM point prompt. So no Meta file waits through a creator's review, and none outlives its segment;
+  - an hourly sweeper (the WP5 cron) deletes anything in any `files.json` older than **6 h** that has no `deleted_at`. Upload with **`expires_after` 21,600 s (6 h)** as the backstop. That's well above the 2 h segment limit (§10.1), so a running segment never loses its file. If one does anyway, `MetaFileGone` re-uploads it.
 - A retried Responses call is a new response. Stage outputs are checkpointed in the job directory, so a re-run stage replays its saved response (`SAFECUT_REPLAY=1`) instead of calling again.
 
 ### 10.5 Pre-call cost estimate and `cost.jsonl`
@@ -426,11 +427,11 @@ Prices live in `safecut/config.py` as a dated table (the §6 values, `price_tabl
 | Call | Pre-call estimate (worst case, checked against the remaining caps) | `units` logged after the call | `usd` |
 |---|---|---|---|
 | Responses | `POST /v1/responses/input_tokens` count [GH-cookbook] × `P_in` + `max_output_tokens` × `P_out` | `{"input": in, "cached": c, "output": out, "reasoning": r}` from `usage` (`input_tokens`, `input_tokens_details.cached_tokens`, `output_tokens`, `output_tokens_details.reasoning_tokens`) | `(in − c) × P_in + c × P_cached + out × P_out` (reasoning is already inside `out`) |
-| SAM video | `frames_uploaded × $0.0002` | `{"frames": frames_uploaded}` (worst case: every uploaded frame billed; replace it with `usage` if SAM reports any) *(probe)* | `frames × 0.20 / 1000` |
+| SAM video | `frames_billed × $0.0002` | `{"frames": frames_billed}` (worst case: every uploaded frame billed; replace it with `usage` if SAM reports any) *(probe)* | `frames × 0.20 / 1000` |
 | ASR | `ceil(duration_s) × $0.00005` | `{"audio_s": floor(audioDurationMs / 1000)}` | `audio_s × 0.18 / 3600` (billing rounds down to whole seconds, [SNIP]) |
 | Files | 0 | `{"bytes": n}` | 0 (no file price documented) |
 
-- `max_output_tokens`: `medium` calls 16,000; `max` calls 48,000. These bound the worst case (an escalation call at most `17k × P_in + 48k × P_out` ≈ $0.23). A response cut off by this limit is `MetaIncomplete`.
+- `max_output_tokens`: `medium` and lower 16,000; Spark `max` 48,000 (worst-case escalation `17k × $1.25/M + 48k × $4.25/M` ≈ $0.23, C4); **Wonder `max` 24,000** (≈ $0.55; at 48k it would be $1.03, enough to breach the job cap on its own, §9.2). A response cut off by this limit is `MetaIncomplete`.
 - `cost.jsonl` line: `{"ts", "job_id", "stage", "model", "attempt", "units", "usd", "estimated": bool, "request_id"}`. `request_id` is the response's `id` (or `x-request-id` if present). This extends ARCHITECTURE §3.10 with `job_id`, `attempt` and `estimated`; WP0 adds them to the contract.
 
 ### 10.6 Request and response shapes
@@ -556,7 +557,7 @@ Constant-rate case: `job.fps` 30, `job.frames` 900, `sam_fps_eff` 8, `sam_frames
 | R9 | SAM stream eof, eof | `MetaIncomplete` after 2 attempts; base sweep → job `retry_later` |
 | R10 | SAM request → 404 naming the `file_id` | `MetaFileGone`: re-upload `sam_proxy.mp4`, update `files.json`, repeat once. A second 404 → `MetaBadRequest` |
 | R11 | Responses complete, but the JSON fails pydantic validation | one re-ask (same request); invalid again → the stage fails closed. Both calls are logged with their actual cost |
-| R12 | the pre-call estimate exceeds the remaining job cap | no request; `BudgetExceeded`; the stage fails closed with reason `over_budget`. If the stage was a red-team pass over 40 frames: `unresolved` += 40, `blocked_reason: "over_budget"` |
+| R12 | the pre-call estimate exceeds the remaining job cap | no request; `BudgetExceeded`; the stage fails closed with reason `over_budget`. If the stage was a red-team pass over 40 frames: `unresolved` += 40, `redteam_status: "over_budget"` |
 
 ---
 
@@ -576,11 +577,11 @@ Nothing is implemented yet (there's no code before kickoff), so these are **chan
 | `roles.json` | `missed[].recurs` | bool, optional, `false` | WP2 → WP1 | gates paid phrase sweeps |
 | `transcript.json` | `degraded` | bool, optional, `false` | WP2 → role pass, receipt | a dropped soundtrack is visible, never silent |
 | `tracks.json` | `sam_fps`, `sam_frames` | number, int, **required** | WP1 → frame maps (§5b) | read back from `sam_proxy.mp4` |
-| `tracks.json` | `requests[].fps`, `requests[].frames_uploaded` | number, int, **required** | WP1 → cost, receipt | worst-case billed frames (§10.5) |
+| `tracks.json` | `requests[].fps`; `requests[].frames_billed` (ARCHITECTURE §3's name) | number **required**; int as in ARCHITECTURE | WP1 → cost, receipt | `fps` is new. `frames_billed` = the uploaded frame count (worst case) until SAM reports `usage` (§10.5) |
 | `tracks.json` | `requests[].kind`, `requests[].matches` | `"phrase"\|"object_prompt"`, int, **required** | WP1 → miss-loop logs, eval | which request type ran, and how many objects it found (`miss-loop.md` zero-match logging) |
 | **`files.json`** (new, per job) | `[{name, sha256, file_id, purpose, created_at, deleted_at}]` | **required** fields; `deleted_at` null until deleted | WP0 client → WP1 (proxy id by `name`), WP5 sweeper, receipt `files_deleted` | idempotent uploads and guaranteed deletion (§10.4) |
 | `audit.json` | `leaks[].flag` | `"redaction_too_weak"` \| null, optional, `null` | WP4 → re-render, UI | read-through → `solid` (`redteam.md` L7) |
-| `audit.json` | `blocked_reason` | `null\|"unresolved_leaks"\|"audit_failed"\|"over_budget"`, optional, `null` | WP4 → UI audit panel | says why publishing is off. **Invariant: `blocked_reason != null` ⇔ `unresolved > 0`.** Every frame an audit pass didn't run on (failed or over budget) counts in `unresolved`, so `unresolved == 0` stays the one publish gate |
+| `audit.json` | `redteam_status` (PR #2 UI-SPEC request 11's name, adopted) | `"ok"\|"failed"\|"over_budget"`, **required**, default `"ok"` | WP4 → UI result panel | why the audit didn't finish. **Invariant: `redteam_status != "ok"` ⇒ `unresolved > 0`.** Every frame an audit pass didn't run on counts in `unresolved`, so `unresolved == 0` stays the one publish gate; `ok` with `unresolved > 0` means real leaks left after 3 passes |
 | `cost.jsonl` | `job_id`, `attempt`, `estimated` | str, int, bool, **required** | WP0 client → caps, receipt, eval | reservation accounting (§10.2) |
 | `receipt.json` | `cost_usd_estimated` | number, optional, `0` | WP4 → receipt page | "possibly billed" kept apart from measured `cost_usd` (AGENTS rule 9) |
 | `receipt.json` | `data_handling.store_by_model` | `{model: bool}`, **required** | WP4 → receipt page | what each model was actually sent. **`data_handling.store` is redefined as `any(store_by_model.values())`**, so it's `false` only when every call sent `store:false` (§10.6) |
@@ -589,5 +590,5 @@ Not contract changes: a job's `retry_later` state lives in WP5's job record (API
 
 Requests to PRE-B (UI, PR #2):
 - show `suggested_role`, `escalation_evidence` and `escalation_frames` in the Why drawer next to the votes ("A second look suggests: Part of the story"). Adopted in PR #2 @ `e86a051`;
-- show `blocked_reason` in the audit panel's not-ready message;
+- show the `redteam_status` panels (PR #2 UI-SPEC §5.3) when it isn't `ok`;
 - take a track's speech link from `roles.tracks[].matches_participant` → `scene.participants[i].speaker`, which replaces UI-SPEC §8 request 3 (a track ID in `scene.json`), so the link lives in one place.

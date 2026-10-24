@@ -52,9 +52,10 @@ Swept so far: `face, person, license plate, screen, phone, document, name badge`
 | M5 | `sam_phrase "face"`, `recurs: true` | no sweep (already swept); **point prompt runs** |
 | M6 | `sam_phrase "thing"`, `recurs: true` | no sweep (blocklist); point prompt runs |
 | M7 | frame F421 (not sent) | item **dropped** |
-| M8 | 9 items | the first 8 kept (in output order); item 9 dropped and logged |
+| M8 | 9 items | the first 8 get SAM prompts (in output order); item 9 gets a **static hidden box** ±`temporal.extend`, `needs_you`, logged `item_cap` |
 | M9 | point (0, 0) on the 0–1000 grid (inside the bar) | point dropped. If the item has a valid `box`, its centre becomes the point; otherwise the item is dropped |
 | M10 | the same `envelope` from votes 1 and 2, points 30 px apart on the same frame (a 1280×720 diagonal is 1,469 px, 5% = 73 px) | merged into one item |
+| M11 | loop 2 (the last allowed) proposes `envelope` at F420, or the step-6 budget check stops before its request, or the batched object-prompt request fails after retries | no SAM result → **static hidden box** at F420 ±`temporal.extend` (from `box`, else a 6% square), `needs_you`. Never dropped |
 
 ## 4. Red-team leak decisions (`redteam.md`)
 Frame 50 has one approved kept-clear item, `A` (a participant's face), visible at box [100, 100, 200, 200]. Frame 1280×720.
@@ -66,8 +67,8 @@ Frame 50 has one approved kept-clear item, `A` (a participant's face), visible a
 | L3 | `text` "AMINA K." at [110, 110, 190, 190] | kind doesn't match A's (face) → **leak** |
 | L4 | `face`, `confidence: low`, at [600, 300, 650, 360] | **leak** (confidence never filters) |
 | L5 | a box with 3 integers | **leak**, with the whole-frame box [0, 0, 1280, 720] |
-| L6 | frame 50 missing from the output; also missing after one re-send | `unresolved += 1` for frame 50 only; `blocked_reason: "audit_failed"` |
-| L9 | a red-team pass over 40 frames is skipped because its estimate exceeds the job cap | `unresolved += 40`, `blocked_reason: "over_budget"`; publishing is off (invariant: `blocked_reason != null` ⇔ `unresolved > 0`) |
+| L6 | frame 50 missing from the output; also missing after one re-send | `unresolved += 1` for frame 50 only; `redteam_status: "failed"` |
+| L9 | a red-team pass over 40 frames is skipped because its estimate exceeds the job cap | `unresolved += 40`, `redteam_status: "over_budget"`; publishing is off (invariant: `redteam_status != "ok"` ⇒ `unresolved > 0`) |
 | L7 | `text` read *through* a redaction (inside a hidden item's region) | **leak** + flag `redaction_too_weak` → that item is re-rendered as `solid` |
 | L8 | no findings on any frame | `unresolved` unchanged; every frame logged `finding: "none"` |
 
