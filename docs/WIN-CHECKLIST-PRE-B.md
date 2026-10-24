@@ -224,6 +224,13 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#188 (win audit 20)**: Re-run stages omitted the auto-patch render; wrong progress label. Fix: UI-SPEC §2.5 `stage_reason: audit_patch` label, §10.3–10.4, fixture.
 - [x] **#189 (win audit 20)**: R24's UNDO couldn't prove the readOnly guard. Fix: UI-SPEC R24 (seeded undo stack).
 - [x] **#190 (win audit 20)**: Spec promised the re-run would cover U chips. Fix: UI-SPEC §3.3, R22 (covered later via [Cover it]).
+- [x] **#191 (win audit 21)**: Reducer still used a `rendering` boolean. Fix: UI-SPEC §10.5 (`status`, `has_render`, derived `readOnly`; SERVER_ACK carries status).
+- [x] **#192 (win audit 21)**: "Edited after rendering" keyed on a status that no longer applies; row precedence undefined. Fix: UI-SPEC §3.5 (`has_render`; explicit 7-row precedence).
+- [x] **#193 (win audit 21)**: One unfixed leak became one chip per frame. Fix: UI-SPEC request 18 `audit.spots[]` (grouped runs), one chip and one cover per spot.
+- [x] **#194 (win audit 21)**: §3.3 re-run wording contradicted request 11. Fix: UI-SPEC §3.3.
+- [x] **#195 (win audit 21)**: §10.4 transitions omitted auto-patch and the return to needs_you. Fix: UI-SPEC §10.4.
+- [x] **#196 (win audit 21)**: needs_you button rules split by an inserted sentence. Fix: UI-SPEC §3.5 (one bullet per button).
+- [x] **#197 (win audit 21)**: Request 5 forbade DELETE in needs_you. Fix: UI-SPEC request 5 (DELETE in every state).
 
 ## 4. Which builder reads what
 
