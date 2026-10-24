@@ -453,7 +453,7 @@ WP7 owns the code and its tests. These vectors pin the expected numbers so its u
 **How to compare.** Each expected value is given exactly (a fraction where it isn't a whole number). WP7 computes in IEEE doubles and compares with an **absolute tolerance of 1e-9**:
 - **Ties** in the frame mapping are values within 1e-9 of each other, and go to the lower index.
 - **Threshold tests** (exposed `< 0.90`, hidden `≥ 0.95`) are done in integers where the inputs are counts (covered × 100 ≥ 95 × visible). Where coverage is a float, `coverage < 0.90 − 1e-9` counts as exposed, so a frame at exactly 0.90 isn't exposed.
-- **Displayed values** (the report strings) are formatted from the double result with 2 decimals, rounding half to even, so they match what Python's `f"{x:.2f}"` prints.
+- **Displayed values** (the report strings) are formatted from the double result with 2 decimals (percentages with 0), as Python's `f"{x:.2f}"` prints. The vectors deliberately avoid exact `.xx5` ties: on a tie, two correct formulas can print different strings (e.g. κ = 3/8 prints as 0.37 or 0.38 depending on evaluation order), so a tie is never used as a test of formatting.
 
 ### 9.1 Label frame → prepared frame (PRE-A §5b)
 
@@ -476,7 +476,7 @@ Box scaling for a 1920×1080 source prepared at 1280×720 (ratios 2/3 and 2/3): 
 
 | # | 2×2 counts (A true & B true / A true & B false / A false & B true / A false & B false) | `po` | `pe` | κ | Report |
 |---|---|---|---|---|---|
-| K1 | 7 / 1 / 1 / 1 (10 entities; each labeller says true for 8) | 8/10 = 0.80 | 0.8·0.8 + 0.2·0.2 = 0.68 | 0.12 / 0.32 = **3/8 = 0.375** (compare to this) | "80% agreement, κ = 0.37". In doubles `pe` = 0.6800000000000002 and κ = 0.37499999999999983, which prints as 0.37 under the display rule above. High agreement but low κ, from skewed prevalence |
+| K1 | 12 / 1 / 1 / 1 (15 entities; each labeller says true for 13) | 13/15 ≈ 0.867 | (13/15)² + (2/15)² = 173/225 ≈ 0.769 | (22/225) / (52/225) = **11/26 ≈ 0.4231** (compare to this) | "87% agreement, κ = 0.42". Both the po/pe formula and scikit-learn's confusion-matrix form give 0.42307692307692… in doubles, so any correct implementation prints the same. High agreement but low κ, from skewed prevalence |
 | K2 | 9 / 1 / 0 / 0 (A all true; B false once) | 9/10 = 0.90 | 1·0.9 + 0·0.1 = 0.90 | 0 / 0.10 = **0** | "90% agreement, κ = 0.00" |
 | K3 | 10 / 0 / 0 / 0 (both all true) | 1.00 | 1.00 | **not computable** (`1 − pe` within 1e-9 of 0) | "100% agreement, κ not computable (no variation)". Never report it as 1 or 0 |
 | K4 | No labeller B | — | — | — | "not measured (single labeller)" |
