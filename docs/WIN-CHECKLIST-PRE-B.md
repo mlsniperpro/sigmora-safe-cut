@@ -197,6 +197,13 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#161 (win audit 16)**: No fixture for the reload-after-edit state. Fix: UI-SPEC §10.1 `job-reopened-review.json`; R24 replaced.
 - [x] **#162 (win audit 16)**: BLOCKED said WP5 issues the recording code. Fix: BLOCKED-PRE-B (the owner adds it to the deploy secret).
 - [x] **#163 (win audit 16)**: /start code-cap copy left the pilot at a dead end. Fix: UI-SPEC §2.6 (Start stays enabled).
+- [x] **#164 (win audit 17)**: Reopen didn't check the per-job cap. Fix: UI-SPEC request 11 (`409 job_cap`), §3.5, §10.3, mock.
+- [x] **#165 (win audit 17)**: 409 on /audit said keep polling while polling was paused. Fix: UI-SPEC §10.3 (resume polling).
+- [x] **#166 (win audit 17)**: Re-running the audit skipped the receipt. Fix: UI-SPEC request 11, §10.4 (audit then receipt).
+- [x] **#167 (win audit 17)**: Old daily-cap and rate-limit rows contradicted the single 429 mapping. Fix: UI-SPEC §10.3 rows removed.
+- [x] **#168 (win audit 17)**: §2.6 daily-limit row sent job pages away to /. Fix: UI-SPEC §2.6 (two contexts).
+- [x] **#169 (win audit 17)**: §3.3 banner keyed on `blocked_reason`, not job status. Fix: UI-SPEC §3.3.
+- [x] **#170 (win audit 17)**: Polling rule didn't cover `needs_you` or the new endpoints. Fix: UI-SPEC §10.3 (one authoritative polling rule).
 
 ## 4. Which builder reads what
 
