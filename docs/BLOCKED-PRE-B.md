@@ -37,7 +37,7 @@ PRE-B's documents are complete. Everything Claude could decide is decided; the d
   - Default: one follow-up after 3 days; no incentives.
   - Until pilots reply: STORYBOARD shot 8.3 is cut (STORYBOARD §1's note), and the README reports the pilot count that actually finished, including 0.
 - [ ] **Send the consent note, protocol and per-pilot access codes** (PILOTS.md §4–5), but only after Claude has posted that the live service passed its deletion and `store: false` check (Oct 29 or WP5's first live day).
-  - Default caps: $4 per code, $20 in total.
+  - Default caps: $6 per code and $20 in total across all pilot codes (PILOTS.md §5).
   - Until the service is live: WP5 tests the per-code cap and the deletion cron in replay mode ([WP5](work-packages/WP5.md) Tests); no pilot code is issued before Claude's live check.
 - [ ] **Collect timings, answers and written permissions** by Nov 2 23:59 EAT.
   - Default credit: anonymous, by format and country, unless the pilot chooses otherwise.
