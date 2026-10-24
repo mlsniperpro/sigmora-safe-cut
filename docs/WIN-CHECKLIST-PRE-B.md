@@ -231,6 +231,12 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#195 (win audit 21)**: §10.4 transitions omitted auto-patch and the return to needs_you. Fix: UI-SPEC §10.4.
 - [x] **#196 (win audit 21)**: needs_you button rules split by an inserted sentence. Fix: UI-SPEC §3.5 (one bullet per button).
 - [x] **#197 (win audit 21)**: Request 5 forbade DELETE in needs_you. Fix: UI-SPEC request 5 (DELETE in every state).
+- [x] **#198 (win audit 22)**: Spots had no covered state; a reload brought them back. Fix: UI-SPEC `spots[].covered_by`, item `spot_id`, reducer `spots`.
+- [x] **#199 (win audit 22)**: Grouping by consecutive frames failed on sampled audits; covers missed gap frames. Fix: UI-SPEC request 18 (`sample_step`, interpolated cover with padding).
+- [x] **#200 (win audit 22)**: R19 contradicted the bar precedence. Fix: UI-SPEC R19.
+- [x] **#201 (win audit 22)**: Unchanged done job at review could re-render for nothing. Fix: UI-SPEC §3.5 row 5 "Nothing changed since the render".
+- [x] **#202 (win audit 22)**: Re-run described as every frame. Fix: UI-SPEC §3.3 (same pass as a first audit).
+- [x] **#203 (win audit 22)**: Reducer fixture prose still said `rendering: false`. Fix: UI-SPEC §10.5.
 
 ## 4. Which builder reads what
 
