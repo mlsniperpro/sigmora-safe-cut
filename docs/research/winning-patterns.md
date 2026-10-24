@@ -26,7 +26,7 @@ Researched 2026-10-24 through web search (a research sub-agent, plus this doc's 
 - If time allows, add `deface` as one extra baseline row.
 
 **R2. Audit detector choice (WP4).**
-- EgoBlur says Gen 2 is for Aria Gen 2 data; our footage is phone video. On the hero clips (consented), measure face and plate **recall of Gen 1 and Gen 2 against the hero labels** and keep the higher-recall model as the auditor. The extra cost is local compute only.
+- EgoBlur says Gen 2 is for Aria Gen 2 data; our footage is phone video. Choose between Gen 1 and Gen 2 with the **held-out rule in `egoblur-gen2.md`**: pick on hero clip 1 (higher face and plate recall, at most 2 false detections per minute), and report recall only on hero clips 2–3 and the dev split, never on the clip used to pick. The extra cost is local compute only.
 - Report the auditor's own recall in the results ("the audit's detector misses X% of labelled faces on our set"), so a judge can see the second look isn't over-claimed.
 - Both models are listed in `research/egoblur-gen2.md`.
 
