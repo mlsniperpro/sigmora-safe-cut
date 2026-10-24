@@ -26,8 +26,8 @@ Label a **person** when their head is visible and at least **24 px tall at the s
 | `category` | Use for | Default `should_hide` |
 |---|---|---|
 | `participant` | The host or creator, and anyone who **knowingly takes part**: introduced, interviewed, spoken to and answering, or clearly performing for the creator with the creator's agreement | `false` |
-| `bystander` | Every other adult or teen: passers-by, shop workers, people watching, people in vehicles, people in reflections | `true` |
-| `child` | Anyone who looks under about 16, **whatever their role** | `true`, always |
+| `bystander` | Every other person who looks **18 or over** (anyone who may be younger is `child`): passers-by, shop workers, people watching, people in vehicles, people in reflections | `true` |
+| `child` | Anyone who may be **under 18**, **whatever their role**. If in doubt, `child` (the same threshold as PRE-A's scene, role and escalation prompts) | `true`, always |
 | `plate` | Vehicle number plates (cars, matatus, boda-bodas, trucks) | `true` |
 | `screen` | Phones, laptops, TVs, monitors, displays. Judged **by content** | `true` if the content is personal; `false` if harmless (menu, map with no home pinned, slide, public broadcast) |
 | `document` | Paper or cards with personal data: ID-style cards, bank statements, letters, name badges, receipts with names | `true` |

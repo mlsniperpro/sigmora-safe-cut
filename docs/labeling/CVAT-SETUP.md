@@ -1,6 +1,6 @@
 # CVAT setup for Safe Cut labelling
 
-Status: **v1, 2026-10-24 (PRE-B).** CVAT facts below were read from CVAT's own docs in its repo (`cvat-ai/cvat`, `develop` at commit `a415be6`, 2026-10-23): `site/content/en/docs/administration/community/basics/installation.md`, `.../dataset_management/formats/format-mot.md`, `.../annotation/manual-annotation/modes/track-mode-basics.md`, `.../annotation/annotation-editor/navbar.md`, `.../workspace/tasks-page.md`. Latest release tag on 2026-10-24: **v2.80.0**. Anything marked *(verify)* is our inference, to check on the first clip.
+Status: **v1, 2026-10-24 (PRE-B).** CVAT facts below were read from CVAT's own docs in its repo (`cvat-ai/cvat`, `develop` at commit `a415be6`, 2026-10-23): `site/content/en/docs/administration/community/basics/installation.md`, `.../dataset_management/formats/format-mot.md`, `.../annotation/manual-annotation/modes/track-mode-basics.md`, `.../annotation/annotation-editor/navbar.md`, `.../workspace/tasks-page.md`. Latest release tag on 2026-10-24: **v2.80.0**. How the MOT export behaves (§7) was read from the **v2.80.0 source code** (tag commit `bb0a873`, 2026-10-21) and the Datumaro commit that release pins, with file and line numbers.
 
 Why CVAT: free, open source, video track annotation with interpolation, MOT export ([EVAL.md](../EVAL.md) §1). How to label: [LABELING-GUIDE.md](LABELING-GUIDE.md). What to export: [LABEL-FORMAT.md](LABEL-FORMAT.md).
 
@@ -17,7 +17,7 @@ Why CVAT: free, open source, video track annotation with interpolation, MOT expo
 - **First choice:** any Linux x86_64 or Windows (WSL2) machine with Docker. CVAT's install guide covers Ubuntu 22.04/20.04 first, plus Windows (WSL2) and macOS.
 - **Fallback if there's no such machine:** another local machine held by a trusted labeller (e.g. labeller B's), with clips moved on an encrypted drive and deleted from it after export. **Not the Intel dev Mac:** [EVAL.md](../EVAL.md) §1 and the PRE-B brief both exclude it.
 
-CVAT supports only Google Chrome. Setting up the machine is the owner's hands-on step, listed in `BLOCKED.md`.
+CVAT supports only Google Chrome. Setting up the machine is the owner's hands-on step, listed in [`BLOCKED-PRE-B.md`](../BLOCKED-PRE-B.md).
 
 ## 3. Install (from CVAT's guide)
 
@@ -85,8 +85,18 @@ For each finished task, export twice (Task → Actions → Export task dataset),
 
 Also use **Backup task** before deleting anything from CVAT.
 
-**First-clip checks (verify, then record the answers here):**
-- Frame numbering. CVAT's UI counts frames from 0; MOT files conventionally count from 1. Draw a box that starts on UI frame 0 and check that its first row in `gt.txt` says frame `1`.
-- Track IDs. Check that each `track_id` in `gt.txt` maps to the entity you think it does (compare the first row's frame and box with the UI).
-- Outside frames. Check that frames marked Outside are absent from `gt.txt` (they must be, or "visible frames" are wrong).
-- Coordinates. Check that boxes are in source pixels (1920×1080 for our footage) and note whether they're integers or decimals.
+### 7.1 What the MOT 1.1 export writes (from the v2.80.0 source)
+
+CVAT's MOT exporter (`https://github.com/cvat-ai/cvat/blob/v2.80.0/cvat/apps/dataset_manager/formats/mot.py`, lines 102–109) builds a dataset with `GetCVATDataExtractor` and hands it to Datumaro's `mot_seq_gt` writer. CVAT v2.80.0 pins Datumaro at commit `335fc3e` (`cvat/requirements/base.txt`, line 54); the writer is `MotSeqGtExporter` in [`datumaro/plugins/data_formats/mot.py`](https://github.com/cvat-ai/datumaro/blob/335fc3e55fe699b9401091f6af11f10c3b0e08cb/src/datumaro/plugins/data_formats/mot.py), lines 258–324.
+
+| Question | Answer | Source |
+|---|---|---|
+| **Frame numbering** | **1-based, numbered by position in the export.** For video tasks CVAT names each item `frame_NNNNNN` (`bindings.py` line 420) and uses that as the item ID (lines 2051–2052). Datumaro writes `frame_id = cast(item.id, int, 1 + idx)` (Datumaro `mot.py` line 280); `"frame_000000"` isn't an integer, so `cast` returns the default `1 + idx` (`datumaro/util/__init__.py` lines 28–34), where `idx` is the item's position in the export. Every included frame becomes an item, in order, **including frames with no boxes**: the extractor iterates `group_by_frame(include_empty=True)` (`bindings.py` line 2101), so the skip for empty frames at lines 654–657 doesn't apply, and the loop at line 641 yields frames in sorted order. So **MOT frame = UI frame + 1** as long as no frame is deleted. Deleted and excluded frames are removed from the export (`get_included_frames`, `bindings.py` lines 666–674), which would shift every later frame number down. Hence the rules below | `https://github.com/cvat-ai/cvat/blob/v2.80.0/cvat/apps/dataset_manager/bindings.py`; Datumaro `mot.py` |
+| **Track IDs** | **Renumbered: 1, 2, 3, … in order of first appearance.** CVAT gives each track its position in its own track list, not the ID shown in the UI (`annotation.py` lines 659 and 721). This holds because `use_server_track_ids` is `False`: `CommonData.__init__` defaults it to `False` (`bindings.py` lines 338, 345, 357) and passes it on at line 600, and neither the MOT exporter nor the task export code sets it. Datumaro then maps those to `1, 2, 3, …` in the order it first meets them while writing frames in order (Datumaro `mot.py` lines 276–289). So `track_id = n` is the n-th track to appear in the clip. Two tracks that start on the same frame are told apart by their box | `https://github.com/cvat-ai/cvat/blob/v2.80.0/cvat/apps/dataset_manager/annotation.py`; Datumaro `mot.py` |
+| **Outside frames** | **Left out.** The export asks for shapes with `include_outside=False` (`bindings.py` lines 596–599, passed on in `annotation.py` line 676) and also skips any tracked shape whose `outside` flag is set (`bindings.py` lines 622–624). A frame with no row is a frame where the entity isn't visible, which is what our metrics need | `https://github.com/cvat-ai/cvat/blob/v2.80.0/cvat/apps/dataset_manager/bindings.py`, `annotation.py` |
+| Coordinates | Written as Datumaro's `anno.x, anno.y, anno.w, anno.h` (Datumaro `mot.py` lines 295–298): **source pixels, as decimals**, since interpolated boxes aren't whole numbers. Column 7 is `1` unless the box's `ignored` attribute is set (line 299); column 9 is `1 − occluded` unless a `visibility` attribute is set (lines 301–305) | Datumaro `mot.py` |
+
+**Rules that follow** (they keep "MOT frame = UI frame + 1" true):
+- **Never delete a frame** in a CVAT task (Delete frame in the player), and keep **Frame step = 1**, with start/stop frame left empty (§5). Any of these renumbers the export.
+- Write `track-map.json` from **first-appearance order**: sort the clip's entities by their first visible frame and number them 1, 2, 3, …; break ties on the same frame by comparing the first row's box with the UI ([LABEL-FORMAT.md](LABEL-FORMAT.md) §3.1).
+- Don't set the `ignored` attribute on any box. Our MOT files rewrite columns 7–10 to `1,-1,-1,-1` anyway.

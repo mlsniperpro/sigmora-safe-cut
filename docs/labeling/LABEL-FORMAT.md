@@ -37,7 +37,10 @@ The **clip ID** is the first three parts of the file name in [SHOTLIST.md](../SH
 | `entities[].boxes` | string \| null | path to the entity's MOT file, relative to `labels/<split>/`. `null` only in a labeller-B file |
 | `notes` | string | anything a reader needs: things below threshold, harmless items that must stay clear, filming problems |
 
-**Coordinates and frames are in the source clip** (e.g. 1920×1080 at 30 fps). The pipeline works on the prepared clip (≤1280 px, its own frame list, [ARCHITECTURE.md](../ARCHITECTURE.md) §3.1). WP7 maps labels onto it: boxes scale by `prepared.width / source.width`, and frames map through `job.json`'s `times`. **One meaning, used by every PRE-B doc:** `times[i]` is the time in seconds of prepared frame `i`, measured from the first decoded source frame (the source's start timestamp subtracted, so `times[0] = 0`). The prepared clip is encoded with those same timestamps, so the same list maps both ways: label frame → source time → prepared frame for WP7, and the player's `mediaTime` → prepared frame for the review overlay ([UI-SPEC.md](../UI-SPEC.md) §3.6). Label frame `k` is at source time `k / fps` from that same first frame. (Request to WP1.) Labellers never resample anything.
+**Coordinates and frames are in the source clip** (e.g. 1920×1080 at 30 fps). The pipeline works on the prepared clip (≤1280 px, its own frame list, [ARCHITECTURE.md](../ARCHITECTURE.md) §3.1). WP7 maps labels onto it: boxes scale by `prepared.width / source.width`, and frames map through `job.json`'s `times`. **What `times` means (aligned with PRE-A, `docs/prompts/miss-loop.md` step 5):** `times[i]` is the **source** time, in seconds, of prepared frame `i`, measured from the first decoded source frame. If prepare trims the start, `times[0]` is the trim offset, not 0. Prepared frame indices and the prepared clip's own timeline both start at 0. So:
+  - **label → prepared** (WP7): label frame `k` is at the source time of decoded frame `k` (`k / source_fps` for a constant-frame-rate source; for a variable-frame-rate one, WP7 reads that frame's timestamp from the source); it maps to the prepared frame `i` whose `times[i]` is nearest, and labels outside `[times[0], times[last]]` are dropped as trimmed away;
+  - **player → prepared** (UI overlay): doesn't use `times`. The prepared clip is constant frame rate, so the player's `mediaTime` maps to frame `floor(mediaTime × fps + ¼)` ([UI-SPEC.md](../UI-SPEC.md) §3.6). `times` can differ from `i / fps` when the source was variable frame rate;
+  - don't use `times` to convert prepared frames to a lower-fps SAM proxy; PRE-A's frame-ratio formula does that. Labellers never resample anything.
 
 ## 3. The MOT files
 
@@ -62,9 +65,9 @@ A frame with no row is a frame where the entity isn't visible (out of frame, ful
 
 CVAT's MOT 1.1 export is one `gt/gt.txt` for the whole task with columns `frame_id, track_id, x, y, w, h, "not ignored", class_id, visibility` (CVAT docs) and a `gt/labels.txt` listing the label names. To get our files:
 
-1. Map each CVAT `track_id` to an entity ID (check the first row of each track against the CVAT UI; see the first-clip checks in [CVAT-SETUP.md](CVAT-SETUP.md) §7).
+1. Map each CVAT `track_id` to an entity ID. In CVAT v2.80.0's export, `track_id = n` is **the n-th track to appear in the clip**, not the ID shown in CVAT's UI ([CVAT-SETUP.md](CVAT-SETUP.md) §7.1, with source lines). So labeller A numbers the entities by first visible frame, breaking ties by box, and writes the map.
 2. For each track: keep `frame_id`, `x`, `y`, `w`, `h`; set `id` to the entity number; set the last four columns to `1,-1,-1,-1`.
-3. Confirm the frames are 1-based (the first-clip check). If the export turns out to be 0-based, add 1.
+3. Frames are already 1-based and equal to UI frame + 1, provided no frame was deleted in the task and the frame step is 1 (CVAT-SETUP.md §7.1). Frames marked Outside have no rows. Coordinates are decimals in source pixels; keep them as written.
 
 This is mechanical, so WP7's label loader should accept the CVAT zip directly, plus a small map file next to it (`cvat/SC-A-01.track-map.json`, e.g. `{"1": "e1", "2": "e3"}`, written by labeller A), and produce the per-entity files itself. That's listed as a request to WP7 in the PRE-B PR. Until it exists, nobody converts by hand: export, store the zip, and wait.
 

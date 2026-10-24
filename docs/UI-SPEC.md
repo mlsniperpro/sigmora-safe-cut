@@ -27,7 +27,7 @@ Contents: [0 Principles](#0-principles-and-shared-pieces) · [1 Landing](#1-land
 
 **Footer (all pages).** "Built for the Meta Global AI Developer Hackathon with Muse Spark, SAM 3.1 and Muse Voice Transcribe on the Meta Model API." · "Uploads are deleted after 24 hours." · "MIT licence" · "Source on GitHub".
 
-**Time display.** Every frame number shown to a person is converted to clip time `m:ss` (or `m:ss.s` in the Why drawer) through `job.times[frame]` ([ARCHITECTURE.md](ARCHITECTURE.md) §3.1). Never show raw frame numbers outside the Why drawer's details row.
+**Time display.** Every frame number shown to a person is converted to clip time `m:ss` (or `m:ss.s` in the Why drawer) on the **prepared clock**, `frame / job.fps`, so it matches the player's scrubber ([ARCHITECTURE.md](ARCHITECTURE.md) §3.1; §3.6 below explains the two clocks). `job.times` (source seconds) is used only where the source clock is needed, e.g. the receipt's "source time" column. Never show raw frame numbers outside the Why drawer's details row.
 
 **Item number.** One rule, so the chip and the keyframe always agree: an item's number `#n` is the Set-of-Mark number drawn on the keyframes for its **primary track** (its `face:*` track if it has one, otherwise its first track in `track_ids`). If the item has other tracks (e.g. `person:2` grouped with `face:7`), the drawer's Details row says "also marked #12 on the keyframes". Items added by the audit have no SoM mark and are numbered `A1, A2, …`. The UI never invents its own numbering. (Request to WP2/WP5: expose each track's mark number; see §8.)
 
@@ -423,7 +423,7 @@ The video stays sticky at the top while the chip list scrolls. The tab that open
 | Kind | Person / Child / Number plate / Screen / Document / Other item, with its icon | `kind` |
 | Badges | 🔒 **Always hidden** if `locked`; **NEW** if any track has `reentry_of` set and the item hasn't been merged; **Changed by you** if `decided_by = creator` | `locked`, `tracks[].reentry_of`, `decided_by` |
 | Reason | One or two lines, first letter capitalised, no trailing full stop added | `reason` |
-| Time range | `m:ss–m:ss` from the first to the last frame of the item's tracks | `tracks.json` `first`/`last` over `track_ids` → `job.times` |
+| Time range | `m:ss–m:ss` from the first to the last frame of the item's tracks | `tracks.json` `first`/`last` over `track_ids` → `frame / job.fps` (prepared clock) |
 | Buttons | Hidden chip: [Why?] [Keep clear] · Kept chip: [Why?] [Hide] · Needs-you chip: [Why?] [Hide] [Keep clear] · Locked chip: [Why?] and the text "Always hidden" (no toggle) · NEW chip (hidden, re-acquired track): [Why?] [Same as #n…] [Keep clear]; "Same as #n…" comes first because merging is the usual fix | `decision`, `locked` |
 | Overflow `⋯` | Remove this person from the video (person/child items); Jump to first appearance | |
 
@@ -460,7 +460,7 @@ Pressing it: `POST /v1/jobs/{id}/render`, then the stage rows `Applying your cho
 
 ### 3.6 The overlay
 
-- A `<canvas>` sized to the video's displayed box, drawn on each `requestVideoFrameCallback` (rVFC). Per the WICG spec, the callback's `metadata.mediaTime` is the presentation timestamp of the frame being shown, on the `currentTime` timeline. Map it to a prepared-frame index with a **binary search** for the last `i` where `job.times[i] ≤ mediaTime + ε`, with ε = a quarter of a frame (`0.25 / fps`) to absorb float rounding ([WP6](work-packages/WP6.md) step 4). This uses the single definition of `times` in [LABEL-FORMAT.md](labeling/LABEL-FORMAT.md) §2: seconds from the first decoded source frame, so `times[0] = 0`, and the prepared clip carries the same timestamps (request to WP1 in §8). If `times[0]` isn't 0, the UI shows an error instead of drawing a shifted overlay.
+- A `<canvas>` sized to the video's displayed box, drawn on each `requestVideoFrameCallback` (rVFC). Per the WICG spec, the callback's `metadata.mediaTime` is the presentation timestamp of the frame being shown, on the `currentTime` timeline. **Two clocks, kept apart:** the **prepared clock** (the player's timeline, starting at 0) and the **source clock** (`job.times`, source seconds per prepared frame, offset by any trim; PRE-A's meaning, [LABEL-FORMAT.md](labeling/LABEL-FORMAT.md) §2). The prepared clip is encoded at a **constant frame rate** `job.fps` (request to WP1, §8), so prepared frame `i` is presented at `i / job.fps`. Map with `i = clamp(floor(mediaTime × job.fps + 0.25), 0, job.frames − 1)`, where the quarter frame absorbs float rounding ([WP6](work-packages/WP6.md) step 4). `job.times` isn't used for this: phone footage is often variable frame rate, so `times[i] − times[0]` can drift from `i / fps`. If `metadata.presentedFrames` jumps by more than 1 between callbacks, the overlay just draws the frame now shown (frames skipped by the player don't need drawing).
 - Browser support (MDN browser-compat-data, 2026-10-23): rVFC is in Chrome 83+, Safari 15.4+ and Firefox 132+. On a browser without it, fall back to `requestAnimationFrame` reading `video.currentTime`, which can be a frame late, and say so next to the toggle: "Preview may lag by a frame in this browser. The final render isn't affected." Never fall back silently.
 - For that frame, draw every region in `plan.json` `frames[frame]` whose `item_id` is currently hidden or needs-you (after the creator's local edits). `solid` and `person_solid` → opaque fill (mask shape when `mask` is present, else box); `pixelate` → coarse cells on the locked `grid` (a preview; the final render adds noise); `crowd_fills` → opaque fill.
 - An item switched from kept to hidden by the creator has no plan regions yet: until the review response returns a new plan, draw its **track boxes** from `tracks.json` (padded 15% as a visual approximation) so the creator sees it covered immediately.
@@ -645,7 +645,7 @@ On mobile, the drawer repeats the chip's action buttons at the bottom so the cre
 | Reason | `decisions.items[].reason` |
 | Votes, evidence, escalation | `roles.json` `tracks[]`: `votes`, `role`, `evidence`, `escalated` (for each track in `track_ids`; show the person's face track first) |
 | Object content | `roles.json` `objects[]`: `sensitive`, `content` |
-| Transcript | `transcript.json` `turns[]` overlapping `[times[first], times[last]]` |
+| Transcript | `transcript.json` `turns[]` overlapping the item's prepared-clock span `[first / job.fps, (last + 1) / job.fps]`, assuming turn times are on the prepared clock (ASR runs on the prepared clip's audio; request to WP2 in §8 to confirm or convert) |
 | Speaker link | `scene.json` `participants[].speaker` (when WP2 links a participant to a track) |
 | Decided by, style, locked | `decisions.items[]` |
 | Models | `receipt.json` `models` (or the job's config before a receipt exists) |
@@ -829,8 +829,9 @@ The API ([WP5](work-packages/WP5.md)) hasn't been written; these are the fields 
 3. **WP2:** where the scene pass links a participant to a speaker and a track, record the track ID (today `scene.json` participants have `description`, `evidence`, `speaker` but no track), so the drawer can say "said by #n".
 4. **WP3:** keep `reason` strings short (≤ 90 characters), plain, lowercase-first, no trailing full stop; the UI capitalises.
 5. **WP3:** name the review edit types to match §3.4: `keep`, `hide`, `merge` (into an item ID), `remove_person`, `undo` (or the UI replays the inverse edit).
-6. **WP1:** define `job.json` `times[i]` as seconds from the first decoded source frame (start timestamp subtracted, `times[0] = 0`), and encode the prepared clip with those timestamps, so WP7's label mapping and `requestVideoFrameCallback`'s `mediaTime` (§3.6) both use the same list.
-7. **WP5:** return `deletes_at` as the latest time the 24 h cleanup will have removed the job (it depends on how often the cleanup runs).
+6. **WP1:** keep PRE-A's meaning of `job.json` `times`: source seconds per prepared frame, measured from the first decoded source frame (the container's start timestamp subtracted), and offset by any trim, so `times[0]` is the trim start and is 0 when nothing is trimmed. Encode the prepared clip at a **constant frame rate** `job.fps` with a timeline starting at 0, so prepared frame `i` is presented at `i / job.fps` (the overlay mapping in §3.6 relies on this, even for variable-frame-rate phone sources). Validate that `times` is strictly increasing and has `frames` entries.
+7. **WP2:** put `transcript.json` turn times on the prepared clock (seconds from prepared frame 0), or record which clock they use, so the Why drawer's transcript overlap (§4.6) lines up.
+8. **WP5:** return `deletes_at` as the latest time the 24 h cleanup will have removed the job (it depends on how often the cleanup runs).
 
 ---
 
