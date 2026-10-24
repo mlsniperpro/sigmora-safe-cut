@@ -39,7 +39,7 @@ These are a primary source: the installed package's own signatures and docstring
 | 24 h deletion and file sweeper | `schedule=modal.Cron("0 * * * *")` (signature `Cron(cron_string, timezone="UTC")`) or `modal.Period(hours=1)` | one hourly function does both: purge jobs older than 24 h, and delete Meta files older than 6 h (API-NOTES §10.4). Starter allows 5 crons [3P] |
 | Job storage | `modal.Volume.from_name("safecut-jobs", create_if_missing=True)`; `vol.commit()` after writes, `vol.reload()` before reads in another container | without `commit`/`reload`, another container doesn't see the files |
 | Secrets | `modal.Secret.from_name("safecut")` → env vars (`MODEL_API_KEY`, …) | created by the owner with the `modal secret create` CLI |
-| Warm container during judging | `min_containers=1` on the web function, Nov 4–9 only | ≈ $0.047/h for 1 core [3P price] |
+| Warm container during judging | `min_containers=1` on the web function, Nov 5–10 UTC only (the public window, API-NOTES §9.2) | ≈ $0.047/h for 1 core [3P price] |
 | Cost ceiling | `max_containers` on the worker (e.g. 4) | bounds Modal spend and Meta concurrency together (§10.1) |
 
 ## Estimate: one 30 s clip
