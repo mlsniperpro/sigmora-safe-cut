@@ -188,7 +188,7 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#152 (win audit 15)**: `type=password` would trigger Chrome's save prompt inside SR-01. Fix: UI-SPEC §10.2 text input with CSS masking.
 - [x] **#153 (win audit 15)**: A stage failing on `code_cap` couldn't recover after the cap was raised. Fix: UI-SPEC §2.6, §10.3, mock.
 - [x] **#154 (win audit 15)**: `retry_later` promised open-ended retries; PRE-A re-queues once. Fix: UI-SPEC §2.6, request 1, §10.3–10.4, `upstream` failure, mock.
-- [x] **#155 (win audit 16)**: Read-only chips under `job_cap` had no reducer guard. Fix: UI-SPEC §10.5 `readOnly` (rendering, needs_you), R23, R25.
+- [x] **#155 (win audit 16)**: Read-only chips under `job_cap` had no reducer guard. Fix: UI-SPEC §10.5 `readOnly` (rendering, needs_you), R23, R24.
 - [x] **#156 (win audit 16)**: Bar chosen by `blocked_reason` showed the wrong action after a reload. Fix: UI-SPEC §3.5 (by job status + cause).
 - [-] **#157 (win audit 16)**: Approve & render after an edit could only fail on an exhausted cap. Fix: Simplified: `needs_you` is read-only; [Edit and render again] reopens with a budget confirm. **Superseded by #176:** reopen was removed in round 18.
 - [x] **#158 (win audit 16)**: 429 cap codes mapped only on POST /start. Fix: UI-SPEC §10.3 (one mapping for /start, /render, /audit, /reopen).
@@ -213,6 +213,11 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#177 (win audit 18)**: Old audit's "Details row" didn't exist. Fix: Removed with reopen.
 - [x] **#178 (win audit 18)**: No GET fixtures for the audit re-run flow. Fix: UI-SPEC §10.1 (2 fixtures).
 - [x] **#179 (win audit 18)**: Polling "resumed" into a paused state on reopen. Fix: Removed with reopen.
+- [x] **#180 (win audit 19)**: "No re-render" contradicted WP4's auto-patch loop. Fix: UI-SPEC request 11, §3.5 (patch passes may re-render segments).
+- [x] **#181 (win audit 19)**: No delete in `needs_you`; pilot deletion promise broken. Fix: UI-SPEC §3.5, §5.4, §10.1, §10.4, R22–R24 ([Delete everything now] always shown).
+- [x] **#182 (win audit 19)**: Same gap seen from PILOTS §4. Fix: Fixed by #181.
+- [x] **#183 (win audit 19)**: R24's COVER_SPOT couldn't prove the readOnly guard. Fix: UI-SPEC `result-audit-failed.json` gains U1; R24.
+- [x] **#184 (win audit 19)**: R25 duplicated R24. Fix: R25 merged into R24.
 
 ## 4. Which builder reads what
 
