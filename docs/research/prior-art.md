@@ -1,0 +1,29 @@
+# Prior art: face- and object-blurring tools for creators
+
+Read 2026-10-24 via web search (most vendor sites couldn't be fetched directly from this session). Feeds the README's "why this is new". **Only claims with a source are stated as fact**; anything else is marked *unverified*. WP8 should re-check each row on the vendor's own page before quoting it publicly.
+
+## Summary table
+
+Columns: does the tool understand **context** (who is part of the video), split **participants vs bystanders**, handle **screens and text**, and produce an **audit or receipt**?
+
+| Tool | What it does | Context | Participants vs bystanders | Screens / text | Audit / receipt | Sources |
+|---|---|---|---|---|---|---|
+| **YouTube Studio – Blur** | After upload, in the Studio editor: **face blur** (auto-detects faces, the creator picks which to blur, adjustable box) and **custom blur** (drag a rectangle or oval, "Track object" or "Fix blur position", set start and end on the timeline). Desktop only. Unedited videos with >100k views can't be saved except for face blur (YPP exempt). Since June 2025, saved edits can't be reverted | none: the creator picks faces manually | manual | manual custom box only; no text detection | none | [YouTube Help: Blur your videos](https://support.google.com/youtube/answer/9057652) |
+| **CapCut – Face Mosaic / Track mask** | **Face Mosaic** covers **every detected face** automatically. For one subject, a mask with **Track mask** | none (all faces) | none: all or a manual mask | manual mask | none | [CapCut: blur face in video](https://www.capcut.com/resource/blur-face-in-video) (vendor), plus listicles ([blur.me](https://www.blur.me/blog/face-blur-app/), [youblur](https://youblur.com/en/blog/best-app-for-face-blurring-in-videos/)) |
+| **Descript** | Transcript-based editor. A face-blur feature is **unconfirmed**: two listicles claim one and a comparison says "no face/body effects" | — | — | — | — | [shelby-ai comparison](https://www.shelby-ai.com/comparisons/descript-vs-capcut/), [faceless.directory](https://faceless.directory/compare/capcut-vs-descript). *Unverified* |
+| **PrivacyVideo / Blurize** | **Couldn't be identified**: no app by these names turned up. Closest equivalents: **Blurri** (iOS: auto-scans faces, groups by person, tracks frame by frame, faces + plates) and **AI Blur Video – Mosaic Editor** (offline; emails, addresses, plates) | per-person grouping (Blurri) | the user picks people; no role reasoning | AI Blur claims text such as emails and addresses | none stated | [Blurri (App Store)](https://apps.apple.com/app/id1616757234), [AI Blur Video (App Store)](https://apps.apple.com/app/id6749865957). WP8: confirm the names the owner meant |
+| **EgoBlur (Meta)** | Open-source (Apache-2.0) **face + licence-plate detectors** for Aria glasses data; blurs **every** detection above a threshold. Gen 2 adds camera-specific thresholds | none | none: blurs all faces | plates only; no screens or documents | none (a detector only) | [facebookresearch/EgoBlur](https://github.com/facebookresearch/EgoBlur), [arXiv 2308.13093](https://arxiv.org/abs/2308.13093); `egoblur-gen2.md` |
+| **brighter AI** | Enterprise anonymisation (automotive, health, public sector): **Precision Blur** (faces + plates) and **Deep Natural Anonymization**, which replaces faces with synthetic ones. Full-body anonymisation (clothes, hair, tattoos). Cloud, private-cloud or edge | none: everything detected | none | plates; screens not stated | compliance marketing (GDPR); no per-video receipt found | [Intel one-pager](https://www.intel.com/content/www/us/en/content-details/789535/brighter-ai-image-and-video-anonymization-platform-1-pager.html), [Microsoft AppSource listing](https://appsource.microsoft.com/en-us/product/web-apps/brighteraitechnologiesgmbh1596709907398.ips-online) (vendor material) |
+
+## What none of them do (Safe Cut's gap)
+1. **Decide who should stay visible.** Every tool is either *blur all faces* (CapCut Face Mosaic, EgoBlur, brighter AI) or *the creator picks by hand* (YouTube Studio, Blurri). None reasons about **participants vs bystanders** from the video's own context: introductions, who's being interviewed, who's speaking. That's Safe Cut's role pass, with every keep backed by a cited reason.
+2. **Hide by default and keep by evidence.** None treats the re-acquired or uncertain track as hidden by default. Trackers simply drop or merge IDs.
+3. **Read screens and documents by content.** None distinguishes an inbox (hide) from a menu (keep). Text tools are box-it-yourself, or blanket "emails/addresses" claims without context.
+4. **Audit the output.** None runs a second detector over the *rendered* video, or attempts to read through its own redactions.
+5. **Give the creator a receipt** of what was hidden, why, who approved it, and the audit result: evidence for a privacy complaint. (DESIGN §2.7b: a creator's complaint was upheld *despite* 100% face blur.)
+6. **Use irreversible redaction by default.** YouTube, CapCut and EgoBlur use blur or mosaic, which research shows is largely reversible (DESIGN §2.7: Revelio 95.9% on Gaussian blur; McPherson et al. >95% on mosaic; Unredacter on pixelated text).
+
+## For the README (draft line; WP8 owns the final)
+> Existing tools blur every face (CapCut, EgoBlur) or make you pick them by hand (YouTube Studio). Safe Cut is, as far as we found, the first to decide *who* in your video agreed to be in it, from the video's own evidence. It hides everyone else by default, reads screens by content, then audits its own render and gives you a receipt.
+
+Keep the "as far as we found" hedge: this survey was web-search-based on 2026-10-24.
