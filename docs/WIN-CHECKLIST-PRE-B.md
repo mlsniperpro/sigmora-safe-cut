@@ -444,11 +444,39 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#408 (win audit 40)**: `.agent` HANDOFF's owner-blockers list missed the bucket upload, the Oct 26 API key and the Nov 4 18:00 EAT final cut. Fix: added, with #402–#404.
 - [x] **#409 (PRE-A @ `02c605e`)**: Mock `scene.participants[]` lacked `introduced_in_turn` and `introduction_quote` (scene-pass.md schema). Fix: UI-SPEC's scene shape names both; every mock carries them (hero guest: turn 1, "I'm Amina").
 - [x] **#410 (PRE-A @ `02c605e`)**: Request 20 didn't say service keys answer `401 code_not_active` outside the judge window, with no replay. Fix: stated.
-- [x] **#411 (PRE-A @ `02c605e`)**: EgoBlur copy was fixed text, so the Oct 28 YuNet fallback would be misreported. Fix: UI-SPEC §2 auditor name rule (from `egoblur.model`; no plate count when `plates` is null; baseline row "not run"), the `audit` stage line names no detector, STORYBOARD 6.2/7.1 variants.
+- [x] **#411 (PRE-A @ `02c605e`)**: EgoBlur copy was fixed text, so the Oct 28 YuNet fallback would be misreported. Fix: UI-SPEC §1.3 auditor name rule (from `egoblur.model`; no plate count when `plates` is null; baseline row "not run"), the `audit` stage line names no detector, STORYBOARD 6.2/7.1 variants.
 - [x] **#412 (PRE-A @ `02c605e`)**: No copy for `503 billing` on `/start`. Fix: §2.6 row, §10.3 row and exemption, fixture `error-503-billing.json`.
 - [x] **#413 (PRE-A @ `02c605e`)**: The consent note didn't say `store: false` doesn't cover Meta's prompt cache, and the Oct 29 check read only "`store: false` is set". Fix: PILOTS §4 sentence; the check reads the receipt's `store_by_model` / `no_store_param` against PRE-A §10.6 (PILOTS, BLOCKED).
 - [x] **#414 (PRE-A @ `02c605e`)**: RULES-CHECKLIST's "Meta models used" listed EgoBlur Gen 2 unconditionally. Fix: the auditor from the final run's `egoblur.model`.
 - [x] **#415 (PRE-A @ `02c605e`)**: Fixture window ends used `T23:59:00Z`; PRE-A's are `T23:59:59Z`. Fix: all six changed.
+- [x] **#416 (win audit 41)**: Request 19's demo route returned only the result shape, so the landing toggle had no raw clip and step 3 no `egoblur.model`. Fix: it also returns `job` and `audit`; fixtures `demo-hero.json`, `demo-hero-yunet.json`.
+- [x] **#417 (win audit 41)**: `review-ack-cover-spot.json` used a machine `reason`, lacked `spot_id` and a plan region, and its leak rows had no `kind`. Fix: human reason, `spot_id`, a `solid` region on frames 0–11, `kind: "face"` on both leak fixtures.
+- [x] **#418 (win audit 41)**: An escalation that ruled `child` would have said "You decide". Fix: its own drawer sentence; a `child` ruling isn't a suggestion.
+- [x] **#419 (win audit 41)**: The primary track was ambiguous with two `face:*` tracks ("whatever order"). Fix: the first `face:*` in `track_ids` order; the server appends merged tracks after the target's.
+- [x] **#420 (win audit 41)**: §0's kind mapping missed `child_phrase` → `child` (request 14). Fix: added to §0.
+- [x] **#421 (win audit 41)**: Remove was offered on audit-added person items. Fix: §3.3 menu rows and `REMOVE_PERSON` require non-empty `track_ids`.
+- [x] **#422 (win audit 41)**: Developer notes sat inside copy cells (step 3, `audit` stage line, audit detail). Fix: removed; the rule paragraph covers them.
+- [x] **#423 (win audit 41)**: "§2 auditor name rule" pointed at the wrong section. Fix: §1.3 (UI-SPEC, STORYBOARD, #411).
+- [x] **#424 (win audit 41)**: Plural markers didn't cover agreeing verbs ("1 item still need you"). Fix: verbs with a marked subject agree.
+- [x] **#425 (win audit 41)**: No reducer action set `refusal` or `capNote` or expired `refusal`. Fix: `ACTION_REFUSE`, `ACTION_CAP`, `REFUSAL_EXPIRED`, tests R32–R33.
+- [x] **#426 (win audit 41)**: Request 5 didn't say what undoing `cover_spot` does. Fix: removes the item, `covered_by` back to `null`.
+- [x] **#427 (win audit 41)**: No fixtures for the auditor name rule or several Why rows. Fix: `result-clean-yunet.json`, `results-no-egoblur.json`, `job-review-why-rows.json`.
+- [x] **#428 (win audit 41)**: The `created` strings were in no copy deck. Fix: §2.6 row.
+- [x] **#429 (win audit 41)**: `job-review-no-audio.json` had no transcript, breaking the invariants. Fix: PRE-A's no-audio transcript; `source_kind: null` allowed only without audio.
+- [x] **#430 (win audit 41)**: "The only place raw IDs appear" contradicted the keyframe caption and alt text. Fix: exceptions named.
+- [x] **#431 (win audit 41)**: Timed-out POSTs had no outcome. Fix: re-enable, §7 unreachable copy, resume polling for paid requests.
+- [x] **#432 (win audit 41)**: Minor UI-SPEC gaps: `queued` called a status, U chips had no Enter behaviour, demo mode on a non-Sigmora job, the expiry rule didn't list row 0's Approve & render. Fix: each stated.
+- [x] **#433 (win audit 41)**: (audit C) The test-split in-person requirement for labeller B wasn't in BLOCKED, so a remote B silently lost κ. Fix: stated; R3 for the test split otherwise.
+- [x] **#434 (win audit 41)**: (audit C) Copying test data to a separate eval box was due after the freeze needed it. Fix: before Oct 29 23:59 EAT.
+- [x] **#435 (win audit 41)**: (audit C) The consent note promised a receipt prompt-cache sentence the Oct 29 check didn't verify. Fix: the check reads `data_handling.notes`.
+- [x] **#436 (win audit 41)**: (audit C) BLOCKED lacked the widen-the-search and new-start-date pilot messages. Fix: added as defaults.
+- [x] **#437 (win audit 41)**: (audit C) Labeller A's hours summed to 19.5 h but said 18 h. Fix: "19.5 h: 18 h of labelling plus the 1.5 h session".
+- [x] **#438 (win audit 41)**: (audit C) The bucket host wasn't added to the network allowlist. Fix: added to the upload step.
+- [x] **#439 (win audit 41)**: (audit C) Hero 1 instructions lacked the guest's on-mic introduction and allowed strangers' plates and house numbers, and a cast member's real plate. Fix: introduction line; nothing legible but planted props; a fake plate always.
+- [x] **#440 (win audit 41)**: (audit C) The consent note named only Meta as a recipient. Fix: Modal and Cloudflare R2 named.
+- [x] **#441 (win audit 41)**: (audit C) "Collect by Nov 3 12:00 UTC" allowed collecting before the withdrawal window closed. Fix: "at or after".
+- [x] **#442 (win audit 41)**: (audit C) BLOCKED said a render makes the panel read-only. Fix: an edit after it needs another paid render.
+- [x] **#443 (win audit 41)**: (audit C) BLOCKED lacked the clip-length rule, RULES-CHECKLIST missed EgoBlur Gen 1, the header overclaimed "Until it arrives", and O2/O5 (Modal, domain) were missing. Fix: each added.
 
 ## 4. Which builder reads what
 
