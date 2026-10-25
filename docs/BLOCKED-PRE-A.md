@@ -25,6 +25,9 @@ PRE-A's documents are all written. Each item below needs the owner, either throu
   - [ ] `modal.com`
   - [ ] `huggingface.co`
   - Steps: <https://code.claude.com/docs/en/cloud-environments#network-access>. Once it's done, WP0 re-reads the `dev.meta.ai` URLs listed in `docs/API-NOTES.md` and re-tags the `[SNIP]`/`[3P]` facts.
+- [ ] **Keep the test split's mean clip length at most 30 s** when you film and pick the eval clips (SHOTLIST allows 15–45 s; MAXXING O1). The $43.20 test line in `docs/API-NOTES.md` §9.2 is priced at a 30 s mean; a longer mean makes `eval/run.py` cut repetitions of run 3 (never a clip), and the README states the run count per clip.
+- [ ] **Cloud setup script:** in this environment's setup script (MAXXING §6, owner item O3), replace `uv sync --all-groups` with `uv sync --all-groups --no-group audit`. The `audit` group is EgoBlur's CUDA `torch==2.9.1` (multi-GB, `docs/research/egoblur-gen2.md`); sandbox tests use the replay stub (API-NOTES §12, "Deliberate differences").
+- [ ] **Owner code for WP5:** add one `{"code": "…", "kind": "owner", "cap_usd": 6}` entry to the `SAFECUT_ACCESS_CODES` deploy secret before WP5's first live deploy (about Oct 29), for its smoke runs and the live hero-1 end-to-end run (API-NOTES §12 env table). Never commit it.
 
 ## Already decided (no owner input needed)
 Where sources were silent, the docs record a decision instead of a question: see the "Decisions" section of PR #1.

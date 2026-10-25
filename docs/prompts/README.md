@@ -9,7 +9,7 @@ Specs, not code. WP2 (scout, speech) and WP4 (red-team) turn them into prompt fi
 | [escalation.md](escalation.md) | `SAFECUT_ESCALATE_MODEL` | disputed tracks' keyframes + the 3 votes | advisory `suggested_role` in `roles.json` (`escalated: true`); never a keep |
 | [miss-loop.md](miss-loop.md) | `SAFECUT_ROLE_MODEL` | keyframes with SoM + a list of what's already tracked | `roles.json.missed` → new SAM sweeps or object prompts |
 | [redteam.md](redteam.md) | `SAFECUT_ROLE_MODEL` | sampled **rendered** frames | `audit.json.redteam` / `leaks` |
-| [speech-fallback.md](speech-fallback.md) | `muse-spark-1.2` | the prepared MP4 (soundtrack) | `transcript.json` |
+| [speech-fallback.md](speech-fallback.md) | `SAFECUT_SPEECH_FALLBACK_MODEL` (default `muse-spark-1.2`) | the prepared MP4 (soundtrack) | `transcript.json` |
 
 Test vectors for the deterministic rules around these calls (vote aggregation, escalation rulings, miss-loop post-processing, red-team leak decisions): [TEST-VECTORS.md](TEST-VECTORS.md). API-level vectors (SAM parsing, coordinates, time axes, cost, retries) are in API-NOTES §11.
 

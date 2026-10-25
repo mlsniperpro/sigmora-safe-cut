@@ -32,7 +32,7 @@ These are a primary source: the installed package's own signatures and docstring
 
 | Need | API (1.6.2) | Notes and decision |
 |---|---|---|
-| Worker function | `@app.function(image=…, cpu=2, memory=4096, timeout=7200, secrets=[modal.Secret.from_name("safecut")], volumes={"/jobs": vol}, max_containers=…, retries=0)` | `timeout` covers execution and startup ("Maximum execution time for inputs and startup time in seconds"). **7,200 s = the 2 h job wall clock** of API-NOTES §10.1. `retries=0`, because stage retries are the client's job (§10.2) and a Modal retry would double-bill Meta calls |
+| Worker function | `@app.function(image=…, cpu=2, memory=4096, timeout=7200, secrets=[modal.Secret.from_name("safecut")], volumes={"/jobs": vol}, max_containers=…, retries=0)` | `timeout` covers execution and startup ("Maximum execution time for inputs and startup time in seconds"). **7,200 s = the 2 h limit per processing segment** of API-NOTES §10.1: each segment (up to review-ready; render + audit) is its own worker call, so the creator's review never runs inside one. `retries=0`, because stage retries are the client's job (§10.2) and a Modal retry would double-bill Meta calls |
 | GPU audit function | the same, with `gpu="T4"` (or `"L4"`) | holds the EgoBlur weights in the Volume; `enable_memory_snapshot=True` can cut cold starts. Measure both |
 | Public API | `@modal.asgi_app(custom_domains=[...])` on a light function (FastAPI only) | `asgi_app` takes `custom_domains`. The 150 s web timeout (§ "Features") means: return the job id at once |
 | Start a job, then poll | worker `.spawn(...)` → `FunctionCall`; `FunctionCall.get(timeout=0)` to poll | job state also goes in the Volume, so `GET /jobs/{id}` reads it without holding a call open |

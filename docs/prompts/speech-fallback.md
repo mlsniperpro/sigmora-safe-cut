@@ -1,6 +1,6 @@
 # Speech fallback (v0): Muse Spark 1.2 speaker-attributed transcript
 
-**Model:** `muse-spark-1.2` (Standard; **never** `-contributor`) · **effort** `low` · **used only when** `SAFECUT_SPEECH_SOURCE=spark-1.2`, or when Muse Voice Transcribe fails after retries · **output** `transcript.json` (ARCHITECTURE §3.3) with `source: "muse-spark-1.2"`
+**Model:** `SAFECUT_SPEECH_FALLBACK_MODEL` (default `muse-spark-1.2`, Standard; **never** `-contributor`; AGENTS rule 8: never hard-coded in logic) · **effort** `low` · **used only when** `SAFECUT_SPEECH_SOURCE=spark-1.2`, or when Muse Voice Transcribe fails after retries · **output** `transcript.json` (ARCHITECTURE §3.3) with `source` = the model ID actually called and `source_kind: "fallback"` (PR #2 UI-SPEC request 16; the primary path writes `"primary"`)
 
 ## Purpose
 Provide speech evidence ("Hi, I'm Amina") when the primary sensor, `muse-voice-transcribe-1.0` (diarized turns with timestamps), is unavailable or WP0 shows it's worse. Muse Spark 1.3's audio is documented as degraded, which is why 1.2 is the fallback (MAXXING §2).
@@ -52,7 +52,7 @@ Provide speech evidence ("Hi, I'm Amina") when the primary sensor, `muse-voice-t
 ## Trust and post-processing
 - **Timestamps from the LLM are untrusted** (the same rule as DESIGN §2.3 for video times). Use them only to place a turn on the role pass's frame axis with a **±1.5 s tolerance**, widening the frame range of each turn accordingly. A turn's timing must never be the only evidence for a `participant` vote. The burned-in frame numbers on the keyframes stay authoritative.
 - Clamp start and end to [0, clip duration]. Drop turns with `end < start`. Sort by `start`.
-- **Dropped-audio check:** if `usage.input_tokens` is below a WP0-measured floor for the clip's duration (i.e. the audio wasn't ingested), or if `has_speech == false` while the creator's note or the scene pass says there's dialogue, mark the transcript `source: "muse-spark-1.2", degraded: true`. **Decided:** add `degraded: bool = false` to the `transcript.json` contract (ARCHITECTURE §3.3), so a dropped soundtrack is visible and never silent. WP0 implements it in `contracts.py`, and WP2 must not emit it before that lands. The role pass then gets "speech unavailable", and participants can only be supported by visual evidence. That tends toward `unsure` → hidden, the safe direction.
+- **Dropped-audio check:** if `usage.input_tokens` is below a WP0-measured floor for the clip's duration (i.e. the audio wasn't ingested), or if `has_speech == false` while the creator's note or the scene pass says there's dialogue, mark the transcript `degraded: true` (with `source` = the configured `SAFECUT_SPEECH_FALLBACK_MODEL` ID and `source_kind: "fallback"`). **Decided:** add `degraded: bool = false` to the `transcript.json` contract (ARCHITECTURE §3.3), so a dropped soundtrack is visible and never silent. WP0 implements it in `contracts.py`, and WP2 must not emit it before that lands. The role pass then gets "speech unavailable", and participants can only be supported by visual evidence. That tends toward `unsure` → hidden, the safe direction.
 
 ## Failure handling
 - HTTP failure after the transport attempts of API-NOTES §10.2, or a schema failure after one re-ask (§10.6) → an empty `turns` list with `degraded: true`. Never block the pipeline on speech.
