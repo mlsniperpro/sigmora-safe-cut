@@ -1,6 +1,6 @@
 # Speech fallback (v0): Muse Spark 1.2 speaker-attributed transcript
 
-**Model:** `SAFECUT_SPEECH_FALLBACK_MODEL` (default `muse-spark-1.2`, Standard; **never** `-contributor`; AGENTS rule 8: never hard-coded in logic) · **effort** `low` · **used only when** `SAFECUT_SPEECH_SOURCE=spark-1.2`, or when Muse Voice Transcribe fails after retries · **output** `transcript.json` (ARCHITECTURE §3.3) with `source` = the model ID actually called and `source_kind: "fallback"` (PR #2 UI-SPEC request 16; the primary path writes `"primary"`)
+**Model:** `SAFECUT_SPEECH_FALLBACK_MODEL` (default `muse-spark-1.2`, Standard; **never** `-contributor`; AGENTS rule 8: never hard-coded in logic) · **effort** `SAFECUT_SPEECH_FALLBACK_EFFORT`, default **`omit`** (Meta's Spark 1.2 audio examples send no `reasoning` field) · `max_output_tokens` ≥ 4,000 ("or a transcript can come back empty with `finish_reason: length`", [video-understanding](https://dev.meta.ai/docs/video-understanding)) · **used only when** `SAFECUT_SPEECH_SOURCE=spark-1.2`, or when Muse Voice Transcribe fails after retries · **output** `transcript.json` (ARCHITECTURE §3.3) with `source` = the model ID actually called and `source_kind: "fallback"` (PR #2 UI-SPEC request 16; the primary path writes `"primary"`)
 
 ## Purpose
 Provide speech evidence ("Hi, I'm Amina") when the primary sensor, `muse-voice-transcribe-1.0` (diarized turns with timestamps), is unavailable or WP0 shows it's worse. Muse Spark 1.3's audio is documented as degraded, which is why 1.2 is the fallback (MAXXING §2).
