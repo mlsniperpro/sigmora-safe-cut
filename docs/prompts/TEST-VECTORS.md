@@ -63,7 +63,7 @@ Swept so far: `face, person, license plate, screen, phone, document, name badge`
 | M10 | the same `envelope` from votes 1 and 2, points 30 px apart on the same frame (a 1280×720 diagonal is 1,469 px, 5% = 73 px) | merged into one item |
 | M11 | the role re-pass proposes `envelope` at F420 for loop 2, and the step-6 budget check stops before loop 2's request, or the batched object-prompt request fails after retries | no SAM result → **static hidden box** at F420 ±`max(temporal.extend, round(job.fps))` = F390–F450 at 30 fps (from `box`, else a square of side 6% of `min(W, H)`), `needs_you`. Never dropped |
 | M12 | loop 2 proposes `sam_phrase "Kids"` at F600 and SAM tracks it, or it falls back to a static box | singularised `kid` → concept `person`, track `person:n` (next free), `child_phrase: true`; WP3: `kind: child`, `locked: true`, never escalated; it does **not** count toward the `scene.children` match |
-| M13 | phrases `little girl`, `school kids`, `babies`, `schoolchildren`, `passers-by`, `old men` | tokens → `girl`, `kid`, `baby`, `schoolchild` (child set), `passerby`, `man` (person set): the first four are `person:n` with `child_phrase: true`; the last two are `person:n` |
+| M13 | phrases `little girl`, `school kids`, `babies`, `schoolchildren`, `passers-by`, `old men`, `driver license` | child set on any token: `little girl`, `school kids`, `babies`, `schoolchildren` → `person:n` with `child_phrase: true`; person set on the head noun: `passers-by` (→ `passerby`), `old men` (→ `man`) → `person:n`; `driver license` (head noun `license`) → an object concept, judged `sensitive` |
 
 ## 4. Red-team leak decisions (`redteam.md`)
 Frame 50 has one approved kept-clear item, `A` (a participant's face), visible at box [100, 100, 200, 200]. Frame 1280×720.
@@ -77,6 +77,7 @@ Frame 50 has one approved kept-clear item, `A` (a participant's face), visible a
 | L5 | a box with 3 integers | **leak**, with the whole-frame box [0, 0, 1280, 720] |
 | L6 | frame 50 missing from the output; also missing after one re-send | `unresolved += 1` for frame 50 only; `blocked_reason: "audit_failed"` |
 | L11 | `text` "TODAY'S SPECIALS" at [110, 110, 190, 190] on frame 50, where `B` is an approved non-sensitive `menu:1` track (a miss-loop concept) visible at [100, 100, 200, 200] | object concept, `text` finding, IoU 0.64 → **not a leak** (any approved non-sensitive object track matches `text`/`screen`) |
+| L12 | EgoBlur `face` detection at [120, 110, 160, 150] on frame 50, inside an approved **`person:`** track's box [80, 60, 260, 560] but overlapping no approved `face:` track | **leak** (a `person:` box never excludes a face detection) |
 | L9 | a red-team pass over 40 frames is skipped because its estimate exceeds the job cap | `unresolved += 40`, `blocked_reason: "over_budget"`, `audit_budget_cause: "job_cap"`; publishing is off (invariant: `blocked_reason != null` ⇔ `unresolved > 0`) |
 | L10 | EgoBlur reports `frames_scanned` 300 of `frames` 900 (any cause: a crash, a timeout) | the 600 unscanned frames count in `unresolved`, `blocked_reason: "audit_failed"`; publishing is off. There is no sampled EgoBlur mode |
 | L7 | `text` read *through* a redaction (inside a hidden item's region) | **leak** + flag `redaction_too_weak` → that item is re-rendered as `solid` |

@@ -10,15 +10,15 @@
 ## Done (evidence)
 - Deliverables: `docs/API-NOTES.md` (§1–§12; §9.2 the $150 ledger; §12 = **one list** of contract rows, a config/env table, "Deliberate differences from the WP files", and "Requests to PRE-B"), `docs/prompts/*.md` (6 specs + `TEST-VECTORS.md`), `docs/research/*.md`, `docs/BLOCKED-PRE-A.md`, `docs/WIN-CHECKLIST-PRE-A.md` (criteria map, §4 PRE-A↔PRE-B facts, §5/§6 full audit trail).
 - Ledger **$147.00 planned, $3.00 headroom** (pre-window `/healthz` budget line $0.80, plan $0.47; PR #2 @ `43e250f` carries the matching "recording code at most $15.00"): `awk` line in `.agent/win/SAFECUT-PRE-A/calc/ledger.md` (mirrors API-NOTES §9.2). Per clip: $1.12 / 30 s at 8 fps; $2.02–2.09 / 60 s ($2.26–2.34 no cache, A10).
-- Audits #1–#33 logged in WIN-CHECKLIST §6 (end of file). Each audit = three fresh agents in parallel (A internal arithmetic/consistency, B brief + repo specs, C vs PR #2 incl. a status table of every [P]); since 13:15 UTC they run as `sonnet`/`high` (owner rule). #31 20, #32 18, #33 ~11 findings; all fixed or filed. **Clean count: 0.** Audit #33 B was still running at the push; collect or re-run it.
+- Audits #1–#34 logged in WIN-CHECKLIST §6 (end of file). Each audit = three fresh Sonnet/high agents in parallel (A internal arithmetic/consistency, B brief + repo specs, C vs PR #2 incl. a [P] status table); #34 added a WP0 builder walk-through. **`dev.meta.ai` is reachable since 2026-10-25**: facts can be checked live (pages under https://dev.meta.ai/docs). A live-docs sweep of every [SNIP]/[3P]/probe fact was running at this push; collect or re-run it. **Clean count: 0.**
 - Last pushes: `071da22` (08:55 UTC), then the wind-down push (this commit's parent chain). PR #1 body was refreshed ~09:00 UTC and still shows `071da22` and audits to #27.
 
 ## In flight
-- Audits #32–#33's fixes are in this push. **Audit #34 is next** on the pushed HEAD (sonnet/high).
+- Audit #34's fixes are in this push. **Audit #35 is next** on the pushed HEAD (sonnet/high).
 
 ## Next steps (in order)
 1. Claim the lease (`LEASE` → `status=active`), commit `lease: claim SAFECUT-PRE-A`, push.
-2. Run audit #34 on HEAD: three parallel fresh agents with the lens prompts above, read-only, "report ONLY builder-impacting defects … if nothing, say exactly NO NEW FINDINGS", pointing them at the newest edits (#29/#30: `transcript.json`/`roles.json` `status`, `hold` enum and precedence, `child_phrase` + WP3 rule 0 + token-wise phrase sets, YuNet fallback, checkpoint keys, empty-transcript rule, pinned-job purge exemption).
+2. Run audit #35 on HEAD: three parallel fresh agents with the lens prompts above, read-only, "report ONLY builder-impacting defects … if nothing, say exactly NO NEW FINDINGS", pointing them at the newest edits (#29/#30: `transcript.json`/`roles.json` `status`, `hold` enum and precedence, `child_phrase` + WP3 rule 0 + token-wise phrase sets, YuNet fallback, checkpoint keys, empty-transcript rule, pinned-job purge exemption).
 3. Fix findings, log them in WIN-CHECKLIST §6, commit; repeat until **two consecutive rounds on the same HEAD** find nothing. Record the last clean audit only in the PR comment, so no docs change follows it.
 4. Re-check PR #2 (`git fetch origin pre-b-product`); if PRE-B fixed any [P] item, mark it [x] in WIN-CHECKLIST §4 and in API-NOTES §12 "Requests to PRE-B".
 5. Refresh the PR #1 body (status, Decisions, Requests, Evidence with real command output), push, show `git status -sb`, post the final docs status comment on PR #1.

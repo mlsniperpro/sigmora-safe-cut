@@ -3,7 +3,7 @@
 **Model:** `SAFECUT_SCENE_MODEL` (default `muse-spark-1.3`; `muse-wonder-1.0` only if WP0 probe f justifies it) · **effort** `medium` · **one call per clip** · **output** `scene.json` (ARCHITECTURE §3.4)
 
 ## Purpose
-Set the context for the role pass: what kind of video this is, who the creator or host is, and who is introduced, interviewed or performing. It also lists candidate sensitive objects for the miss loop. **It decides nothing.** No track IDs exist in the video it sees, and video timestamps are untrusted (DESIGN §2.3). Its output only reaches the role pass as text.
+Set the context for the role pass: what kind of video this is, who the creator or host is, and who is introduced, interviewed or performing. It also lists candidate sensitive objects for the miss loop. **It can never create a keep on its own.** No track IDs exist in the video it sees, and video timestamps are untrusted (DESIGN §2.3). Its text reaches the role pass as context, and WP3's fail-closed gates read its `status`, `children`, `speaker` and introduction fields (API-NOTES §12).
 
 ## Inputs
 1. The prepared clip, `input_video` with `file_id` (H.264 MP4, ≤1280 px). The soundtrack rides along, but Spark 1.3 audio is degraded, so the transcript is the speech evidence.
