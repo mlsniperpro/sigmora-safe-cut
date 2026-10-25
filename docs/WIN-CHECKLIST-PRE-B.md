@@ -420,6 +420,7 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#384 (win audit 39)**: SCHEDULE R2 said "about 6 h for A"; the midpoints sum to 6.5 h. Fix: 6.5 h with the sum.
 - [x] **#385 (win audit 39)**: #23, #29, #128, #140 and #237 cited evidence since replaced. Fix: marked superseded or annotated.
 - [x] **#386 (main-session self-review)**: After #288 split the Nov 3 step, the recording-code sub-bullet sat under the VO step. Fix: moved under the screen-recordings step.
+- [x] **#387 (main-session self-review)**: STORYBOARD §3's order never placed H1A's timed review and its undo, which must come between SR-01 and SR-02. Fix: placed there; the doubled citation tidied.
 
 ## 4. Which builder reads what
 
