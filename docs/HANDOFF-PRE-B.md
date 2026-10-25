@@ -1,14 +1,15 @@
-# HANDOFF (PRE-B), updated 2026-10-25 08:35 UTC
+# HANDOFF (PRE-B), wound down Sun Oct 25 09:20:38 UTC 2026
 
-**State:** branch `pre-b-product`, PR #2 (the only PRE-B PR). Lease: `.agent/win/SAFECUT-PRE-B/LEASE`, held by `session_01Tjy33tfkpth8jMhhnhhcYL` since 2026-10-25 08:10 UTC.
+**State:** branch `pre-b-product`, PR #2 (the only PRE-B PR). Lease `.agent/win/SAFECUT-PRE-B/LEASE` released by `session_01Tjy33tfkpth8jMhhnhhcYL`. Everything below is pushed in the wind-down commit (the owner's WIND DOWN order overrides the 45-minute push spacing; the previous push was 08:55 UTC).
 
 **Done:**
-- All PRE-B deliverables exist. The WIN-CHECKLIST has 0 unchecked lines and covers findings #1–#287.
-- Reconciled with PRE-A @ `4bb3cec` (its last docs commit; `origin/pre-a-research` head `32a0574` adds only its handoff), #204–#211. PRE-A's three `[P]` rows in its WIN-CHECKLIST §4 are satisfied on this branch; marking them `[x]` is PRE-A's edit (AGENTS rule 2).
-- Audit round 24 (#212–#229) round 25 (#230–#241) round 26 (#242–#257) and round 27 (#258–#267), round 28 (#268–#277), round 29 (#278–#287): three parallel fresh auditors each (cross-package facts, UI-SPEC internals, labels/pilots/storyboard). All findings fixed.
+- All PRE-B deliverables exist. The WIN-CHECKLIST has 0 unchecked lines and covers findings #1–#330.
+- Reconciled with PRE-A @ `4bb3cec` (#204–#211). PRE-A's three `[P]` rows in its WIN-CHECKLIST §4 are satisfied on this branch; marking them `[x]` is PRE-A's edit (AGENTS rule 2).
+- Audit rounds 24–35 this session (three parallel fresh auditors each: cross-package facts, UI-SPEC internals, labels/pilots/storyboard), each on a fixed commit; every finding fixed. No round has been clean yet; findings had shrunk to small regressions from earlier fixes (mostly the UI-SPEC §10.5 undo model and the Nov 3 recording sequence).
 
 **Open for the next session:**
-1. Run full audit rounds (same three scopes, fresh agents, `git diff 22283eb..HEAD` as the hot zone) until two rounds in a row find nothing new. Log findings as #288+.
-2. Post the final docs status comment on PR #2.
-3. Push spacing: pushes are ≥ 45 min apart. Squash fixups before pushing.
-4. Before PR #2 merges, remove `.agent/` from the branch (session hand-off state, not a deliverable; #257).
+1. Audit round 36 was running on `5fe8291` (= this commit's docs) when the wind-down came; no result. Re-run it (same three scopes, `git diff 22283eb..HEAD` as the hot zone). Log findings as #331+.
+2. Repeat full rounds until two in a row find nothing new.
+3. Refresh the PR #2 body (draft text: Decisions 1–19, requests incl. EVAL creator time n = 2, SHOTLIST storage, DEMO beats 5 and 7, WP5 request 21) and post the final docs status comment on PR #2.
+4. Push spacing: ≥ 45 min apart; squash fixups before pushing.
+5. Before PR #2 merges, remove `.agent/` from the branch (#257).

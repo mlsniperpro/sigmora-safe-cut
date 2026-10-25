@@ -318,9 +318,52 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#282 (win audit 29)**: No fixture pinned a review-page `429`. Fix: `error-429-render-code-cap.json` and `error-429-render-daily-cap.json`.
 - [x] **#283 (win audit 29)**: STORYBOARD 8.3 used `{n_pilots}` and `{n_capped}` with no source row. Fix: STORYBOARD §2 row and PILOTS §6 `metrics.json` fields.
 - [x] **#284 (win audit 29)**: #274 was incomplete: with 1–2 pilots the "median" next to a named quote is that pilot's own time. Fix: STORYBOARD 8.3 shows medians only when `n_pilots` ≥ 3.
-- [x] **#285 (win audit 29)**: EVAL's "Creator time" is timed on 3 clips, but the owner was asked to time only H1A. Fix: BLOCKED times H1A, H2 and H3 (only H1A recorded); STORYBOARD §2 says `{manual_minutes}` is H1A's value and the README reports all 3.
-- [x] **#286 (win audit 29)**: The Nov 3 VO had no ordering against the results and script it speaks. Fix: results committed by Nov 3 18:00 EAT (STORYBOARD §2, PILOTS §6–7), script final by 20:00 EAT, VO after it (BLOCKED; Nov 4 morning buffer).
+- [x] **#285 (win audit 29)**: EVAL's "Creator time" is timed on 3 clips, but the owner was asked to time only H1A. Fix: BLOCKED times H1A, H2 and H3 (only H1A recorded); STORYBOARD §2 says `{manual_minutes}` is H1A's value and the README reports all 3. (Narrowed to H1A and H1B in #290.)
+- [x] **#286 (win audit 29)**: The Nov 3 VO had no ordering against the results and script it speaks. Fix: results committed by Nov 3 18:00 EAT (STORYBOARD §2, PILOTS §6–7), script final by 20:00 EAT, VO after it (BLOCKED; Nov 4 morning buffer). (Recordings split from the VO in #288.)
 - [x] **#287 (win audit 29)**: The cut-8.3 fallback line advertised Sigmora even if the rules exclude company products. Fix: STORYBOARD §1 note adds the RULES-CHECKLIST §1 condition.
+- [x] **#288 (win audit 30)**: #286 put the paid hero recordings after 20:00 EAT, though their results were due at 18:00. Fix: BLOCKED splits them: recordings Nov 3 morning (live runs by 16:00 EAT), results by 18:00, VO after 20:00.
+- [x] **#289 (win audit 30)**: The "Nov 4 buffer" covered paid recordings, but the recording code expires Nov 3 23:59 UTC. Fix: the buffer is for the VO only.
+- [x] **#290 (win audit 30)**: "Creator time" on H1A, H2 and H3 had no Safe Cut run for H3 and measured to "Ready for you", not to an approved render. Fix: H1A and H1B (both rendered live), upload to approved render, n = 2 reported, EVAL's "3 clips" filed as a request.
+- [x] **#291 (win audit 30)**: PILOTS §6 hard-coded "n = 5". Fix: "n = `{n_pilots}`".
+- [x] **#292 (win audit 30)**: `n_pilots` meant "pilots who finished", so shot 8.3's "`{n_capped}` of `{n_pilots}` didn't finish" and its ≥ 3 gate could count wrongly. Fix: PILOTS §6 and STORYBOARD §2: `n_pilots` includes capped pilots, `n_capped` is its subset; Risk 3 reworded to match 8.3.
+- [x] **#293 (win audit 30)**: §3.5 rule 0 and the `code_cap` note had no reducer state or clearing rule. Fix: UI-SPEC §10.5 `refusal` and `capNote` (never cleared by `SERVER_ACK` or `GET`), tests R25–R26.
+- [x] **#294 (win audit 30)**: After a delete, polling could replace "Deleted." with the §7 expiry copy, and a failed `DELETE` had no handling. Fix: UI-SPEC §10.4 `deleted` state (polling stops, later responses ignored; non-2xx keeps the page with an error).
+- [x] **#295 (win audit 30)**: A `429` on `POST /review` matched two §10.3 rows, and a `429` on a polling `GET` matched none. Fix: `POST /review` 429 → `SERVER_REJECT` with the rate-limit toast; a polling 429 waits `Retry-After` or 60 s.
+- [x] **#296 (win audit 30)**: The daily-cap copy pointed at a home-page link the job page doesn't have. Fix: a job-page variant without it (§2.6, §2.6.1).
+- [x] **#297 (win audit 30)**: The `needs_you` fixtures didn't set `has_render`, which now picks the delete confirm. Fix: mock invariant `has_render: true` whenever `result.video_url` is set.
+- [x] **#298 (win audit 31)**: R26 expected a render `202` to move the bar, but no reducer action or fixture handled it. Fix: UI-SPEC §10.5 `ACTION_ACK(button, status)` and fixture `render-ack.json`.
+- [x] **#299 (win audit 31)**: The `deleted` state had no fixtures or tests, and a `404` on `DELETE` (job already gone) showed an error forever. Fix: `404` on `DELETE` counts as success; fixtures `delete-ok.json`, `error-404-delete.json`, `error-500-delete.json`; tests R27–R28.
+- [x] **#300 (win audit 31)**: In `needs_you` with `code_cap`, the same sentence could show three times. Fix: `capNote` isn't set there (§10.5).
+- [x] **#301 (win audit 31)**: The polling rule called `deleted` both permanent and restartable. Fix: its own sentence: stops for good.
+- [x] **#302 (win audit 31)**: BLOCKED told the owner to render H2, which PRE-A's $12 recording line doesn't pay for. Fix: the paid list matches STORYBOARD §3 and PRE-A §9.2 (H2 isn't rendered).
+- [x] **#303 (win audit 31)**: The Safe Cut side of "Creator time" was raw wall-clock, which would include the Nov 3 recording sessions and retakes. Fix: STORYBOARD §2 sums measured parts (stage timings plus a stopwatch-timed uninterrupted review, BLOCKED), excluding the gap. The timed pass's edits are undone before SR-02–SR-04, so those takes still start from the Needs-you state.
+- [x] **#304 (win audit 31)**: SR-04 makes edits, so a take recorded after SR-08's render would need a paid re-render and leave SR-07 stale. Fix: STORYBOARD §3 recording order (every SR-02–SR-04 take before SR-08; no edit after it).
+- [x] **#305 (win audit 32)**: §10.3's general rows caught `DELETE` answers against §10.4 (404 as expiry, 500 as a full-page error), a `429` on `DELETE` and a failed `/try` delete had no rule. Fix: one §10.3 Delete row (incl. `/try`), with the general rows scoped.
+- [x] **#306 (win audit 32)**: Row 2 and its fixture said a `429 code_cap` in `needs_you` shows a line the reducer never sets. Fix: both say it changes nothing.
+- [x] **#307 (win audit 32)**: The reducer fixture lacked `spots`, `refusal` and `capNote`. Fix: added.
+- [x] **#308 (win audit 32)**: [Delete now] on a failed-job page had no named confirm. Fix: the same `has_render` choice as the review bar.
+- [x] **#309 (win audit 32)**: The Ctrl+Z procedure relied on undo-stack behaviour the reducer didn't define (a second Ctrl+Z could re-revert the same edit). Fix: UI-SPEC §10.5 stack rule, §3.8 shortcut definition, test R29; BLOCKED cites §10.5.
+- [x] **#310 (win audit 32)**: SR-04 and SR-05 takes had no reset, so later takes (and SR-02) showed the wrong state. Fix: STORYBOARD §3 order (SR-02/03 first) and an off-camera Ctrl+Z before each later edit take.
+- [x] **#311 (win audit 32)**: STORYBOARD's summed-parts creator time redefined EVAL §2 without marking it. Fix: marked as superseding for hero runs and filed to EVAL's owner; pilot creator time stays wall-clock and is reported separately.
+- [x] **#312 (win audit 32)**: The timed review said "every decision you'd make for real" but never said to stop before Approve & render (paid, read-only after). Fix: BLOCKED stops the stopwatch there without pressing it.
+- [x] **#313 (win audit 32)**: `review_s` was noted in minutes but summed with seconds. Fix: BLOCKED notes seconds.
+- [x] **#314 (win audit 32)**: Ctrl+Z only works with focus in the chip area, which BLOCKED and STORYBOARD didn't say. Fix: both say to focus a chip first.
+- [x] **#315 (win audit 32)**: #299 claimed tests for `error-404-delete.json`, but no test used it. Fix: UI-SPEC test R28b.
+- [x] **#316 (win audit 33)**: §10.4's `deleted` row sent a `DELETE` 429 to the generic error, against §10.3's Delete row (#305 incomplete). Fix: §10.4 defers to the Delete row.
+- [x] **#317 (win audit 33)**: The toast [Undo] had no defined interaction with the undo stack (out-of-order or dead buttons). Fix: UI-SPEC §10.5: one edit toast at a time, any undo dismisses its toast; test R30.
+- [x] **#318 (win audit 33)**: A rejected undo was "put back" with no position. Fix: at its original position.
+- [x] **#319 (win audit 33)**: The Ctrl+Z undo applied to H1B too, so R-03B would render the model's defaults, not the timed review's decisions (and H1A's final take wasn't tied to the timed pass). Fix: BLOCKED undoes H1A only, its last SR-04 take re-makes the timed decisions; H1B keeps them for R-03B; STORYBOARD §3 order says so.
+- [x] **#320 (win audit 33)**: STORYBOARD §3 said only SR-01 and SR-08 start paid work and never said when the H1B and H2 runs start. Fix: the budget paragraph lists every paid start; the order starts H1B and H2 right after SR-01.
+- [x] **#321 (win audit 34)**: §10.5 never said when an edit goes onto `undo` or that a rejected edit leaves it. Fix: push rule (every edit-sending action pushes when sent; [Undo] disabled while pending), `SERVER_REJECT` removes it; test R31.
+- [x] **#322 (win audit 34)**: SR-04 scripts a Hide, which can contradict the timed review the render must match (#319). Fix: BLOCKED and STORYBOARD §3: SR-04 follows the timed decision (shot 4.3 says so if it's Keep clear), other timed edits re-made off camera before SR-08.
+- [x] **#323 (win audit 34)**: With 1–2 pilots, the README and SUBMISSION could print a credited pilot's own time next to their quote, against the anonymous-timings consent. Fix: PILOTS §6 extends the 8.3 rule to every output.
+- [x] **#324 (win audit 34)**: `{h1_frames_scanned}` and `{h1_leaks_fixed}` didn't say which H1 job, though H1A and H1B are both rendered. Fix: STORYBOARD §2 and the renders list name H1A (the SR-08 render shown in SR-07).
+- [x] **#325 (win audit 35)**: #323 worked output by output, so with 1 pilot the README timing and a named quote elsewhere (or `per_pilot.csv`) still identified them. Fix: PILOTS §6: with ≤ 2 pilots every quote carries only the anonymous credit, across the whole submission.
+- [x] **#326 (win audit 35)**: #322 wasn't carried into STORYBOARD shot 4.3 and the SR-04 row, which still scripted a Hide. Fix: both apply the timed review's decision, with the Keep-clear toast.
+- [x] **#327 (win audit 35)**: #324 left shot 6.2's source as "H1". Fix: H1A (the SR-08 render).
+- [x] **#328 (win audit 35)**: The edit-failed [Try again] had no reducer action, and the reject rules left a retry undefined. Fix: UI-SPEC §10.5 `RETRY(edit_id)` (guards re-run, same `edit_id`, re-pushed); test R14b.
+- [x] **#329 (win audit 35)**: `SERVER_REJECT` never dropped the edit from `pending`, and `UNDO`'s edit never entered `pending`. Fix: both stated; R14 expects `pending` empty.
+- [x] **#330 (win audit 35)**: §3.4 still described a one-level undo. Fix: the row describes the stack.
 
 ## 4. Which builder reads what
 
@@ -338,6 +381,6 @@ Every finding from every round, with its fix. "Round" names the review that foun
 
 - [P] **Risk 1: Hero footage late** (effect: Demo 25%, Impact story). Mitigation: Default plan R4 → R1; synthetic-clip and mock paths keep code moving. Owner input: Film hero 1 by Oct 25 18:00 EAT.
 - [P] **Risk 2: No labeller B** (effect: Weaker Impact evidence (no κ)). Mitigation: R3 with honest "not measured". Owner input: Recruit B.
-- [P] **Risk 3: Fewer than 5 pilots** (effect: Weaker Impact). Mitigation: Report the real count; shot 8.3 is cut. Owner input: Send outreach Oct 27.
+- [P] **Risk 3: Fewer than 5 pilots** (effect: Weaker Impact). Mitigation: Report the real count; shot 8.3 shows a permitted quote with medians only from 3 pilots, and is cut with no permitted pilot data (STORYBOARD 8.3). Owner input: Send outreach Oct 27.
 - [P] **Risk 4: Official rules differ from MAXXING** (effect: Any). Mitigation: RULES-CHECKLIST: an action for every answer. Owner input: Accept the rules at kickoff.
 - [P] **Risk 5: API field names drift between WP5 and WP6** (effect: Demo breaks). Mitigation: UI-SPEC §10.1: mocks follow WP5's names. Owner input: —.
