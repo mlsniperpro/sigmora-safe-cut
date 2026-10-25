@@ -20,7 +20,7 @@ Judging facts are from [MAXXING.md](MAXXING.md) §1 and §3 (to be re-checked ag
 - [x] **Step 1: `should_hide` rules, 15+ edge cases (all 8 named)**. Evidence: LABELING-GUIDE §1–3 (31 cases: named ones are #1, #2, #4, #6, #8–9, #10, #12, #14).
 - [x] **Step 1: Box conventions, resolving disagreements**. Evidence: LABELING-GUIDE §2.3, §5.
 - [x] **Step 1: CVAT on a build box (not the Intel Mac), project, labels, interpolation, MOT export, privacy**. Evidence: CVAT-SETUP §1–7.
-- [x] **Step 1: Label JSON + MOT, fully worked 10 s example**. Evidence: LABEL-FORMAT §2–5 (plus schema §6, validator §7 with 29 codes incl. single-labeller LBL032–034, examples §8 with V1–V6 and X1–X29, test vectors §9).
+- [x] **Step 1: Label JSON + MOT, fully worked 10 s example**. Evidence: LABEL-FORMAT §2–5 (plus schema §6, validator §7 with 30 codes incl. single-labeller LBL032–035, examples §8 with V1–V7 (+V6b) and X1–X30, test vectors §9).
 - [x] **Step 1: Hours per clip; ~18-clip plan; reduced plan**. Evidence: [SCHEDULE.md](labeling/SCHEDULE.md) §2–4. Note: estimates until timed
 - [x] **Step 2: Every WP6 screen: wireframes desktop + mobile, copy deck, states, keyboard/a11y, contract fields**. Evidence: UI-SPEC §1–9, build contract §10.
 - [x] **Step 2: The Why? drawer in detail; progress-stage labels**. Evidence: UI-SPEC §4, §2.5.
@@ -141,7 +141,7 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#105 (win audit 9)**: One-keyframe row missing from the drawer's precedence list. Fix: UI-SPEC §4.3.
 - [x] **#106 (win audit 9)**: Escalation sentence said "checks disagreed" for a unanimous one-keyframe case. Fix: UI-SPEC §4.3.
 - [x] **#107 (win audit 9)**: Too-long or broken clips found after upload had no failure reason; client and server limits differed. Fix: UI-SPEC §2.6, §10.2, §10.3 (`too_long`/`too_large`/`bad_media`; one 60.05 s rule), request 17.
-- [x] **#108 (win audit 9)**: Nov 3 recordings would exceed the $3/day public cap. Fix: STORYBOARD §3 (owner recording code, $6 cap).
+- [-] **#108 (win audit 9)**: Nov 3 recordings would exceed the $3/day public cap. Fix: STORYBOARD §3 (owner recording code, $6 cap). **Superseded by #128:** the recording code is now $12 (bound $14.86, #207).
 - [x] **#109 (win audit 9)**: "Review them" for unresolved audit spots led to a panel with nothing to fix. Fix: UI-SPEC §3.3 "Unfixed spot" chips, `cover_spot`, request 18.
 - [x] **#110 (win audit 9)**: Pilot clip spec didn't mention the 150 MB limit. Fix: PILOTS §5.
 - [x] **#111 (win audit 9)**: `{h1a_seconds}` sourced from a run without a `job.json`. Fix: STORYBOARD §2 (hero-live run).
@@ -156,7 +156,7 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#120 (win audit 10)**: A-labels collided between audit items and unfixed spots. Fix: UI-SPEC §0, §3.3 (U1… for spots).
 - [x] **#121 (win audit 10)**: Duration rule still described a 422 path. Fix: UI-SPEC §10.2 (`failure.duration_s`, fallback copy).
 - [x] **#122 (win audit 10)**: Landing hero job would be deleted after 24 h and needs a code. Fix: UI-SPEC §1.6, request 19 (`GET /v1/demo/{hero_id}`, pinned).
-- [x] **#123 (win audit 10)**: Recording budget used withdrawn costs and undercounted runs. Fix: STORYBOARD §3 ($10 owner code from PRE-A's hero line).
+- [-] **#123 (win audit 10)**: Recording budget used withdrawn costs and undercounted runs. Fix: STORYBOARD §3 ($10 owner code from PRE-A's hero line). **Superseded by #128:** a $12 code, and PRE-A has no hero line (#207).
 - [x] **#124 (win audit 11)**: Pilot estimate's margin ignored 60 s clips. Fix: PILOTS §5 (clips 15–45 s; ≈ $15–17 for 10 clips).
 - [-] **#125 (win audit 11)**: Early pilots could use up the shared $20 before later ones ran. Fix: PILOTS §5 (≤ 2 jobs per code), UI-SPEC request 20. **Superseded by #135:** the per-code job count was removed in round 13; the $6 code cap and the $20 pool bound spend instead.
 - [x] **#126 (win audit 11)**: Running out of the shared pilot total pointed pilots to a new code. Fix: UI-SPEC §2.6 `pilot_pool_cap` copy.
@@ -191,10 +191,10 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#155 (win audit 16)**: Read-only chips under `job_cap` had no reducer guard. Fix: UI-SPEC §10.5 `readOnly` (rendering, needs_you), R23, R24.
 - [x] **#156 (win audit 16)**: Bar chosen by `blocked_reason` showed the wrong action after a reload. Fix: UI-SPEC §3.5 (by job status + cause).
 - [-] **#157 (win audit 16)**: Approve & render after an edit could only fail on an exhausted cap. Fix: Simplified: `needs_you` is read-only; [Edit and render again] reopens with a budget confirm. **Superseded by #176:** reopen was removed in round 18.
-- [x] **#158 (win audit 16)**: 429 cap codes mapped only on POST /start. Fix: UI-SPEC §10.3 (one mapping for /start, /render, /audit, /reopen).
-- [x] **#159 (win audit 16)**: [Run the audit again] had no endpoint. Fix: UI-SPEC request 11 (`POST /v1/jobs/{id}/audit`, `/reopen`), mocks.
+- [x] **#158 (win audit 16)**: 429 cap codes mapped only on POST /start. Fix: UI-SPEC §10.3 (one mapping for /start, /render, /audit; `/reopen` later removed, #176).
+- [x] **#159 (win audit 16)**: [Run the audit again] had no endpoint. Fix: UI-SPEC request 11 (`POST /v1/jobs/{id}/audit`), mocks. (`/reopen` was removed later, #176.)
 - [x] **#160 (win audit 16)**: Download promised in `needs_you` had no URL or button. Fix: UI-SPEC request 1 (`result.video_url` on the job), §3.5.
-- [x] **#161 (win audit 16)**: No fixture for the reload-after-edit state. Fix: UI-SPEC §10.1 `job-reopened-review.json`; R24 replaced.
+- [-] **#161 (win audit 16)**: No fixture for the reload-after-edit state. Fix: UI-SPEC §10.1 `job-reopened-review.json`; R24 replaced. **Superseded by #176:** reopen was removed, so the fixture went with it; reload after an edit is `job-done-edited.json`.
 - [x] **#162 (win audit 16)**: BLOCKED said WP5 issues the recording code. Fix: BLOCKED-PRE-B (the owner adds it to the deploy secret).
 - [x] **#163 (win audit 16)**: /start code-cap copy left the pilot at a dead end. Fix: UI-SPEC §2.6 (Start stays enabled).
 - [-] **#164 (win audit 17)**: Reopen didn't check the per-job cap. Fix: UI-SPEC request 11 (`409 job_cap`), §3.5, §10.3, mock. **Superseded by #176:** reopen was removed in round 18.
@@ -237,6 +237,90 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#201 (win audit 22)**: Unchanged done job at review could re-render for nothing. Fix: UI-SPEC §3.5 row 5 "Nothing changed since the render".
 - [x] **#202 (win audit 22)**: Re-run described as every frame. Fix: UI-SPEC §3.3 (same pass as a first audit).
 - [x] **#203 (win audit 22)**: Reducer fixture prose still said `rendering: false`. Fix: UI-SPEC §10.5.
+- [x] **#204 (win audit 23)**: `POST /start` answered `422 job_cap`; PRE-A §10.3 refuses with `429` and the cap's reason. Fix: UI-SPEC §2.6 row, §10.3 row and fixture `error-429-job-cap.json`.
+- [x] **#205 (win audit 23)**: Request 1 said `429 code_cap` only once the budget was "already used"; PRE-A refuses once a cap can't cover the job's §9.1 estimate. Fix: UI-SPEC request 1 (all four caps, the estimate formula) and the `code_cap` copy "doesn't have enough budget left for this clip".
+- [x] **#206 (win audit 23)**: Access codes had no validity window, though PRE-A §9.2 limits judge/public codes and service keys to Nov 5 00:00 – Nov 10 23:59 UTC and the recording code to Nov 3 23:59 UTC. Fix: UI-SPEC request 20 (`valid_from`/`valid_until`, pilot codes to Nov 2 23:59 EAT, the window gates new jobs only), §2.6 and §10.3 `401 code_not_active` rows, fixture `error-401-not-active.json`. (The pilot end moved to Nov 3 11:59 UTC in #222, and the fixture was split in #212.)
+- [x] **#207 (win audit 23)**: The recording-code raise was bounded at $15 against PRE-A's old $3.00 headroom; PRE-A @ `4bb3cec` has $2.86. Fix: STORYBOARD §3, BLOCKED-PRE-B and UI-SPEC request 20 all say at most $14.86 (+$2.86, shared with every other overrun).
+- [x] **#208 (win audit 23)**: UI-SPEC §5.3 "Audit detail link" described a sampled EgoBlur scan; PRE-A has no sampled mode (vector L10). Fix: the copy says EgoBlur scans every frame and unchecked frames stay unpublishable.
+- [x] **#209 (win audit 23)**: PRE-A pins in STORYBOARD, UI-SPEC §3.3, PILOTS §5 and SCHEDULE §3 pointed at superseded commits (`4a682c2`, `948b678`, `498fa20`). Fix: all now cite `4bb3cec`, PRE-A's last docs commit.
+- [x] **#210 (reconcile, PRE-A §12 request)**: Nothing in PRE-B kept the test split's mean clip at ≤ 30 s, the basis of PRE-A's $43.20 test line. Fix: SCHEDULE §3 (owner checks; WP7's freezer refuses an over-30 s mean and a clip is swapped, never trimmed).
+- [x] **#211 (reconcile)**: RULES-CHECKLIST kept the demo live "to Nov 9" with judging "Nov 4–8"; PRE-A's paid public window is Nov 5 00:00 – Nov 10 23:59 UTC. Fix: RULES-CHECKLIST §11 row (live through Nov 10 23:59 UTC; after that replay-only, codes not extended because the headroom can't fund a $3 day).
+- [x] **#212 (win audit 24)**: The `code_not_active` copy had no wording for an end-only code (the pilot and recording codes), so "It works from  to …" could render. Fix: UI-SPEC §2.6 picks "isn't active yet" / "has expired" / "isn't active right now" by the dates; fixtures `error-401-not-yet-active.json` and `error-401-expired.json` replace `error-401-not-active.json`.
+- [x] **#213 (win audit 24)**: `code_not_active` on `POST /start` said "stay on step A", but Start is on step B, and the created job was left behind. Fix: UI-SPEC §2.6 and §10.3 step-B handling (Start disabled, [Use a different code], `DELETE` the created job).
+- [x] **#214 (win audit 24)**: Nothing said what Continue on step A sends, though it shows `401` copy. Fix: UI-SPEC request 21 `POST /v1/codes/check` (no side effects), §10.2 Continue row, §10.3 rows, fixture `code-check-ok.json`.
+- [x] **#215 (win audit 24)**: The #202 fix was incomplete: §3.5 row 2 still said the re-run covers "every frame". Fix: "scanning the same frames a first audit does (§3.3)".
+- [x] **#216 (win audit 24)**: The #208 EgoBlur copy said "It scans every frame" unconditionally, breaking §5.3's `{frames}` wording rule. Fix: "It's meant to scan all of them; any frame it couldn't check counts as not checked".
+- [x] **#217 (win audit 24)**: §2.6 and §10.2 still sent every `401` to "That code didn't work." and selected the text. Fix: both now except `code_not_active`.
+- [x] **#218 (win audit 24)**: `audit.sample_step` was "1 when every frame was checked" in PRE-B but `round(job.fps)` for every row in PRE-A §12, so spot counts and cover padding differed. Fix: UI-SPEC §3.3, request 18 and fixture `result-unresolved-review.json` use PRE-A's definition.
+- [x] **#219 (win audit 24)**: SCHEDULE §3 let dev tuning add the hero clips, citing a "thin tuning set" note PRE-A doesn't have; 8 rounds of 6 clips would be $28.32 against WP2's $15. Fix: the citation is gone; hero clips only by cutting rounds (≤ 4 rounds × 6 clips = $14.16).
+- [x] **#220 (win audit 24)**: UI-SPEC §4.6, §8 and request 7 cited PRE-A §5b step 4 for prepared-clock turn times; it's step 6. Fix: all three cite step 6.
+- [-] **#221 (win audit 24)**: CVAT-SETUP §2 and BLOCKED-PRE-B let real-public clips go to the bucket and to labeller B's machine, against AGENTS rule 5 and LABELING-GUIDE §6. Fix: test clips stay on the owner's machines (B labels them there or over the SSH tunnel); the fallback machine takes consented clips only. **Superseded by #235 and #249:** no SSH tunnel for test clips; they're labelled in person at the box.
+- [x] **#222 (win audit 24)**: Pilot codes ended Nov 2 20:59 UTC, so a US pilot lost the afternoon of the advertised "Oct 30 – Nov 2". Fix: UI-SPEC request 20 ends them Nov 3 11:59 UTC; PILOTS §7 and BLOCKED collect results Nov 3 15:00 EAT.
+- [x] **#223 (win audit 24)**: Hero 1's raw clip is published, but nothing kept strangers out of frame or said whose car's plate is shown. Fix: BLOCKED-PRE-B and SCHEDULE R4 (cast only, re-take if anyone walks in, a cast member's car or a fake plate).
+- [x] **#224 (win audit 24)**: Plan R3's blind re-label had no file kind, inviting a fake labeller-B file. Fix: LABEL-FORMAT §1 and §6 `labeller-A2.json`, §9.2 K5 intra-rater wording; SCHEDULE R3.
+- [x] **#225 (win audit 24)**: SCHEDULE gave disputes to the owner; LABELING-GUIDE §5 has A and B settle them. Fix: SCHEDULE §3 Mon row.
+- [x] **#226 (win audit 24)**: Worked example e5 (70 px tall) was tagged `small` (< 48 px). Fix: LABEL-FORMAT §5.1.
+- [x] **#227 (win audit 24)**: The outreach follow-up said "3 days later" (Oct 30), but the timeline has it Oct 28–29. Fix: PILOTS §3 "2 days later, on Oct 29".
+- [x] **#228 (win audit 24)**: #108, #123, #159 and #161 claimed evidence later removed. Fix: marked `[-]` with what superseded them, or annotated.
+- [x] **#229 (win audit 24)**: STORYBOARD 7.1 showed a "human agreement" line with no placeholder. Fix: a footnote from `{kappa}` only.
+- [x] **#230 (win audit 25)**: A plain `401` on step B (a code revoked after Continue) had no handling once §10.3 limited it to the code check. Fix: UI-SPEC §2.6 and §10.3 step-B refusal for every `401`; fixture `error-401-revoked-start.json`.
+- [x] **#231 (win audit 25)**: `429 job_cap` and `pilot_pool_cap` on `POST /start` left the created job behind. Fix: UI-SPEC §2.6 and §10.3 delete it; `code_cap` and `daily_cap` keep it for the re-send.
+- [x] **#232 (win audit 25)**: `code_not_active` on a job page's `POST /start` was undefined. Fix: UI-SPEC request 20: dates gate job creation only; a revoked code gives a plain `401` on paid job requests, with the new "Code refused on a job page" row (no automatic `DELETE`).
+- [x] **#233 (win audit 25)**: `pilot_pool_cap` had "none" in §2.6 but "stays enabled, re-send" in §10.3; `code_cap` re-sent `POST /start` even when `POST /v1/jobs` failed. Fix: one rule per cap in both places.
+- [x] **#234 (win audit 25)**: Fixtures `code-check-ok.json` and `error-401-expired.json` omitted `valid_from`, against requests 20–21. Fix: both keys always present (`null` when unset), fixtures updated.
+- [x] **#235 (win audit 25)**: #221 left the test split with no labelling machine when the owner has none, and its SSH-tunnel option streamed real-public frames to B's browser. Fix: CVAT-SETUP §2 and BLOCKED (the borrowed machine comes into the owner's custody for test clips; B labels them in person only).
+- [x] **#236 (win audit 25)**: #224's `labeller-A2.json` wasn't wired into the validator. Fix: LABEL-FORMAT §6 (four kinds, A2 uses `label-b`), §7 naming, LBL002, LBL007, new LBL035, stop rules 1–2, vectors V6b and X30.
+- [x] **#237 (win audit 25)**: #225's joint resolution wasn't in B's recruited hours or the total. Fix: BLOCKED (B about 5.5 h), SCHEDULE §3 (≈ 24 h people time).
+- [x] **#238 (win audit 25)**: BLOCKED still had "one follow-up after 3 days" (#227 incomplete). Fix: "on Oct 29 (2 days after sending)".
+- [x] **#239 (win audit 25)**: #206 still claimed the old pilot end, and HANDOFF said the checklist ended at #211. Fix: #206 annotated; HANDOFF rewritten.
+- [x] **#240 (win audit 25)**: #232's "dates gate creation only" let judge and public jobs started near Nov 10 23:59 UTC spend on a 7th daily-cap day PRE-A's ledger doesn't have. Fix: UI-SPEC request 20 (daily-cap codes also refuse paid requests after `valid_until`), §2.6 and §10.3 rows.
+- [x] **#241 (win audit 25)**: CVAT-SETUP §2 cited SHOTLIST for "never in the bucket", but SHOTLIST line 15 says "plus a private bucket". Fix: citation dropped; the conflict is stated and filed as a request to SHOTLIST's owner (PR #2 requests).
+- [x] **#242 (win audit 26)**: `pilot_pool_cap` on `POST /audit` had three rules, one of which deleted the creator's `needs_you` job. Fix: UI-SPEC §2.6 (one rule: disabled, delete only on `/try`), §3.5 row 2 (disabled), §2.6.1 (never an automatic `DELETE` on a job page).
+- [x] **#243 (win audit 26)**: "the step-B refusal (next row)" pointed at the job-page row. Fix: UI-SPEC §2.6.1 defines the step-B and job-page refusals once; every row cites it.
+- [x] **#244 (win audit 26)**: The job-page refusal kept a [Delete now] the review page doesn't have. Fix: UI-SPEC §3.5 bar row 0 "Code refused" with [Delete everything now], and precedence rule 0.
+- [x] **#245 (win audit 26)**: `error-401.json` said "any" and drove the wrong copy on job pages. Fix: scoped to `POST /v1/codes/check`; new fixtures `error-401-job-render.json` and `error-401-job-expired-audit.json`.
+- [x] **#246 (win audit 26)**: `429` caps on `POST /v1/jobs` had no matching WP5 request and no computable estimate. Fix: UI-SPEC request 1 (refuse below the $1.12 floor).
+- [x] **#247 (win audit 26)**: §10.3 said the job-page row was "below"; it's above. Fix: "above".
+- [x] **#248 (win audit 26)**: STORYBOARD §2 required non-eval results "committed before Nov 3", but the hero runs and pilot results are produced on Nov 3. Fix: committed by Nov 3 23:59 EAT, before WP8 finalises the script (moved to 18:00 EAT in #286).
+- [x] **#249 (win audit 26)**: CVAT-SETUP §1 rule 2 still let anyone tunnel to the box holding test clips. Fix: the tunnel is for the owner, hero and dev clips only; test clips are labelled in person on any machine (§1, §2).
+- [x] **#250 (win audit 26)**: No owner step set code validity windows, so judge and pilot codes could spend after their windows. Fix: BLOCKED pilot and judge code JSON with `valid_until`; UI-SPEC request 20 makes `valid_until` required for every code.
+- [x] **#251 (win audit 26)**: A staged clip moved to `test` kept its copies in the bucket, `fixtures/` and borrowed machines. Fix: LABELING-GUIDE §6 and BLOCKED delete every copy outside the owner's custody.
+- [x] **#252 (win audit 26)**: "Private backup" of test clips could mean a cloud backup. Fix: an encrypted local drive in the owner's custody (BLOCKED, LABEL-FORMAT §1, SCHEDULE §3).
+- [x] **#253 (win audit 26)**: #221 was `[x]` but its SSH-tunnel evidence was removed. Fix: marked `[-]`, superseded by #235 and #249.
+- [x] **#254 (win audit 26)**: LABEL-FORMAT §2 pinned PRE-A at `3d33e5f`, said "first decoded source frame", and gave a float `times` formula. Fix: pinned `4bb3cec`, "video frame", PRE-A step 4's `Fraction` formula.
+- [x] **#255 (win audit 26)**: SCHEDULE's people time left out A's 1 h fixing B-flagged boxes. Fix: A 18 h, total ≈ 25 h.
+- [x] **#256 (win audit 26)**: LABEL-FORMAT §2 said `boxes` is `null` only in B files; A2 files need it too. Fix: "B or A2".
+- [-] **#257 (win audit 26)**: `.agent/win/SAFECUT-PRE-B/LEASE` is on the PR branch outside PRE-B's paths. Not changed: the owner's PICK UP instruction requires the lease, and PRE-A keeps the same file. `.agent/` is session hand-off state; removing it before merge is listed in HANDOFF and the PR.
+- [x] **#258 (win audit 27)**: §3.5 row 0 beat row 2, so a refused re-run on a `needs_you` job showed Approve & render and dropped [Download this version]. Fix: row 0's buttons by status; fixture `error-401-job-expired-audit.json` expects row 2's set.
+- [x] **#259 (win audit 27)**: The §2.6 cap rows chose `/try` actions by request, so a failed-job page's `POST /start` could auto-delete the job or offer a Start it doesn't have. Fix: UI-SPEC §2.6.1 "the page decides" with one job-page cap line per cap; §2.6 and §10.3 rows scoped to `/try`.
+- [x] **#260 (win audit 27)**: §3.5 row 2 and its fixture sent a re-run's `429 code_cap` to the `/try` copy ("press Start again"). Fix: they cite the §2.6.1 job-page cap line.
+- [x] **#261 (win audit 27)**: The job-page expiry copy was unconditional in one row and date-tested in the other. Fix: both use the same `valid_until` test.
+- [x] **#262 (win audit 27)**: Labeller B's cutoff (Oct 25 09:00 EAT) came before hero 1 could be filmed, so R3 always fired. Fix: BLOCKED and SCHEDULE R3: B recruited and free to calibrate by Oct 26 08:00 EAT.
+- [x] **#263 (win audit 27)**: R1 labelled only 1 dev clip before Wave B, which needs 3. Fix: SCHEDULE R1 labels C, G, J × 1 by Oct 27.
+- [x] **#264 (win audit 27)**: Pilots could withdraw after publication and weren't told their timings are published. Fix: PILOTS §4 consent (anonymous publication, cutoff Nov 3 12:00 UTC, removal from later versions only), §6 commit after the cutoff.
+- [x] **#265 (win audit 27)**: SR-10 was scheduled both before and on Nov 3. Fix: BLOCKED Nov 3 step lists SR-01–SR-09 and SR-11 only.
+- [x] **#266 (win audit 27)**: Deliverable step 1's evidence still counted 29 validator codes and X1–X29. Fix: 30 codes, V1–V7 (+V6b), X1–X30.
+- [x] **#267 (win audit 27)**: STORYBOARD 7.1 dropped DEMO.md beat 7's "human-agreement ceiling line" without saying so, and WP8 builds from DEMO.md. Fix: STORYBOARD rule 7 supersedes it (no literature number on the chart), filed as a request to DEMO.md's owner.
+- [x] **#268 (win audit 28)**: Failed `too_long`/`too_large`/`bad_media` jobs had no [Delete now], unlike every other failure. Fix: UI-SPEC §2.6, §10.3 and fixture `job-failed-too-long.json`.
+- [x] **#269 (win audit 28)**: A `too_large` failure found in `prepare` had no field for `{size}`. Fix: request 17 adds `failure.size_bytes`; fallback copy "This file is larger than 150 MB."
+- [x] **#270 (win audit 28)**: The review page had no delete control in `review` or `rendering`, though PILOTS §4 promises deletion from every state. Fix: UI-SPEC §3.5 "Delete is always there" ([Delete everything now] at the bar's right end in every status).
+- [x] **#271 (win audit 28)**: A `429` on `POST /render` wasn't in the bar precedence, so Approve & render stayed enabled. Fix: §3.5 rule 0 and row 0 "Refused" cover `401` and every `429` (`code_cap` keeps the button enabled).
+- [x] **#272 (win audit 28)**: `413` was detected "on the upload" but the fixture had it on `POST /v1/jobs`. Fix: `POST /v1/jobs` takes `size_bytes` and answers `413` (request 17, §10.3).
+- [x] **#273 (win audit 28)**: `{seconds}` and `{duration}` named one placeholder, and the no-duration fallback wasn't in the copy deck. Fix: `{duration}` everywhere; fallback added to §2.6.
+- [x] **#274 (win audit 28)**: Shot 8.3 put a named pilot next to their own timings, though the consent note publishes timings anonymously. Fix: STORYBOARD 8.3 shows the quote and credit next to the pilot medians only.
+- [x] **#275 (win audit 28)**: #265 was incomplete: STORYBOARD §3 still listed SR-10 among Nov 3 retakes. Fix: SR-10 recorded once before Nov 3; takes list excludes it.
+- [x] **#276 (win audit 28)**: Judge codes were due "before Nov 5", after the Nov 4 23:00 EAT submission that must contain them. Fix: BLOCKED creates them before submitting, with the activation time in the form text.
+- [x] **#277 (win audit 28)**: PILOTS said a failed check "moves" the pilot window, but its end is fixed. Fix: the window shrinks; end, collection and `valid_until` stay.
+- [x] **#278 (win audit 29)**: #271's row 0 kept Approve & render enabled for `code_cap` while beating rules 3–4, so it could be enabled during a save or with a visible spot. Fix: `code_cap` never selects row 0; it's a note above the normal bar.
+- [x] **#279 (win audit 29)**: Row 0 disabled [Run the audit again] for `code_cap` in `needs_you`, contradicting row 2, §2.6.1 and §10.3. Fix: with `code_cap` out of row 0, row 2 governs (enabled).
+- [x] **#280 (win audit 29)**: `rate_limited` without `Retry-After` had no end. Fix: 60 s in rule 0 and §10.3.
+- [x] **#281 (win audit 29)**: The always-there delete used the §5.3 confirm even with no video, and two "After delete" strings existed. Fix: confirm by `has_render`/status; one "After delete" string everywhere.
+- [x] **#282 (win audit 29)**: No fixture pinned a review-page `429`. Fix: `error-429-render-code-cap.json` and `error-429-render-daily-cap.json`.
+- [x] **#283 (win audit 29)**: STORYBOARD 8.3 used `{n_pilots}` and `{n_capped}` with no source row. Fix: STORYBOARD §2 row and PILOTS §6 `metrics.json` fields.
+- [x] **#284 (win audit 29)**: #274 was incomplete: with 1–2 pilots the "median" next to a named quote is that pilot's own time. Fix: STORYBOARD 8.3 shows medians only when `n_pilots` ≥ 3.
+- [x] **#285 (win audit 29)**: EVAL's "Creator time" is timed on 3 clips, but the owner was asked to time only H1A. Fix: BLOCKED times H1A, H2 and H3 (only H1A recorded); STORYBOARD §2 says `{manual_minutes}` is H1A's value and the README reports all 3.
+- [x] **#286 (win audit 29)**: The Nov 3 VO had no ordering against the results and script it speaks. Fix: results committed by Nov 3 18:00 EAT (STORYBOARD §2, PILOTS §6–7), script final by 20:00 EAT, VO after it (BLOCKED; Nov 4 morning buffer).
+- [x] **#287 (win audit 29)**: The cut-8.3 fallback line advertised Sigmora even if the rules exclude company products. Fix: STORYBOARD §1 note adds the RULES-CHECKLIST §1 condition.
 
 ## 4. Which builder reads what
 

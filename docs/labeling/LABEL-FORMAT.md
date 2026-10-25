@@ -9,6 +9,7 @@ labels/<split>/                       private: ~/SafeCutEval/labels/ (+ the priv
   SC-A-01.json                        the resolved label (what the metrics use)
   SC-A-01.labeller-A.json             A's independent label, before resolution
   SC-A-01.labeller-B.json             B's independent label (no boxes)
+  SC-A-01.labeller-A2.json            plan R3 only: A's blind second pass on should_hide (no boxes)
   SC-A-01.adjudication.md             every disagreement and how it was settled (§4)
   tracks/SC-A-01/e1.mot.txt           one MOT file per entity (§3)
   cvat/SC-A-01.mot.zip                CVAT's MOT 1.1 export, as downloaded
@@ -17,7 +18,7 @@ labels/<split>/                       private: ~/SafeCutEval/labels/ (+ the priv
 clips.md                              the clip list: clip, split, category, status, labellers, CVAT version
 ```
 
-The **clip ID** is the match of the regular expression `^SC-(?:[A-J]-\d{2}|HERO-[1-9][AB])` at the start of `clip`. That's the only definition, and every rule and path below uses it. For an eval clip it's the first three dash-separated parts of the [SHOTLIST.md](../SHOTLIST.md) file name (`SC-A-01-cbd-20261018.mp4` → `SC-A-01`); for a hero clip it's `SC-HERO-<n><take>` (below). If `clip` doesn't match, the file fails the §6.1 `clip` pattern (LBL002), so no rule ever sees a clip without an ID. **Hero clips** (SHOTLIST's "Hero demo clips", which have no A–J category) are named `SC-HERO-<n><take>-<location>-<yyyymmdd>.mp4`, with `<n>` the hero clip number 1–9 (3 are planned; SHOTLIST allows 3–4) and `<take>` the take letter A or B: `SC-HERO-1A-cbd-20261025.mp4` → clip ID `SC-HERO-1A` (hero clip 1, take A; STORYBOARD's `H1A`). Each take is its own clip with its own label file. The extension may be upper or lower case (`.mp4`, `.MP4`, `.mov`, `.MOV`), because phones and the DJI write either; rename nothing else. Test-split labels stay on the owner's Mac and its private backup; only the split hash (`eval/splits/test.sha256`, WP7) is committed.
+The **clip ID** is the match of the regular expression `^SC-(?:[A-J]-\d{2}|HERO-[1-9][AB])` at the start of `clip`. That's the only definition, and every rule and path below uses it. For an eval clip it's the first three dash-separated parts of the [SHOTLIST.md](../SHOTLIST.md) file name (`SC-A-01-cbd-20261018.mp4` → `SC-A-01`); for a hero clip it's `SC-HERO-<n><take>` (below). If `clip` doesn't match, the file fails the §6.1 `clip` pattern (LBL002), so no rule ever sees a clip without an ID. **Hero clips** (SHOTLIST's "Hero demo clips", which have no A–J category) are named `SC-HERO-<n><take>-<location>-<yyyymmdd>.mp4`, with `<n>` the hero clip number 1–9 (3 are planned; SHOTLIST allows 3–4) and `<take>` the take letter A or B: `SC-HERO-1A-cbd-20261025.mp4` → clip ID `SC-HERO-1A` (hero clip 1, take A; STORYBOARD's `H1A`). Each take is its own clip with its own label file. The extension may be upper or lower case (`.mp4`, `.MP4`, `.mov`, `.MOV`), because phones and the DJI write either; rename nothing else. Test-split labels stay on the owner's Mac and its backup on an encrypted local drive in the owner's custody (never a cloud backup); only the split hash (`eval/splits/test.sha256`, WP7) is committed.
 
 ## 2. The label JSON
 
@@ -34,11 +35,11 @@ The **clip ID** is the match of the regular expression `^SC-(?:[A-J]-\d{2}|HERO-
 | `entities[].reason` | string | one plain sentence about behaviour or content |
 | `entities[].difficulty` | string[] | zero or more of `small`, `occluded`, `reentry`, `motion_blur`, `crowd` |
 | `entities[].frames.first`, `.last` | integer | the first and last **visible** frame, **0-based** source frame indices, inclusive. Gaps in between are allowed (that's re-entry) |
-| `entities[].boxes` | string \| null | path to the entity's MOT file, relative to `labels/<split>/`. `null` only in a labeller-B file |
+| `entities[].boxes` | string \| null | path to the entity's MOT file, relative to `labels/<split>/`. `null` only in a labeller-B or A2 file (§6) |
 | `notes` | string | anything a reader needs: things below threshold, harmless items that must stay clear, filming problems |
 
-**Coordinates and frames are in the source clip** (e.g. 1920×1080 at 30 fps). The pipeline works on the prepared clip (≤1280 px, its own frame list, [ARCHITECTURE.md](../ARCHITECTURE.md) §3.1). **The time axes are PRE-A's: `docs/API-NOTES.md` §5b (`origin/pre-a-research` @ `3d33e5f`, read 2026-10-24) owns the definition**, and this doc only applies it to labels:
-  - **Two clocks.** The **prepared clock** (prepared frame `i` at `i / job.fps`, constant frame rate, `job.fps = min(30, round(source average fps))`) drives the player, the overlay, the transcript and every displayed time. The **source clock** (`t = 0` at the first decoded source frame, its PTS after the edit list subtracted) is where labels live. `job.times[i]` is the source-clock time of the source frame that prepared frame `i` shows.
+**Coordinates and frames are in the source clip** (e.g. 1920×1080 at 30 fps). The pipeline works on the prepared clip (≤1280 px, its own frame list, [ARCHITECTURE.md](../ARCHITECTURE.md) §3.1). **The time axes are PRE-A's: `docs/API-NOTES.md` §5b (`origin/pre-a-research` @ `4bb3cec`, read 2026-10-25) owns the definition**, and this doc only applies it to labels:
+  - **Two clocks.** The **prepared clock** (prepared frame `i` at `i / job.fps`, constant frame rate, `job.fps = min(30, round(source average fps))`) drives the player, the overlay, the transcript and every displayed time. The **source clock** (`t = 0` at the first decoded **video** frame, its PTS after the edit list subtracted) is where labels live. `job.times[i]` is the source-clock time of the source frame that prepared frame `i` shows.
   - **`times` is non-decreasing, not strictly increasing** (a gap in a variable-frame-rate source repeats a frame), and **`times[0]` may be > 0** (PRE-A vector T6c: 0.04). `job.frames` is the count ffmpeg actually wrote, read back with ffprobe. Never "fix" either.
   - **Ground truth per prepared frame (WP7), prepared → label:** each source frame `k` has its own source time `t_k = PTS_k − PTS_0`, which WP7 reads per frame from the source file with ffprobe (it isn't stored in the label JSON; `k / fps` is right only for constant-frame-rate sources). For each prepared frame `i`, find the source frame `k(i)` with `|t_k − times[i]| ≤ 1e-6` s. By §5b's construction, `times[i]` is exactly one source frame's time, so there is exactly one. If none matches, WP7 stops scoring that clip with an error naming the clip, because the job and the source don't belong together. Then:
     - the entity is **visible on prepared frame `i`** if and only if its MOT file has a row for source frame `k(i)` (MOT frame `k(i) + 1`), with that box scaled to the prepared size;
@@ -47,7 +48,7 @@ The **clip ID** is the match of the regular expression `^SC-(?:[A-J]-\d{2}|HERO-
     - an entity visible on **no** prepared frame is left out of recall and over-blur and counted separately as "not visible after prepare" in WP7's report.
   - **Visible frames, recall, exposure and leak bursts are all counted on prepared frames** (§9.3). `frames.first`/`last` in the label JSON stay source-frame indices.
   - **Box scaling:** `x, w` by `prepared.width / source.width` and `y, h` by `prepared.height / source.height` (equal ratios when prepare keeps the aspect ratio), **using displayed (rotation-applied) sizes on both sides**: the label header's `width`/`height` and `job.json`'s `width`/`height`, which are the prepared clip's displayed size. Never use ffprobe's coded size for a rotated clip. Keep the results as floats; never round (§9.1 has a portrait vector).
-  - **`times` precision (request to WP1; PRE-A §5b owns the definition):** WP1 stores `job.times` as **full-precision doubles**, each computed as `(PTS × time_base) − t_0` from ffprobe's integer PTS and the stream's `time_base`, and written unrounded (JSON numbers with up to 17 significant digits, as Python's `json.dumps` writes a float). Never round them for readability. ARCHITECTURE §3.1's `0.0333` is an illustration, not a format. WP7 computes `t_k` from the same PTS list with **the same function in WP1's time module** (PRE-A §5b: "one module in WP1"), so a true match agrees to within 1e-9 by construction. The 1e-6 tolerance only absorbs JSON round-tripping, and a `times` list rounded to 4 decimals fails the match (§9.1 M8).
+  - **`times` precision (request to WP1; PRE-A §5b owns the definition):** WP1 stores `job.times` as **full-precision doubles**, each computed exactly as PRE-A §5b step 4 says: `float(Fraction(pts − pts_0) × time_base)` from ffprobe's **integer** `pts` and the stream's `time_base` (a rational, never ffprobe's 6-decimal `pts_time` and never a float subtraction), and written unrounded (JSON numbers with up to 17 significant digits, as Python's `json.dumps` writes a float). Never round them for readability. ARCHITECTURE §3.1's `0.0333` is an illustration, not a format. WP7 computes `t_k` from the same PTS list with **the same function in WP1's time module** (PRE-A §5b: "one module in WP1"), so a true match agrees to within 1e-9 by construction. The 1e-6 tolerance only absorbs JSON round-tripping, and a `times` list rounded to 4 decimals fails the match (§9.1 M8).
   - **player → prepared** (UI overlay): `i = clamp(floor(mediaTime × job.fps + 0.25), 0, job.frames − 1)`, on the prepared clock ([UI-SPEC.md](../UI-SPEC.md) §3.6; PRE-A vector T5).
   - **prepared → SAM proxy:** PRE-A §5b's `to_proxy` / `from_proxy`, not this doc's.
   - **If trimming is ever added,** `job.json` gains `source_offset_s` (PRE-A §5b, a contract change). Only source-clock conversions use it (matching `t_k` against `times[i] + source_offset_s`); the prepared clock and the player mapping don't change.
@@ -133,7 +134,7 @@ This is mechanical, so WP7's label loader should accept the CVAT zip directly, p
      "boxes": "tracks/SC-A-90/e4.mot.txt"},
     {"id": "e5", "category": "screen", "should_hide": true,
      "reason": "phone in the passer-by's hand shows a chat with a phone number",
-     "difficulty": ["small", "motion_blur"], "frames": {"first": 165, "last": 194},
+     "difficulty": ["motion_blur"], "frames": {"first": 165, "last": 194},
      "boxes": "tracks/SC-A-90/e5.mot.txt"},
     {"id": "e6", "category": "screen", "should_hide": false,
      "reason": "kiosk menu screen, no personal data",
@@ -228,9 +229,9 @@ B's file has the same shape, with `boxes: null`. Here B disagreed on the menu sc
 
 ## 6. Exact schemas (for WP7's loader)
 
-Three kinds of label file share one schema. The kind comes from the file name: `<clip-id>.json` is **resolved**, `<clip-id>.labeller-A.json` is **A**, `<clip-id>.labeller-B.json` is **B**. Schemas are JSON Schema draft 2020-12. Rules a schema can't express are validator rules in §7.
+Four kinds of label file share one schema. The kind comes from the file name: `<clip-id>.json` is **resolved**, `<clip-id>.labeller-A.json` is **A**, `<clip-id>.labeller-B.json` is **B**, and `<clip-id>.labeller-A2.json` is **A2**, labeller A's blind second pass under plan R3 ([SCHEDULE.md](SCHEDULE.md) §4). An A2 file follows the B-file rules (`boxes: null`, A's entity list) and is never treated as a second labeller: it feeds only the intra-rater report (§9.2 K5), and LBL032 still fires for a clip that has no B file. Schemas are JSON Schema draft 2020-12. Rules a schema can't express are validator rules in §7.
 
-### 6.1 Label file (all three kinds)
+### 6.1 Label file (all four kinds)
 
 ```json
 {
@@ -272,7 +273,7 @@ Three kinds of label file share one schema. The kind comes from the file name: `
 }
 ```
 
-The two variants narrow `boxes` by kind (resolved and A files need a path; B files need `null`):
+The two variants narrow `boxes` by kind (resolved and A files need a path; B and A2 files need `null`, so both use `label-b.schema.json`):
 
 ```json
 {"$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "safecut/label-with-boxes.schema.json",
@@ -320,13 +321,13 @@ Groups: frame, id, x, y, w, h.
 
 WP7's validator runs per clip and reports **every** problem it finds, not just the first, except where a stop rule below says a check is skipped. A skipped check reports nothing.
 
-**`{clip_id}` in the rules below** is the clip ID defined in §1 (the match of the regular expression `^SC-(?:[A-J]-\d{2}|HERO-[1-9][AB])` at the start of `clip`), taken from the resolved file's `clip` (from the A file's when only A is readable). The label files themselves are named `{clip_id}.json`, `{clip_id}.labeller-A.json` and `{clip_id}.labeller-B.json`, and the MOT files live in `tracks/{clip_id}/`.
+**`{clip_id}` in the rules below** is the clip ID defined in §1 (the match of the regular expression `^SC-(?:[A-J]-\d{2}|HERO-[1-9][AB])` at the start of `clip`), taken from the resolved file's `clip` (from the A file's when only A is readable). The label files themselves are named `{clip_id}.json`, `{clip_id}.labeller-A.json`, `{clip_id}.labeller-B.json` and (plan R3 only) `{clip_id}.labeller-A2.json`, and the MOT files live in `tracks/{clip_id}/`.
 
-**Which file each rule reads.** The resolved file is the source of truth for entities, `boxes` paths and MOT files: LBL010, LBL011, LBL013–LBL020 and LBL041–LBL045 use **the resolved file's** entities only. LBL003–LBL006 run on each label file separately. LBL007, LBL030 and LBL031 compare files.
+**Which file each rule reads.** The resolved file is the source of truth for entities, `boxes` paths and MOT files: LBL010, LBL011, LBL013–LBL020 and LBL041–LBL045 use **the resolved file's** entities only. LBL003–LBL006 run on each label file separately. LBL007, LBL030, LBL031 and LBL035 compare files.
 
 **Stop rules** (applied in this order):
-1. **A label file fails LBL001 or LBL002:** no other rule reads that file, and every cross-file rule involving it (LBL007, LBL030, LBL031) is skipped. If the failing file is the **resolved** file, every rule that uses the resolved file's entities is skipped too (LBL010–LBL020, LBL041–LBL045).
-2. **Missing labeller files:** with no labeller-B file the clip is single-labelled. LBL032 (a warning) is reported, LBL030 is skipped, and LBL007 and LBL031 compare only the files that exist. With no labeller-A file, LBL033 is reported, and LBL030 plus the A side of LBL007 and LBL031 are skipped. With no resolved file, LBL034 is reported and rule 1's resolved-file skips apply.
+1. **A label file fails LBL001 or LBL002:** no other rule reads that file, and every cross-file rule involving it (LBL007, LBL030, LBL031, LBL035) is skipped. If the failing file is the **resolved** file, every rule that uses the resolved file's entities is skipped too (LBL010–LBL020, LBL041–LBL045).
+2. **Missing labeller files:** with no labeller-B file the clip is single-labelled. LBL032 (a warning) is reported, LBL030 is skipped, and LBL007 and LBL031 compare only the files that exist. With no labeller-A file, LBL033 is reported, and LBL030, LBL035 and the A side of LBL007 and LBL031 are skipped. An A2 file is optional: with none, LBL035 is skipped and nothing is reported. With no resolved file, LBL034 is reported and rule 1's resolved-file skips apply.
 3. **The track map fails LBL001 or LBL040:** LBL041–LBL045 are skipped.
 4. **An entity's MOT file:** LBL006 (wrong path) skips LBL010 and every MOT check for that entity (LBL012–LBL020), because the path it names isn't the entity's file. LBL010 (missing file) skips LBL012–LBL020 for that entity. LBL012 on any line skips the rest of that file's checks (LBL013–LBL020). LBL019 (no rows) skips LBL018 and LBL020.
 
@@ -335,12 +336,12 @@ WP7's validator runs per clip and reports **every** problem it finds, not just t
 | Code | Severity | Rule | Message template |
 |---|---|---|---|
 | LBL001 | error | A JSON file (a label file or the track map) is unreadable or not valid UTF-8 JSON | `{file}: not valid JSON ({parser_error})` |
-| LBL002 | error | A label file (resolved, A or B) violates §6.1, using the variant for its kind. Track-map schema failures are LBL040, never LBL002 | `{file}: {json_pointer}: {schema_message}` |
+| LBL002 | error | A label file (resolved, A, B or A2) violates §6.1, using the variant for its kind. Track-map schema failures are LBL040, never LBL002 | `{file}: {json_pointer}: {schema_message}` |
 | LBL003 | error | Duplicate entity `id` within one file | `{file}: entity id {id} appears {n} times` |
 | LBL004 | error | `frames.first > frames.last`, or `frames.last ≥ frames` | `{file}: {id}: frames {first}–{last} invalid for a {frames}-frame clip` |
 | LBL005 | error | `category: child` with `should_hide: false` | `{file}: {id}: a child must have should_hide true` |
 | LBL006 | error | `boxes` path doesn't name this clip ID and this entity ID (`tracks/{clip_id}/{id}.mot.txt`) | `{file}: {id}: boxes path {path} should be tracks/{clip_id}/{id}.mot.txt` |
-| LBL007 | error | Clip header fields (`clip`, `fps`, `frames`, `width`, `height`, `split`) differ between the A, B and resolved files | `{clip_id}: {field} is {a} in A, {b} in B, {r} in resolved` |
+| LBL007 | error | Clip header fields (`clip`, `fps`, `frames`, `width`, `height`, `split`) differ between the A, B, A2 and resolved files (whichever exist) | `{clip_id}: {field} is {a} in A, {b} in B, {a2} in A2, {r} in resolved` (a missing file's value is printed as `—`) |
 | LBL010 | error | A resolved-file entity's MOT file doesn't exist | `{id}: missing {path}` |
 | LBL011 | error | A file in `tracks/{clip_id}/` that no entity **in the resolved file** references | `{path}: not referenced by any entity` |
 | LBL012 | error | A MOT line fails the §6.3 grammar | `{path}:{line}: not a valid MOT row: "{text}"` |
@@ -357,6 +358,7 @@ WP7's validator runs per clip and reports **every** problem it finds, not just t
 | LBL032 | warning | No labeller-B file: the clip is single-labelled, so agreement is not measured for it | `{clip_id}: no labeller-B file; agreement not measured` |
 | LBL033 | error | No labeller-A file (A builds the entity list, so a clip can't load without it) | `{clip_id}: missing {clip_id}.labeller-A.json` |
 | LBL034 | error | No resolved file | `{clip_id}: missing {clip_id}.json` |
+| LBL035 | error | A2 file is missing an entity ID that's in A's file (so the intra-rater report, §9.2 K5, would compare different entities) | `{clip_id}: A2 has no label for {id}` |
 | LBL040 | error | `track-map.json` parses but fails the §6.2 schema | `{file}: {json_pointer}: {schema_message}` |
 | LBL041 | error | A track-map value isn't an entity in the resolved file | `{file}: track {t} maps to {id}, which isn't an entity` |
 | LBL042 | error | Two track-map keys share a value | `{file}: {id} is mapped from tracks {t1} and {t2}` |
@@ -421,6 +423,7 @@ A 6-frame clip, invented for tests. `e1` is visible on all six frames; `e2` is v
 | V4 | `entities: []` in A, B and resolved; both MOT files deleted; track map `{}` | valid (a clip with nothing to label) |
 | V5 | `e2.difficulty: []` | valid (difficulty tags aren't cross-checked) |
 | V6 | `SC-A-91.labeller-B.json` deleted (single labeller, plan R3) | **warning** LBL032 only; the clip loads, and the agreement report says "not measured (single labeller)" (§9.2 K4) |
+| V6b | as V6, plus `SC-A-91.labeller-A2.json` = the B file's content (A's blind second pass) | **warning** LBL032 only; the A2 file feeds only the intra-rater line (§9.2 K5), never inter-rater agreement |
 | V7 | A hero clip: the files are renamed to clip ID `SC-HERO-1A` (`labels/hero/SC-HERO-1A.json`, `tracks/SC-HERO-1A/e1.mot.txt`, `tracks/SC-HERO-1A/e2.mot.txt`, and the A, B and track-map files to match), with `"clip": "SC-HERO-1A-cbd-20261025.MP4"` (upper-case extension, as the camera writes it), `"split": "hero"`, and both `boxes` paths set to `tracks/SC-HERO-1A/e{n}.mot.txt` | valid |
 
 ### 8.3 Invalid cases
@@ -458,6 +461,7 @@ Each is **one** change from 8.1. "Expected" is the exact set of codes the valida
 | X27 | A CVAT zip is added whose `gt.txt` has tracks 1, 2 and a third track 3; map unchanged | LBL044 |
 | X28 | A CVAT zip is added (tracks 1 and 2 only) where track 2's CVAT label is `participant` | LBL045 |
 | X29 | `SC-A-91.labeller-A.json` deleted | LBL033 (LBL030 and the A side of LBL007 and LBL031 are skipped, stop rule 2) |
+| X30 | V6b's A2 file has only `e1` | LBL035 (and LBL032, as in V6) |
 
 ## 9. Test vectors with expected outputs (for WP7)
 
@@ -497,6 +501,7 @@ Box scaling for a 1920×1080 source prepared at 1280×720 (ratios 2/3 and 2/3): 
 | K2 | 9 / 1 / 0 / 0 (A all true; B false once) | 9/10 = 0.90 | 1·0.9 + 0·0.1 = 0.90 | 0 / 0.10 = **0** | "90% agreement, κ = 0.00" |
 | K3 | 10 / 0 / 0 / 0 (both all true) | 1.00 | 1.00 | **not computable** (`1 − pe` within 1e-9 of 0) | "100% agreement, κ not computable (no variation)". Never report it as 1 or 0 |
 | K4 | No labeller B | — | — | — | "not measured (single labeller)" |
+| K5 | No labeller B; A2 files on n clips (plan R3) | from A vs A2, as K1–K3 | as K1–K3 | as K1–K3 | inter-rater stays "not measured (single labeller)"; a separate line "intra-rater agreement (same labeller, n clips): {pct}%, κ = {kappa}", never labelled inter-rater |
 
 Entities B added that A missed are reported separately as a count; they never enter the 2×2 table.
 

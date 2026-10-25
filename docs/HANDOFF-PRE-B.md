@@ -1,21 +1,14 @@
-# HANDOFF (PRE-B), wound down 2026-10-24 22:54 UTC
+# HANDOFF (PRE-B), updated 2026-10-25 08:35 UTC
 
-**State:** branch `pre-b-product`, PR #2. Everything committed below is pushed. No LEASE file exists in this repo, so there was nothing to release.
+**State:** branch `pre-b-product`, PR #2 (the only PRE-B PR). Lease: `.agent/win/SAFECUT-PRE-B/LEASE`, held by `session_01Tjy33tfkpth8jMhhnhhcYL` since 2026-10-25 08:10 UTC.
 
 **Done:**
-- All PRE-B deliverables exist. The WIN-CHECKLIST has 0 unchecked lines and covers findings #1–#203.
-- 23 hostile audits have run. Audit 23's part B (PRE-B's own sources) found nothing new.
+- All PRE-B deliverables exist. The WIN-CHECKLIST has 0 unchecked lines and covers findings #1–#287.
+- Reconciled with PRE-A @ `4bb3cec` (its last docs commit; `origin/pre-a-research` head `32a0574` adds only its handoff), #204–#211. PRE-A's three `[P]` rows in its WIN-CHECKLIST §4 are satisfied on this branch; marking them `[x]` is PRE-A's edit (AGENTS rule 2).
+- Audit round 24 (#212–#229) round 25 (#230–#241) round 26 (#242–#257) and round 27 (#258–#267), round 28 (#268–#277), round 29 (#278–#287): three parallel fresh auditors each (cross-package facts, UI-SPEC internals, labels/pilots/storyboard). All findings fixed.
 
 **Open for the next session:**
-1. Finish aligning with PRE-A @ `4a682c2` (audit-23 findings):
-   - STORYBOARD §3 and BLOCKED-PRE-B are done in this commit.
-   - UI-SPEC still needs:
-     - `429 job_cap` on POST /start, replacing `422`;
-     - "can't cover the job's estimate" wording in request 1;
-     - `valid_from`/`valid_until` on access codes, plus `401 code_not_active`;
-     - the recording cap limit of at most $15 in request 20.
-   - A fork agent was applying these when the wind-down came, so check `git diff` on UI-SPEC.md first.
-2. Log audit-23 as WIN-CHECKLIST #204–#209.
-3. Run full audits until two in a row find nothing new.
-4. Post the final docs status comment on PR #2.
-5. Push spacing rule: pushes are ≥ 45 min apart. Pushes at 18:09 and 22:05 UTC broke it; the wind-down push breaks it too, on the owner's order.
+1. Run full audit rounds (same three scopes, fresh agents, `git diff 22283eb..HEAD` as the hot zone) until two rounds in a row find nothing new. Log findings as #288+.
+2. Post the final docs status comment on PR #2.
+3. Push spacing: pushes are ≥ 45 min apart. Squash fixups before pushing.
+4. Before PR #2 merges, remove `.agent/` from the branch (session hand-off state, not a deliverable; #257).
