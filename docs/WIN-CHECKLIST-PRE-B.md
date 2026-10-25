@@ -435,6 +435,13 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#399 (win audit 40)**: UI-SPEC cited PRE-A escalation.md "rules 3 and 5"; there is no rule 5. Fix: "rule 3".
 - [x] **#400 (win audit 40)**: The `no_speech_link` row cited vector P9, which is `no_speech`; the case is P9c. Fix: "P8, P9c".
 - [x] **#401 (win audit 40)**: #377 garbled BLOCKED's recording-code sentence. Fix: rewritten.
+- [x] **#402 (win audit 40)**: BLOCKED had no owner step for labeller A's ~18 h of labelling (SCHEDULE §1/§3). Fix: a dated step.
+- [x] **#403 (win audit 40)**: BLOCKED had no owner step for freezing the test split on the owner's eval box (only `test.sha256` committed) by Oct 29 23:59. Fix: a dated step.
+- [x] **#404 (win audit 40)**: BLOCKED had no owner step for the Oct 30 – Nov 1 test-split run and committing its metrics and agreement report. Fix: a dated step.
+- [x] **#405 (win audit 40)**: The upload step assumed the private bucket and tokens existed. Fix: create bucket, write token and read-only token before the Oct 26 19:00 EAT upload (O3).
+- [x] **#406 (win audit 40)**: Hero 1's fabricated phone number and fake plate could match real people. Fix: clearly fictional number; a plate format no registered vehicle uses.
+- [x] **#407 (win audit 40)**: Hero 3's framed photos could show unsigned, identifiable people in published raw footage. Fix: signed cast or nobody identifiable.
+- [x] **#408 (win audit 40)**: `.agent` HANDOFF's owner-blockers list missed the bucket upload, the Oct 26 API key and the Nov 4 18:00 EAT final cut. Fix: added, with #402–#404.
 
 ## 4. Which builder reads what
 
