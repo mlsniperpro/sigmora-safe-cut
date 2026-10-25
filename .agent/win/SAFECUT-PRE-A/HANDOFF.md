@@ -11,21 +11,21 @@
 - Deliverables: `docs/API-NOTES.md` (§1–§12; §9.2 the $150 ledger; §12 = **one list** of contract rows, a config/env table, "Deliberate differences from the WP files", and "Requests to PRE-B"), `docs/prompts/*.md` (6 specs + `TEST-VECTORS.md`), `docs/research/*.md`, `docs/BLOCKED-PRE-A.md`, `docs/WIN-CHECKLIST-PRE-A.md` (criteria map, §4 PRE-A↔PRE-B facts, §5/§6 full audit trail).
 - Ledger **$147.00 planned, $3.00 headroom** (pre-window `/healthz` budget line $0.80, plan $0.47; PR #2 @ `43e250f` carries the matching "recording code at most $15.00"): `awk` line in `.agent/win/SAFECUT-PRE-A/calc/ledger.md` (mirrors API-NOTES §9.2). Per clip: $1.12 / 30 s at 8 fps; $2.02–2.09 / 60 s ($2.26–2.34 no cache, A10).
 - Audits #1–#35 logged in WIN-CHECKLIST §6 (end of file), plus a WP0 builder walk-through (#34) and a full live-docs sweep (every `dev.meta.ai/docs` page; applied). Each audit = three fresh Sonnet/high agents (A internal, B brief + repo specs + live docs, C vs PR #2 with a [P] status table). **Clean count: 0.** Findings are now mostly edge-case specifications, each verified before fixing.
-- Last pushes: `071da22` (08:55 UTC), then the wind-down push (this commit's parent chain). PR #1 body was refreshed ~09:00 UTC and still shows `071da22` and audits to #27.
+- Last pushes: `7ca667d` (audit #35 fixes), `b6fa465` (concurrency row). The PR #1 body still shows an older push; refresh it at the end (step 5).
 
 ## In flight
-- Audit #35's fixes and the live-docs sweep are in this push. **Audit #36 is next** on the pushed HEAD (sonnet/high).
+- Audit #36 (A internal, B brief/specs/live, C vs PR #2 @ `c944a4f`) ran on `7ca667d`/`b6fa465`. 36C's fixes are in the next push: the R2 upload contract (157,286,400-byte `413 too_large`, signed `Content-Length`+`Content-Type`, new job on retry, `409 upload_incomplete` on `/start`), four new PRE-B requests (upload rows, ffprobe → `framemd5`, "No speech was found" copy, cover-spot mock `reason`), the SAM `store` note, and status lines moved to `c944a4f`. **Audit #37 is next** on the pushed HEAD (sonnet/high).
 
 ## Next steps (in order)
-1. Claim the lease (`LEASE` → `status=active`), commit `lease: claim SAFECUT-PRE-A`, push.
-2. Run audit #36 on HEAD: three parallel fresh agents with the lens prompts above, read-only, "report ONLY builder-impacting defects … if nothing, say exactly NO NEW FINDINGS", pointing them at the newest edits (#29/#30: `transcript.json`/`roles.json` `status`, `hold` enum and precedence, `child_phrase` + WP3 rule 0 + token-wise phrase sets, YuNet fallback, checkpoint keys, empty-transcript rule, pinned-job purge exemption).
+1. Lease is claimed (`status=active`); keep it so until a WIND DOWN.
+2. Run the next audit on HEAD: three parallel fresh agents (model sonnet, effort high), read-only, "report ONLY builder-impacting defects … if nothing, say exactly NO NEW FINDINGS", pointing them at the newest edits.
 3. Fix findings, log them in WIN-CHECKLIST §6, commit; repeat until **two consecutive rounds on the same HEAD** find nothing. Record the last clean audit only in the PR comment, so no docs change follows it.
 4. Re-check PR #2 (`git fetch origin pre-b-product`); if PRE-B fixed any [P] item, mark it [x] in WIN-CHECKLIST §4 and in API-NOTES §12 "Requests to PRE-B".
 5. Refresh the PR #1 body (status, Decisions, Requests, Evidence with real command output), push, show `git status -sb`, post the final docs status comment on PR #1.
 
 ## Open audit findings / open items
 - PRE-A side: none open (all audit findings fixed).
-- PRE-B side ([P] in WIN-CHECKLIST §4; API-NOTES §12 "Requests to PRE-B" opens with a status line): at PR #2 `43e250f` everything earlier is done; open are UI-SPEC §3.5 row 0's stale `429 job_cap` and branching the EgoBlur copy on `egoblur.model` for the YuNet fallback. A PRE-B session (lease `session_01Tjy33tfkpth8jMhhnhhcYL`) was active at 13:03 UTC; it reads PRE-A as the owner of cost/API facts.
+- PRE-B side ([P] in WIN-CHECKLIST §4; API-NOTES §12 "Requests to PRE-B" opens with a status line): at PR #2 `c944a4f` open are the "PRE-A's additions" sentence (introduction fields), the upload rows, ffprobe → `framemd5`, the empty-transcript copy and the cover-spot mock `reason`. No number PRE-B builds on differs (the 157,286,400-byte limit matches).
 
 ## Key decisions (why) — details in API-NOTES and the PR #1 Decisions section
 - Headroom $3.00 / recording ≤ $15.00. **PRE-A owns cost and API facts and doesn't adopt PR #2's copies of them**: between `5bb95f0` and `43e250f` the packages crossed (each adopted the other's older values); PRE-A restored its own and PR #2 @ `43e250f` carries them.
