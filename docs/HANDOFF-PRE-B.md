@@ -2,11 +2,11 @@
 
 **State:** branch `pre-b-product`, PR #2 (the only PRE-B PR). Lease `.agent/win/SAFECUT-PRE-B/LEASE`: active, `session_01Tjy33tfkpth8jMhhnhhcYL`. Full hand-off: `.agent/win/SAFECUT-PRE-B/HANDOFF.md` (same facts, more detail).
 
-**Audit position:** rounds 24–37 done (three parallel fresh auditors each); every finding fixed; WIN-CHECKLIST covers #1–#375 with 0 unchecked lines. Round 36 found 13 (#333–#345), round 37 found 9 (#346–#354). **No clean round yet. Round 38 found 9 (#355–#363). Next is round 39; log findings as #376+.** The goal needs two consecutive rounds that find nothing new.
+**Audit position:** rounds 24–39 done (three parallel fresh auditors each; from round 39 on Sonnet/high); every finding fixed; WIN-CHECKLIST covers #1–#385 with 0 unchecked lines. Round 38 found 9 (#355–#363), round 39 found 22 (#364–#385). **No clean round yet. Next is round 40; log findings as #386+.** The goal needs two consecutive rounds that find nothing new.
 
 **Reconciled** with PRE-A docs @ `565eee3` (#331–#332, branch head `c1aa7cd`). Re-check `origin/pre-a-research` every round.
 
-**Next:** round 38 → fix → repeat; then post the final status comment (the PR #2 body was refreshed at 13:2x UTC; update its counts if more findings land). Remove `.agent/` before merge (#257).
+**Next:** round 40 → fix → repeat; then post the final status comment (the PR #2 body was refreshed this session; update its finding counts if more land). Remove `.agent/` before merge (#257).
 
 **Owner rule (keep across hand-offs):** every Agent-tool subagent uses `model: "sonnet"`, `effort: "high"`; the main session verifies each finding before fixing it and keeps integration, self-review and the gate.
 

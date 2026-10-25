@@ -56,13 +56,13 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#20 (review 2)**: AI-voice row and company status left open. Fix: RULES-CHECKLIST §4, §7.
 - [x] **#21 (owner audit)**: Reconcile with PRE-A (child < 18, times, cost, split). Fix: LABELING-GUIDE §2.1; LABEL-FORMAT §2; PILOTS §5; SCHEDULE §3.
 - [x] **#22 (owner audit)**: 3 CVAT export questions open. Fix: CVAT-SETUP §7.1 from v2.80.0 source.
-- [x] **#23 (owner audit)**: WP0/WP7 bound to 12/3 and $20. Fix: SCHEDULE §3.
+- [-] **#23 (owner audit)**: WP0/WP7 bound to 12/3 and $20. Fix: SCHEDULE §3. **Superseded by #360:** the $20 pilot cap no longer binds WP0/WP7; their own WP caps do.
 - [x] **#24 (owner audit)**: Root BLOCKED.md conflicts with PRE-A. Fix: moved to docs/BLOCKED-PRE-B.md.
 - [x] **#25 (review 3)**: VFR drift between `times` and the player clock. Fix: the overlay maps the player on the prepared clock (`clamp(floor(mediaTime × fps + 0.25), 0, frames − 1)`), never through `times`, per PRE-A §5b at `3d33e5f` (UI-SPEC §3.6). This replaces an interim fix (`times` as the MP4's own timestamps) that PRE-A later rejected.
 - [x] **#26 (review 3)**: Display time and transcript on the wrong clock. Fix: UI-SPEC §0, §4.6 now follow §5b.
 - [x] **#27 (review 3)**: `bystander` row said "adult or teen". Fix: LABELING-GUIDE §2.1.
 - [x] **#28 (review 3)**: Two CVAT line citations didn't support claims. Fix: CVAT-SETUP §7.1 (`include_empty=True` line 2101; `CommonData` default).
-- [x] **#29 (review 3)**: $20 cap enforcer unnamed; EVAL.md split conflict. Fix: SCHEDULE §3 (WP5; request to EVAL.md's owner).
+- [-] **#29 (review 3)**: $20 cap enforcer unnamed; EVAL.md split conflict. Fix: SCHEDULE §3 (WP5; request to EVAL.md's owner). **Superseded by #360:** SCHEDULE §3 no longer names the pilot cap or its enforcer.
 - [x] **#30 (review 3)**: Pilot estimate ignored clip length. Fix: PILOTS §5.
 - [x] **#31 (win audit 1)**: PRE-A moved the time-axis definition into §5b (its interim draft said no trim and `times[0] = 0`; the current `3d33e5f` text has two clocks and lets `times[0]` exceed 0); pilot estimate now $8.70. Fix: UI-SPEC §3.6, LABEL-FORMAT §2, PILOTS §5, SCHEDULE §3.
 - [x] **#32 (win audit 1)**: Builders had no exact schema, validator codes, examples or test vectors. Fix: LABEL-FORMAT §6–9.
@@ -161,7 +161,7 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [-] **#125 (win audit 11)**: Early pilots could use up the shared $20 before later ones ran. Fix: PILOTS §5 (≤ 2 jobs per code), UI-SPEC request 20. **Superseded by #135:** the per-code job count was removed in round 13; the $6 code cap and the $20 pool bound spend instead.
 - [x] **#126 (win audit 11)**: Running out of the shared pilot total pointed pilots to a new code. Fix: UI-SPEC §2.6 `pilot_pool_cap` copy.
 - [x] **#127 (win audit 11)**: Owner recording code existed only in STORYBOARD. Fix: UI-SPEC §8 request 20, BLOCKED-PRE-B Nov 3 step, WIN §4 WP5 row.
-- [x] **#128 (win audit 11)**: Recording budget priced hero runs at the 30 s rate. Fix: STORYBOARD §3 (45 s ≈ $1.5–1.7; $12 code).
+- [-] **#128 (win audit 11)**: Recording budget priced hero runs at the 30 s rate. Fix: STORYBOARD §3 (45 s ≈ $1.5–1.7; $12 code). **Superseded by #339:** STORYBOARD §3 now uses PRE-A's $2.34 worst case.
 - [x] **#129 (win audit 12)**: `pilot_pool_cap` missing from the reason list, error table and mocks. Fix: UI-SPEC request 1, §10.3, §10.1.
 - [-] **#130 (win audit 12)**: Third job on a pilot code had no error; failed uploads used up jobs. Fix: UI-SPEC `code_job_limit`, request 20 (jobs count only past prepare). **Superseded by #135:** the per-code job count was removed in round 13; the $6 code cap and the $20 pool bound spend instead.
 - [x] **#131 (win audit 12)**: Recording code described as resetting daily. Fix: STORYBOARD §3, BLOCKED-PRE-B (a total; owner raises it).
@@ -173,7 +173,7 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#137 (win audit 13)**: `audit_budget_cause` and `retry_at` missing from the audit request. Fix: UI-SPEC request 11 (PRE-B's one addition).
 - [x] **#138 (win audit 13)**: State machine always showed [Run the audit again]; §5.3 hid it for some causes. Fix: UI-SPEC §5.3: always shown, disabled only before `retry_at`.
 - [x] **#139 (win audit 13)**: A cap raised by the owner could never re-enable the audit; pool cap blamed the code. Fix: UI-SPEC §5.3 cause lines, mock.
-- [x] **#140 (win audit 13)**: "Hero line has room" was false at 45 s clip costs. Fix: STORYBOARD §3 (overrun noted; re-pricing request to PRE-A).
+- [-] **#140 (win audit 13)**: "Hero line has room" was false at 45 s clip costs. Fix: STORYBOARD §3 (overrun noted; re-pricing request to PRE-A). **Superseded by #339 and #331:** no hero line; PRE-A's $12 recording line and $2.34 worst case.
 - [x] **#141 (win audit 13)**: [Try again tomorrow] always restarted the whole pipeline. Fix: UI-SPEC §2.6, §10.3 (same stage routing as [Try again]).
 - [x] **#142 (win audit 14)**: SR-01 would show the access code in the public video. Fix: UI-SPEC §10.2 masked field; STORYBOARD SR-01 and §4 checklist; BLOCKED-PRE-B revoke step.
 - [x] **#143 (win audit 14)**: Code-kind caps requested only of WP5; the budget guard lives in WP0's client. Fix: UI-SPEC request 20 (WP0 + `cost.jsonl` code fields; request to PRE-A).
@@ -270,7 +270,7 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#234 (win audit 25)**: Fixtures `code-check-ok.json` and `error-401-expired.json` omitted `valid_from`, against requests 20–21. Fix: both keys always present (`null` when unset), fixtures updated.
 - [x] **#235 (win audit 25)**: #221 left the test split with no labelling machine when the owner has none, and its SSH-tunnel option streamed real-public frames to B's browser. Fix: CVAT-SETUP §2 and BLOCKED (the borrowed machine comes into the owner's custody for test clips; B labels them in person only).
 - [x] **#236 (win audit 25)**: #224's `labeller-A2.json` wasn't wired into the validator. Fix: LABEL-FORMAT §6 (four kinds, A2 uses `label-b`), §7 naming, LBL002, LBL007, new LBL035, stop rules 1–2, vectors V6b and X30.
-- [x] **#237 (win audit 25)**: #225's joint resolution wasn't in B's recruited hours or the total. Fix: BLOCKED (B about 5.5 h), SCHEDULE §3 (≈ 24 h people time).
+- [x] **#237 (win audit 25)**: #225's joint resolution wasn't in B's recruited hours or the total. Fix: BLOCKED (B about 5.5 h), SCHEDULE §3 (≈ 24 h people time; ≈ 25 h since #255).
 - [x] **#238 (win audit 25)**: BLOCKED still had "one follow-up after 3 days" (#227 incomplete). Fix: "on Oct 29 (2 days after sending)".
 - [x] **#239 (win audit 25)**: #206 still claimed the old pilot end, and HANDOFF said the checklist ended at #211. Fix: #206 annotated; HANDOFF rewritten.
 - [x] **#240 (win audit 25)**: #232's "dates gate creation only" let judge and public jobs started near Nov 10 23:59 UTC spend on a 7th daily-cap day PRE-A's ledger doesn't have. Fix: UI-SPEC request 20 (daily-cap codes also refuse paid requests after `valid_until`), §2.6 and §10.3 rows.
@@ -409,6 +409,16 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#373 (win audit 39)**: Which hero-1 take is labelled was undefined (SCHEDULE "best take", STORYBOARD needs H1A, LABELING-GUIDE case 13 uses H1B). Fix: H1A always, H1B only if time allows.
 - [x] **#374 (win audit 39)**: Test clips and labels were kept "on the owner's Mac", the one machine PRE-A says can't run the test eval. Fix: BLOCKED, LABEL-FORMAT §1 and CVAT-SETUP keep them on the owner's CVAT/eval box (Linux NVIDIA, PRE-A BLOCKED), copied on an encrypted drive if separate, never labeller B's.
 - [x] **#375 (main-session check)**: STORYBOARD 8.3's no-timing VO example said "8 words"; it's 9. Fix: 9.
+- [x] **#376 (win audit 39)**: BLOCKED had no step for the final cut, the YouTube upload and the link. Fix: a Nov 4 18:00 EAT step before submission.
+- [x] **#377 (win audit 39)**: BLOCKED's code steps never said to redeploy, so new codes or a raised cap might not take effect. Fix: redeploy and check at `/try` in the pilot, recording, raise and judge steps.
+- [x] **#378 (win audit 39)**: The cast-only, re-take rule covered hero 1 only, though raw café footage is published. Fix: BLOCKED hero 2–3 step.
+- [x] **#379 (win audit 39)**: PILOTS §6 publishes reported misses, which the consent note didn't mention. Fix: the consent note says anonymised miss descriptions are published.
+- [x] **#380 (win audit 39)**: LABELING-GUIDE participant rule 4 relied on a role in the release the release doesn't carry, contradicting the "role in the story" note. Fix: rule 4 uses SHOTLIST's cast role; releases never decide roles.
+- [x] **#381 (win audit 39)**: STORYBOARD §3 implied H2 gets a timed review. Fix: H1B's only.
+- [x] **#382 (win audit 39)**: Without a consented child, BLOCKED cut shot 4.1, the only Set-of-Mark explanation. Fix: 4.1 uses the hidden bystander's chip.
+- [x] **#383 (win audit 39)**: The API key and repo-public steps were undated. Fix: Oct 26 at kickoff.
+- [x] **#384 (win audit 39)**: SCHEDULE R2 said "about 6 h for A"; the midpoints sum to 6.5 h. Fix: 6.5 h with the sum.
+- [x] **#385 (win audit 39)**: #23, #29, #128, #140 and #237 cited evidence since replaced. Fix: marked superseded or annotated.
 
 ## 4. Which builder reads what
 

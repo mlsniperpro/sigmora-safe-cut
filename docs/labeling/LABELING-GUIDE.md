@@ -41,7 +41,7 @@ A person is a participant when **at least one** of these is visible or audible i
 1. They are introduced ("this is Amina") or introduce themselves to the camera.
 2. They hold a conversation with the host that the host is clearly recording on purpose (they answer questions, they face the host and the lens together).
 3. They are the creator: holding the camera, talking to it, or in a mirror while filming.
-4. They are listed as a participant on a signed release for this clip (staged clips only: check the release sheet).
+4. On a staged clip, their role in the scene as SHOTLIST.md casts it is part of the story (the host and the guest); actors playing passers-by or extras are bystanders. A signed release never decides the role, because it carries no role.
 
 These are **not** enough on their own: looking at the camera, waving, smiling, walking close to the lens, standing near the guest, being famous, being in uniform, or a short transactional exchange (selling something, giving directions).
 
