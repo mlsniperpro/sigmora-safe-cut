@@ -477,14 +477,22 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#441 (win audit 41)**: (audit C) "Collect by Nov 3 12:00 UTC" allowed collecting before the withdrawal window closed. Fix: "at or after".
 - [x] **#442 (win audit 41)**: (audit C) BLOCKED said a render makes the panel read-only. Fix: an edit after it needs another paid render.
 - [x] **#443 (win audit 41)**: (audit C) BLOCKED lacked the clip-length rule, RULES-CHECKLIST missed EgoBlur Gen 1, the header overclaimed "Until it arrives", and O2/O5 (Modal, domain) were missing. Fix: each added.
+- [x] **#444 (win audit 41)**: (audit A) UI-SPEC request 6 and LABEL-FORMAT §2/§9 told WP1/WP7 to use ffprobe, which `imageio-ffmpeg` doesn't ship (AGENTS rule 11; PRE-A §5b). Fix: the bundled ffmpeg's `framemd5` packet list everywhere.
+- [x] **#445 (win audit 41)**: (audit A) Unsupported-language speech (Swahili isn't in Voice Transcribe's 25, PRE-A §4.3) was unaddressed, and "No speech was found" over-claimed. Fix: drawer copy names the limit; PILOTS §1 language rule (record per pilot, keep in medians, README states it).
+- [x] **#446 (win audit 41)**: (audit A) Mocks kept `style: "pixelate"` on `keep` items (PRE-A: `null`), the unsure track's evidence lacked "Judges disagreed: ", and an object placeholder (`content: ""`) would show an empty ruling. Fix: `style: null` and "Cover: none (kept clear)", the prefix, placeholder counts as no entry.
+- [x] **#447 (win audit 41)**: (audit A) §10.1's "PRE-A's additions" list omitted the introduction fields, stage `status`, `hold`, `origin`, `audit_label`. Fix: listed, plus PRE-A §12's other rows.
+- [x] **#448 (win audit 41)**: (audit A) The chip seek had no rule for an empty `evidence_frames`. Fix: the item's first frame.
+- [x] **#449 (win audit 41)**: (audit A) Smaller gaps: the read token's name, BLOCKED-PRE-A as the second owner list, the README naming the auditor, no WP1/WP4 rows in §4. Fix: each added.
 
 ## 4. Which builder reads what
 
 | WP | Reads from PRE-B | For |
 |---|---|---|
 | WP0 | SCHEDULE §3 (split), BLOCKED-PRE-B (fixture fallbacks) | fixtures, probe clips |
+| WP1 | UI-SPEC §8 request 6; LABEL-FORMAT §2 (`times` precision) | prepared clip, `job.frames`, `job.times` |
 | WP2 | UI-SPEC §8 requests 2, 3, 7 | SoM numbers, speaker links, transcript timeline |
 | WP3 | UI-SPEC §3.4, §8 requests 4–5, §10.5 | reason strings, review edit names, reducer semantics |
+| WP4 | UI-SPEC §8 requests 11 and 18 (a contract change to ARCHITECTURE §3.8), §1.3 auditor name rule, §5.3 | audit spots, `cover_spot`, receipt wording |
 | WP5 | UI-SPEC §8 (incl. request 20: pilot and recording codes), §10.1–10.3; PILOTS §4–5; STORYBOARD §3 | API fields, error codes, idempotency, per-code cap, deletion |
 | WP6 | UI-SPEC (all) | every screen |
 | WP7 | LABEL-FORMAT (all), LABELING-GUIDE §5, SCHEDULE §3, PILOTS §6 | loader, validator, agreement, metrics test vectors, pilot results |

@@ -16,6 +16,8 @@ Creators who publish footage of real public places with other people in it, and 
 
 Good signs: they've posted about a privacy complaint, they visibly blur faces today, or their audience has asked them to. Not a fit: anyone whose format depends on filming people covertly or mocking them (the BBC and Change.org stories in [CREATOR-PROBLEMS.md](CREATOR-PROBLEMS.md)); we don't want to make that easier to publish, and they'd be a bad story for the submission.
 
+**Language.** Safe Cut's speech check covers Muse Voice Transcribe's 25 languages, which don't include Swahili (PRE-A `docs/API-NOTES.md` §4.3). Speech in another language gives an empty transcript, so Safe Cut holds every participant for the creator, which would inflate a pilot's "chips changed" and review time. So prefer pilots whose clips are in a supported language (English is fine), record each pilot's clip language in `per_pilot.csv` (§6). A pilot with unsupported speech still counts in the medians (no pilot is dropped), with a footnote naming the limit. WP8's README states the limit (as PRE-A asks).
+
 ## 2. Where to find 15 candidates
 
 We contact creators only through their **public business channels**, never personal accounts of private individuals, and we don't name anyone in this repo. The candidate list lives in the owner's private sheet (channel link, profile, region, contact route, status).
