@@ -8,8 +8,8 @@ Provide speech evidence ("Hi, I'm Amina") when the primary sensor, `muse-voice-t
 > ⚠️ **Send the MP4 (`input_video`), not a WAV.** A third-party report on Meta's own cookbook tracker ([issue #59](https://github.com/meta-models/meta-model-cookbook/issues/59), 2026) found standalone `input_audio` **silently dropped** on `muse-spark-1.2-contributor`: HTTP 200, `usage.input_tokens` = 68 (text only), and the model said it got no audio. The same sentence as an MP4 soundtrack was transcribed verbatim. WP0 probe e checks the Standard model both ways.
 
 ## Inputs
-- The prepared clip as `input_video` (`file_id`), with its audio track kept (`job.json.audio == true`; if false, skip with an empty transcript).
-- Optional: names from the creator's note as spelling hints.
+- The prepared clip as `input_video` (`file_id`), with its audio track kept (`job.json.audio == true`; if false, write `status: "ok"`, `turns: []`, `degraded: false`, `source_kind: null`: a clip with no audio track has no speech to require).
+- (v1 has no creator note, API-NOTES §4.3, so there are no spelling hints.)
 
 ## Prompt text (v0)
 
@@ -52,10 +52,10 @@ Provide speech evidence ("Hi, I'm Amina") when the primary sensor, `muse-voice-t
 ## Trust and post-processing
 - **Timestamps from the LLM are untrusted** (the same rule as DESIGN §2.3 for video times). Use them only to place a turn on the role pass's frame axis with a **±1.5 s tolerance**, widening the frame range of each turn accordingly. A turn's timing must never be the only evidence for a `participant` vote. The burned-in frame numbers on the keyframes stay authoritative.
 - Clamp start and end to [0, clip duration]. Drop turns with `end < start`. Sort by `start`.
-- **Dropped-audio check:** if `usage.input_tokens` is below a WP0-measured floor for the clip's duration (i.e. the audio wasn't ingested), or if `has_speech == false` while the creator's note or the scene pass says there's dialogue, mark the transcript `degraded: true` (with `source` = the configured `SAFECUT_SPEECH_FALLBACK_MODEL` ID and `source_kind: "fallback"`). **Decided:** add `degraded: bool = false` to the `transcript.json` contract (ARCHITECTURE §3.3), so a dropped soundtrack is visible and never silent. WP0 implements it in `contracts.py`, and WP2 must not emit it before that lands. The role pass then gets "speech unavailable", and participants can only be supported by visual evidence. That tends toward `unsure` → hidden, the safe direction.
+- **Dropped-audio check:** if `usage.input_tokens` is below a WP0-measured floor for the clip's duration (i.e. the audio wasn't ingested), mark the transcript `degraded: true` (with `source` = the configured `SAFECUT_SPEECH_FALLBACK_MODEL` ID and `source_kind: "fallback"`). **Decided:** add `degraded: bool = false` to the `transcript.json` contract (ARCHITECTURE §3.3), so a dropped soundtrack is visible and never silent. WP0 implements it in `contracts.py`, and WP2 must not emit it before that lands. The role pass then gets "speech unavailable", and participants can only be supported by visual evidence. That tends toward `unsure` → hidden, the safe direction.
 
 ## Failure handling
-- HTTP failure after the transport attempts of API-NOTES §10.2, or a schema failure after one re-ask (§10.6) → an empty `turns` list with `degraded: true`. Never block the pipeline on speech.
+- HTTP failure after the transport attempts of API-NOTES §10.2, or a schema failure after one re-ask (§10.6) → `status: "failed"`, an empty `turns` list, `degraded: true`, `source_kind: null`. Never block the pipeline on speech. (The dropped-audio check above writes `status: "ok"` with `degraded: true` and `source_kind: "fallback"`.)
 - Long clips: the model's audio limit is unknown. ≤60 s uploads (ARCHITECTURE §5) are expected to fit; WP0 confirms.
 
 ## Tricky cases it must get right

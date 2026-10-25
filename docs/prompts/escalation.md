@@ -52,7 +52,7 @@ Give tracks whose three role votes disagreed one more careful look, with the dis
 ```
 
 ## Applying the ruling (WP3 policy, pure; **first matching rule wins**)
-1. Any role-pass vote was `child` → `child`, locked, hidden. Escalation doesn't run for these tracks.
+1. Any role-pass vote was `child`, **or the track has `tracks[].child_phrase: true`** (API-NOTES §12, WP3 rule 0) → `child`, locked, hidden. Escalation doesn't run for these tracks (they're never in the disputed set).
 2. Escalation ruled `child` → `child`, locked, hidden.
 3. Escalation call failed, or its cited frames are invalid, or it was skipped for budget → `unsure`, hidden, `needs_you`, with no suggestion: `suggested_role`, `escalation_evidence` and `escalation_frames` all `null`, **`escalated: false`** (PR #2 UI-SPEC §4).
 4. Otherwise → `unsure`, hidden, `needs_you`, with `suggested_role` = the ruling (an `unsure` ruling, or windows that disagree → `suggested_role: null` **and** `escalation_evidence`/`escalation_frames` `null`, `escalated: true`, so PR #2's drawer shows "A longer, closer look couldn't settle it"; vector E7), and `escalation_evidence` / `escalation_frames` = the ruling's evidence and frames for the review card (`why_others_wrong` is logged) (`escalated: true`; fields in API-NOTES §12). The creator's tap decides; `decided_by: "creator"`.

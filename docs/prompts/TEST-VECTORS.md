@@ -22,6 +22,7 @@ Setup: track `face:7` is present in keyframes F90, F120, F150, and all three wer
 | A13 | participant (F90, "speaks to host") | bystander (F120, "background") | participant (F150) | — | `unsure`; `frames` [90, 120, 150]; `evidence` "Judges disagreed: speaks to host" | escalate |
 | A14 | w1 participant, w2 participant (idx 0) | w1 participant, w2 participant (idx 0) | w1 participant, w2 bystander | w1 F90, F120; w2 F1500, F1530 | `unsure` (window 2 isn't 3/3); `votes` [participant, participant, bystander] | escalate |
 | A15 | w1 participant, w2 participant (idx 0) | w1 participant, w2 participant (idx 0) | w1 participant, w2 participant (idx 0) | w1 F90, F120; w2 F1500, F1530 | `participant`; `frames` [90, 120, 1500, 1530]; `matches_participant` **0** | policy may `keep` |
+| A16 | w1 bystander, w2 bystander | w1 bystander, w2 bystander | w1 bystander, w2 bystander | w1 F90; w2 F1500 | `bystander` (bystander in every window) | hidden |
 
 Objects (`screen:2`):
 | # | Votes (`sensitive`) | Expected |
@@ -61,6 +62,8 @@ Swept so far: `face, person, license plate, screen, phone, document, name badge`
 | M9 | point (0, 0) on the 0–1000 grid (inside the bar) | point dropped. If the item has a valid `box`, its centre becomes the point; otherwise the item is dropped |
 | M10 | the same `envelope` from votes 1 and 2, points 30 px apart on the same frame (a 1280×720 diagonal is 1,469 px, 5% = 73 px) | merged into one item |
 | M11 | the role re-pass proposes `envelope` at F420 for loop 2, and the step-6 budget check stops before loop 2's request, or the batched object-prompt request fails after retries | no SAM result → **static hidden box** at F420 ±`max(temporal.extend, round(job.fps))` = F390–F450 at 30 fps (from `box`, else a square of side 6% of `min(W, H)`), `needs_you`. Never dropped |
+| M12 | loop 2 proposes `sam_phrase "Kids"` at F600 and SAM tracks it, or it falls back to a static box | singularised `kid` → concept `person`, track `person:n` (next free), `child_phrase: true`; WP3: `kind: child`, `locked: true`, never escalated; it does **not** count toward the `scene.children` match |
+| M13 | phrases `little girl`, `school kids`, `babies`, `passers-by`, `old men` | tokens → `girl` (child set), `kid` (child set), `baby` (child set), `passerby` (person set), `man` (person set): the first three are `person:n` with `child_phrase: true`; the last two are `person:n` |
 
 ## 4. Red-team leak decisions (`redteam.md`)
 Frame 50 has one approved kept-clear item, `A` (a participant's face), visible at box [100, 100, 200, 200]. Frame 1280×720.
@@ -84,13 +87,14 @@ Publishing is allowed only when `audit.json.unresolved == 0` after at most 3 pas
 ## 5. Policy gate for children (API-NOTES §12, `scene.children` and `decisions.items[].hold`)
 Each row: a `person:` track with 3/3 `participant` votes on ≥ 2 keyframes (would be auto-kept).
 
-| # | Scene pass | Tracks voted or locked `child` | Expected |
+| # | Scene pass | Child items (voted `child` by the role pass or escalation; `child_phrase` alone never counts) | Expected |
 |---|---|---|---|
 | P1 | **failed** (`status: "failed"`, `children: []`) | 0 | hidden, `needs_you`, `hold: "no_scene"` (a failure never turns the gate off) |
 | P2 | ok, `children` has 1 entry | 0 | hidden, `needs_you`, `hold: "unmatched_child"` |
 | P3 | ok, `children` has 1 entry (hero clip 1) | 1 (`face:4`, locked) | auto-kept as before, `hold: null` |
 | P4 | ok, `children: []` | 0 | auto-kept, `hold: null` |
 | P5 | ok, `children` has **2** entries | 1 child **item** made of `face:4` + `person:3` (both locked `child`) | hidden, `needs_you`, `hold: "unmatched_child"` (items are counted, not tracks: 1 < 2) |
+| P10 | ok, `children` has 1 entry | 0 (the only child item is a `child_phrase` poster track, locked by rule 0) | hidden, `needs_you`, `hold: "unmatched_child"` |
 
 Speech and introduction evidence (a transcript exists: `turns` non-empty, `degraded: false`; each track 3/3 `participant` on ≥ 2 keyframes, no scene child):
 
@@ -98,5 +102,8 @@ Speech and introduction evidence (a transcript exists: `turns` non-empty, `degra
 |---|---|---|
 | P6 | `matches_participant: 0`, participant 0 "Amina" has `speaker: "S1"` with 3 turns | speech evidence → auto-kept |
 | P7 | `matches_participant: 1`, participant 1 "Kev" has `speaker: null` (introduced, silent) | introduction evidence → auto-kept |
-| P8 | `matches_participant: null` (votes named different participants) | no speech or introduction evidence → hidden, `needs_you` |
+| P8 | `matches_participant: null` (votes named different participants) | no speech or introduction evidence → hidden, `needs_you`, `hold: "no_speech_link"` |
+| P9 | any 3/3 participant; `job.audio: true`, but Voice Transcribe and the fallback both failed (`turns: []`, `degraded: true`) | hidden, `needs_you`, `hold: "no_speech"` (a speech failure never turns the check off) |
+| P9b | any 3/3 participant; `job.audio: true`; the speech stage was skipped for budget (`transcript.json` `status: "skipped"`, `turns: []`, `degraded: true`) | hidden, `needs_you`, `hold: "no_speech"` |
+| P9c | 3/3 participant, `matches_participant: null`; `job.audio: true`, transcript `status: "ok"`, `degraded: false`, `turns: []` | a transcript exists (empty) → no speech or introduction evidence → hidden, `needs_you`, `hold: "no_speech_link"` |
 

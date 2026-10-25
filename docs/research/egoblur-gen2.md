@@ -12,7 +12,7 @@ Read 2026-10-24. **Source:** Meta's official repo [`facebookresearch/EgoBlur`](h
 ## Gating
 **Gated by an email request form** on the EgoBlur page, <https://www.projectaria.com/tools/egoblur/> [OWNER-2026-10-24: read from an open network during the PR #1 audit]. Every weight link in the README points there. The README itself mentions no form, account or Hugging Face mirror.
 
-**Decided:** WP4 builds the audit behind a detector interface with a **replay stub** (saved EgoBlur detections as fixtures), so the pipeline and tests run before the weights arrive. The real model plugs in when the weights are available.
+**Decided:** WP4 builds the audit behind a detector interface with a **replay stub** (saved EgoBlur detections as fixtures) used **only in tests and replay mode**, so the pipeline and tests run before the weights arrive. Live jobs need the real model: without it `/start` is refused (`503 auditor_unavailable`), and from Oct 31 the YuNet face fallback applies (API-NOTES §12, WP4 deviation).
 
 **Owner steps (O8), also in `docs/BLOCKED-PRE-A.md`:**
 1. Open <https://www.projectaria.com/tools/egoblur/> and submit the request form with the owner's own name and email, never an agent's.

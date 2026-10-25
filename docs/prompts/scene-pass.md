@@ -8,7 +8,7 @@ Set the context for the role pass: what kind of video this is, who the creator o
 ## Inputs
 1. The prepared clip, `input_video` with `file_id` (H.264 MP4, ≤1280 px). The soundtrack rides along, but Spark 1.3 audio is degraded, so the transcript is the speech evidence.
 2. `transcript.json` turns, rendered as text: `[S1 0.4–3.1 s] Hi, I'm Amina, and today…`.
-3. The creator's optional upload note ("street interview in Nairobi CBD; guest is Amina").
+3. The creator's upload note: **always "none" in v1** (no upload field exists, API-NOTES §4.3); the slot stays for a later version.
 
 Message order (cache-friendly): system text → user message `[input_text: instructions + schema notes] [input_video] [input_text: transcript + creator note]`.
 
