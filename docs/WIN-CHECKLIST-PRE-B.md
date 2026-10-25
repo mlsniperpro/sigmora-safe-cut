@@ -442,6 +442,13 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#406 (win audit 40)**: Hero 1's fabricated phone number and fake plate could match real people. Fix: clearly fictional number; a plate format no registered vehicle uses.
 - [x] **#407 (win audit 40)**: Hero 3's framed photos could show unsigned, identifiable people in published raw footage. Fix: signed cast or nobody identifiable.
 - [x] **#408 (win audit 40)**: `.agent` HANDOFF's owner-blockers list missed the bucket upload, the Oct 26 API key and the Nov 4 18:00 EAT final cut. Fix: added, with #402–#404.
+- [x] **#409 (PRE-A @ `02c605e`)**: Mock `scene.participants[]` lacked `introduced_in_turn` and `introduction_quote` (scene-pass.md schema). Fix: UI-SPEC's scene shape names both; every mock carries them (hero guest: turn 1, "I'm Amina").
+- [x] **#410 (PRE-A @ `02c605e`)**: Request 20 didn't say service keys answer `401 code_not_active` outside the judge window, with no replay. Fix: stated.
+- [x] **#411 (PRE-A @ `02c605e`)**: EgoBlur copy was fixed text, so the Oct 28 YuNet fallback would be misreported. Fix: UI-SPEC §2 auditor name rule (from `egoblur.model`; no plate count when `plates` is null; baseline row "not run"), the `audit` stage line names no detector, STORYBOARD 6.2/7.1 variants.
+- [x] **#412 (PRE-A @ `02c605e`)**: No copy for `503 billing` on `/start`. Fix: §2.6 row, §10.3 row and exemption, fixture `error-503-billing.json`.
+- [x] **#413 (PRE-A @ `02c605e`)**: The consent note didn't say `store: false` doesn't cover Meta's prompt cache, and the Oct 29 check read only "`store: false` is set". Fix: PILOTS §4 sentence; the check reads the receipt's `store_by_model` / `no_store_param` against PRE-A §10.6 (PILOTS, BLOCKED).
+- [x] **#414 (PRE-A @ `02c605e`)**: RULES-CHECKLIST's "Meta models used" listed EgoBlur Gen 2 unconditionally. Fix: the auditor from the final run's `egoblur.model`.
+- [x] **#415 (PRE-A @ `02c605e`)**: Fixture window ends used `T23:59:00Z`; PRE-A's are `T23:59:59Z`. Fix: all six changed.
 
 ## 4. Which builder reads what
 

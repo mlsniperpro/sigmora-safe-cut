@@ -75,7 +75,7 @@ Look for: the submission form itself (Cerebral Valley), "submission requirements
 | What to capture | We do |
 |---|---|
 | The exact field list, in order, with character limits | Copy it verbatim into `docs/SUBMISSION.md` first thing (WP8 step 3) so WP8 fills the real fields, not guessed ones |
-| A required "Meta models used" field or tag | List exactly what runs: Muse Spark 1.3 (and 1.2 if the speech fallback is used), SAM 3.1, Muse Voice Transcribe, EgoBlur Gen 2; Muse Wonder only if WP0 adopted it ([ARCHITECTURE.md](ARCHITECTURE.md) §4) |
+| A required "Meta models used" field or tag | List exactly what runs: Muse Spark 1.3 (and 1.2 if the speech fallback is used), SAM 3.1, Muse Voice Transcribe, and the auditor named in the final run's `audit.json` `egoblur.model` (EgoBlur Gen 2, or under PRE-A's Oct 28 fallback no EgoBlur at all: YuNet isn't a Meta model, so it's not listed); Muse Wonder only if WP0 adopted it ([ARCHITECTURE.md](ARCHITECTURE.md) §4) |
 | A demo link judges must open without a login | Check that the landing page plays the precomputed hero result with no code, and put the judge access code in the testing-instructions field ([UI-SPEC.md](UI-SPEC.md) §1, §2) |
 | Required screenshots or a slide deck | Add them to the WP8 brief; screenshots come from WP6's PR |
 | Team member details or a company name | See §10 |

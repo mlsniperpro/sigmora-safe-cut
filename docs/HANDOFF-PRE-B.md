@@ -2,9 +2,9 @@
 
 **State:** branch `pre-b-product`, PR #2 (the only PRE-B PR). Lease `.agent/win/SAFECUT-PRE-B/LEASE`: active, `session_01Tjy33tfkpth8jMhhnhhcYL`. Full hand-off: `.agent/win/SAFECUT-PRE-B/HANDOFF.md` (same facts, more detail).
 
-**Audit position:** rounds 24–40 done (three parallel fresh auditors each; from round 39 on Sonnet/high); every finding fixed; WIN-CHECKLIST covers #1–#408 with 0 unchecked lines. Round 38 found 9 (#355–#363), round 39 found 22 (#364–#385), round 40 found 21 (#388–#408). **No clean round yet. Next is round 41; log findings as #409+.** The goal needs two consecutive rounds that find nothing new.
+**Audit position:** rounds 24–40 done (three parallel fresh auditors each; from round 39 on Sonnet/high); every finding fixed; WIN-CHECKLIST covers #1–#415 with 0 unchecked lines. Round 38 found 9 (#355–#363), round 39 found 22 (#364–#385), round 40 found 21 (#388–#408). **No clean round yet. Next is round 41; log findings as #416+.** The goal needs two consecutive rounds that find nothing new.
 
-**Reconciled** with PRE-A docs @ `565eee3` (#331–#332, branch head `c1aa7cd`). Re-check `origin/pre-a-research` every round.
+**Reconciled** with PRE-A @ `02c605e` (#409–#415: every request PRE-A marked open at PR #2 `d644fab`). Re-check `origin/pre-a-research` every round.
 
 **Next:** round 41 → fix → repeat; then post the final status comment (the PR #2 body was refreshed this session; update its finding counts if more land). Remove `.agent/` before merge (#257).
 
