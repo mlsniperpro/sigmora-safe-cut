@@ -397,6 +397,14 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#361 (win audit 38)**: Shot 8.3's text placeholders had no committed source, so STORYBOARD §2's rule would cut the shot. Fix: `eval/results/pilots-<date>/quotes.json` (permitted quotes and credits only; request to WP7).
 - [x] **#362 (win audit 38)**: BLOCKED had no deadlines for the CVAT machine and the clip upload, both on the critical path. Fix: Oct 25 evening; hero 1 by kickoff, the rest by Oct 27.
 - [x] **#363 (win audit 38)**: #207 and #108 still claimed the $14.86 bound. Fix: #207 `[-]` superseded by #331, #108 updated, #331's list extended.
+- [x] **#364 (win audit 39)**: Audit-added items were "drawn like any hidden item" (so a toggle), with no source for their time range or thumbnail, against PRE-A §12 (`track_ids: []`, `locked: true`, `first`/`last`). Fix: UI-SPEC §3.3 audit-patch paragraph; plan-region invariant reworded.
+- [x] **#365 (win audit 39)**: The review response carried only `items` and `plan`, but the reducer and R18/R19/R21 need `status`, `has_render` and `spots` from it. Fix: §8 table, fixture `review-ack.json`, `SERVER_ACK` signature.
+- [x] **#366 (win audit 39)**: The step-B wireframe said Start is disabled until the tick, against §10.2. Fix: "disabled until a file is in".
+- [x] **#367 (win audit 39)**: "(s)" plurals had no rendering rule, and a fixture expected the literal "leak(s)". Fix: §2.6 plural rule; fixture uses the rendered form.
+- [x] **#368 (win audit 39)**: The results footnotes' agreement and run placeholders had no source, and a developer note sat inside the copy. Fix: §1.3 footnote-sources paragraph; request 22 extended.
+- [x] **#369 (win audit 39)**: Needs-you counts ignored U chips. Fix: §3.9 header counts include uncovered spots; row 7 unchanged.
+- [x] **#370 (win audit 39)**: R22–R24's mocks had no items, and R24 used `COVER_SPOT(U1)` and argument-less `MERGE`. Fix: `result-audit-*` mocks use the hero items; R24 arguments explicit.
+- [x] **#371 (win audit 39)**: `job-done-edited.json` lacked `has_render: true`, which its bar row needs. Fix: added.
 
 ## 4. Which builder reads what
 
