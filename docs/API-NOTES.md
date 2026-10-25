@@ -383,7 +383,7 @@ Everything here is either sourced (tagged) or a **decision** for the build. WP0'
 | Base URL | `https://api.meta.ai/v1` (env `SAFECUT_META_BASE_URL`, default this) | [GH-cookbook] |
 | Auth | header `Authorization: Bearer $MODEL_API_KEY`; the key is never logged, and logs redact the header | [GH-cookbook]; AGENTS rule 6 |
 | HTTP client | one shared `httpx.AsyncClient` per process, HTTP/1.1, `limits=Limits(max_connections=16)` | decision: bounded resources |
-| Concurrency | per job ≤ 4 SAM streams + ≤ 3 Responses calls in flight; per process ≤ 8 Meta requests in flight (an `asyncio.Semaphore` each) | decision: 3,000 RPM / 4M TPM ([SNIP] §3.7) is far above this; the bound is memory and the per-job cap |
+| Concurrency | per job ≤ 4 SAM streams + ≤ 3 Responses calls in flight (the role pass starts votes 2–3 only after vote 1's first stream event, `role-pass.md` rule 1, so they hit the prompt cache); per process ≤ 8 Meta requests in flight (an `asyncio.Semaphore` each) | decision: 3,000 RPM / 4M TPM ([SNIP] §3.7) is far above this; the bound is memory and the per-job cap |
 | Connect timeout | 10 s | decision |
 | SAM stream | read idle 90 s (no SSE event); total ≤ 600 s per request | decision *(probe: measured latency)*; [3P] Reka ≈0.4 s/frame → ~96 s for 240 frames |
 | Responses (stream) | read idle 300 s (`medium` and lower), 450 s (`high`, `xhigh`), 600 s (`max`, which reasons silently before output); total ≤ 900 s | decision *(probe)*; [3P] reasoning precedes output (§3.5) |
