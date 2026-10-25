@@ -20,7 +20,7 @@ Message order (cache-friendly): system text → user message `[input_text: instr
 **User**
 > Watch this clip and read its transcript. Answer these questions:
 > 1. **Summary:** in one or two sentences, say what kind of video this is (vlog, street interview, tutorial, event…) and what happens.
-> 2. **Participants:** who is deliberately part of the video? The creator or host (the person filming or presenting), anyone introduced by name or role, anyone interviewed or addressed, and anyone performing for the camera. For each, give a **visual description** someone could use to find them in a still frame (clothing, hair, position, held objects), the **evidence** (what they say or do, or what is said about them, quoting the transcript when you can), and the transcript **speaker label** if you can tell which voice is theirs (otherwise null).
+> 2. **Participants:** who is deliberately part of the video? The creator or host (the person filming or presenting), anyone introduced by name or role, anyone interviewed or addressed, and anyone performing for the camera. For each, give a **visual description** someone could use to find them in a still frame (clothing, hair, position, held objects), the **evidence** (what they say or do, or what is said about them, quoting the transcript when you can), and the transcript **speaker label** if you can tell which voice is theirs (otherwise null), and the **number of the transcript turn** in which they are introduced by name or role, if any (otherwise null).
 > 3. **Not participants:** briefly note the kinds of other people present (passers-by, shop staff, audience), without describing individuals.
 > 4. **Children:** does anyone appear to be under 18? Describe them as you would a participant. Children are always hidden, whatever their role.
 > 5. **Candidate objects:** anything that could identify a person or reveal private information: phone or computer screens, documents, letters, name badges, licence plates, house numbers, photos. Say what it is and roughly when (beginning / middle / end). Don't try to give exact times.
@@ -39,11 +39,12 @@ Message order (cache-friendly): system text → user message `[input_text: instr
     "summary": {"type": "string"},
     "participants": {"type": "array", "items": {
       "type": "object", "additionalProperties": false,
-      "required": ["description", "evidence", "speaker", "is_creator"],
+      "required": ["description", "evidence", "speaker", "introduced_in_turn", "is_creator"],
       "properties": {
         "description": {"type": "string"},
         "evidence": {"type": "string"},
         "speaker": {"type": ["string", "null"]},
+        "introduced_in_turn": {"type": ["integer", "null"]},
         "is_creator": {"type": "boolean"}
       }}},
     "children": {"type": "array", "items": {

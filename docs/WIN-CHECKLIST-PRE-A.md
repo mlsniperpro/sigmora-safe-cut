@@ -53,7 +53,7 @@ Named `-PRE-A` so it can't collide with PR #2. **Updated:** 2026-10-25.
 - [x] **Demo (25%):** `suggested_role`, `escalation_evidence` and `escalation_frames` for the Needs-you card; audit catches that can be demoed (`prompts/redteam.md` cases); a live-finals plan and a declared replay fallback (`research/winning-patterns.md` R4); the demo budget reserve (§9.2)
 - [x] **Startup, "holds up in production":** caps and reservations (§10.5); the $3/day demo cap (§9.2); startup probe and `/healthz` (§10.7); breaker and `retry_later` (§10.2–10.3); the file sweeper (§10.4); `store` honesty (§12)
 
-## 4. PRE-A ↔ PRE-B shared facts (checked against `origin/pre-b-product` @ `22283eb`)
+## 4. PRE-A ↔ PRE-B shared facts (checked against `origin/pre-b-product` @ `5bb95f0`)
 - [x] Child = anyone who may be under 18: PRE-B `LABELING-GUIDE.md` §2; PRE-A `scene-pass`, `role-pass`, `escalation`
 - [x] Two clocks, a constant-frame-rate prepared clip, `job.fps = min(30, round(source average fps))`: PRE-B `LABEL-FORMAT.md` §2 and UI-SPEC §3.6; PRE-A §5b
 - [x] `times` is source-clock seconds, non-decreasing, and `times[0]` may be > 0: PRE-B `LABEL-FORMAT.md` §2 (citing T6c); PRE-A §5b step 5, T6a–T6c
@@ -72,31 +72,19 @@ Named `-PRE-A` so it can't collide with PR #2. **Updated:** 2026-10-25.
 - [P] `other` items get object rulings in PRE-A (role-pass.md judges every non-`face:`/`person:` label as an object); PR #2 UI-SPEC §4.3 says they have none; filed in API-NOTES §12
 - [P] Audit-patch items (`origin: "audit_patch"`, `audit_label` `A<n>`), static items and the P8 speech/introduction hold: PRE-A's contract matches what PR #2 UI-SPEC §0/§4.3 assume for audit-added chips; the field names, a static-item Why row, a P8 Why row and the café mock fix are filed in API-NOTES §12
 - [P] Newest copy requests to PR #2 (API-NOTES §12): `failure.reason: "code_not_active"` (no retry) and `503 auditor_unavailable` copy; Why rows for `hold` `no_scene`, `no_speech`, `no_roles`; request 14's `child` kind for `child_phrase` tracks and the static row ranked below "Hidden, child". PRE-A's contract side is done
-- [x] Audit #30 (2026-10-25 ~09:15–09:25 UTC; three fresh agents in parallel at `74249d6`): **19 findings (overlaps merged: 17), all fixed or filed**; clean count 0. Arithmetic and vectors reproduced again.
-  - (high, fail-open) child/person phrases matched exactly, so `little girl` escaped the lock → per-token singularising table, any token maps (M13).
-  - (fail-open) the gate's child count included `child_phrase` locks → role-pass or escalation `child` only (P10, P-table header).
-  - escalation had no rule for `child_phrase` → rule 1 and role-pass rule 3 exclude them.
-  - (fail-open) an empty successful transcript turned the speech check off → a transcript exists even with `turns: []` (P9c).
-  - (fail-open) checkpoint reuse had no key → stage + input hash, audits keyed on the render.
-  - O8 weights gate every live job → Oct 31 deadline and decided YuNet fallback, BLOCKED and egoblur-gen2 updated.
-  - `no_roles` underivable → `roles.json` `status`, `failed_votes`.
-  - Probe d's Swahili clip → optional owner step and deviation.
-  - Batched `requests[].concept` → `null`; per-window escalation → deviation.
-  - (C) the purge deleted PR #2's pinned hero jobs → exempt.
-  - Lows: `failure.reason` set wording; `transcript.json` `status` on dropped audio and no audio; merged-run evidence frame; `keywords: []` in v1.
-  - Noted, not changed: the `.agent/` handoff files sit in PR #1's diff by the owner's PICK UP process (lease and handoff); they're tooling state, and the owner can drop them before merge.
 - [x] Pinned hero jobs: PR #2 UI-SPEC §1.6/request 19 serve the landing hero from pinned jobs the 24 h purge skips; PRE-A's WP5 deviation now exempts them as well as the replay copy
 - [P] 60 s figures: PRE-A §9.1 A10 now models $2.02–2.09 per 60 s clip ($2.26–2.34 with no cache hits); PR #2 PILOTS §5 and STORYBOARD §3 still quote $1.91–1.99 from older PRE-A commits. Their conclusions (two pilot clips fit $6; recording runs fit $12) still hold; the figure update is filed in API-NOTES §12
 - [P] `scene.children` hold: PRE-A's rule applies only when a scene child is unmatched by any `child` track, so PR #2's hero mocks and STORYBOARD 3.3/4.2 stand; the Why-drawer copy for `hold: "unmatched_child"` is filed in API-NOTES §12
-- [P] `audit.sample_step`: PRE-A (which owns the audit contract, as UI-SPEC §3.3 says) defines it as `round(job.fps)` for every pass; PR #2 UI-SPEC request 18, §3.3 and mock `result-unresolved-review.json` @ `22283eb` say 1 "when every frame was checked" and for EgoBlur rows. Builders follow PRE-A's §12 (the contract owner); the PRE-B wording fix is filed in API-NOTES §12 (AGENTS rule 2)
-- [P] `POST /start` on a capped code: PRE-A §10.3 refuses once the remaining cap can't cover the job's §9.1 estimate; PR #2 UI-SPEC request 1 @ `22283eb` says "when the code's budget is already used" (HANDOFF-PRE-B lists the fix as open). Builders follow §10.3 (it owns the client's budget guard); filed in API-NOTES §12, together with striking HANDOFF-PRE-B's stale "`429 job_cap`" instruction
-- [x] Recording money: PR #2 STORYBOARD §3 and BLOCKED-PRE-B @ `22283eb` dropped the "hero line" and pay the Nov 3 runs only from the $12 recording code, raisable to **at most $15** ("PRE-A's whole $3.00 headroom"). PRE-A §9.2 matches exactly again: the pre-window `/healthz` line is a $0.80 budget line (rate-bounded) (probe every 2 min before Nov 5, plan $0.47), so the ledger is $147.00 with **$3.00** headroom (`.agent/win/SAFECUT-PRE-A/calc/ledger.md`). UI-SPEC request 20 gives only the raise mechanism (update the deploy secret), which is consistent
-- [x] `job_cap` on `POST /start`: PR #2 UI-SPEC §2.6/§10 use `422 job_cap` (a clip that can never fit) and `429` for `code_cap`/`pilot_pool_cap`/`daily_cap`. PRE-A §10.3 adopted the same split (it said `429` for all)
+- [x] `audit.sample_step` = `round(job.fps)` for every pass: PR #2 UI-SPEC §3.3, request 18 and its mock @ `5bb95f0` adopted PRE-A's definition
+- [x] `POST /start` on a capped code refuses once the remaining cap can't cover the job's §9.1 estimate: PR #2 UI-SPEC request 1 @ `5bb95f0` ("when that cap can't cover the job's §9.1 estimate"); HANDOFF-PRE-B's stale bullet is gone
+- [x] Recording money: the $12 recording code pays the Nov 3 runs, raisable to **at most $14.86** (PRE-A's whole $2.86 headroom): PR #2 STORYBOARD §3, BLOCKED-PRE-B and UI-SPEC request 20 @ `5bb95f0` and PRE-A §9.2 agree (PRE-A books the pre-window `/healthz` line at its $0.94 worst case, planning $0.47; `.agent/win/SAFECUT-PRE-A/calc/ledger.md` → 147.14 / 2.86)
+- [x] `job_cap` on `POST /start`: `429 job_cap` (no retry offered) and `429` for `code_cap`/`pilot_pool_cap`/`daily_cap`: PR #2 UI-SPEC §2.6, request 1 and fixture `error-429-job-cap.json` @ `5bb95f0`; PRE-A §10.3 adopted it
 - [x] "Run the audit again": PR #2 UI-SPEC request 11 asked PRE-A to say the receipt stage runs after it. Done in §10.3 (`POST /v1/jobs/{id}/audit`, auto-patch loop as after a first audit, then receipt)
-- [P] Access-code validity (PRE-A side done; PR #2 side pending: UI-SPEC §2.6/§10.3 still map every `401` to "That code didn't work", request 20 lacks the window fields and the `owner` kind; filed in API-NOTES §12): PRE-A §9.2 sets one default window per code `kind` in `config.py` (judge/public Nov 5 00:00 – Nov 10 23:59 UTC, recording until Nov 3 23:59, pilot until Nov 2 23:59, matching PR #2 PILOTS §5's pilot dates); entries may only narrow it with `valid_from`/`valid_until`, so BLOCKED-PRE-B's recording entry `{code, kind, cap_usd}` is valid as written; refusal `401 code_not_active` (the name HANDOFF-PRE-B plans). The UI copy row is a PRE-B request (§12)
+- [x] Access-code windows: `valid_until` required per entry, kind outer bounds (judge/public/service Nov 5 00:00:00 – Nov 10 23:59:59, recording until Nov 3 23:59:59, pilot until Nov 3 11:59:59 UTC), pilot/recording/owner windows gate creation only, judge/public/service every paid request, `401 code_not_active` rows on `/try` and job pages: PR #2 UI-SPEC request 20, §2.6, §10.3, BLOCKED-PRE-B @ `5bb95f0`; PRE-A §9.2/§12 adopted the same
+- [P] Still open on PR #2's side (API-NOTES §12): the `owner` kind in request 20 and in request 1's `code_cap`; hiding [Try again tomorrow] after `code_valid_until`
 - [x] Requests PR #2 already met: the mid-job `daily_cap` copy (UI-SPEC §2.6) and the `matches_participant` speech link (§4.6, request 3) are marked done in API-NOTES §12
 - [x] Test split mean clip ≤ 30 s: SHOTLIST is the owner's (MAXXING O1), not PRE-B's, so the request moved to BLOCKED-PRE-A
-- [P] PR #2 UI-SPEC §5.3 "Audit detail link" (and §3.3's "which is every frame when `frames_scanned` equals `frames`") @ `22283eb` still says EgoBlur ran "otherwise on a sample plus every frame at an item's edges" when `frames_scanned < frames`. DESIGN §2.8 and PRE-A both say EgoBlur scans **every output frame**; fewer scanned frames only happen when a pass failed (`blocked_reason: "audit_failed"`, vector L10), and UI-SPEC's own rule ("never write every frame unless `frames_scanned == frames`") already keeps the copy honest. A copy-only line in PRE-B's paths (AGENTS rule 2), filed in API-NOTES §12; no contract or number differs
+- [P] Sampled-EgoBlur copy: PR #2 fixed UI-SPEC §5.3 @ `5bb95f0` ("It's meant to scan all of them"); §3.3 still says "which is every frame when `frames_scanned` equals `frames`". Copy only, filed in API-NOTES §12
 
 ## 5. Audit findings → fix (full trail)
 - [x] Owner audit 1: effort levels → §3.4 per the live reasoning page; escalation `max`
@@ -201,3 +189,20 @@ Named `-PRE-A` so it can't collide with PR #2. **Updated:** 2026-10-25.
   - WP4 patch loop's re-plan owner → calls `safecut.guard` between passes; `decide`/`apply_review` keep patch items; EgoBlur merged-patch box/span and covered-spot kind defined; patch `evidence_frames` = the finding frame.
   - `meta-sam-parser` and WP5 API/cron changes unfiled → §12 deviations; replay default `null` (no forced replay until a replay job exists).
   - re-queue outside the window reused `code_cap` → `failure.reason: "code_not_active"` (PRE-B copy, no retry); keep-only stops had no honest Why → `hold: "no_roles"`; checkpoint reuse vs `SAFECUT_REPLAY` demo mode → reuse keeps `mode: live`; request 14 `child` kind and static-row precedence filed.
+- [x] Audit #30 (2026-10-25 ~09:15–09:25 UTC; three fresh agents in parallel at `74249d6`): **19 findings (overlaps merged: 17), all fixed or filed**; clean count 0. Arithmetic and vectors reproduced again.
+  - (high, fail-open) child/person phrases matched exactly, so `little girl` escaped the lock → per-token singularising table, any token maps (M13).
+  - (fail-open) the gate's child count included `child_phrase` locks → role-pass or escalation `child` only (P10, P-table header).
+  - escalation had no rule for `child_phrase` → rule 1 and role-pass rule 3 exclude them.
+  - (fail-open) an empty successful transcript turned the speech check off → a transcript exists even with `turns: []` (P9c).
+  - (fail-open) checkpoint reuse had no key → stage + input hash, audits keyed on the render.
+  - O8 weights gate every live job → Oct 31 deadline and decided YuNet fallback, BLOCKED and egoblur-gen2 updated.
+  - `no_roles` underivable → `roles.json` `status`, `failed_votes`.
+  - Probe d's Swahili clip → optional owner step and deviation.
+  - Batched `requests[].concept` → `null`; per-window escalation → deviation.
+  - (C) the purge deleted PR #2's pinned hero jobs → exempt.
+  - Lows: `failure.reason` set wording; `transcript.json` `status` on dropped audio and no audio; merged-run evidence frame; `keywords: []` in v1.
+  - Noted, not changed: the `.agent/` handoff files sit in PR #1's diff by the owner's PICK UP process (lease and handoff); they're tooling state, and the owner can drop them before merge.
+- [x] Audit #31 (2026-10-25 ~12:55–13:05 UTC, after the owner's RESUME; three fresh agents in parallel at `8de82d0`; C against PR #2's new head `5bb95f0`, which reconciled with PRE-A's older `4bb3cec`): **20 findings, all fixed or filed**; clean count 0. Arithmetic and vectors reproduced again.
+  - C: PR #2 carried old PRE-A values (`429 job_cap`, $2.86 headroom / $14.86 recording bound, service keys `401` outside the window) and set new windows (pilot until Nov 3 11:59:59 UTC, `:59` seconds, `valid_until` required, creation-only gating for pilot/recording) → PRE-A **adopted PR #2's current text** on all of them (ledger 147.14 / 2.86, pre-window `/healthz` line $0.94; forced replay and `SAFECUT_REPLAY_JOB_ID` dropped); §4 rows updated; two [P] closed (`sample_step`, `/start` estimate), others re-confirmed open.
+  - B: (1, fail-open) `speaker == null` counted as introduction evidence → `participants[].introduced_in_turn` (scene-pass schema, P7, P11); (2) YuNet file, source, storage, threshold, `egoblur.plates: null`, baseline 1b omitted without O8; (3) no-audio `source_kind`; (4) broken §12 rows; (5) `requests[].concept` in the table.
+  - A: (1, fail-open) plurals `schoolchildren`/`ladies` and punctuation → table entries, punctuation deleted (M13); (2) = B1; (3) WP2 never changes `role` for `child_phrase`, the gate counts `child` votes/rulings; (5) `source` null when no model ran; (6) checkpoints never reuse a failed or over-budget output; (7) = B2; (8) no escalation after a wholly failed role pass, `hold`/`failed_votes` in A8/E3, over-locking noted.
