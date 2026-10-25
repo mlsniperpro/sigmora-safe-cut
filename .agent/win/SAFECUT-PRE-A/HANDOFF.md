@@ -27,6 +27,7 @@
 - Check-ins: own send_later deleted at wind-down. The owner's hourly heartbeat (trig_014Ps65pCVFmy1fF18RFkuey) is the owner's, left alone.
 
 ## Next steps (in order)
+0. **Successor on a new account, repo only:** claim LEASE (`holder=<your session> status=active`), then apply the 10 audit-36B items under "In flight" first (item 5 **reverts** the proxy-bound wording 36A introduced in `da518e8`: real max is 3, not 4), log audit #36 in WIN-CHECKLIST §6, push, then continue below. Subagents: model sonnet, effort high (owner rule, Commands). PR #1 body draft template: refresh from the current PR #1 body.
 1. Lease is claimed (`status=active`); keep it so until a WIND DOWN.
 2. Run the next audit on HEAD: three parallel fresh agents (model sonnet, effort high), read-only, "report ONLY builder-impacting defects … if nothing, say exactly NO NEW FINDINGS", pointing them at the newest edits.
 3. Fix findings, log them in WIN-CHECKLIST §6, commit; repeat until **two consecutive rounds on the same HEAD** find nothing. Record the last clean audit only in the PR comment, so no docs change follows it.
