@@ -14,7 +14,7 @@ Setup: track `face:7` is present in keyframes F90, F120, F150, and all three wer
 | A5 | bystander | bystander | bystander | F90 | `bystander` | hidden |
 | A6 | participant | *(track missing from the output)* | participant | F90, F120 | `unsure` (missing counts as `unsure`) | escalate |
 | A7 | participant | participant, citing **F95** (not sent) | participant | F90, F120 | `unsure` (vote 2 discarded) | escalate |
-| A8 | participant | participant | *(call failed after retry)* | F90, F120 | `unsure`, `failed_votes: 1` | escalate (2 real votes remain); if escalation then fails or is skipped, `hold: "no_roles"` |
+| A8 | participant | participant | *(call failed after retry)* | F90, F120 | `unsure`, `failed_votes: 1` | escalate (2 real votes remain): escalation rules → `hold: null`; escalation fails or is skipped → `hold: "no_roles"` |
 | A9 | unsure | unsure | unsure | — | `unsure` | escalate |
 | A10 | participant ×3 for `face:99` | — | — | — | track dropped (not in the input list); hallucination count +1 | — |
 | A11 | participant (F90, F120; idx 0) | participant (F120, F150; idx 0) | participant (F90; idx 0) | — | `participant`; `frames` [90, 120, 150]; `evidence` = vote 1's; `matches_participant` **0** | — |
@@ -35,7 +35,7 @@ Objects (`screen:2`):
 | # | Role-pass votes | Escalation result | Expected |
 |---|---|---|---|
 | E1 | participant, participant, child | *(not called)* | `child`, locked |
-| E2 | participant, participant, unsure | ruling `child` | `child`, locked; `escalated: true` |
+| E2 | participant, participant, unsure | ruling `child` | `child`, locked; `escalated: true` (this is what the children gate counts as an escalation `child` ruling) |
 | E3 | participant, participant, unsure | call failed | `unsure`, `needs_you`, `suggested_role: null`, `escalated: false`, `hold: "no_roles"` |
 | E4 | participant, participant, unsure | ruling `participant`, frames F210, F240 (both sent, track present) | `unsure`, `needs_you`, `suggested_role: "participant"`, `escalation_frames: [210, 240]`, `escalated: true`. **Not kept.** |
 | E5 | participant, bystander, bystander | ruling `bystander` | `unsure`, `needs_you`, `suggested_role: "bystander"` |
@@ -95,16 +95,19 @@ Each row: a `person:` track with 3/3 `participant` votes on ≥ 2 keyframes (wou
 | P4 | ok, `children: []` | 0 | auto-kept, `hold: null` |
 | P5 | ok, `children` has **2** entries | 1 child **item** made of `face:4` + `person:3` (both locked `child`) | hidden, `needs_you`, `hold: "unmatched_child"` (items are counted, not tracks: 1 < 2) |
 | P10 | ok, `children` has 1 entry | 0 (the only child item is a `child_phrase` poster track, locked by rule 0) | hidden, `needs_you`, `hold: "unmatched_child"` |
+| P12 | ok, `children` has 1 entry | 0 (a `child_phrase` poster track **voted `child` 3×** in loop 1's re-pass is the only `child` vote) | hidden, `needs_you`, `hold: "unmatched_child"` (a `child_phrase` track never counts, even voted `child`) |
 
 Speech and introduction evidence (a transcript exists: `job.audio: true`, `status: "ok"`, `degraded: false`; each track 3/3 `participant` on ≥ 2 keyframes, no scene child):
 
 | # | Track | Expected |
 |---|---|---|
 | P6 | `matches_participant: 0`, participant 0 "Amina" has `speaker: "S1"` with 3 turns | speech evidence → auto-kept |
-| P7 | `matches_participant: 1`, participant 1 "Kev" has `speaker: null`, `introduced_in_turn: 2` (turn 2: "this is my mate Kev") | introduction evidence → auto-kept |
+| P7 | `matches_participant: 1`, participant 1 "Kev" has `speaker: null`, `introduced_in_turn: 2`, `introduction_quote: "my mate Kev"` (turn 2: "And this is my mate, Kev.") | the quote is in turn 2 after normalising → introduction evidence → auto-kept |
 | P8 | `matches_participant: null` (votes named different participants) | no speech or introduction evidence → hidden, `needs_you`, `hold: "no_speech_link"` |
 | P9 | any 3/3 participant; `job.audio: true`, but Voice Transcribe and the fallback both failed (`turns: []`, `degraded: true`) | hidden, `needs_you`, `hold: "no_speech"` (a speech failure never turns the check off) |
 | P9b | any 3/3 participant; `job.audio: true`; the speech stage was skipped for budget (`transcript.json` `status: "skipped"`, `turns: []`, `degraded: true`) | hidden, `needs_you`, `hold: "no_speech"` |
 | P9c | 3/3 participant, `matches_participant: null`; `job.audio: true`, transcript `status: "ok"`, `degraded: false`, `turns: []` | a transcript exists (empty) → no speech or introduction evidence → hidden, `needs_you`, `hold: "no_speech_link"` |
 | P11 | `matches_participant: 0`, participant 0 has `speaker: null`, `introduced_in_turn: null` (with any transcript, including `turns: []`) | no evidence (`speaker == null` alone isn't an introduction) → hidden, `needs_you`, `hold: "no_speech_link"` |
+| P11b | as P7, but `introduction_quote: "my friend Kev"`, not in turn 2's text | WP2 nulls both fields → no evidence → hidden, `needs_you`, `hold: "no_speech_link"` |
+| P11c | as P7, but `introduction_quote: ""` (or `"..."`, or one word `"Kev"`) | fewer than 2 words after normalising → WP2 nulls both → no evidence → `hold: "no_speech_link"` |
 

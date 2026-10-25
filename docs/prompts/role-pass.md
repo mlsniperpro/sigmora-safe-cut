@@ -24,7 +24,7 @@ Message order (stable prefix for caching): system → user `[input_text: role de
 **User**
 > Context from a first look at the whole video:
 > {scene_summary}
-> Participants (described, not yet matched to labels): {participants_list}
+> Participants (described, not yet matched to labels), each with its number in brackets, e.g. `[0] woman in yellow jacket, the host`: {participants_list}
 > Children noted: {children_list}
 > Speech, with the frames it covers: {transcript_by_frames}
 >
@@ -56,7 +56,7 @@ Message order (stable prefix for caching): system → user `[input_text: role de
         "role": {"type": "string", "enum": ["participant", "bystander", "child", "unsure"]},
         "evidence": {"type": "string"},
         "frames": {"type": "array", "items": {"type": "integer"}},
-        "matches_participant": {"type": ["integer", "null"], "description": "index into scene participants, or null"}
+        "matches_participant": {"type": ["integer", "null"], "description": "the bracketed participant number shown above, or null"}
       }}},
     "objects": {"type": "array", "items": {
       "type": "object", "additionalProperties": false,
@@ -76,7 +76,7 @@ WP2 inlines the `missed` item schema from `miss-loop.md`; strict mode needs it f
 ## Self-consistency rules (3×)
 1. Make **3 independent calls** sharing the cached prefix (system, context, images). The **final instruction block differs per vote**: three semantically equivalent phrasings of the same question (v1 as written; v2 lists the four role definitions in reverse order and asks for bystanders first; v3 asks per label "which of the four roles fits `face:7`, and what in these frames shows it?"). The definitions, evidence rules and answer options are identical across all three; only the wording and the label order change. Consistency across rephrasings is a better reliability signal for black-box VLMs than resampling one prompt ([Khan & Fu, CVPR 2024](https://openaccess.thecvf.com/content/CVPR2024/papers/Khan_Consistency_and_Uncertainty_Identifying_Unreliable_Responses_From_Black-Box_Vision-Language_Models_CVPR_2024_paper.pdf)), and it keeps the image prefix cacheable. WP0 checks whether `temperature` is accepted, and logs the vote agreement rate on the dev split. If the 3 votes are byte-identical on most tracks, they're not independent. In that case vote 2 also reverses the image order and vote 3 shuffles it, accepting the cache miss (≈ +$0.13 per 30 s clip and +$0.25 at 60 s, every role pass including loop 2's, API-NOTES §9.1), and WP0 reports it.
 2. **Aggregate per track** into `roles.json.tracks[].votes` (3 entries, in vote order). Missing from a vote's output = `unsure` for that vote.
-3. (A track with `tracks[].child_phrase: true` is locked as a child by **WP3** rule 0, whatever the votes; WP2 still writes its `role` from the votes and never changes it, so the children gate, which counts `child` votes and escalation rulings, isn't fooled by the lock. API-NOTES §12.) `role = participant` only if **3/3** votes say `participant` **and** the union of cited frames has **≥2 distinct keyframes** where the track is present. Otherwise:
+3. (A track with `tracks[].child_phrase: true` is locked as a child by **WP3** rule 0, whatever the votes; WP2 still writes its `role` from the votes and never changes it, and the children gate ignores `child_phrase` tracks entirely, even ones voted `child`, so a poster tagged "kid" can't switch it off (P12). API-NOTES §12.) `role = participant` only if **3/3** votes say `participant` **and** the union of cited frames has **≥2 distinct keyframes** where the track is present. Otherwise:
    - any `child` vote → `child` (locked, hidden), **regardless of the other votes**;
    - all bystander → `bystander`;
    - anything else (any disagreement) → `unsure` → **escalate** once (`escalation.md`) for a suggestion. It stays hidden + `needs_you` whatever escalation says; only the creator can keep a disputed track.
