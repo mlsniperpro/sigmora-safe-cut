@@ -1,29 +1,46 @@
 # HANDOFF: SAFECUT-PRE-A (docs-only research package)
 
-**Released by** session_015NHPSLCF7hCdxi6Q9v8srB at 2026-10-25 ~09:22 UTC on the owner's WIND DOWN (held since 08:10 UTC; took over from session_01LDnKxUxPsHrPFZ4j6gXzqA). **Branch** `pre-a-research` · **PR #1** (the one and only PRE-A PR; never open another) · **Brief** `docs/work-packages/PRE-A.md` · **Rules** `AGENTS.md` (no code before 2026-10-26 16:00 UTC; docs only).
+**Released by** session_015NHPSLCF7hCdxi6Q9v8srB (owner WIND DOWN; this account's usage ended). Took over at 2026-10-25 08:10 UTC from session_01LDnKxUxPsHrPFZ4j6gXzqA.
 
-## Goal (owner /goal)
-Met only when the transcript shows, after the last docs change: (1) `grep -c '^- \[ \]' docs/WIN-CHECKLIST-PRE-A.md` → 0; (2) two consecutive full hostile audits that find nothing new; (3) PRE-A and PRE-B (PR #2, `pre-b-product`) reconciled on shared facts; (4) `git status -sb` showing the branch pushed; (5) a final docs status comment on PR #1. Pushes ≥45 min apart; squash WIP. Don't comment on or retitle other PRs or issues. Stop at 2026-10-26 16:00 UTC at the latest.
+## Goal, deadline, PR
+- **Branch** `pre-a-research` · **PR #1** (the only PRE-A PR; never open another) · **Brief** `docs/work-packages/PRE-A.md` · **Rules** `AGENTS.md`: docs only, **no code, config or scaffolding before 2026-10-26 16:00 UTC**; stop the win loop by then at the latest.
+- Owner /goal: met only when the transcript shows, after the last docs change: (1) `grep -c '^- \[ \]' docs/WIN-CHECKLIST-PRE-A.md` → 0; (2) **two consecutive full audits with nothing new**; (3) PRE-A and PRE-B (PR #2, `pre-b-product`) reconciled on shared facts; (4) `git status -sb` showing the branch pushed; (5) a final docs status comment on PR #1. Pushes ≥ 45 min apart (squash WIP first). Don't comment on or retitle other PRs or issues. Never ask the owner; decide and record decisions.
+- Gate: PICK UP names `.agent/WIN-GATE.md` / `win-gate.sh`; neither exists on any branch, and a script would break AGENTS rule 1, so the gate is the five conditions above.
 
-**Gate:** PICK UP names `.agent/WIN-GATE.md` and `bash .agent/win-gate.sh`, but neither exists on any branch. A gate script would be executable scaffolding (AGENTS rule 1), so the gate is the five conditions above, checked with the commands below.
+## Done (evidence)
+- Deliverables: `docs/API-NOTES.md` (§1–§12; §9.2 the $150 ledger; §12 = **one list** of contract rows, a config/env table, "Deliberate differences from the WP files", and "Requests to PRE-B"), `docs/prompts/*.md` (6 specs + `TEST-VECTORS.md`), `docs/research/*.md`, `docs/BLOCKED-PRE-A.md`, `docs/WIN-CHECKLIST-PRE-A.md` (criteria map, §4 PRE-A↔PRE-B facts, §5/§6 full audit trail).
+- Ledger **$147.00 planned, $3.00 headroom**: `awk` line in `.agent/win/SAFECUT-PRE-A/calc/ledger.md` (mirrors API-NOTES §9.2). Per clip: $1.12 / 30 s at 8 fps; $2.02–2.09 / 60 s ($2.26–2.34 no cache, A10).
+- Audits #1–#30 logged in WIN-CHECKLIST §6. Since #24 each audit = **three fresh agents in parallel**: A internal arithmetic/consistency, B brief + ARCHITECTURE/DESIGN/EVAL/WP0–WP8, C vs PR #2 (`git show origin/pre-b-product:<path>`). Findings per round: #24 25, #25 29, #26 21, #27 20, #28 15, #29 16, #30 17; **all fixed or filed**. **Clean count: 0.** No arithmetic errors since #26; findings are now rule-level edge cases, mostly fail-closed tightening of recent edits.
+- Last pushes: `071da22` (08:55 UTC), then the wind-down push (this commit's parent chain). PR #1 body was refreshed ~09:00 UTC and still shows `071da22` and audits to #27.
 
-## State (2026-10-25)
-- Ledger: **$147.00 planned, $3.00 headroom** (the awk line in `.agent/win/SAFECUT-PRE-A/calc/ledger.md`). The pre-window `/healthz` line is capped at $0.80 (Meta probe at most every 2 min before Nov 5, plan $0.47), so PR #2's "recording code raisable to at most $15 = PRE-A's whole $3.00 headroom" (@ `22283eb`) is exact.
-- Reconciled with PR #2 @ `22283eb` (commit `c21922a`): no hero line; $15 recording bound; `422 job_cap` / `429` caller caps on `POST /start`; "Run the audit again" runs the receipt stage (request 11); code windows `valid_from`/`valid_until` + `401 code_not_active`.
-- One PRE-B-side copy line is still open ([P] in WIN-CHECKLIST §4): UI-SPEC §5.3 "Audit detail link" says "otherwise on a sample…". PRE-B owns it (AGENTS rule 2); no contract or number differs. Also requested from PRE-B: a `code_not_active` copy row, window fields in request 20, test split mean clip ≤ 30 s. No PRE-B session is active on this account (checked 08:15 UTC).
-- Audits: #1–#30 logged in WIN-CHECKLIST §6. Each audit = three fresh agents in parallel (A internal arithmetic/consistency, B brief + repo specs, C vs PR #2); prompts reusable from the §6 entries. Findings per round: #24 25, #25 29, #26 21, #27 20, #28 15, #29 16, #30 17, all fixed or filed. **Clean count: 0.** No arithmetic errors since #26; findings are now rule-level edge cases (mostly fail-closed tightening). **Audit #31 has not run**: start there, on the pushed HEAD.
-- PRE-B-side [P] filings: API-NOTES §12 "Requests to PRE-B" and WIN-CHECKLIST §4. No PRE-B session was active at 08:15 UTC; builders follow PRE-A where it owns the contract.
-- PR #1 body refreshed at ~09:00 UTC (pushed state `071da22`); refresh it again with the new HEAD and audits #28–#30.
+## In flight
+- Nothing partial. No evidence files are half-written. **Audit #31 never ran.** Audit #30's fixes are committed and pushed (WIN-CHECKLIST §6 entry "Audit #30").
 
-## Next steps (resume here)
-1. Fix every audit #24 finding, log it in WIN-CHECKLIST §6, commit; repeat audit rounds (three lenses each) until two consecutive rounds on the same HEAD find nothing.
-2. Refresh the PR #1 body (numbers, Decisions, evidence), push (≥45 min after the last push), show `git status -sb`, post the final status comment on PR #1 (it records the last clean audit, so no docs change follows it).
+## Next steps (in order)
+1. Claim the lease (`LEASE` → `status=active`), commit `lease: claim SAFECUT-PRE-A`, push.
+2. Run audit #31 on HEAD: three parallel fresh agents with the lens prompts above, read-only, "report ONLY builder-impacting defects … if nothing, say exactly NO NEW FINDINGS", pointing them at the newest edits (#29/#30: `transcript.json`/`roles.json` `status`, `hold` enum and precedence, `child_phrase` + WP3 rule 0 + token-wise phrase sets, YuNet fallback, checkpoint keys, empty-transcript rule, pinned-job purge exemption).
+3. Fix findings, log them in WIN-CHECKLIST §6, commit; repeat until **two consecutive rounds on the same HEAD** find nothing. Record the last clean audit only in the PR comment, so no docs change follows it.
+4. Re-check PR #2 (`git fetch origin pre-b-product`); if PRE-B fixed any [P] item, mark it [x] in WIN-CHECKLIST §4 and in API-NOTES §12 "Requests to PRE-B".
+5. Refresh the PR #1 body (status, Decisions, Requests, Evidence with real command output), push (≥ 45 min spacing), show `git status -sb`, post the final docs status comment on PR #1.
+
+## Open audit findings / open items
+- PRE-A side: none open (all audit findings fixed).
+- PRE-B side ([P] in WIN-CHECKLIST §4; full text in API-NOTES §12 "Requests to PRE-B"): sampled-EgoBlur copy (UI-SPEC §5.3/§3.3); `sample_step` = `round(job.fps)`; `/start` refuses when a cap can't cover the §9.1 estimate; HANDOFF-PRE-B's stale `429 job_cap` bullet; `code_not_active` copy (`/try`, job pages, `failure.reason`) + window fields + `owner` kind + `code_cap` definition; `503 auditor_unavailable` copy; `cover_spot` span and union box; `U` speaker vs `U{n}` chips; Why rows for `hold` (`no_scene`, `no_speech`, `no_roles`, `unmatched_child`, `no_speech_link`), static items, café mock fix; audit-patch field names (`origin`, `audit_label`); `other` items' object rulings; request 14 `child` kind for `child_phrase`; 60 s figures in PILOTS/STORYBOARD. PRE-A can't edit PRE-B (AGENTS rule 2). No PRE-B session was active at 08:15 UTC.
+
+## Key decisions (why) — details in API-NOTES and the PR #1 Decisions section
+- Headroom exactly $3.00: pre-window `/healthz` probes Meta ≤ once / 2 min ($0.80 budget line, $0.47 plan), so PR #2's "recording code ≤ $15" is exact.
+- `422 job_cap`, `429` caller caps on `/start` (PR #2's codes). Code windows per kind in `SAFECUT_CODE_WINDOWS`, checked on every paid request; daily cap $0 after Nov 10; service keys live only Nov 5–10, else replay of `SAFECUT_REPLAY_JOB_ID` (null → refused). Window opens Nov 5 00:00 UTC (a sixth cap day would spend the headroom).
+- `blocked_reason` precedence `over_budget` > `audit_failed` > `unresolved_leaks`; unresolved leaks end `done`; keep-only stops leave items `needs_you`, job continues to `review`.
+- Audit patches are locked hidden **decision items** (`origin: "audit_patch"`, `A<n>`), static boxes, rebuilt on every re-plan; WP4's loop calls WP3's guard between passes.
+- Track ids `<concept>:<n>` numbered per concept across the job; person/child phrase sets token-wise; `child_phrase` tracks locked as children (WP3 rule 0), never escalated, not counted toward the scene-children gate.
+- Children/speech gates fail closed: `hold` when a scene child is unmatched, the scene or speech or role stage didn't run, or a 3/3 participant has no speech/introduction link while a transcript exists (even an empty one).
+- EgoBlur weights needed by Oct 31; else YuNet face fallback (`SAFECUT_EGOBLUR_MODEL=yunet-face`), plates by red-team only, disclosed. Live `/start` refused (`503 auditor_unavailable`) without an auditor; stub only in tests/replay.
+- v1 has no creator note; `languageBias` from `SAFECUT_ASR_LANGUAGE_BIAS`. Checkpoint reuse keyed by stage + input hash, never `SAFECUT_REPLAY`.
+- Wonder not pre-approved; probe f ≤ $3.00 ($2.44 priced).
 
 ## Commands
-- `grep -c '^- \[ \]' docs/WIN-CHECKLIST-PRE-A.md` (must be 0); `git diff --name-only main..HEAD | grep -v '^\.agent/' | grep -vcE '\.md$'` (must be 0); the awk line in `.agent/win/SAFECUT-PRE-A/calc/ledger.md`.
+- Gates: `grep -c '^- \[ \]' docs/WIN-CHECKLIST-PRE-A.md` (0); `git diff --name-only main..HEAD | grep -v '^\.agent/' | grep -vcE '\.md$'` (0); `awk -F'|' '/^\| / && $3 ~ /[0-9]/{s+=$3} END{printf "TOTAL %.2f headroom %.2f\n", s, 150-s}' .agent/win/SAFECUT-PRE-A/calc/ledger.md` (147.00 / 3.00).
+- No install/test/run before kickoff (docs only). After kickoff (code WPs): `uv sync`, `uv run pytest`, `uv run ruff check`, `pnpm lint && pnpm typecheck && pnpm test` (AGENTS rule 12).
 
 ## Owner-only blockers (docs/BLOCKED-PRE-A.md)
-SA-Co/VEval HF access + `HF_TOKEN`; EgoBlur weights (email form); a Linux NVIDIA GPU box for the test split; the network allowlist (dev.meta.ai, api.meta.ai, projectaria.com, modal.com, huggingface.co); `MODEL_API_KEY`.
-
-## Key decisions
-See the previous handoff in git history (`git show 32a0574:.agent/win/SAFECUT-PRE-A/HANDOFF.md`) and the PR #1 body's Decisions section; all still hold, plus the `/healthz` and `422` decisions above.
+SA-Co/VEval HF access + `HF_TOKEN`; EgoBlur weights (email form) by Oct 31; Linux NVIDIA box for the test split; network allowlist (dev.meta.ai, developer.meta.com, api.meta.ai, projectaria.com, modal.com, huggingface.co); `MODEL_API_KEY`; an `owner` access code for WP5; setup script `--no-group audit`; test-split mean clip ≤ 30 s; optional consented Swahili/Sheng clip.
