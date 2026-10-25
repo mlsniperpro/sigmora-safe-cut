@@ -1,6 +1,6 @@
 # HANDOFF: SAFECUT-PRE-B (docs-only product-prep package)
 
-**Updated 2026-10-25 13:09 UTC** by session_01Tjy33tfkpth8jMhhnhhcYL (lease active). **Branch** `pre-b-product` · **PR #2** (the only PRE-B PR; never open another) · **Brief** `docs/work-packages/PRE-B.md` · **Rules** `AGENTS.md` (docs only; no code before 2026-10-26 16:00 UTC). Short form: `docs/HANDOFF-PRE-B.md`.
+**Updated 2026-10-25 14:13 UTC** by session_01Tjy33tfkpth8jMhhnhhcYL (WOUND DOWN; lease released). **Branch** `pre-b-product` · **PR #2** (the only PRE-B PR; never open another) · **Brief** `docs/work-packages/PRE-B.md` · **Rules** `AGENTS.md` (docs only; no code before 2026-10-26 16:00 UTC). Short form: `docs/HANDOFF-PRE-B.md`.
 
 ## Goal (owner /goal, re-armed hourly)
 Met only when the transcript shows, after the last docs change: `grep -c '^- \[ \]' docs/WIN-CHECKLIST-PRE-B.md` → 0; **two consecutive full audits that find nothing new**; PRE-B and PRE-A reconciled on shared facts; `git status -sb` pushed; a final docs status comment on PR #2. Deadline: kickoff 2026-10-26 16:00 UTC. Never comment on other PRs. A WIND DOWN message: write handoff, release lease, push, delete own check-ins.
@@ -11,7 +11,7 @@ Met only when the transcript shows, after the last docs change: `grep -c '^- \[ 
 - Audit rounds 24–41 this session (A cross-package; B UI-SPEC internal; C labels/pilots/storyboard/BLOCKED timeline and privacy), each on a fixed sha; round 39 found 22, round 40 found 21 (#388–#408); round 41 found 34 (#416–#449). No clean round yet.
 
 ## In flight
-- Nothing running at this write. The refreshed PR #2 body is a scratch draft only (lost if the container goes): rebuild from the Decisions in the docs (STORYBOARD rules, PILOTS §4–§6, UI-SPEC §2.6.1/§8, SCHEDULE §3–§4, CVAT-SETUP §2) and the requests lists (UI-SPEC §8 requests 1–21; EVAL owner: 12/3 split and creator time n=2 summed parts; SHOTLIST owner: line 15 storage; DEMO owner: beats 5 and 7; ARCHITECTURE §4 owner: SAFECUT_ACCESS_CODES, SAFECUT_PILOT_POOL_USD; WP7: `n_clips`).
+- Nothing running. Round 42 (three Sonnet/high auditors on `70a5c6d`) was **stopped by WIND DOWN before reporting**: re-run it from scratch on the current HEAD. All check-ins deleted. The refreshed PR #2 body draft is saved at `.agent/win/SAFECUT-PRE-B/pr2-body-draft.md` (counts updated to #1–#415 and rounds 24–41; bump to #449 before use).
 
 ## Next steps (in order)
 1. Audit round 42 (same 3 scopes, fresh agents, fixed sha; hot zone = latest fix diff, then `git diff 5bb95f0..HEAD -- docs/`). Log as #450+. Repeat until two consecutive rounds find nothing new. Findings cluster in UI-SPEC §2.6.1/§3.5/§10.3–§10.5 and mock fixtures, and in the Nov 3 sequence (STORYBOARD §3, BLOCKED); re-read neighbouring rules before each fix.
