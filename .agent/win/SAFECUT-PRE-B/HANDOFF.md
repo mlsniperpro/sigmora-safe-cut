@@ -14,12 +14,12 @@ Met only when the transcript shows, after the last docs change: `grep -c '^- \[ 
 - Nothing running at this write. The refreshed PR #2 body is a scratch draft only (lost if the container goes): rebuild from the Decisions in the docs (STORYBOARD rules, PILOTS §4–§6, UI-SPEC §2.6.1/§8, SCHEDULE §3–§4, CVAT-SETUP §2) and the requests lists (UI-SPEC §8 requests 1–21; EVAL owner: 12/3 split and creator time n=2 summed parts; SHOTLIST owner: line 15 storage; DEMO owner: beats 5 and 7; ARCHITECTURE §4 owner: SAFECUT_ACCESS_CODES, SAFECUT_PILOT_POOL_USD; WP7: `n_clips`).
 
 ## Next steps (in order)
-1. Audit round 40 (same 3 scopes, fresh agents, fixed sha; hot zone = latest fix diff, then `git diff 5bb95f0..HEAD -- docs/`). Log as #386+. Repeat until two consecutive rounds find nothing new. Findings cluster in UI-SPEC §2.6.1/§3.5/§10.3–§10.5 and mock fixtures, and in the Nov 3 sequence (STORYBOARD §3, BLOCKED); re-read neighbouring rules before each fix.
+1. Audit round 40 (same 3 scopes, fresh agents, fixed sha; hot zone = latest fix diff, then `git diff 5bb95f0..HEAD -- docs/`). Log as #387+. Repeat until two consecutive rounds find nothing new. Findings cluster in UI-SPEC §2.6.1/§3.5/§10.3–§10.5 and mock fixtures, and in the Nov 3 sequence (STORYBOARD §3, BLOCKED); re-read neighbouring rules before each fix.
 2. The PR #2 body was refreshed this session (Decisions 1–19, requests incl. request 22); update its finding counts, then push, show `git status -sb`, post the final docs status comment.
 3. Before merge: remove `.agent/` (#257).
 
 ## Open audit findings
-None known (#1–#385 fixed).
+None known (#1–#386 fixed).
 
 ## Commands / gates (docs only)
 - **Owner push rule (2026-10-25, replaces the 45-minute spacing everywhere):** push when a substantial task is complete and green (a set of audit findings fixed and checked, the gate run); never wait for a timer. Each push is a meaningful, squashed commit set (no empty, format-only or wip commits); exactly one PR. Never sit idle or end a turn to wait: while subagents run, work on the next HANDOFF item. Stop only for the API usage limit or a met /goal.
