@@ -69,7 +69,7 @@ Every placeholder, timings and audit counts included, must resolve to a value in
 | `{h1a_seconds}` | the length of H1A | the `hero-live-<date>` run (above): `job.json` `frames / fps`, copied into that run's `metrics.json` as `h1a_seconds` |
 | `{h1_frames_scanned}`, `{h1_leaks_fixed}` | the audit on the recorded **H1A** run (the `SR-08` render shown in `SR-07`), never H1B's | the same `hero-live-<date>` run, copied from its `audit.json` |
 | `{n_pilots}`, `{n_capped}` | pilots who completed the protocol, capped ones included; the subset of them who hit the 30-minute cap on the manual step | `eval/results/pilots-<date>/metrics.json` fields `n_pilots` and `n_capped` ([PILOTS.md](PILOTS.md) §6) |
-| `{pilot_*}` | pilot results, quotes, `{pilot_format}`, `{pilot_country}` and names | numbers from `eval/results/pilots-<date>/metrics.json`; quotes and names only with written permission ([PILOTS.md](PILOTS.md) §6) |
+| `{pilot_*}` | pilot results, quotes, `{pilot_format}`, `{pilot_country}` and names | numbers from `eval/results/pilots-<date>/metrics.json`; `{pilot_quote}`, `{pilot_credit}`, `{pilot_format}` and `{pilot_country}` from `eval/results/pilots-<date>/quotes.json`, which holds only quotes a pilot permitted in writing, word for word, with the credit they chose (anonymous-only with ≤ 2 pilots, [PILOTS.md](PILOTS.md) §6); request to WP7 |
 
 ## 3. Screen recordings to capture on Nov 3
 
