@@ -32,11 +32,11 @@ We contact creators only through their **public business channels**, never perso
 
 ## 3. Outreach drafts
 
-Both are under 120 words (DM: 103; email body, without the subject: 110). Personalise the `{…}` parts with something specific from their own videos; never send a template without it.
+Both are under 120 words (DM: 102; email body, without the subject: 109; placeholders count as one word, as in RULES-CHECKLIST §4). Personalise the `{…}` parts with something specific from their own videos; never send a template without it.
 
 ### 3.1 DM (Instagram, TikTok, X)
 
-> Hi {name}, I liked your {video}, especially {specific detail}. I'm building Safe Cut, a tool that hides passers-by, children, number plates and private screens in street footage while keeping you and your guests clear. It's a hackathon build for Meta's AI developer hackathon, not a finished product. Would you try it on one clip you haven't published yet, between Oct 30 and Nov 2? It takes up to an hour: mask the clip your usual way for at most 30 minutes, run it through Safe Cut, and answer 3 questions. Your footage is deleted automatically afterwards. Can I send details? {your name}, Sigmora
+> Hi {name}, I liked your {video}, especially {specific detail}. I'm building Safe Cut, a tool that hides passers-by, children, number plates and private screens in street footage while keeping you and your guests clear. It's a hackathon build for Meta's AI developer hackathon, not a finished product. Would you try it on one clip you haven't published yet, between Oct 30 and Nov 2 (UTC)? It takes up to an hour: mask the clip your usual way for at most 30 minutes, run it through Safe Cut, and answer 3 questions. Your footage is deleted automatically afterwards. Can I send details? {your name}, Sigmora
 
 ### 3.2 Email
 
@@ -46,7 +46,7 @@ Both are under 120 words (DM: 103; email body, without the subject: 110). Person
 >
 > I watch your {channel}; {specific detail} is the kind of clip I have in mind. I'm building Safe Cut for Meta's AI developer hackathon (deadline Nov 4). It works out who's part of your video and hides everyone else, plus children, number plates and private screens. You approve every decision.
 >
-> It's an honest hackathon build, not a finished product. Would you test it on one unpublished clip between Oct 30 and Nov 2? Up to an hour: your usual masking (capped at 30 minutes), then Safe Cut, then 3 questions. Footage is deleted automatically afterwards.
+> It's an honest hackathon build, not a finished product. Would you test it on one unpublished clip between Oct 30 and Nov 2 (UTC)? Up to an hour: your usual masking (capped at 30 minutes), then Safe Cut, then 3 questions. Footage is deleted automatically afterwards.
 >
 > Interested? I'll send an access code and the details.
 >

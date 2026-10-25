@@ -25,7 +25,7 @@ Judging facts are from [MAXXING.md](MAXXING.md) §1 and §3 (to be re-checked ag
 - [x] **Step 2: Every WP6 screen: wireframes desktop + mobile, copy deck, states, keyboard/a11y, contract fields**. Evidence: UI-SPEC §1–9, build contract §10.
 - [x] **Step 2: The Why? drawer in detail; progress-stage labels**. Evidence: UI-SPEC §4, §2.5.
 - [x] **Step 3: Shot-by-shot 2:50 with frame, text, VO, duration, source; Nov 3 recordings; placeholders**. Evidence: STORYBOARD §1–3.
-- [x] **Step 4: Pilot profile, 15 candidates by channel type, 2 drafts < 120 words, consent note, protocol, results policy**. Evidence: PILOTS §1–6 (DM 103 words, email 110).
+- [x] **Step 4: Pilot profile, 15 candidates by channel type, 2 drafts < 120 words, consent note, protocol, results policy**. Evidence: PILOTS §1–6 (DM 102 words, email 109, placeholders as one word).
 - [x] **Step 5: Rules checklist with an action for every answer**. Evidence: RULES-CHECKLIST §1–12.
 - [x] **Step Done: Cross-links to DESIGN, EVAL, DEMO; no executable code**. Evidence: Verified by the docs check in the PR evidence.
 - [x] **Step Owner: Owner-only inputs with defaults and stub paths**. Evidence: BLOCKED-PRE-B.
@@ -366,6 +366,33 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#330 (win audit 35)**: §3.4 still described a one-level undo. Fix: the row describes the stack.
 - [x] **#331 (reconcile, PRE-A @ `565eee3`)**: PRE-A moved on in parallel (it reconciled against PR #2 @ `22283eb`): `422 job_cap` on `/start` (not retryable), $3.00 headroom and a $15.00 recording bound, default code windows per kind that entries may only narrow (pilot until Nov 2 23:59 UTC), the window checked on every paid request for every kind, an `owner` kind, `code_valid_until`, `failure.reason: "code_not_active"`, `503 auditor_unavailable`, and new 60 s figures ($2.02–2.09). Fix: PRE-B adopts all of them (PRE-A owns API and cost facts): UI-SPEC requests 1 and 20, §2.6, §10.3, fixture `error-422-job-cap.json`; STORYBOARD §3, BLOCKED, PILOTS §4/§5/§7, RULES-CHECKLIST §11. This supersedes #204's 429 and #206/#222/#250's own window rules.
 - [x] **#332 (reconcile, PRE-A §12 requests)**: New Why rows (static area, `hold` = `no_roles`/`no_scene`/`no_speech`/`unmatched_child`/`no_speech_link`) with their precedence; `other` items get object rulings; `child_phrase` → child; `cover_spot` is one union box with PRE-A's span formula and `origin: "audit_patch"`/`audit_label`; transcript speakers shown as "Voice S1"/"Voice U1"; static items exempt from the keyframe-box invariant; café mock's host linked to speech. Fix: UI-SPEC §3.3, §4.3, §4.6, requests 14 and 18, §10.1.
+- [x] **#333 (win audit 36)**: Fixture `error-401-job-expired-audit.json` still expected the old expired copy. Fix: PRE-A's copy.
+- [x] **#334 (win audit 36)**: [Try again tomorrow] was hidden in §2.6 but "shown at once" in §10.3, and the `code_valid_until` check missed §3.5 row 2, §5.3 and the job-page cap line. Fix: one §2.6.1 expiry rule cited everywhere; `code_valid_until` in the field list; fixture `job-failed-daily-cap-expiring.json`.
+- [x] **#335 (win audit 36)**: `503 auditor_unavailable` had no §10.3 row (fell into "Something went wrong") and no fixture. Fix: §10.3 row (`/try` and job page) and fixture `error-503-auditor-unavailable.json`.
+- [x] **#336 (win audit 36)**: §3.5 row 0 still keyed on `429 job_cap`, which no `/render` or `/audit` answer returns. Fix: removed.
+- [x] **#337 (win audit 36)**: The `code_not_active` copy promised a download that may not exist, and the reason was missing from request 1's enum. Fix: §2.6.1 download-or-delete rule; enum and fixture `job-failed-code-not-active.json`.
+- [x] **#338 (win audit 36)**: BLOCKED's recording and judge entries carried `valid_until` …:59:59Z, 59 s wider than PRE-A's …:59Z defaults, so the deploy would refuse them. Fix: entries carry no dates (the kind's window applies); UI-SPEC fixtures use PRE-A's …:59:00Z ends.
+- [x] **#339 (win audit 36)**: STORYBOARD §3 priced recording runs at $2.09, which doesn't reach PRE-A's ≤ $10.00 bound. Fix: PRE-A's $2.34 no-cache worst case plus a $2.34 retake.
+- [x] **#340 (win audit 36)**: The outreach still promised "between Oct 30 and Nov 2" though pilot codes end Nov 2 23:59 UTC (#222's harm back). Fix: both drafts say "Nov 2 (UTC)" (DM 104, email 111 words, BLOCKED updated); UI-SPEC request 20 cites PILOTS §5.
+- [x] **#341 (win audit 36)**: The long `.agent` HANDOFF still gave the dropped window and bound rules. Fix: its stale lines updated and the file marked as secondary to `docs/HANDOFF-PRE-B.md`.
+- [x] **#342 (win audit 36)**: #332 fixed only the café mock's prose; its JSON still had `matches_participant: null` on the kept host. Fix: `0`.
+- [x] **#343 (win audit 36)**: The speech-limited mock (degraded transcript) still auto-kept `i_1`, against PRE-A's `hold: "no_speech"` (P9). Fix: `i_1` is `needs_you` with that hold.
+- [x] **#344 (win audit 36)**: The mocks lacked the stage-file `status` fields PRE-A §12 makes required. Fix: `status: "ok"` on `scene`, `roles` and `transcript` in the written mocks, and a mock invariant.
+- [x] **#345 (win audit 36)**: With `job_cap` gone from row 0, nothing said how a job cap on `/render` or `/audit` appears. Fix: §3.5 rule 0 note (a `failure.reason` or `audit_budget_cause`, never an HTTP refusal).
+- [x] **#346 (win audit 37)**: #334's expiry rule appended a fragment instead of complete strings, and missed §3.5 row 0, §10.3's action-cap row, §2.6's daily-limit row and `refusal.until`. Fix: §2.6.1 lists the full strings per place; every place cites it; `refusal.until = null`; fixture `error-429-render-daily-cap-expiring.json`.
+- [x] **#347 (win audit 37)**: Row 0 for `review` had no [Download this version], though the download-or-delete rule promises one when `has_render`. Fix: row 0 shows it; the expired-audit fixture sets `has_render: true`.
+- [x] **#348 (win audit 37)**: #332's "Voice" prefix was missing in §4.6's example and the wireframe. Fix: "Voice S2"/"Voice S1" (wireframe widths kept).
+- [x] **#349 (win audit 37)**: The speech-limited mock made `i_1` `needs_you` but left it out of the plan, so the overlay would show it uncovered; it cited only P9. Fix: plan regions and a hold reason added, PRE-A §12 cited; new mock invariant (every hidden or needs-you item has a plan region).
+- [x] **#350 (win audit 37)**: STORYBOARD 8.3 still allowed a named credit with 1–2 pilots (#325 fixed only PILOTS). Fix: `{pilot_credit}` is format + country with ≤ 2 pilots; `{pilot_country}` in §2.
+- [x] **#351 (win audit 37)**: Outreach word counts (104/111) split placeholders, against RULES-CHECKLIST's one-word rule; deliverable step 4 still said 103/110. Fix: 102/109 everywhere (recounted).
+- [x] **#352 (win audit 37)**: `{n_test_clips}` was sourced from `config.json`/a hash file, not a `metrics.json`. Fix: `metrics.json` `n_clips` (request to WP7).
+- [x] **#353 (win audit 37)**: Both HANDOFF files misstated the audit position. Fix: rewritten (round 37 done, next round 38, findings to #354).
+- [x] **#354 (win audit 37)**: SCHEDULE said "about 54 elapsed hours"; Sat 14:00 → Mon 17:00 is 51. Fix: 51.
+- [x] **#355 (win audit 38)**: §3.5 row 0 for `needs_you` disabled [Run the audit again] where the expiry rule hides it, and rule 0's duration ignored the expiry case (#346 incomplete). Fix: both cite the expiry rule.
+- [x] **#356 (win audit 38)**: The #349 plan invariant was unmeetable for audit-patch and static items (no keyframes, no evidence frames). Fix: they're checked against their span; both are exempt from the keyframe-box invariant.
+- [x] **#357 (win audit 38)**: The speech-limited mock's added regions had no `shape`, `mask` or `grid` and used raw track boxes. Fix: both regions written out in full.
+- [x] **#358 (win audit 38)**: #352 was incomplete: UI-SPEC's results footnotes still took clip counts from `config.json`, and no §8 request asked WP7 for them. Fix: footnotes cite `metrics.json` `n_clips`/`n_public`/`n_staged`; request 22.
+- [x] **#359 (win audit 38)**: With 1–2 pilots, shot 8.3's VO still spoke the timing the card hides. Fix: the VO carries no timing then.
 
 ## 4. Which builder reads what
 

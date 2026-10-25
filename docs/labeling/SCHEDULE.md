@@ -49,7 +49,7 @@ The 18: **3 hero clips** (best take of each) + **15 eval clips** in the priority
 | J negatives | 3 | 3 × 18 = 54 min |
 | **Total** | **18** | **≈ 14 h** of boxes, + 3 h setup and calibration = **≈ 17 h** |
 
-Labeller B: about 1 h calibration + 3 h for all 18. Resolution: about 1.5 h, done by A and B together (LABELING-GUIDE §5). **Total people time ≈ 25 h** (A 18 h, i.e. the 17 h above plus 1 h fixing the boxes B flags; B 4 h; 1.5 h × 2 resolving) **over about 54 elapsed hours.** It's feasible only if A has two near-full days and B exists.
+Labeller B: about 1 h calibration + 3 h for all 18. Resolution: about 1.5 h, done by A and B together (LABELING-GUIDE §5). **Total people time ≈ 25 h** (A 18 h, i.e. the 17 h above plus 1 h fixing the boxes B flags; B 4 h; 1.5 h × 2 resolving) **over about 51 elapsed hours.** It's feasible only if A has two near-full days and B exists.
 
 | When (EAT) | Labeller A | Labeller B | Owner |
 |---|---|---|---|

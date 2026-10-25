@@ -1,14 +1,13 @@
-# HANDOFF (PRE-B), updated 2026-10-25 12:57 UTC
+# HANDOFF (PRE-B), updated 2026-10-25 13:09 UTC
 
-**State:** branch `pre-b-product`, PR #2 (the only PRE-B PR). Lease `.agent/win/SAFECUT-PRE-B/LEASE`: active, `session_01Tjy33tfkpth8jMhhnhhcYL` (resumed 12:52 UTC after the 09:20 wind-down). Long form: `.agent/win/SAFECUT-PRE-B/HANDOFF.md`.
+**State:** branch `pre-b-product`, PR #2 (the only PRE-B PR). Lease `.agent/win/SAFECUT-PRE-B/LEASE`: active, `session_01Tjy33tfkpth8jMhhnhhcYL`. Full hand-off: `.agent/win/SAFECUT-PRE-B/HANDOFF.md` (same facts, more detail).
 
-**Done:**
-- All PRE-B deliverables exist; the WIN-CHECKLIST has 0 unchecked lines and covers #1–#332.
-- Reconciled with PRE-A docs @ `565eee3` (#331–#332): PRE-A moved on in parallel during the wind-down, so PRE-B adopted its `422 job_cap`, $3.00 headroom / $15.00 recording bound, per-kind code windows (pilot to Nov 2 23:59 UTC; window checked on every paid request), `owner` kind, `code_valid_until`, `code_not_active` failure, `503 auditor_unavailable`, 60 s figures $2.02–2.09, and all its §12 UI requests (hold and static Why rows, union-box `cover_spot`, `other` object rulings, "Voice S1" labels).
-- Audit rounds 24–35 (three parallel fresh auditors each); every finding fixed. No round clean yet.
+**Audit position:** rounds 24–37 done (three parallel fresh auditors each); every finding fixed; WIN-CHECKLIST covers #1–#359 with 0 unchecked lines. Round 36 found 13 (#333–#345), round 37 found 9 (#346–#354). **No clean round yet. Round 38 found 5+ (#355–#359). Next is round 39; log findings as #360+.** The goal needs two consecutive rounds that find nothing new.
 
-**Open:**
-1. Run audit round 36 on the commit after this reconciliation (same three scopes; hot zone `git diff 5bb95f0..HEAD` first, then `22283eb..HEAD`). Log as #333+. Repeat until two consecutive rounds find nothing new.
-2. PRE-A's WIN-CHECKLIST §4 `[P]` rows and its "Requests to PRE-B" are now satisfied by this branch; PRE-A marks them (AGENTS rule 2). Re-check `origin/pre-a-research` each round in case it moves again.
-3. Refresh the PR #2 body and post the final docs status comment.
-4. Push spacing ≥ 45 min; squash fixups. Before merge, remove `.agent/` (#257).
+**Reconciled** with PRE-A docs @ `565eee3` (#331–#332, branch head `c1aa7cd`). Re-check `origin/pre-a-research` every round.
+
+**Next:** round 38 → fix → repeat; then refresh the PR #2 body and post the final status comment. Remove `.agent/` before merge (#257).
+
+**Owner rule (keep across hand-offs):** every Agent-tool subagent uses `model: "sonnet"`, `effort: "high"`; the main session verifies each finding before fixing it and keeps integration, self-review and the gate.
+
+**Owner push rule (2026-10-25, replaces the 45-minute spacing everywhere):** push when a substantial task is complete and green (a set of audit findings fixed and checked, the gate run); never wait for a timer. Each push is a meaningful, squashed commit set (no empty, format-only or wip commits); exactly one PR. Never sit idle or end a turn to wait: while subagents run, work on the next HANDOFF item. Stop only for the API usage limit or a met /goal.
