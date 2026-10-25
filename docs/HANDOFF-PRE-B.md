@@ -6,7 +6,7 @@
 
 **Reconciled** with PRE-A docs @ `565eee3` (#331–#332, branch head `c1aa7cd`). Re-check `origin/pre-a-research` every round.
 
-**Next:** round 38 → fix → repeat; then refresh the PR #2 body and post the final status comment. Remove `.agent/` before merge (#257).
+**Next:** round 38 → fix → repeat; then post the final status comment (the PR #2 body was refreshed at 13:2x UTC; update its counts if more findings land). Remove `.agent/` before merge (#257).
 
 **Owner rule (keep across hand-offs):** every Agent-tool subagent uses `model: "sonnet"`, `effort: "high"`; the main session verifies each finding before fixing it and keeps integration, self-review and the gate.
 

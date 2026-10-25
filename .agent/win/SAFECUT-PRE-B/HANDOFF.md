@@ -15,7 +15,7 @@ Met only when the transcript shows, after the last docs change: `grep -c '^- \[ 
 
 ## Next steps (in order)
 1. Audit round 39 (same 3 scopes, fresh agents, fixed sha; hot zone = latest fix diff, then `git diff 5bb95f0..HEAD -- docs/`). Log as #364+. Repeat until two consecutive rounds find nothing new. Findings cluster in UI-SPEC §2.6.1/§3.5/§10.3–§10.5 and mock fixtures, and in the Nov 3 sequence (STORYBOARD §3, BLOCKED); re-read neighbouring rules before each fix.
-2. Refresh the PR #2 body, push, show `git status -sb`, post the final docs status comment.
+2. The PR #2 body was refreshed this session (Decisions 1–19, requests incl. request 22); update its finding counts, then push, show `git status -sb`, post the final docs status comment.
 3. Before merge: remove `.agent/` (#257).
 
 ## Open audit findings
