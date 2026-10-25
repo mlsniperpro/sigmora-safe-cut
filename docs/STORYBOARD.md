@@ -14,6 +14,8 @@ Status: **v1, 2026-10-24 (PRE-B, docs only).** Shot by shot for the beats in [DE
 
 **Sources key.** `H1A`/`H1B` = hero clip 1 "street interview", take A / take B (the van re-entry); `H2` = hero 2 "café"; `H3` = hero 3 "walk-through". `R-xx` = a render; `SR-xx` = a screen recording (§3); `CH-xx` = a chart from `eval/report.py`; `GFX` = a title card made in the editor.
 
+**No-child variant** (if hero 1 is filmed without a consented child, BLOCKED-PRE-B; rule 2): shot 1.2 drops the "Child" label and its VO says "It also shows a stranger's phone number and a plate."; shot 3.3's Hidden column reads "phone screen, plate, passers-by"; shot 4.1 opens the hidden bystander's chip ("Hidden, bystander", no lock) and its VO ends after "…and it rules on each one."; `SR-03` opens that bystander's drawer instead of the child's; `SR-10` masks the passers-by, the plate and the phone.
+
 ## 1. Shot list
 
 | # | Time | Dur | Frame | On-screen text | VO | Source |

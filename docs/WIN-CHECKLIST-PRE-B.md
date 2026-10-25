@@ -421,6 +421,20 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#385 (win audit 39)**: #23, #29, #128, #140 and #237 cited evidence since replaced. Fix: marked superseded or annotated.
 - [x] **#386 (main-session self-review)**: After #288 split the Nov 3 step, the recording-code sub-bullet sat under the VO step. Fix: moved under the screen-recordings step.
 - [x] **#387 (main-session self-review)**: STORYBOARD §3's order never placed H1A's timed review and its undo, which must come between SR-01 and SR-02. Fix: placed there; the doubled citation tidied.
+- [x] **#388 (win audit 40)**: The speech-limited mock's pixelate grid moved between frames, against ARCHITECTURE §3.7's locked grid. Fix: frame 9 uses frame 3's grid.
+- [x] **#389 (win audit 40)**: Kind, label and menu were undefined for track-less audit items and U chips (a locked A item could offer Remove), and the A numbering rule contradicted itself. Fix: UI-SPEC §0 (server kind, `audit_label`, menu without Remove; numbering as PRE-A §12).
+- [x] **#390 (win audit 40)**: The no-keyframe caption said "Added by the audit" for static items too. Fix: a caption per origin.
+- [x] **#391 (win audit 40)**: No fixture held an A item, and the cover span wasn't clamped (negative for `s1`). Fix: fixture `review-ack-cover-spot.json`; span clamped to `[0, frames − 1]` in §3.3 and request 18.
+- [x] **#392 (win audit 40)**: `result-unresolved.json` had no `spots`, so "0 spot(s)" would render. Fix: added.
+- [x] **#393 (win audit 40)**: #370 put the 12-frame hero mock under fixtures claiming 40 unchecked frames. Fix: 4 (and 5 = 4 + 1) in the fixtures and R22.
+- [x] **#394 (win audit 40)**: Widths 481–1023 px were undefined. Fix: §0 breakpoints (mobile layout below 1024 px).
+- [x] **#395 (win audit 40)**: The polling rule listed a paused state under "resumes". Fix: its own sentence.
+- [x] **#396 (win audit 40)**: Some strings had no plural rule (is/are, them) or marker (`{unchecked_frames}` frames). Fix: §2.6 rule extended; "frame(s)".
+- [x] **#397 (win audit 40)**: Wireframe text and buttons differed from the copy deck with no rule for which wins. Fix: §0: the deck and §3.3 win.
+- [x] **#398 (win audit 40)**: #382's no-child fallback still left a child in shot 1.2's VO, shot 3.3, SR-03, SR-10 and 4.1's lock and VO. Fix: STORYBOARD §1 no-child variant covering all of them; BLOCKED points to it.
+- [x] **#399 (win audit 40)**: UI-SPEC cited PRE-A escalation.md "rules 3 and 5"; there is no rule 5. Fix: "rule 3".
+- [x] **#400 (win audit 40)**: The `no_speech_link` row cited vector P9, which is `no_speech`; the case is P9c. Fix: "P8, P9c".
+- [x] **#401 (win audit 40)**: #377 garbled BLOCKED's recording-code sentence. Fix: rewritten.
 
 ## 4. Which builder reads what
 
