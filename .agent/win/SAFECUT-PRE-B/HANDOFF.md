@@ -21,6 +21,16 @@ Met only when the transcript shows, after the last docs change: `grep -c '^- \[ 
 ## Open audit findings
 None known (#1–#449 fixed).
 
+## Key decisions (why)
+- PRE-A owns API, cost, model, ffmpeg/time-axis and access-window facts; PRE-B adopts them and only files requests (AGENTS rule 2). Reconciled to PRE-A `02c605e`; `b6fa465` added no new requests to PRE-B.
+- Docs-only until Oct 26 16:00 UTC (AGENTS rule 1); deadline Nov 4 21:00 ET (Nov 5 02:00 UTC). One PR only (#2, branch `pre-b-product`).
+- Fail-closed UI rules: auditor named from `audit.json` `egoblur.model` (YuNet fallback), blocking refusals vs `code_cap` note, per-kind code windows, no number without a committed `metrics.json` (AGENTS rule 9).
+- Footage: only signed cast in published clips, fake plates and fictional numbers; real-public test clips stay in owner custody, labelled in person.
+- Every finding is logged in `docs/WIN-CHECKLIST-PRE-B.md` §3 (#1–#449, all `[x]`).
+
+## Install / test
+- Docs-only: no install. Gates: below (python3 scripts for link check and JSON parse of UI-SPEC ```json blocks; recreate them if the scratchpad is gone).
+
 ## Commands / gates (docs only)
 - **Owner push rule (2026-10-25, replaces the 45-minute spacing everywhere):** push when a substantial task is complete and green (a set of audit findings fixed and checked, the gate run); never wait for a timer. Each push is a meaningful, squashed commit set (no empty, format-only or wip commits); exactly one PR. Never sit idle or end a turn to wait: while subagents run, work on the next HANDOFF item. Stop only for the API usage limit or a met /goal.
 - **Owner rule (2026-10-25, keep across hand-offs):** every subagent launched with the Agent tool sets `model: "sonnet"` and `effort: "high"` (auditors, reviewers, fixers, researchers, watchers). The main session keeps integration, self-review of the diff, deciding which findings are real, and the gate. Verify every Sonnet finding before fixing it; never drop one unchecked.
