@@ -1,15 +1,14 @@
-# HANDOFF (PRE-B), wound down Sun Oct 25 09:20:38 UTC 2026
+# HANDOFF (PRE-B), updated 2026-10-25 12:57 UTC
 
-**State:** branch `pre-b-product`, PR #2 (the only PRE-B PR). Lease `.agent/win/SAFECUT-PRE-B/LEASE` released by `session_01Tjy33tfkpth8jMhhnhhcYL`. Everything below is pushed in the wind-down commit (the owner's WIND DOWN order overrides the 45-minute push spacing; the previous push was 08:55 UTC).
+**State:** branch `pre-b-product`, PR #2 (the only PRE-B PR). Lease `.agent/win/SAFECUT-PRE-B/LEASE`: active, `session_01Tjy33tfkpth8jMhhnhhcYL` (resumed 12:52 UTC after the 09:20 wind-down). Long form: `.agent/win/SAFECUT-PRE-B/HANDOFF.md`.
 
 **Done:**
-- All PRE-B deliverables exist. The WIN-CHECKLIST has 0 unchecked lines and covers findings #1–#330.
-- Reconciled with PRE-A @ `4bb3cec` (#204–#211). PRE-A's three `[P]` rows in its WIN-CHECKLIST §4 are satisfied on this branch; marking them `[x]` is PRE-A's edit (AGENTS rule 2).
-- Audit rounds 24–35 this session (three parallel fresh auditors each: cross-package facts, UI-SPEC internals, labels/pilots/storyboard), each on a fixed commit; every finding fixed. No round has been clean yet; findings had shrunk to small regressions from earlier fixes (mostly the UI-SPEC §10.5 undo model and the Nov 3 recording sequence).
+- All PRE-B deliverables exist; the WIN-CHECKLIST has 0 unchecked lines and covers #1–#332.
+- Reconciled with PRE-A docs @ `565eee3` (#331–#332): PRE-A moved on in parallel during the wind-down, so PRE-B adopted its `422 job_cap`, $3.00 headroom / $15.00 recording bound, per-kind code windows (pilot to Nov 2 23:59 UTC; window checked on every paid request), `owner` kind, `code_valid_until`, `code_not_active` failure, `503 auditor_unavailable`, 60 s figures $2.02–2.09, and all its §12 UI requests (hold and static Why rows, union-box `cover_spot`, `other` object rulings, "Voice S1" labels).
+- Audit rounds 24–35 (three parallel fresh auditors each); every finding fixed. No round clean yet.
 
-**Open for the next session:**
-1. Audit round 36 was running on `5fe8291` (= this commit's docs) when the wind-down came; no result. Re-run it (same three scopes, `git diff 22283eb..HEAD` as the hot zone). Log findings as #331+.
-2. Repeat full rounds until two in a row find nothing new.
-3. Refresh the PR #2 body (draft text: Decisions 1–19, requests incl. EVAL creator time n = 2, SHOTLIST storage, DEMO beats 5 and 7, WP5 request 21) and post the final docs status comment on PR #2.
-4. Push spacing: ≥ 45 min apart; squash fixups before pushing.
-5. Before PR #2 merges, remove `.agent/` from the branch (#257).
+**Open:**
+1. Run audit round 36 on the commit after this reconciliation (same three scopes; hot zone `git diff 5bb95f0..HEAD` first, then `22283eb..HEAD`). Log as #333+. Repeat until two consecutive rounds find nothing new.
+2. PRE-A's WIN-CHECKLIST §4 `[P]` rows and its "Requests to PRE-B" are now satisfied by this branch; PRE-A marks them (AGENTS rule 2). Re-check `origin/pre-a-research` each round in case it moves again.
+3. Refresh the PR #2 body and post the final docs status comment.
+4. Push spacing ≥ 45 min; squash fixups. Before merge, remove `.agent/` (#257).

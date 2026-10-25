@@ -150,7 +150,7 @@ Look for: "eligible countries", "excluded", "sanctions", "age", "individual", "c
 |---|---|
 | Can the $150 Meta credits be topped up with our own money, and is spending outside credits allowed? | Stay within $150 ([AGENTS.md](../AGENTS.md) rule 10) |
 | Are other APIs or hosts (Modal, Vercel) allowed alongside Meta's? | Yes; the README says what each one does |
-| Must the demo stay live through judging and finals (Nov 9)? | Keep it live, with judge codes valid, from Nov 5 00:00 to Nov 10 23:59 UTC (PRE-A `docs/API-NOTES.md` §9.2's public window, 6 days × $3; [MAXXING.md](MAXXING.md) §4). If the rules require it live later, the landing page's replay demo (`GET /v1/demo/{hero_id}`, UI-SPEC §8 request 19, no Meta calls) stays up and judge codes are **not** extended, because the $2.86 headroom can't fund another $3 day |
+| Must the demo stay live through judging and finals (Nov 9)? | Keep it live, with judge codes valid, from Nov 5 00:00 to Nov 10 23:59 UTC (PRE-A `docs/API-NOTES.md` §9.2's public window, 6 days × $3; [MAXXING.md](MAXXING.md) §4). If the rules require it live later, the landing page's replay demo (`GET /v1/demo/{hero_id}`, UI-SPEC §8 request 19, no Meta calls) stays up and judge codes are **not** extended, because another $3 day would use PRE-A's whole $3.00 headroom, which is shared with every other overrun |
 | Any rules on processing personal data or footage of real people? | Our rules already go further: consented hero clips only on screen; real-public clips local and metrics-only ([AGENTS.md](../AGENTS.md) rule 5) |
 | Can the submission be edited after the deadline (e.g. the video link)? | Assume no: submit complete by Nov 4 23:00 EAT |
 

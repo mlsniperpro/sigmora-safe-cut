@@ -1,6 +1,6 @@
 # HANDOFF: SAFECUT-PRE-B (docs-only product-prep package)
 
-**Released by** session_01Tjy33tfkpth8jMhhnhhcYL at Sun Oct 25 09:22:38 UTC 2026 (account usage ended). **Branch** `pre-b-product` · **PR #2** (the only PRE-B PR; never open another) · **Brief** `docs/work-packages/PRE-B.md` · **Rules** `AGENTS.md` (docs only; no code before 2026-10-26 16:00 UTC). Also see `docs/HANDOFF-PRE-B.md` (same state, short form).
+**Resumed 2026-10-25 12:57 UTC by** session_01Tjy33tfkpth8jMhhnhhcYL (lease active; earlier released at the 09:20 wind-down). **Latest state: see `docs/HANDOFF-PRE-B.md`**, which supersedes the In-flight and Next-steps sections below. Originally released by session_01Tjy33tfkpth8jMhhnhhcYL at Sun Oct 25 09:22:38 UTC 2026 (account usage ended). **Branch** `pre-b-product` · **PR #2** (the only PRE-B PR; never open another) · **Brief** `docs/work-packages/PRE-B.md` · **Rules** `AGENTS.md` (docs only; no code before 2026-10-26 16:00 UTC). Also see `docs/HANDOFF-PRE-B.md` (same state, short form).
 
 ## Goal (owner /goal, still open)
 Met only when the transcript shows, after the last docs change: `grep -c '^- \[ \]' docs/WIN-CHECKLIST-PRE-B.md` → 0; **two consecutive full audits that find nothing new**; PRE-B and PRE-A (PR #1, `origin/pre-a-research`) reconciled on shared facts; `git status -sb` showing the branch pushed; a final docs status comment posted on PR #2. Deadline for this package: kickoff 2026-10-26 16:00 UTC. Pushes ≥ 45 min apart (squash fixups first); never comment on or retitle other PRs.
