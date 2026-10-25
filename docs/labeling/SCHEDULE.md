@@ -37,7 +37,7 @@ Fixed costs: CVAT install and project setup about 2 h (once); a calibration sess
 
 ## 3. The plan for ~18 clips by Oct 26 (if footage exists by Oct 24 evening)
 
-The 18: **3 hero clips** (best take of each) + **15 eval clips** in the priority order from [MAXXING.md](../MAXXING.md) §5 (A, C, D, G, J first). Splits ([LABELING-GUIDE.md](LABELING-GUIDE.md) §6): hero clips → `hero`; every real-public clip → `test`; staged clips go to `dev` or `test` so that both splits cover the categories. **Assignment:** `dev` = C × 1, G × 1, J × 1 (all staged: the 3 dev clips Wave B needs on Oct 27); `test` = A × 4 and D × 3 (real-public) plus C × 2, G × 1, J × 2 (staged), 12 clips in all.
+The 18: **3 hero clips**: hero 1 take A (`H1A`, whose labelled boxes STORYBOARD shot 1.2 shows) and the best take of hero 2 and 3; hero 1 take B (`H1B`, the re-entry case) is labelled only if time allows (about 1 h more) + **15 eval clips** in the priority order from [MAXXING.md](../MAXXING.md) §5 (A, C, D, G, J first). Splits ([LABELING-GUIDE.md](LABELING-GUIDE.md) §6): hero clips → `hero`; every real-public clip → `test`; staged clips go to `dev` or `test` so that both splits cover the categories. **Assignment:** `dev` = C × 1, G × 1, J × 1 (all staged: the 3 dev clips Wave B needs on Oct 27); `test` = A × 4 and D × 3 (real-public) plus C × 2, G × 1, J × 2 (staged), 12 clips in all.
 
 | Clips | Count | Labeller A time (midpoint) |
 |---|---|---|

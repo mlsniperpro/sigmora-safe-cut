@@ -9,7 +9,7 @@ Why CVAT: free, open source, video track annotation with interpolation, MOT expo
 1. **Self-hosted only.** Run CVAT on our own build box. **Never upload real-public clips to app.cvat.ai or any hosted labelling service**, and never to this repo or the cloud sandbox ([AGENTS.md](../../AGENTS.md) rules 4–5).
 2. **Localhost only.** Don't set `CVAT_HOST` to a public IP and don't open port 8080 on a firewall. If the build box is remote, the owner may reach it through an SSH tunnel (forward local port 8080 to the box's `localhost:8080`) for **hero and dev clips only**. `test` (real-public) clips are labelled **in person at the box**, by everyone, on the first-choice machine and the fallback alike (§2): a tunnel or screen share streams their frames to another machine.
 3. **Disk.** CVAT keeps uploaded videos and exports in Docker volumes on the build box. Treat the box as holding the private set: full-disk encryption on, no shared accounts, delete the volumes after judging (target 2026-12-01, [SHOTLIST.md](../SHOTLIST.md)).
-4. **Exports** go to the owner's private storage (`~/SafeCutEval/labels/` on the Mac, plus the private bucket for `dev`/`hero` only). Test-split labels never go to the bucket the cloud agents read.
+4. **Exports** go to the owner's private storage (`~/SafeCutEval/labels/` on the CVAT box (the owner's; for `test`, also the eval box, PRE-A `docs/BLOCKED-PRE-A.md`), plus the private bucket for `dev`/`hero` only). Test-split labels never go to the bucket the cloud agents read.
 
 ## 2. The build box (decision)
 

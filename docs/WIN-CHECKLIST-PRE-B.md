@@ -405,6 +405,10 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#369 (win audit 39)**: Needs-you counts ignored U chips. Fix: §3.9 header counts include uncovered spots; row 7 unchanged.
 - [x] **#370 (win audit 39)**: R22–R24's mocks had no items, and R24 used `COVER_SPOT(U1)` and argument-less `MERGE`. Fix: `result-audit-*` mocks use the hero items; R24 arguments explicit.
 - [x] **#371 (win audit 39)**: `job-done-edited.json` lacked `has_render: true`, which its bar row needs. Fix: added.
+- [x] **#372 (win audit 39)**: The speech-limited mock's pixelate regions (90 px, cell 11) broke WP3's ≤ 6 blocks across a face, and claimed WP3's padding exactly. Fix: cell 15; the padding called an approximation of 15% + 8 px.
+- [x] **#373 (win audit 39)**: Which hero-1 take is labelled was undefined (SCHEDULE "best take", STORYBOARD needs H1A, LABELING-GUIDE case 13 uses H1B). Fix: H1A always, H1B only if time allows.
+- [x] **#374 (win audit 39)**: Test clips and labels were kept "on the owner's Mac", the one machine PRE-A says can't run the test eval. Fix: BLOCKED, LABEL-FORMAT §1 and CVAT-SETUP keep them on the owner's CVAT/eval box (Linux NVIDIA, PRE-A BLOCKED), copied on an encrypted drive if separate, never labeller B's.
+- [x] **#375 (main-session check)**: STORYBOARD 8.3's no-timing VO example said "8 words"; it's 9. Fix: 9.
 
 ## 4. Which builder reads what
 

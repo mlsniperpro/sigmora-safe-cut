@@ -87,7 +87,7 @@ Each case gives the category, `should_hide`, and the `reason` you would write. R
 | 10 | A **partly visible plate**: half behind another car, 3 characters legible | `plate` | `true` | "plate partly occluded, 3 characters legible". Box the visible part only |
 | 11 | A **plate too far away** to read on any frame | not an entity | — | Note it: "1 distant plate, illegible" |
 | 12 | The **guest leaves frame at 0:08 and walks back in at 0:12** | `participant` (one entity, tag `reentry`) | `false` | "interview guest, leaves and returns". The track is `outside` for the gap |
-| 13 | A **bystander ducks behind a van** and reappears (hero clip 1, take B) | `bystander` (one entity, tag `reentry`, `occluded`) | `true` | "passer-by, hidden behind van then reappears" |
+| 13 | A **bystander ducks behind a van** and reappears (hero clip 1, take B; labelled only if time allows, SCHEDULE §3) | `bystander` (one entity, tag `reentry`, `occluded`) | `true` | "passer-by, hidden behind van then reappears" |
 | 14 | A **participant's own child, with a signed guardian consent**, standing next to the parent who is being interviewed | `child` | `true` | "child; children are always hidden" |
 | 15 | A **child walking past** with an adult | `child` | `true` | "child passing in background" |
 | 16 | A person **stops to watch the interview** for ten seconds (category H "watcher") | `bystander` | `true` | "stops to watch, never addressed" |
