@@ -10,15 +10,15 @@
 ## Done (evidence)
 - Deliverables: `docs/API-NOTES.md` (§1–§12; §9.2 the $150 ledger; §12 = **one list** of contract rows, a config/env table, "Deliberate differences from the WP files", and "Requests to PRE-B"), `docs/prompts/*.md` (6 specs + `TEST-VECTORS.md`), `docs/research/*.md`, `docs/BLOCKED-PRE-A.md`, `docs/WIN-CHECKLIST-PRE-A.md` (criteria map, §4 PRE-A↔PRE-B facts, §5/§6 full audit trail).
 - Ledger **$147.00 planned, $3.00 headroom** (pre-window `/healthz` budget line $0.80, plan $0.47; PR #2 @ `43e250f` carries the matching "recording code at most $15.00"): `awk` line in `.agent/win/SAFECUT-PRE-A/calc/ledger.md` (mirrors API-NOTES §9.2). Per clip: $1.12 / 30 s at 8 fps; $2.02–2.09 / 60 s ($2.26–2.34 no cache, A10).
-- Audits #1–#34 logged in WIN-CHECKLIST §6 (end of file). Each audit = three fresh Sonnet/high agents in parallel (A internal arithmetic/consistency, B brief + repo specs, C vs PR #2 incl. a [P] status table); #34 added a WP0 builder walk-through. **`dev.meta.ai` is reachable since 2026-10-25**: facts can be checked live (pages under https://dev.meta.ai/docs). A live-docs sweep of every [SNIP]/[3P]/probe fact was running at this push; collect or re-run it. **Clean count: 0.**
+- Audits #1–#35 logged in WIN-CHECKLIST §6 (end of file), plus a WP0 builder walk-through (#34) and a full live-docs sweep (every `dev.meta.ai/docs` page; applied). Each audit = three fresh Sonnet/high agents (A internal, B brief + repo specs + live docs, C vs PR #2 with a [P] status table). **Clean count: 0.** Findings are now mostly edge-case specifications, each verified before fixing.
 - Last pushes: `071da22` (08:55 UTC), then the wind-down push (this commit's parent chain). PR #1 body was refreshed ~09:00 UTC and still shows `071da22` and audits to #27.
 
 ## In flight
-- Audit #34's fixes are in this push. **Audit #35 is next** on the pushed HEAD (sonnet/high).
+- Audit #35's fixes and the live-docs sweep are in this push. **Audit #36 is next** on the pushed HEAD (sonnet/high).
 
 ## Next steps (in order)
 1. Claim the lease (`LEASE` → `status=active`), commit `lease: claim SAFECUT-PRE-A`, push.
-2. Run audit #35 on HEAD: three parallel fresh agents with the lens prompts above, read-only, "report ONLY builder-impacting defects … if nothing, say exactly NO NEW FINDINGS", pointing them at the newest edits (#29/#30: `transcript.json`/`roles.json` `status`, `hold` enum and precedence, `child_phrase` + WP3 rule 0 + token-wise phrase sets, YuNet fallback, checkpoint keys, empty-transcript rule, pinned-job purge exemption).
+2. Run audit #36 on HEAD: three parallel fresh agents with the lens prompts above, read-only, "report ONLY builder-impacting defects … if nothing, say exactly NO NEW FINDINGS", pointing them at the newest edits (#29/#30: `transcript.json`/`roles.json` `status`, `hold` enum and precedence, `child_phrase` + WP3 rule 0 + token-wise phrase sets, YuNet fallback, checkpoint keys, empty-transcript rule, pinned-job purge exemption).
 3. Fix findings, log them in WIN-CHECKLIST §6, commit; repeat until **two consecutive rounds on the same HEAD** find nothing. Record the last clean audit only in the PR comment, so no docs change follows it.
 4. Re-check PR #2 (`git fetch origin pre-b-product`); if PRE-B fixed any [P] item, mark it [x] in WIN-CHECKLIST §4 and in API-NOTES §12 "Requests to PRE-B".
 5. Refresh the PR #1 body (status, Decisions, Requests, Evidence with real command output), push, show `git status -sb`, post the final docs status comment on PR #1.
@@ -34,7 +34,7 @@
 - Audit patches are locked hidden **decision items** (`origin: "audit_patch"`, `A<n>`), static boxes, rebuilt on every re-plan; WP4's loop calls WP3's guard between passes.
 - Track ids `<concept>:<n>` numbered per concept across the job; person/child phrase sets token-wise; `child_phrase` tracks locked as children (WP3 rule 0), never escalated, not counted toward the scene-children gate.
 - Children/speech gates fail closed: `hold` when a scene child is unmatched, the scene or speech or role stage didn't run, or a 3/3 participant has no speech/introduction link while a transcript exists (even an empty one).
-- EgoBlur weights needed by Oct 31; else YuNet face fallback (`SAFECUT_EGOBLUR_MODEL=yunet-face`), plates by red-team only, disclosed. Live `/start` refused (`503 auditor_unavailable`) without an auditor; stub only in tests/replay.
+- EgoBlur weights needed by Oct 28; else YuNet face fallback (`SAFECUT_EGOBLUR_MODEL=yunet-face`), plates by red-team only, disclosed. Live `/start` refused (`503 auditor_unavailable`) without an auditor; stub only in tests/replay.
 - v1 has no creator note; `languageBias` from `SAFECUT_ASR_LANGUAGE_BIAS`. Checkpoint reuse keyed by stage + input hash, never `SAFECUT_REPLAY`.
 - Wonder not pre-approved; probe f ≤ $3.00 ($2.44 priced).
 
@@ -45,4 +45,4 @@
 - No install/test/run before kickoff (docs only). After kickoff (code WPs): `uv sync`, `uv run pytest`, `uv run ruff check`, `pnpm lint && pnpm typecheck && pnpm test` (AGENTS rule 12).
 
 ## Owner-only blockers (docs/BLOCKED-PRE-A.md)
-SA-Co/VEval HF access + `HF_TOKEN`; EgoBlur weights (email form) by Oct 31; Linux NVIDIA box for the test split; network allowlist (dev.meta.ai, developer.meta.com, api.meta.ai, projectaria.com, modal.com, huggingface.co); `MODEL_API_KEY`; an `owner` access code for WP5; setup script `--no-group audit`; test-split mean clip ≤ 30 s; optional consented Swahili/Sheng clip.
+SA-Co/VEval HF access + `HF_TOKEN`; EgoBlur weights (email form) by Oct 28; Linux NVIDIA box for the test split; network allowlist (dev.meta.ai, developer.meta.com, api.meta.ai, projectaria.com, modal.com, huggingface.co); `MODEL_API_KEY`; an `owner` access code for WP5; setup script `--no-group audit`; test-split mean clip ≤ 30 s; optional consented Swahili/Sheng clip.

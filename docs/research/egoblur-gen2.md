@@ -21,7 +21,7 @@ Read 2026-10-24. **Source:** Meta's official repo [`facebookresearch/EgoBlur`](h
 4. If the links are time-limited signed URLs, don't paste them anywhere public.
 
 ## Files and sizes
-- File names as above. **Sizes aren't listed** in the README. WP4 records them. (The Gen 1 face model was a Faster R-CNN-class detector of a few hundred MB; unverified for Gen 2.)
+- File names as above. The project page (read 2026-10-25): "Both the Gen 2 face and license plate models are approximately **400 MB** each and have **~104 million parameters**".
 - Runtime deps (pinned in `pyproject.toml`): `torch==2.9.1`, `torchvision==0.24.1`; Python **3.10–3.12**. That fits our 3.12, but the pins may clash with other deps, so WP4 keeps it in the `audit` group.
 
 ## Preprocessing and thresholds (`gen2/script/constants.py`)
@@ -41,7 +41,7 @@ Read 2026-10-24. **Source:** Meta's official repo [`facebookresearch/EgoBlur`](h
 
 ## Speed (CPU vs GPU)
 - The README reports **no numbers**. It says macOS runs CPU-only ("very slow") and recommends Linux + CUDA 12.8 (optional).
-- DESIGN §2.8 quotes **≈21 ms/frame on GPU** from the project page (read 2026-10-14). Not re-verified.
+- The project page (read 2026-10-25): Gen 2 "run[s] in approximately **21ms on a GPU and 1.5 seconds on a CPU**. Based on a 0.3MP gray scale image". Licence: "Both the Gen 2 face and license plate models are licensed under **Apache 2.0**". Our frames are larger (≤ 1280×720 ≈ 0.9 MP, colour), so CPU time per frame is higher than 1.5 s; WP4 measures it.
 - Estimate for the budget: a 30 s × 30 fps clip = 900 frames × 21 ms ≈ **19 s of GPU**. On CPU at 1200 px with a detectron2 R-CNN, expect roughly 1–3 s/frame → 15–45 min per clip, which is too slow. So **GPU for the audit** (Modal T4/L4; see `modal.md`), or, without a GPU, every frame on CPU with one test run instead of three (BLOCKED-PRE-A). EgoBlur never samples frames: the service, the eval audit and baseline 1b all scan every frame.
 
 ## Install and API for WP4 (read from the package and source, 2026-10-24)

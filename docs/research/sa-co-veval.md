@@ -25,7 +25,7 @@ data/media/saco_sg/JPEGImages_6fps/<video>/<frame>.jpg
 **Confirmed: SmartGlasses = CC BY 4.0** per Meta's own repo. Use only that split (EVAL.md §2: no NC splits in anything published). Attribution goes in the README and in `fixtures/README.md` for any frames used as fixtures (WP0 probe fallback).
 
 ## Size
-**Not stated** in either README. WP7 records the video count, the frame count and the archive size on download. Frames are at **6 fps** (the YT1B and SG folders are `JPEGImages_6fps`; SA-V is 24 fps).
+The Hugging Face API tree (read 2026-10-25) lists `media/saco_sg.tar.gz` at **31,918,101,070 bytes (31.9 GB)**, gated like the rest; the annotation JSONs are about 42 MB (val) and 52 MB (test). **Decided:** never pull the whole archive into a sandbox (extracting needs ~64 GB): WP7 stream-extracts only the chosen videos (`tar -xzf … <listed paths>` from the HTTP stream, or the Roboflow mirror if that's smaller) on a box or Modal Volume with ≥ 70 GB, and the SmartGlasses split is **not** a fallback for WP0's probes (a §12 deviation). WP7 records the video and frame counts. Frames are at **6 fps** (the YT1B and SG folders are `JPEGImages_6fps`; SA-V is 24 fps).
 
 ## Annotation format (YTVIS-like)
 Top-level keys: `info`, `videos`, `annotations`, `categories`, `video_np_pairs`.

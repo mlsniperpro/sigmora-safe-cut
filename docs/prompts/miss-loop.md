@@ -45,7 +45,7 @@ Close the loop between Meta's two models. Muse Spark looks at the numbered keyfr
 
 ## Post-processing (WP1/WP2, deterministic)
 1. Validate that `frame` was among the images sent, or drop the item.
-2. Convert `point` and `box` from the 0–1000 grid to prepared-clip pixels with the single rule in API-NOTES §5 (sent-image size, minus the frame-number bar, floor, clamp). If the point lands in the bar (dropped by that rule) and the item has a valid `box`, the box's centre becomes the point; otherwise the item is dropped.
+2. Convert `point` and `box` from the 0–1000 grid to prepared-clip pixels with the single rule in API-NOTES §5 (sent-image size, round half up (`floor(z + 0.5)`), minus the frame-number bar, clamp; never `floor` alone). If the point lands in the bar (dropped by that rule) and the item has a valid `box`, the box's centre becomes the point; otherwise the item is dropped.
 3. Normalise `sam_phrase`: lowercase, **delete** punctuation (no space inserted, so `passers-by` → `passersby`), collapse spaces. A phrase of **more than 3 words** isn't truncated (that would change its meaning); it gets no phrase sweep and is logged `phrase_too_long`. A **phrase sweep** is planned only if `recurs` is true **and** the phrase isn't already swept **and** it isn't on the blocklist (`thing`, `object`, `stuff`, `private`, `sensitive`, `item`). The **point prompt is always planned**, whatever the phrase.
 4. Dedupe across votes: the role pass runs 3×, so take the union of misses, merging items whose phrases match and whose points are within 5% of the frame diagonal on the same frame.
 5. **Plan:**

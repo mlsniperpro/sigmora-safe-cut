@@ -26,10 +26,10 @@ Test vectors for the deterministic rules around these calls (vote aggregation, e
 - **Meta's prompting guide for the Muse Spark family: <https://dev.meta.ai/docs/muse-spark-open>**, the Muse Spark Open section, whose "Prompting guide" covers chat, system prompts, reasoning, tool calling, and image, video and audio input. Meta's [overview](https://dev.meta.ai/docs/overview) points to the open-weight models' prompting guides; there's no separate guide for the hosted `muse-spark-1.3`, and the overview says Muse Wonder and Muse Spark take the same requests. Meta's other model guide is [Muse Glimmer's](https://dev.meta.ai/docs/muse-glimmer/prompting), which is for a different model. *(Both URLs were found by web search on 2026-10-24; the guide's own sub-page path wasn't visible, so link the section.)* WP2 checks these specs against the guide's system-prompt and image-input advice.
 
 These Meta pages also apply:
-- Structured output: <https://dev.meta.ai/docs/features/structured-output>
+- Structured output: <https://dev.meta.ai/docs/structured-output>
 - Reasoning: <https://dev.meta.ai/docs/reasoning>
-- Image understanding (0–1000 grid): <https://dev.meta.ai/docs/features/image-understanding>
-- Prompt caching: <https://dev.meta.ai/docs/features/prompt-caching>
+- Image understanding (0–1000 grid): <https://dev.meta.ai/docs/image-understanding>
+- Prompt caching: <https://dev.meta.ai/docs/prompt-caching>
 - Cookbook `01_api_fundamentals` (structured output, vision, caching): <https://github.com/meta-models/meta-model-cookbook/tree/main/01_api_fundamentals> (read 2026-10-24, commit `0a99b98`)
 
 Guidance taken from the cookbook: images go only in **user** messages (system → 400); lock shapes with `enum`; keep the stable prefix byte-identical; and match the effort level to task difficulty.
