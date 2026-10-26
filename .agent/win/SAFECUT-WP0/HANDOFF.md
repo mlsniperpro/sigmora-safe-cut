@@ -25,12 +25,16 @@
 - **Gate files** in `.agent/win/SAFECUT-WP0/`: `checks.sh`, `WIN-CHECKLIST.md`, `BLOCKED.md`, `reaudit.md`, `break-it.md`.
 - **Last fully green head:** 00e3b4c (233 passed, ruff and pyright clean). A fresh clone of b7fe6c9 was green in 41 s.
 
-## In flight (exact state)
-- ~19:00 UTC: audit #4 found 1 high, 5 medium and 7 low; all are fixed and tested (reaudit.md). 293 passed, ruff and pyright clean.
-- Next: push; the soak at that head (HYPOTHESIS_PROFILE=soak, about 40 min, kill it by PID, never with `pkill -f` because the pattern matches the calling shell); audit #5, and #6 if #5 is clean; break-it.md; gate; PR status.
+## In flight (exact state at WIND DOWN, ~18:59 UTC 2026-10-26)
+- Head 4fea3bb (pushed) is green: 293 passed, ruff and pyright clean. A fresh clone of 4fea3bb was green in 85 s on 2 CPUs (record it in break-it.md).
+- Audits #1–#4 and the code-review skill: every finding fixed with a test, or a recorded decision (reaudit.md). `CLEAN_AUDITS_IN_A_ROW` is still 0.
+- Audit #5 (Sonnet) was running at 4fea3bb when the wind-down came; its result is lost. Re-run it.
+- The 20k-example soak (`HYPOTHESIS_PROFILE=soak`) at 4fea3bb was stopped after 11 min, unfinished. Re-run it to completion (≈ 40+ min; test_chaos dominates) and record the result in break-it.md.
+- break-it.md is stale (TESTED_COMMIT 895500e). Rewrite it at the final head with: the soak result, the chaos and fuzz properties, the replay e2e (tests/test_probes_replay.py), the fresh-clone run, and `taskset -c 0` determinism of the clips.
+- Gate at 18:17 UTC (2d81848): FAIL (7). The open items were stale reaudit/break-it, the clean-audit count, pids and push state; the checklist has 0 open items now.
 
 ## Next steps, in order
-1. Make the suite green (above); run `bash .agent/win/SAFECUT-WP0/checks.sh`.
+1. Run `bash .agent/win/SAFECUT-WP0/checks.sh` (green at 4fea3bb).
 2. Add tests for every `bd114c7` change. Then close the open findings below.
 3. Record audit #2 and the code-review findings in `reaudit.md`. Then run fresh full audits until two in a row find nothing (owner rule: any Agent subagent uses model `sonnet`, effort `high`). Verify every finding before fixing it.
 4. Run the soak in the background (`HYPOTHESIS_PROFILE=soak uv run pytest -m "not live" -q`, with its PID in `pids`), the chaos and replay e2e tests, and a fresh-clone run. Write `break-it.md` with `TESTED_COMMIT` = the final head.
