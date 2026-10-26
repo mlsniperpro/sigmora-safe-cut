@@ -14,19 +14,19 @@ Met only when the transcript shows, after the last docs change: `grep -c '^- \[ 
 - Round 43 (three Sonnet/high auditors) launched on the HEAD after the #467–#476 push. PR #2 body draft: `.agent/win/SAFECUT-PRE-B/pr2-body-draft.md` (bump counts to the latest # before use).
 
 ## Next steps (in order)
-1. Audit round 43 (same 3 scopes, fresh agents, fixed sha; hot zone = latest fix diff, then `git diff 5bb95f0..HEAD -- docs/`). Log as #477+. Repeat until two consecutive rounds find nothing new. Findings cluster in UI-SPEC §2.6.1/§3.5/§10.3–§10.5 and mock fixtures, and in the Nov 3 sequence (STORYBOARD §3, BLOCKED); re-read neighbouring rules before each fix.
+1. Audit round 43 (same 3 scopes, fresh agents, fixed sha; hot zone = latest fix diff, then `git diff 5bb95f0..HEAD -- docs/`). Log as #480+. Repeat until two consecutive rounds find nothing new. Findings cluster in UI-SPEC §2.6.1/§3.5/§10.3–§10.5 and mock fixtures, and in the Nov 3 sequence (STORYBOARD §3, BLOCKED); re-read neighbouring rules before each fix.
 2. The PR #2 body was refreshed this session (Decisions 1–19, requests incl. request 22); update its finding counts, then push, show `git status -sb`, post the final docs status comment.
 3. Before merge: remove `.agent/` (#257).
 
 ## Open audit findings
-None known (#1–#476 fixed).
+None known (#1–#479 fixed).
 
 ## Key decisions (why)
 - PRE-A owns API, cost, model, ffmpeg/time-axis and access-window facts; PRE-B adopts them and only files requests (AGENTS rule 2). Reconciled to PRE-A `02c605e`; `b6fa465` added no new requests to PRE-B.
 - Docs-only until Oct 26 16:00 UTC (AGENTS rule 1); deadline Nov 4 21:00 ET (Nov 5 02:00 UTC). One PR only (#2, branch `pre-b-product`).
 - Fail-closed UI rules: auditor named from `audit.json` `egoblur.model` (YuNet fallback), blocking refusals vs `code_cap` note, per-kind code windows, no number without a committed `metrics.json` (AGENTS rule 9).
 - Footage: only signed cast in published clips, fake plates and fictional numbers; real-public test clips stay in owner custody, labelled in person.
-- Every finding is logged in `docs/WIN-CHECKLIST-PRE-B.md` §3 (#1–#476, all `[x]`).
+- Every finding is logged in `docs/WIN-CHECKLIST-PRE-B.md` §3 (#1–#479, all `[x]`).
 
 ## Install / test
 - Docs-only: no install. Gates: below (python3 scripts for link check and JSON parse of UI-SPEC ```json blocks; recreate them if the scratchpad is gone).

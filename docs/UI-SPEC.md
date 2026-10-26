@@ -229,7 +229,7 @@ Goal: get from access code to the review panel with no surprises, and make the w
 │   │               Up to 60 seconds and 150 MB. MP4 or MOV.                       │   │
 │   │                                                                              │   │
 │   └──────────────────────────────────────────────────────────────────────────────┘   │
-│   [ ] I filmed this clip or have the right to use it.                                │
+│   [ ] I'm 18 or over, and I have the right to upload this clip and the people in it. │
 │                                                         [ Start ]  (disabled until   │
 │                                                                     a file is in)    │
 └──────────────────────────────────────────────────────────────────────────────────────┘
@@ -274,8 +274,9 @@ Goal: get from access code to the review panel with no surprises, and make the w
 │ │  [ Choose a file ]           │ │
 │ │  Up to 60 s, 150 MB          │ │
 │ └──────────────────────────────┘ │
-│ [ ] I filmed this clip or have   │
-│     the right to use it.         │
+│ [ ] I'm 18 or over, and I have   │
+│     the right to upload this     │
+│     clip and the people in it.   │
 │ [ Start ]                        │
 ├──────────────────────────────────┤
 │ ✓ Uploading your clip            │
@@ -327,7 +328,7 @@ The `miss_loop` row appears only if that stage runs. `~N s left` shows only when
 | File too long (client check on metadata, or after upload `failure.reason` = `too_long`) | This clip is `{duration}` seconds long. The limit is 60 seconds. Trim it and try again. (`{duration}` = the clip's length rounded **up** to one decimal, e.g. 60.06 s → "60.1", so the number shown is always over the limit; §10.2). With no duration known (neither client metadata nor `failure.duration_s`): "This clip is longer than 60 seconds. Trim it and try again." | |
 | File too big | This file is `{size}` MB. The limit is 150 MB. (`{size}` = bytes ÷ 1,048,576 rounded **up** to one decimal, e.g. 157,286,401 bytes → "150.1"; §10.2) | |
 | Wrong type | Safe Cut takes MP4 or MOV video files. | |
-| No rights tick | Tick the box to confirm you can use this clip. | |
+| No rights tick | Tick the box to confirm you're 18 or over and can upload this clip. | |
 | Upload interrupted (no progress for 30 s, or the `PUT` failed) | The upload stopped. Check your connection and try again; nothing was processed. | [Try again]: `DELETE` the job once, then `POST /v1/jobs` and a fresh upload (request 17) |
 | Upload didn't arrive (`409` `upload_incomplete` on `POST /start`, request 17) | The upload didn't finish, so nothing was processed. Choose the clip again to upload it. | [Try another clip] (the UI sends `DELETE` for the job once); no [Try again] |
 | A stage fails (`status: "failed"`, `failure.reason` = `internal`, or no `failure` given) | Something went wrong while `{row label, lowercase}`. Your clip hasn't been published anywhere. You can try again, or delete it now. | [Try again] [Delete now] |
@@ -346,7 +347,7 @@ The `miss_loop` row appears only if that stage runs. `~N s left` shows only when
 | Cancel and delete (confirm dialog) | Delete this clip and stop processing? This can't be undone. · [Delete] [Keep going] | |
 | After delete | Deleted. Nothing from this clip is kept. | link to `/try` |
 | Upload never finished (`status: "created"`, §10.4) | This clip hasn't finished uploading. Upload it again to start. | [Upload again] → `/try` |
-| Rights tick label | I filmed this clip or have the right to use it. | |
+| Rights tick label | I'm 18 or over, and I have the right to upload this clip and the people in it. | |
 | "What happens to your clip" heading | What happens to your clip | |
 | Data bullet 1 | It's sent to Meta's Model API in Standard mode, never Contributor mode (Contributor mode can use inputs to improve Meta's models). Wireframes show it shortened; the full sentence is the copy. Never claim "doesn't train on it" or "storage off": PRE-A `docs/API-NOTES.md` §7 found no Standard-mode retention terms, and §10.6 says `store: false` on `sam-3.1` is unverified | |
 | Data bullet 2 | Your clip, the result and the receipt are deleted from Safe Cut's servers after 24 hours, or sooner if you choose. | |
@@ -718,7 +719,7 @@ The role-pass prompt asks Muse Spark to cite frames as "F nnnnnn" (PRE-A `docs/p
 
 There's no "Hidden, votes disagreed" case: a track whose votes disagree becomes `role: unsure` and the item goes to **Needs you**, never to Hidden on its own ([DESIGN.md](DESIGN.md) §2.3; PRE-A `docs/prompts/escalation.md` rules 3–4).
 
-**"What was said while {label} was on screen".** Transcript turns that overlap the item's on-screen time (§4.6), max 4, each as `m:ss Voice S# "text"` (speakers carry the prefix "Voice", e.g. "Voice S1", "Voice U1", because the speech fallback's uncertain voices `U1`, `U2`, … would otherwise collide with the `U{n}` unfixed-spot chips, PRE-A §4.2), where `m:ss` is `floor(turn.start)` on the prepared clock (turn times are prepared-clock seconds, PRE-A §5b step 6). If the item's primary track has `matches_participant = k` (an index into `scene.participants`, set by the role pass, PRE-A `docs/prompts/role-pass.md`) and `scene.participants[k].speaker` is set, mark that speaker's lines with "said by {label}". Otherwise end with "No speech is linked to {label}." If there's no transcript: "No speech was transcribed. Safe Cut's speech check covers 25 languages, not including Swahili." (PRE-A §4.2: speech in an unsupported language gives an empty, successful transcript) If `job.audio` is `false`, the whole section is replaced by "This clip has no sound."
+**"What was said while {label} was on screen".** Transcript turns that overlap the item's on-screen time (§4.6), max 4, each as `m:ss Voice S# "text"` (speakers carry the prefix "Voice", e.g. "Voice S1", "Voice U1", because the speech fallback's uncertain voices `U1`, `U2`, … would otherwise collide with the `U{n}` unfixed-spot chips, PRE-A §4.2), where `m:ss` is `floor(turn.start)` on the prepared clock (turn times are prepared-clock seconds, PRE-A §5b step 6). If the item's primary track has `matches_participant = k` (an index into `scene.participants`, set by the role pass, PRE-A `docs/prompts/role-pass.md`) and `scene.participants[k].speaker` is set, mark that speaker's lines with "said by {label}". Otherwise end with "No speech is linked to {label}." If there's no transcript: "No speech was transcribed. Safe Cut's speech check covers 25 languages, not including Swahili." (PRE-A §4.3's language list, its §12 speech-evidence row and vector P9c: speech in an unsupported language gives an empty, successful transcript) If `job.audio` is `false`, the whole section is replaced by "This clip has no sound."
 
 **Limited speech check.** When `transcript.degraded` is `true` (PRE-A `docs/prompts/speech-fallback.md`: Voice Transcribe failed or the audio was dropped) or `transcript.source_kind` is `"fallback"` (*proposal*, §8 request 16: the server says whether the primary ASR or the fallback produced the turns). The UI never compares `transcript.source` with a model ID, because model IDs come from env and can change (AGENTS.md rule 8):
 - the heading becomes "What was probably said (speech check was limited)";
@@ -1034,7 +1035,7 @@ One file per screen state. Component and page tests load these through the API c
 | `audit-ack.json` | `POST /v1/jobs/{id}/audit` (`202`, `status: "rendering"`, `stage: "audit"`) | the bar becomes the render stages at `Checking the result`; polling resumes |
 | `job-audit-rerun-receipt.json` | `GET /v1/jobs/{id}` during the re-run (`status: "rendering"`, `stage: "receipt"`) | stage row `Writing your privacy receipt` |
 | `job-audit-rerun-done.json` | `GET /v1/jobs/{id}` after the re-run (`status: "done"`, `audit.blocked_reason: null`, `unresolved: 0`, receipt URLs set) | redirect to `/result`; clean audit panel and the receipt |
-| `review-ack-cover-spot.json` | `POST /v1/jobs/{id}/review` answering `cover_spot` `s1` on `result-unresolved-review.json` | `items` gains `{"item_id": "p_1", "origin": "audit_patch", "audit_label": "A1", "track_ids": [], "spot_id": "s1", "kind": "person", "decision": "hide", "locked": true, "reason": "Added by the audit: the final check found this after rendering and covered it.", "evidence_frames": [7], "box": [600, 200, 660, 250], "first": 0, "last": 11, "style": "solid", "decided_by": "policy", "removed_by_creator": false}` (span clamped to the 12-frame clip; `kind` from the spot's leak rows, `face` → `person`); `plan.frames` gains `{"item_id": "p_1", "shape": "box", "box": [600, 200, 660, 250], "mask": null, "style": "solid", "grid": null}` on every frame 0–11; `audit.spots` has `s1` with `covered_by: "p_1"`; `status: "review"`, `has_render: true`; R19's expectations |
+| `review-ack-cover-spot.json` | `POST /v1/jobs/{id}/review` answering `cover_spot` `s1` on `result-unresolved-review.json` | `items` gains `{"item_id": "p_1", "origin": "audit_patch", "audit_label": "A1", "track_ids": [], "spot_id": "s1", "kind": "person", "decision": "hide", "locked": true, "reason": "Added by the audit: the final check found this after rendering and covered it.", "evidence_frames": [7], "box": [600, 200, 660, 250], "first": 0, "last": 11, "style": "solid", "decided_by": "policy", "removed_by_creator": false}` (span clamped to the 12-frame clip; `kind` from the spot's leak rows, `face` → `person`); `plan.frames` gains `{"item_id": "p_1", "shape": "box", "box": [600, 200, 660, 250], "mask": null, "style": "solid", "grid": null}` on every frame 0–11 (approximate: the real region is `p_1`'s `box` dilated by WP3's spatial padding, PRE-A §12, so the test checks that the region contains the box, not equality); `audit.spots` has `s1` with `covered_by: "p_1"`; `status: "review"`, `has_render: true`; R19's expectations |
 | `review-ack.json` | `POST /v1/jobs/{id}/review` | an accepted edit returning updated `items`, `plan`, `status`, `has_render` and `audit.spots` |
 | `error-401.json` | `POST /v1/codes/check` | step A: "That code didn't work. …", text selected |
 | `error-401-job-render.json` | `POST /v1/jobs/{id}/render` (`401`, `error.code: "unauthorized"`), from a job in `review` | §3.5 row 0: "The access code for this clip no longer works …"; Approve & render disabled; [Delete everything now] shown; no `DELETE` sent |

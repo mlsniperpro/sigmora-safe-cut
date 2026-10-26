@@ -510,6 +510,9 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#474 (win audit 42)**: (audit A) "Everything is deleted" overclaimed given Meta's unknown retention and prompt cache. Fix: "deleted from Safe Cut's servers".
 - [x] **#475 (win audit 42)**: (audit A) The VO said SAM tracks "frame by frame" (it sees an 8 fps proxy). Fix: "through the clip".
 - [x] **#476 (win audit 42)**: (audit A) Two stale requests to PRE-A (receipt stage after a re-audit; escalation field names) were already answered. Fix: removed.
+- [x] **#477 (PRE-A @ `9ab5bd9`)**: The rights tick didn't cover age or the people in the clip (Meta Terms §10.1, §16.2, PRE-A §7). Fix: "I'm 18 or over, and I have the right to upload this clip and the people in it." (copy, wireframes, error row, PILOTS consent).
+- [x] **#478 (PRE-A @ `9ab5bd9`)**: The cover-spot ack's plan box ignored WP3's spatial padding. Fix: marked approximate; the test checks containment.
+- [x] **#479 (PRE-A @ `9ab5bd9`)**: The empty-transcript rule cited PRE-A §4.2. Fix: §4.3, the §12 speech-evidence row and P9c.
 
 ## 4. Which builder reads what
 
