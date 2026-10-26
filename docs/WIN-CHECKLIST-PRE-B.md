@@ -25,7 +25,7 @@ Judging facts are from [MAXXING.md](MAXXING.md) §1 and §3 (to be re-checked ag
 - [x] **Step 2: Every WP6 screen: wireframes desktop + mobile, copy deck, states, keyboard/a11y, contract fields**. Evidence: UI-SPEC §1–9, build contract §10.
 - [x] **Step 2: The Why? drawer in detail; progress-stage labels**. Evidence: UI-SPEC §4, §2.5.
 - [x] **Step 3: Shot-by-shot 2:50 with frame, text, VO, duration, source; Nov 3 recordings; placeholders**. Evidence: STORYBOARD §1–3.
-- [x] **Step 4: Pilot profile, 15 candidates by channel type, 2 drafts < 120 words, consent note, protocol, results policy**. Evidence: PILOTS §1–6 (DM 102 words, email 109, placeholders as one word).
+- [x] **Step 4: Pilot profile, 15 candidates by channel type, 2 drafts < 120 words, consent note, protocol, results policy**. Evidence: PILOTS §1–6 (DM 106 words, email 113, placeholders as one word).
 - [x] **Step 5: Rules checklist with an action for every answer**. Evidence: RULES-CHECKLIST §1–12.
 - [x] **Step Done: Cross-links to DESIGN, EVAL, DEMO; no executable code**. Evidence: Verified by the docs check in the PR evidence.
 - [x] **Step Owner: Owner-only inputs with defaults and stub paths**. Evidence: BLOCKED-PRE-B.
@@ -513,6 +513,23 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#477 (PRE-A @ `9ab5bd9`)**: The rights tick didn't cover age or the people in the clip (Meta Terms §10.1, §16.2, PRE-A §7). Fix: "I'm 18 or over, and I have the right to upload this clip and the people in it." (copy, wireframes, error row, PILOTS consent).
 - [x] **#478 (PRE-A @ `9ab5bd9`)**: The cover-spot ack's plan box ignored WP3's spatial padding. Fix: marked approximate; the test checks containment.
 - [x] **#479 (PRE-A @ `9ab5bd9`)**: The empty-transcript rule cited PRE-A §4.2. Fix: §4.3, the §12 speech-evidence row and P9c.
+- [x] **#480 (win audit 43)**: (audit C) The Nov 3 handover ran before the renders, so it missed `audit.json` and render timings. Fix: after `SR-08` and `R-03B`.
+- [x] **#481 (win audit 43)**: (audit C) The handover relied on an export command nobody was asked to write. Fix: UI-SPEC request 23 to WP5.
+- [x] **#482 (win audit 43)**: (audit C) Recorded values (vote marks, receipt cost and hash) had no committed source. Fix: `roles.json`, `decisions.json`, `receipt.json`, `cost.jsonl` in the handover and `hero-live`; a STORYBOARD §2 row requires recordings to match them.
+- [x] **#483 (win audit 43)**: (audit C) The pilot-results handover had no deadline. Fix: 17:00 EAT with a not-counted default.
+- [x] **#484 (win audit 43)**: (audit C) The outreach promised flat deletion. Fix: "from its servers"; counts now DM 106, email 113.
+- [x] **#485 (win audit 43)**: (audit C+A) `runs_per_clip` was one number though run 3 can be partial. Fix: `runs_per_clip_min`/`max`, rendered as "3 runs" or "2–3 runs".
+- [x] **#486 (win audit 43)**: (audit C) SCHEDULE R3 didn't define the test-split-only variant BLOCKED uses. Fix: added.
+- [x] **#487 (win audit 43)**: (audit B) The landing caption said everyone signed though a guardian signs for the child. Fix: matching STORYBOARD wording.
+- [x] **#488 (win audit 43)**: (audit B+A) "Nothing from this clip is kept" still overclaimed. Fix: "Deleted from Safe Cut's servers." everywhere.
+- [x] **#489 (win audit 43)**: (audit B+A) The failed-votes rule left marks with two remaining votes, the heading `n`, the `roles.status` case and the escalation opener undefined or false. Fix: each defined.
+- [x] **#490 (win audit 43)**: (audit B) "they're fixed" wasn't a plural marker. Fix: "until each is fixed".
+- [x] **#491 (win audit 43)**: (audit B) The Why-rows mock's holds conflicted with ok statuses. Fix: stated as per-item; invariant exemption.
+- [x] **#492 (win audit 43)**: (audit B) `m:ss.s` had no element. Fix: the keyframe caption's "Frame at".
+- [x] **#493 (win audit 43)**: (audit B) Landing step 3 and the audit detail claimed every leak is fixed. Fix: "can fix … can't fix stops publishing".
+- [x] **#494 (win audit 43)**: (audit B) The empty-MIME sentence put derivation in the reject branch. Fix: reworded.
+- [x] **#495 (win audit 43)**: (audit B) A pending `A?` chip had no kind source. Fix: no kind until `SERVER_ACK`.
+- [x] **#496 (win audit 43)**: (audit A) "Never Contributor mode" overclaimed given Meta's tier routing (PRE-A §7). Fix: "Standard-mode model IDs only" in UI-SPEC and PILOTS.
 
 ## 4. Which builder reads what
 

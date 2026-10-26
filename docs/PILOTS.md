@@ -34,11 +34,11 @@ We contact creators only through their **public business channels**, never perso
 
 ## 3. Outreach drafts
 
-Both are under 120 words (DM: 102; email body, without the subject: 109; placeholders count as one word, as in RULES-CHECKLIST §4). Personalise the `{…}` parts with something specific from their own videos; never send a template without it.
+Both are under 120 words (DM: 106; email body, without the subject: 113; placeholders count as one word, as in RULES-CHECKLIST §4). Personalise the `{…}` parts with something specific from their own videos; never send a template without it.
 
 ### 3.1 DM (Instagram, TikTok, X)
 
-> Hi {name}, I liked your {video}, especially {specific detail}. I'm building Safe Cut, a tool that hides passers-by, children, number plates and private screens in street footage while keeping you and your guests clear. It's a hackathon build for Meta's AI developer hackathon, not a finished product. Would you try it on one clip you haven't published yet, between Oct 30 and Nov 2 (UTC)? It takes up to an hour: mask the clip your usual way for at most 30 minutes, run it through Safe Cut, and answer 3 questions. Your footage is deleted automatically afterwards. Can I send details? {your name}, Sigmora
+> Hi {name}, I liked your {video}, especially {specific detail}. I'm building Safe Cut, a tool that hides passers-by, children, number plates and private screens in street footage while keeping you and your guests clear. It's a hackathon build for Meta's AI developer hackathon, not a finished product. Would you try it on one clip you haven't published yet, between Oct 30 and Nov 2 (UTC)? It takes up to an hour: mask the clip your usual way for at most 30 minutes, run it through Safe Cut, and answer 3 questions. Safe Cut deletes your footage from its servers automatically afterwards. Can I send details? {your name}, Sigmora
 
 ### 3.2 Email
 
@@ -48,7 +48,7 @@ Both are under 120 words (DM: 102; email body, without the subject: 109; placeho
 >
 > I watch your {channel}; {specific detail} is the kind of clip I have in mind. I'm building Safe Cut for Meta's AI developer hackathon (deadline Nov 4). It works out who's part of your video and hides everyone else, plus children, number plates and private screens. You approve every decision.
 >
-> It's an honest hackathon build, not a finished product. Would you test it on one unpublished clip between Oct 30 and Nov 2 (UTC)? Up to an hour: your usual masking (capped at 30 minutes), then Safe Cut, then 3 questions. Footage is deleted automatically afterwards.
+> It's an honest hackathon build, not a finished product. Would you test it on one unpublished clip between Oct 30 and Nov 2 (UTC)? Up to an hour: your usual masking (capped at 30 minutes), then Safe Cut, then 3 questions. Safe Cut deletes footage from its servers automatically afterwards.
 >
 > Interested? I'll send an access code and the details.
 >
@@ -62,13 +62,13 @@ Both are under 120 words (DM: 102; email body, without the subject: 109; placeho
 >
 > - **It's your footage and stays yours.** You upload it yourself with a personal access code, confirming that you're 18 or over and have the right to upload the clip and the people in it (Meta's terms require both). We don't publish it, share it, or use it in our demo, video or repo.
 > - **Deleted automatically.** The clip, the redacted version, the receipt and all working files are stored only with Safe Cut's hosting providers (Modal for processing, Cloudflare R2 for uploads; Meta's part is below) and are deleted within `{deletion_deadline}` of upload (the exact time is shown on your result page), or straight away if you press "Delete everything now".
-> - **Meta Model API, Standard mode.** To decide what to hide, Safe Cut sends your clip to Meta's Model API (Muse Spark, SAM 3.1, Muse Voice Transcribe) in Standard mode, asking Meta not to store requests (`store: false`) wherever its API accepts that, and deleting the uploaded files after each run. Your privacy receipt records how your data was handled: Standard mode, whether storage was turned off for each model Safe Cut used, and that the uploaded files were deleted. `store: false` doesn't control Meta's short-lived prompt cache, which can briefly hold parts of a request in memory; Safe Cut never asks Meta to keep it longer, and your receipt says so too. We never use Contributor mode, whose inputs Meta may use to improve its models.
+> - **Meta Model API, Standard mode.** To decide what to hide, Safe Cut sends your clip to Meta's Model API (Muse Spark, SAM 3.1, Muse Voice Transcribe) in Standard mode, asking Meta not to store requests (`store: false`) wherever its API accepts that, and deleting the uploaded files after each run. Your privacy receipt records how your data was handled: Standard-mode model IDs requested, whether storage was turned off for each model Safe Cut used, and that the uploaded files were deleted. `store: false` doesn't control Meta's short-lived prompt cache, which can briefly hold parts of a request in memory; Safe Cut never asks Meta to keep it longer, and your receipt says so too. We never request a Contributor model, whose inputs Meta may use to improve its models (Meta's terms say its service may still route a request to one, and we can't see which tier served it).
 > - **People in your clip.** Your clip may show people who didn't agree to be filmed. That's what Safe Cut is for: the processing exists to hide them, and nobody at our end views your footage unless you share your screen with us.
 > - **What we keep:** only what you tell us — your timings, your answers, and (only if you say yes in writing) a quote and how you'd like to be credited. Your timings, and short anonymised descriptions of anything Safe Cut missed that you report (never your footage), are published anonymously in our public results (no name, no footage). You can withdraw any of it until **Nov 3, 12:00 UTC**, when we collect results; we publish only after that. After it, we remove your data from every later version on request, but it can't be taken out of copies already published.
 > - **It's a hackathon build.** Check the result before publishing anything. If you spot something Safe Cut missed, please tell us; that's the most useful thing you can do.
 
 Data-handling facts in this note must match what's deployed ([ARCHITECTURE.md](ARCHITECTURE.md) §5, [AGENTS.md](../AGENTS.md) rule 6). So the two messages make different promises:
-- The **outreach on Oct 27** promises only that footage is deleted automatically, which is a design requirement every WP5 build has to meet.
+- The **outreach on Oct 27** promises only that Safe Cut deletes footage from its servers automatically, which is a design requirement every WP5 build has to meet.
 - **This note and the access codes go out only after Claude has checked the live service** (on Oct 29 or the first day after it that WP5 is deployed): the 24 h cleanup job runs, files uploaded to Meta are deleted after each run, the R2 upload object is gone after both the cleanup sweep and a user's "Delete everything now", a live receipt's `data_handling.store_by_model` and `no_store_param` match what PRE-A `docs/API-NOTES.md` §10.6 sends (which models get `store: false`, and which take no `store` field), and its `data_handling.notes` carries the prompt-cache sentence (PRE-A §3.7), as the note promises. `{deletion_deadline}` is then filled from WP5's real cleanup schedule (e.g. "25 hours" for an hourly job that deletes jobs older than 24 h).
 
 If the check fails, no codes go out: the pilot window **shrinks** (it still ends Nov 2 23:59 UTC, the pilot kind's code window, and results are still collected Nov 3 12:00 UTC), pilots are told the new start date, and the promise doesn't change.

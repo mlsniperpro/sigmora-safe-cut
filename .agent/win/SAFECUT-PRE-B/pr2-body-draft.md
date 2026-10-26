@@ -12,7 +12,7 @@ The PRE-B work package: docs only, before kickoff (`date -u` when this session t
 | `docs/labeling/SCHEDULE.md` | Hours per clip, the 12 test / 3 dev / 3 hero split (binding for WP0/WP7), the test split's mean clip ≤ 30 s, dev tuning inside WP2's $15, people time ≈ 25 h, fallback plans R1–R4 (default R4 → R1) |
 | `docs/UI-SPEC.md` | Every WP6 screen with desktop/mobile wireframes, the full copy deck, the two refusal patterns (§2.6.1), states, the review bar (§3.5), keyboard and WCAG 2.2 behaviour, the field map to ARCHITECTURE §3, fixtures, the reducer, and **22 requests to other WPs** |
 | `docs/STORYBOARD.md` | 20 shots timed to 2:50, placeholders that each trace to a committed `metrics.json`, the Nov 3 screen recordings and their $12 recording-code budget, pre-export checks |
-| `docs/PILOTS.md` | Target profiles, outreach drafts (DM 102 words, email 109, placeholders as one word), consent and data note, the timed protocol, the $6-per-code / $20 caps, how results are reported (anonymous-only credits with ≤ 2 pilots) |
+| `docs/PILOTS.md` | Target profiles, outreach drafts (DM 106 words, email 113, placeholders as one word), consent and data note, the timed protocol, the $6-per-code / $20 caps, how results are reported (anonymous-only credits with ≤ 2 pilots) |
 | `docs/RULES-CHECKLIST.md` | Rule areas with an action for every answer, plus cut plans down to 2:00 |
 | `docs/BLOCKED-PRE-B.md` | Only what the owner must physically do, each with a default, a date, and the exact secret entries (codes without dates: each kind's window applies) |
 | `docs/WIN-CHECKLIST-PRE-B.md` | Every judging criterion, deliverable and audit finding (#1–#452) mapped to evidence; 0 unchecked lines |
