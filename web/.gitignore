@@ -44,3 +44,5 @@ next-env.d.ts
 # root *.mp4 rule keeps real footage out, so these few are allowed back in by name.
 !/public/sample/prepared.mp4
 !/public/sample/redacted.mp4
+# The root jobs/ rule is for pipeline job directories; this is the /jobs route.
+!/src/app/jobs/

@@ -197,7 +197,14 @@ try {
     await context.close();
   }
 } catch (error) {
-  check("e2e run", false, String(error?.message ?? error).split("\n")[0]);
+  check("e2e run", false, String(error?.message ?? error).split("\n").slice(0, 4).join(" | "));
+  // Leave evidence of where it stopped.
+  const page = browser?.contexts().at(-1)?.pages().at(-1);
+  if (page) {
+    const where = SHOTS ?? ROOT;
+    await page.screenshot({ path: join(where, "e2e-failure.png"), fullPage: true }).catch(() => undefined);
+    console.log(`failed at ${page.url()}: ${(await page.locator("main").innerText().catch(() => "")).slice(0, 400).replace(/\s+/g, " ")}`);
+  }
 } finally {
   await browser?.close();
   server.kill();
