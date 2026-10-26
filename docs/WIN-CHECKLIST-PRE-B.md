@@ -18,7 +18,7 @@ Judging facts are from the official participant guide, [OFFICIAL-GUIDE.md](OFFIC
 - [P] **Submission package: three-minute video, live product, public repo, every contributor listed**: Evidence: STORYBOARD (2:50), UI-SPEC (live product), BLOCKED-PRE-B (repo public once the owner OKs it, before submitting; contributors on the form). Owner input: BLOCKED-PRE-B.
 - [x] **Bonus: Community Vote / Most Viral**: Shareable proof. Evidence: RULES-CHECKLIST §0 and §6 (the demo posted on X before submitting, its link in the submission; the gallery link from Nov 9); BLOCKED-PRE-B Nov 4 steps. Builder: WP8.
 - [P] **Bonus: Best Agentic Use-Case**: Autonomy, task completion, usefulness. Evidence: RULES-CHECKLIST §0 (the miss loop, self-audit with patch loop and fail-closed holds, named in the submission). Builder: WP8.
-- [P] **Bonus: Best Build on Meta Open-Weight Models**: Decided by PRE-A (`docs/API-NOTES.md` §3.8): Muse Spark Open on Baseten as an additive audit second opinion. Evidence: PRE-B names it from `audit.open_weight.model` (UI-SPEC §1.3, RULES-CHECKLIST §0/§5, STORYBOARD 9.1) and discloses Baseten in the data copy and consent note; BLOCKED-PRE-B (credits, `BASETEN_API_KEY`). Builder: WP4, WP0 probe g.
+- [P] **Bonus: Best Build on Meta Open-Weight Models**: Decided by PRE-A (`docs/API-NOTES.md` §3.8): Muse Spark Open on Baseten as an additive audit second opinion. Evidence: PRE-B names it from `audit.open_weight.model` (UI-SPEC §1.3, RULES-CHECKLIST §0/§5, STORYBOARD 9.1) and discloses Baseten in the data copy and consent note; BLOCKED-PRE-B (credits, `BASETEN_API_KEY`). Builder: WP4, WP0 probe h.
 
 ## 2. PRE-B deliverables ([PRE-B.md](work-packages/PRE-B.md))
 
@@ -619,6 +619,19 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#578 (win audit 47)**: (audit B) With shortcuts off, older edits couldn't be undone. Fix: `Ctrl+Z` stays on; Tab row names the exception.
 - [x] **#579 (win audit 47)**: (audit B) The open-weight fixture lacked PRE-A's `frames` and `findings`. Fix: added.
 - [x] **#580 (win audit 47)**: (audit B) "First tab" on mobile was ambiguous. Fix: the tab selected on open; order unchanged.
+- [x] **#581 (win audit 47)**: (audit A+C; PRE-A @ 07208d9) The open-weight code-kind default is now empty in PRE-A; hero and dev frames would reach Baseten before any addendum. Fix: UI-SPEC copy note (default empty; `pilot`/`judge`/`public`/`service` never); BLOCKED addendum before the first Baseten run on any consented footage, with its one-line text, then add `owner` and `recording`.
+- [x] **#582 (win audit 47)**: (audit A+C; PRE-A open) The pilot consent note said frames may go to Baseten, which never happens for pilot codes. Fix: "Your clip is never sent to Baseten…"; the Oct 29 check confirms no `audit.open_weight` on a pilot job.
+- [x] **#583 (win audit 47)**: (audit A+C; PRE-A open) RULES-CHECKLIST claimed filming continued during the event "as BLOCKED plans" (it doesn't), and the end card dated only hero 1. Fix: each clip's real dates from the owner in the README; end card "Demo clips were filmed with consenting actors; dates in the README"; `.agent/` in the pre-kickoff list.
+- [x] **#584 (win audit 47)**: (audit A+C; PRE-A open) The repo-public step ignored that CI has no runner while private and didn't scrub `.agent/**` history or re-check the flip commit. Fix: flip as soon as the owner OKs; scrub and re-check first; Nov 4 20:00 EAT the latest; ARCHITECTURE request recorded.
+- [x] **#585 (win audit 47)**: (audit A+C; PRE-A open) Muse Spark Open was named beside test-split numbers measured without it. Fix: the scope note on the end card, RULES-CHECKLIST §0/§5 and the landing results footnote.
+- [x] **#586 (win audit 47)**: (audit A+C) BLOCKED misstated PRE-A's Baseten date. Fix: one step pointing at PRE-A's, same Oct 27 date.
+- [x] **#587 (win audit 47)**: (audit C) "Real-public clips local" ignored that test-run frames go to Meta. Fix: stored only on the owner's machines; frames sent to Meta during test runs; metrics only published.
+- [x] **#588 (win audit 47)**: (audit C) BLOCKED's header promised a default for every item. Fix: "where a fallback exists".
+- [x] **#589 (win audit 47)**: (audit C) The Oct 29 deletion check couldn't observe a 24 h sweep. Fix: a forced cleanup run on a throwaway consented job.
+- [x] **#590 (win audit 47)**: (audit A) RULES-CHECKLIST §9/§1 called the repo already public. Fix: "will be public before submission".
+- [x] **#591 (win audit 47)**: (audit A; PRE-A open) The credits step lacked card-first (else `402 billing_not_configured`), auto top-up and expiry. Fix: added; the judge window ends at expiry if earlier (RULES-CHECKLIST §11).
+- [x] **#592 (win audit 47)**: (audit A; PRE-A open) MAXXING's bonus list request and the probe-g remnants. Fix: request recorded in HANDOFF and the PR body; WIN-CHECKLIST says probe h; the stale HANDOFF sentence struck.
+- [x] **#593 (win audit 47)**: (PRE-A open) Presigned GETs live 15 min, and the landing page had no refetch. Fix: one `GET /v1/demo` refetch on 403; §10.3's row covers download and receipt URLs.
 
 ## 4. Which builder reads what
 
