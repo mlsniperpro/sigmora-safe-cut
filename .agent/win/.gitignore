@@ -1,0 +1,4 @@
+# Runtime output of win-gate.sh; evidence files in each <TAG>/ folder stay tracked.
+*/gate-logs/
+*/gate-last.log
+*/gate-last.meta
