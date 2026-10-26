@@ -646,6 +646,12 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#605 (win audit 48)**: (audit B) How the access code reaches the server was unspecified. Fix: `POST /v1/jobs` takes `code`, bound to the job; later paid requests use the job link and that binding.
 - [x] **#606 (win audit 48)**: (audit B) Static items had no defined votes section. Fix: omitted (heading included) for static and audit-added items unless an object ruling exists.
 - [x] **#607 (win audit 48)**: (audit B) `job-failed-render.json` cited §10.4 for its retry rule. Fix: §10.3.
+- [x] **#608 (win audit 49)**: (audit A; PRE-A open) The field map still offered `plan_url`. Fix: `plan` inline.
+- [x] **#609 (win audit 49)**: (audit A; PRE-A open) The pilot gate didn't check `responses_delete_requested` when SAM gets no `store`. Fix: added to the PILOTS check and timeline.
+- [x] **#610 (win audit 49)**: (audit A; PRE-A open) The copy note still banned "doesn't train on it", and Data bullet 1 lacked Meta's Data Commitments. Fix: bullet 1 quotes it as Meta's statement; note updated.
+- [x] **#611 (win audit 49)**: (audit A) PILOTS, LABELING-GUIDE, LABEL-FORMAT and STORYBOARD named requests the PR body didn't carry. Fix: WP7 (guide link, CVAT-zip loader) and EVAL (summed creator time) added to HANDOFF and the PR body.
+- [x] **#612 (win audit 49)**: (audit A; PRE-A §7) The region check was country-only and missed the Ukrainian regions. Fix: `geolocation()` / region header, `UA` + Crimea, Sevastopol, Donetsk, Luhansk; a UA test case.
+- [x] **#613 (win audit 49)**: (audit A) The no-Baseten check looked for an absent `audit.open_weight`, which PRE-A always writes. Fix: `status` is `off` (or absent).
 
 ## 4. Which builder reads what
 

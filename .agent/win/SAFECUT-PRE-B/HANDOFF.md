@@ -13,27 +13,27 @@ Met only when the transcript shows, after the last docs change: `grep -c '^- \[ 
 - Official participant guide (owner, 2026-10-26) committed verbatim as `docs/OFFICIAL-GUIDE.md` and reconciled (#497–#503): theme Build for Your World, new-work boundary (STORYBOARD 9.1 `{first_code_commit}`, Sigmora label), repo public only after the owner's OK, demo on X before submitting, bonus targets (agentic; open-weight via Baseten `meta-models/muse-spark-open-1026` is a request to PRE-A/WPs).
 
 ## In flight
-- Round 46: B fixed (#564–#569); A and C were stopped by the wind-down. **Round 47 (full A/B/C, Sonnet/high) launched on `8dbcd3c` after RESUME**; log its findings as #608+. Check-in armed (send_later, ~50 min).
-- PR #2 body draft: `.agent/win/SAFECUT-PRE-B/pr2-body-draft.md` (bump counts to #1–#607 and rounds 24–46 before posting; it carries the MAXXING request under "Requests for other WPs").
+- Round 46: B fixed (#564–#569); A and C were stopped by the wind-down. **Round 47 (full A/B/C, Sonnet/high) launched on `8dbcd3c` after RESUME**; log its findings as #614+. Check-in armed (send_later, ~50 min).
+- PR #2 body draft: `.agent/win/SAFECUT-PRE-B/pr2-body-draft.md` (bump counts to #1–#613 and rounds 24–46 before posting; it carries the MAXXING request under "Requests for other WPs").
 - PRE-A head last seen: `2287677` (origin/pre-a-research). Re-read its API-NOTES §12 "Requests to PRE-B" for items marked **open** first.
 - Owner rules (keep): every Agent subagent uses model sonnet, effort high; main session verifies each finding before fixing; push when a substantial task is complete and green (no timer, no wip commits, exactly one PR #2); never idle; stop only for usage limit or met /goal; WIND DOWN steps when told.
 - Gates used: `grep -c '^- \[ \]' docs/WIN-CHECKLIST-PRE-B.md` → 0; a relative-link checker over docs (recreate: resolve every `](path)` in PRE-B files; last 0 broken); parse every ```json block in docs/UI-SPEC.md (last: all parse); PILOTS word counts DM 106 / email 113 (placeholders one word).
 - Key decisions this session: OFFICIAL-GUIDE.md committed verbatim and reconciled (RULES-CHECKLIST §0); repo stays private until the owner OKs it, public by Nov 4 20:00 EAT; demo on X before submitting; end card states first product-code commit, hero 1 filming date, labelling during the event, Sigmora line only if 8.1 shows Sigmora; PRE-A's open-weight audit second opinion (Muse Spark Open on Baseten) named from `audit.open_weight.model` and disclosed (Data bullet 4, consent note); "Standard model IDs" wording; deletion "from Safe Cut's servers".
 
 ## Next steps (in order)
-1. Audit round 49 (same 3 scopes, fresh agents, fixed sha; hot zone = latest fix diff, then `git diff 5bb95f0..HEAD -- docs/`). Log as #608+. Repeat until two consecutive rounds find nothing new. Findings cluster in UI-SPEC §2.6.1/§3.5/§10.3–§10.5 and mock fixtures, and in the Nov 3 sequence (STORYBOARD §3, BLOCKED); re-read neighbouring rules before each fix.
+1. Audit round 49 (same 3 scopes, fresh agents, fixed sha; hot zone = latest fix diff, then `git diff 5bb95f0..HEAD -- docs/`). Log as #614+. Repeat until two consecutive rounds find nothing new. Findings cluster in UI-SPEC §2.6.1/§3.5/§10.3–§10.5 and mock fixtures, and in the Nov 3 sequence (STORYBOARD §3, BLOCKED); re-read neighbouring rules before each fix.
 2. The PR #2 body was refreshed this session (Decisions 1–19, requests incl. request 22); update its finding counts, then push, show `git status -sb`, post the final docs status comment.
 3. Before merge: remove `.agent/` (#257).
 
 ## Open audit findings
-None known (#1–#607 fixed).
+None known (#1–#613 fixed).
 
 ## Key decisions (why)
 - PRE-A owns API, cost, model, ffmpeg/time-axis and access-window facts; PRE-B adopts them and only files requests (AGENTS rule 2). Reconciled to PRE-A `02c605e`; `b6fa465` added no new requests to PRE-B.
 - Docs-only until Oct 26 16:00 UTC (AGENTS rule 1); deadline Nov 4 21:00 ET (Nov 5 02:00 UTC). One PR only (#2, branch `pre-b-product`).
 - Fail-closed UI rules: auditor named from `audit.json` `egoblur.model` (YuNet fallback), blocking refusals vs `code_cap` note, per-kind code windows, no number without a committed `metrics.json` (AGENTS rule 9).
 - Footage: only signed cast in published clips, fake plates and fictional numbers; real-public test clips stay in owner custody, labelled in person.
-- Every finding is logged in `docs/WIN-CHECKLIST-PRE-B.md` §3 (#1–#607, all `[x]`).
+- Every finding is logged in `docs/WIN-CHECKLIST-PRE-B.md` §3 (#1–#613, all `[x]`).
 
 ## Install / test
 - Docs-only: no install. Gates: below (python3 scripts for link check and JSON parse of UI-SPEC ```json blocks; recreate them if the scratchpad is gone).
