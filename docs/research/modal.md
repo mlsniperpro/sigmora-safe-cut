@@ -7,7 +7,7 @@ Read 2026-10-24; plan limits re-checked on <https://modal.com/pricing> 2026-10-2
 |---|---|---|---|---|
 | **Starter** | $0/mo | **$30/mo** compute | 3 seats, 100 containers, 10 concurrent GPUs; **5 crons**, 200 apps, web endpoints limited (no number) | [modal.com/pricing](https://modal.com/pricing), read 2026-10-25 |
 | Team | $250/mo + compute | $100/mo | unlimited seats, 1,000 containers, 50 GPUs; crons and endpoints unlimited | [3P] |
-| Hackathon partner credits | — | **$100** (select participants, MAXXING §1) | — | event page |
+| Hackathon partner credits | — | none stated (`docs/OFFICIAL-GUIDE.md` lists Modal without a figure; claim if offered) | — | official guide |
 
 A Starter region-selection surcharge (1.5–1.75×) is mentioned by one tracker [3P]. Don't pin a region.
 
@@ -58,4 +58,4 @@ Assumptions: the CPU worker gets **2 cores + 4 GiB** for **3 minutes** (prepare,
 - GPU container cold start (pulling torch + weights) may dominate the 1 GPU-minute. Keep the weights in a Volume and measure.
 
 ## Owner step (O2)
-Create a Modal account (Starter), claim the hackathon's $100 partner credits if offered, then `gh secret set MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` on this repo.
+Create a Modal account (Starter), claim any hackathon partner credits if offered (the guide gives no figure), then `gh secret set MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` on this repo.
