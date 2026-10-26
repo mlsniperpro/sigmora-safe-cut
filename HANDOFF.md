@@ -14,3 +14,17 @@ Branch `wp6-web` (PR into `main`). Scope: `web/`, `.agent/win/SAFECUT-WP6/`, thi
 ## Next items
 
 See `.agent/win/SAFECUT-WP6/WIN-CHECKLIST.md` (every open `- [ ]` line).
+
+## State at wind-down (2026-10-26)
+
+Done and committed: zod contracts aligned with WP0, SafeCutClient + MockBackend, gen-mocks.mjs (82 UI-SPEC fixtures, invariant test), synthetic sample scene + media (web/public/sample), review reducer R1–R33, bar selector, Why drawer model, copy/upload/overlay/polling libs, every screen (/, /try, /jobs/[id], /jobs/[id]/result, 404, error), CSP headers. 629 vitest tests green; lint and typecheck clean; `pnpm build` passed.
+
+Unverified: `web/e2e/replay-e2e.mjs` (Playwright real-browser e2e + axe + screenshots; devDeps playwright@1.63.0 and axe-core). Its first run was cut off by the wind-down: run `cd web && pnpm build && pnpm e2e --shots <dir>` and fix whatever fails.
+
+## Next items (in order)
+
+1. Run the e2e above and fix any failures.
+2. Write `web/README.md`: env vars (NEXT_PUBLIC_SAFECUT_API, NEXT_PUBLIC_SAFECUT_HERO_ID, NEXT_PUBLIC_SIGMORA_URL, NEXT_PUBLIC_REPO_URL, NEXT_PUBLIC_SITE_URL, NEXT_PUBLIC_EVAL_URL), the mock-code table (MOCK_CODES), and deploy notes.
+3. Update WIN-CHECKLIST.md with evidence, write reaudit.md and break-it.md, and run the gate.
+4. Open the ONE PR (wp6-web → main) with screenshots and these sections: Decisions, Self-review, and Requests for other WPs (WP5: eta_s, stage_reason, the result and demo route shapes, and the publish postMessage contract; WP0: removed_by_creator and spot_id on DecisionItem).
+5. Run the audit loop per the owner's mandate.
