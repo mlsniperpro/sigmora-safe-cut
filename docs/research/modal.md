@@ -1,11 +1,11 @@
 # Modal (API + worker hosting)
 
-Read 2026-10-24. **`modal.com` couldn't be opened** from this session (network policy, see `docs/BLOCKED-PRE-A.md`). Facts come from web-search summaries, either of Modal's own pages (**[SNIP]**) or of third-party price trackers (**[3P]**). Re-check on <https://modal.com/pricing> and <https://modal.com/docs> before WP5 commits to numbers.
+Read 2026-10-24; plan limits re-checked on <https://modal.com/pricing> 2026-10-25 (Starter: $30/mo credits, 3 seats, 100 containers, 10 GPU concurrency, 5 crons, 200 apps; web endpoints "limited", no number given). Facts come from web-search summaries, either of Modal's own pages (**[SNIP]**) or of third-party price trackers (**[3P]**). Re-check on <https://modal.com/pricing> and <https://modal.com/docs> before WP5 commits to numbers.
 
 ## Plans and credits
 | Plan | Price | Included credits | Limits | Source |
 |---|---|---|---|---|
-| **Starter** | $0/mo | **$30/mo** compute | 3 seats, 100 containers, 10 concurrent GPUs; **5 crons, 8 web endpoints** | [3P] costbench.com, pricingsaas.com (May 2026 diff) |
+| **Starter** | $0/mo | **$30/mo** compute | 3 seats, 100 containers, 10 concurrent GPUs; **5 crons**, 200 apps, web endpoints limited (no number) | [modal.com/pricing](https://modal.com/pricing), read 2026-10-25 |
 | Team | $250/mo + compute | $100/mo | unlimited seats, 1,000 containers, 50 GPUs; crons and endpoints unlimited | [3P] |
 | Hackathon partner credits | — | **$100** (select participants, MAXXING §1) | — | event page |
 

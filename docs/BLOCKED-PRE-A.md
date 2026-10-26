@@ -18,7 +18,7 @@ PRE-A's documents are all written. Each item below needs the owner, either throu
   - *Meanwhile:* dev and hero runs (consented clips) use the sandbox or Modal. WP7's runner refuses `--split test` inside the sandbox.
 
 - [ ] **Network allowlist for this cloud environment** (O3). Under claude.ai/code → environment → Edit → Network access → Allowed domains, leave "Allow package managers" ticked and add:
-  - [ ] `dev.meta.ai`: Meta's docs. From this session it fails (`curl: (56) CONNECT tunnel failed, response 403`)
+  - [ ] `dev.meta.ai`: Meta's docs. reachable from this session since 2026-10-25 (earlier `curl: (56) CONNECT tunnel failed, response 403`)
   - [ ] `developer.meta.com`
   - [ ] `api.meta.ai`: the API itself (WP0 probes)
   - [ ] `www.projectaria.com`
