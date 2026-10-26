@@ -1,36 +1,94 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Safe Cut web app (WP6)
 
-## Getting Started
+The screens judges and creators see: the landing page with the hero result, `/try` (access code → upload → progress), the review panel at `/jobs/[id]` with the "Why?" drawer, and the result and privacy receipt at `/jobs/[id]/result`. Built from `docs/work-packages/WP6.md` and PRE-B's `docs/UI-SPEC.md`.
 
-First, run the development server:
+Next.js 16 (App Router, Cache Components), React 19, TypeScript strict, Tailwind 4, zod 4. Tests: vitest + Testing Library + fast-check, and a Playwright end-to-end run with axe.
+
+## Run it
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cd web
+pnpm install
+pnpm dev            # http://localhost:3000, mock mode (no API needed)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+With `NEXT_PUBLIC_SAFECUT_API` unset, every request goes to an **in-browser mock backend** (`src/lib/mock-backend.ts`) built on the fixtures in `mocks/`. Nothing leaves the browser, and a note under the header says so. Things to try:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| URL | What it shows |
+|---|---|
+| `/` | Landing: the sample hero with the Raw / Safe Cut toggle |
+| `/try` | The whole flow: any access code, then pick any MP4/MOV (`public/sample/prepared.mp4` works) |
+| `/jobs/job-review-sample` | Review panel on the synthetic sample scene (playable video, keyframes) |
+| `/jobs/<fixture>` | Any job fixture in `mocks/`, e.g. `job-review-reentry`, `job-review-cafe`, `result-audit-failed`, `job-replay` (demo-mode banner), `job-failed-roles`, `error-404-expired` |
+| `/jobs/result-fixed/result` | Result page states: also `result-clean`, `result-unresolved`, `result-clean-yunet` |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Access codes with scripted answers in mock mode (`MOCK_CODES`):
 
-## Learn More
+| Code | Answer |
+|---|---|
+| `wrong` | 401 on Continue |
+| `not-yet` | 401 `code_not_active` on Continue |
+| `rate-limited` | 429 on Continue |
+| `expired` | 401 `code_not_active` on `POST /v1/jobs` |
+| `no-budget` | 429 `code_cap` on `POST /v1/jobs` |
+| `revoked` | 401 on `POST /start` (the job is deleted once) |
+| `too-big` | 422 `job_cap` on `POST /start` |
+| `pilot-done` | 429 `pilot_pool_cap` on `POST /start` |
+| `no-auditor`, `no-credits` | 503 on `POST /start` (Start stays enabled) |
+| `upload-lost` | 409 `upload_incomplete` on `POST /start` |
+| anything else | accepted |
 
-To learn more about Next.js, take a look at the following resources:
+The sample scene is drawn shapes, not people, so it needs no release (AGENTS.md rules 4–5). Its motion data (`scripts/sample-scene.mjs`) drives both the rendered media and the job JSON, so boxes, plan and pixels agree.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Checks
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+pnpm lint        # ESLint, zero warnings allowed
+pnpm typecheck   # tsc --noEmit
+pnpm test        # vitest: unit, property, component and integration tests
+pnpm build       # production build
+pnpm e2e         # Playwright on the production build in mock mode, with axe (run after build)
+```
 
-## Deploy on Vercel
+`.agent/win/SAFECUT-WP6/checks.sh` runs all of them.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Environment variables
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+All are public build-time values (`NEXT_PUBLIC_*`); no secret ever reaches the browser.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `NEXT_PUBLIC_SAFECUT_API` | unset (mock mode) | WP5's API base URL, e.g. `https://api.safecut.sigmora.org` |
+| `NEXT_PUBLIC_SAFECUT_HERO_ID` | `hero1` | The pinned hero job served by `GET /v1/demo/{hero_id}` |
+| `NEXT_PUBLIC_SITE_URL` | `https://safecut.sigmora.org` | Canonical URL for Open Graph / X cards |
+| `NEXT_PUBLIC_SIGMORA_URL` | `https://sigmora.org` | "Back to Sigmora", the publish target, and `frame-ancestors` |
+| `NEXT_PUBLIC_REPO_URL` | this repo on GitHub | "Source on GitHub" |
+| `NEXT_PUBLIC_EVAL_URL` | `docs/EVAL.md` on GitHub | "How we measured" under the results table |
+
+## Deploy
+
+Vercel builds `web/` on push (root directory `web`, framework Next.js, install `pnpm install --frozen-lockfile`). Don't deploy from a sandbox. The owner sets the custom domain and the variables above. Security headers (CSP, HSTS, nosniff, Permissions-Policy, `noindex` on job pages) are in `next.config.ts`.
+
+## Regenerating fixtures and sample media
+
+```bash
+node scripts/gen-mocks.mjs     # mocks/*.json and mocks/index.ts (a test fails if they drift)
+node scripts/gen-sample.mjs    # public/sample/* (needs ffmpeg on PATH)
+```
+
+The fixtures follow UI-SPEC §10.1; `mocks/mocks.test.ts` checks every §10.1 invariant on every job fixture. When WP5's API lands, its field names win and the mocks follow.
+
+## Layout
+
+```
+src/app/                 routes: /, /try, /jobs/[id], /jobs/[id]/result, not-found, error
+src/components/          landing/, try/, job/, review/ (Chip, VideoPane, WhyDrawer, ReviewPanel), shared ui
+src/lib/contracts.ts     zod schemas for every API response
+src/lib/api.ts           typed client: timeouts, GET retries, typed errors
+src/lib/mock-backend.ts  the in-browser API used in mock mode and in tests
+src/lib/review/          the review reducer (UI-SPEC §10.5), bottom bar, chip view model
+src/lib/why/             Why-drawer copy and Muse Spark frame-reference rewriting
+src/lib/overlay.ts       what the review canvas draws on each frame
+mocks/                   UI-SPEC §10.1 fixtures (generated)
+e2e/replay-e2e.mjs       real-browser end-to-end run with axe
+```

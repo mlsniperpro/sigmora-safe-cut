@@ -112,8 +112,11 @@ try {
     await axe(page, `${v} try (file)`);
     await page.getByRole("button", { name: "Start" }).click();
     await page.getByText("Working on your clip").waitFor();
-    await page.getByRole("listitem").filter({ hasText: "Finding people and objects" }).and(page.locator('[aria-current="step"]')).waitFor({ timeout: 15_000 });
-    check(`${v}: progress walks the pipeline stages`, true);
+    // Polling every 2 s can skip a 1.2 s mock stage, so accept whichever pipeline row is active.
+    const active = page.locator('li[aria-current="step"]');
+    await active.waitFor({ timeout: 15_000 });
+    const label = (await active.innerText()).split("\n").find((l) => l && !l.startsWith("Now"));
+    check(`${v}: progress shows the active pipeline stage`, true, label ?? "");
     await shot(page, `${v}-4-progress`);
 
     // Review
@@ -147,7 +150,7 @@ try {
     await page.getByRole("dialog", { name: "Who is Face 8?" }).getByRole("button", { name: /Same person as Face 1/ }).click();
     await page.getByText("Face 8 merged into Face 1. They'll be kept clear like Face 1.").waitFor();
     check(`${v}: re-entry merge into the kept guest`, true);
-    await page.getByRole("button", { name: "Why is Face 4 hidden?" }).click();
+    await page.getByRole("button", { name: "Why? Face 4, hidden" }).click();
     const drawer = page.getByRole("dialog", { name: "Face 4 · Child" });
     await drawer.getByText("Children are always hidden. You can't change this, because Safe Cut can't check a parent's consent.").waitFor();
     await drawer.locator("img").evaluate((img) => (img.complete ? true : new Promise((r) => img.addEventListener("load", r, { once: true }))));

@@ -217,8 +217,8 @@ export function Chip({
       ) : (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {chip.buttons.why && (
-            <button type="button" data-btn="why" className={actionClass} aria-label={`Why is ${chip.label} ${COLUMN_WORD[chip.column].toLowerCase()}?`} onClick={() => handlers.onWhy(chip)}>
-              Why?
+            <button type="button" data-btn="why" className={actionClass} onClick={() => handlers.onWhy(chip)}>
+              Why?{" "}<span className="sr-only">{chip.label}, {COLUMN_WORD[chip.column].toLowerCase()}</span>
             </button>
           )}
           {merge && (
@@ -227,18 +227,18 @@ export function Chip({
             </button>
           )}
           {chip.buttons.hide && (
-            <button type="button" data-btn="hide" className={actionClass} aria-label={`Hide ${chip.label}`} disabled={chip.pending} onClick={() => handlers.onHide(chip)}>
-              Hide
+            <button type="button" data-btn="hide" className={actionClass} disabled={chip.pending} onClick={() => handlers.onHide(chip)}>
+              Hide{" "}<span className="sr-only">{chip.label}</span>
             </button>
           )}
           {chip.buttons.keep && (
-            <button type="button" data-btn="keep" className={actionClass} aria-label={`Keep ${chip.label} clear`} disabled={chip.pending} onClick={() => handlers.onKeep(chip)}>
-              Keep clear
+            <button type="button" data-btn="keep" className={actionClass} disabled={chip.pending} onClick={() => handlers.onKeep(chip)}>
+              Keep clear{" "}<span className="sr-only">{chip.label}</span>
             </button>
           )}
           {chip.buttons.cover && (
-            <button type="button" data-btn="cover" className={actionClass} aria-label={`Cover ${chip.label}`} onClick={() => handlers.onCover(chip)}>
-              Cover it
+            <button type="button" data-btn="cover" className={actionClass} onClick={() => handlers.onCover(chip)}>
+              Cover it{" "}<span className="sr-only">{chip.label}</span>
             </button>
           )}
           {chip.locked && (

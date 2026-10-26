@@ -82,7 +82,7 @@ describe("review panel", () => {
   it("asks before keeping a plate clear", async () => {
     const user = setup("job-review-hero1");
     await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
-    await user.click(screen.getByRole("button", { name: "Keep Plate 1 clear" }));
+    await user.click(screen.getByRole("button", { name: "Keep clear Plate 1" }));
     expect(screen.getByText("Only keep this clear if nothing on it reveals who someone is.")).toBeInTheDocument();
     expect(reviewPosts()).toHaveLength(0);
     await user.click(within(chip("Plate 1")).getByRole("button", { name: "Keep clear" }));
@@ -134,7 +134,7 @@ describe("review panel", () => {
   it("opens the Why drawer with the votes and the speech evidence", async () => {
     const user = setup("job-review-hero1");
     await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
-    await user.click(screen.getByRole("button", { name: "Why is Face 6 needs you?" }));
+    await user.click(screen.getByRole("button", { name: "Why? Face 6, needs you" }));
     const drawer = await screen.findByRole("dialog", { name: "Face 6 · Person" });
     expect(within(drawer).getByText("Why it needs you")).toBeInTheDocument();
     expect(within(drawer).getByText("Check 2: Part of the story, disagrees with the majority")).toBeInTheDocument();
@@ -173,7 +173,7 @@ describe("review panel", () => {
   it("covers an unfixed spot", async () => {
     const user = setup("result-unresolved-review", "view=review");
     expect(await screen.findByText("1 unfixed spot is visible in the video. Cover it before rendering.")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Cover Unfixed spot U1" }));
+    await user.click(screen.getByRole("button", { name: "Cover it Unfixed spot U1" }));
     expect(await screen.findByText("U1 will be covered.")).toBeInTheDocument();
     expect(await screen.findByText("You changed something after rendering. Render again to update the video and receipt.")).toBeInTheDocument();
     expect(await screen.findByRole("article", { name: /^A1,/ })).toBeInTheDocument();

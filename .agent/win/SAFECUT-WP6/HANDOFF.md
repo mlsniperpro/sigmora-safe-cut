@@ -75,7 +75,9 @@
 - Run: `pnpm dev` runs in mock mode. Try `/jobs/job-review-sample`, `/try` (any code; see MOCK_CODES for scripted refusals), and `/jobs/<fixture>`.
 - Regenerate: `node scripts/gen-mocks.mjs` and `node scripts/gen-sample.mjs` (needs ffmpeg).
 - Gate: `bash .agent/win-gate.sh SAFECUT-WP6` from the repo root.
-- Owner rules: subagents use model sonnet with effort high. Push only when a substantial piece is green. One PR. Never idle.
+- Subagents: every Agent/Task launch sets model "sonnet" and effort "high" (auditors, reviewers, fixers, researchers, soak/log watchers). Integration, self-review, deciding which findings are real, and the gate stay in the main session; verify any subagent finding before fixing it, never drop one unchecked.
+- Pushing: push when a substantial task is complete and green (audit findings fixed and tested, a feature slice working, a soak/break-it pass recorded, the gate run). No timer. Squashed, meaningful commits only (no empty/format-only/wip). Exactly one PR.
+- Never idle and never end a turn to wait: while a subagent, audit, soak or build runs, work on the next item and collect results when they arrive. Only two reasons to stop: the API usage limit, or the /goal being met.
 
 ## Owner-only blockers
 See `.agent/win/SAFECUT-WP6/BLOCKED.md`: the Vercel project and domain, hero footage with releases, making the repo public, Baseten credits, and the demo video.
