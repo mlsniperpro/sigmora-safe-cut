@@ -134,6 +134,21 @@ describe("mock fixtures", () => {
       if (j.roles) expect(j.roles.status).toBeDefined();
     });
 
+    it("ties each hold to the stage that didn't run (UI-SPEC §10.1)", () => {
+      // job-review-why-rows carries one item per hold with every stage ok, on purpose (the spec exempts it).
+      if (n === "job-review-why-rows") return;
+      for (const item of j.items) {
+        const primary = primaryTrackId(item.track_ids);
+        const track = j.roles?.tracks.find((t) => t.track_id === primary);
+        if (item.hold === "no_roles") {
+          const failedTrack = !!track && (track.failed_votes === 3 || (track.role === "unsure" && !track.escalated));
+          expect(j.roles?.status !== "ok" || failedTrack, item.item_id).toBe(true);
+        }
+        if (item.hold === "no_scene") expect(j.scene?.status, item.item_id).not.toBe("ok");
+        if (item.hold === "no_speech") expect(j.transcript?.status !== "ok" || j.transcript.degraded, item.item_id).toBe(true);
+      }
+    });
+
     it("marks audit-added items and has_render consistently", () => {
       for (const item of j.items) if (item.track_ids.length === 0) {
         expect(item.origin).toBe("audit_patch");
