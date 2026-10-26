@@ -1,6 +1,6 @@
 # HANDOFF: SAFECUT-PRE-B (docs-only product-prep package)
 
-**Updated 2026-10-26 17:10 UTC** by session_01Tjy33tfkpth8jMhhnhhcYL (resumed: wind-down cancelled; lease active). **Branch** `pre-b-product` · **PR #2** (the only PRE-B PR; never open another) · **Brief** `docs/work-packages/PRE-B.md` · **Rules** `AGENTS.md` (docs only; no code before 2026-10-26 16:00 UTC). Short form: `docs/HANDOFF-PRE-B.md`.
+**Updated 2026-10-26 18:57 UTC** by session_01Tjy33tfkpth8jMhhnhhcYL (FINISH AND WIND DOWN: the owner replaced the WIN goal; lease released). **Branch** `pre-b-product` · **PR #2** (the only PRE-B PR; never open another) · **Brief** `docs/work-packages/PRE-B.md` · **Rules** `AGENTS.md` (docs only; no code before 2026-10-26 16:00 UTC). Short form: `docs/HANDOFF-PRE-B.md`.
 
 ## Goal (owner /goal, re-armed hourly)
 Met only when the transcript shows, after the last docs change: `grep -c '^- \[ \]' docs/WIN-CHECKLIST-PRE-B.md` → 0; **two consecutive full audits that find nothing new**; PRE-B and PRE-A reconciled on shared facts; `git status -sb` pushed; a final docs status comment on PR #2. Deadline: kickoff 2026-10-26 16:00 UTC. Never comment on other PRs. A WIND DOWN message: write handoff, release lease, push, delete own check-ins.
@@ -12,13 +12,13 @@ Met only when the transcript shows, after the last docs change: `grep -c '^- \[ 
 
 - Official participant guide (owner, 2026-10-26) committed verbatim as `docs/OFFICIAL-GUIDE.md` and reconciled (#497–#503): theme Build for Your World, new-work boundary (STORYBOARD 9.1 `{first_code_commit}`, Sigmora label), repo public only after the owner's OK, demo on X before submitting, bonus targets (agentic; open-weight via Baseten `meta-models/muse-spark-open-1026` is a request to PRE-A/WPs).
 
-## In flight
-- Nothing running. Round 49: **A reported and is fixed (#608–#613, pushed)**; **B (UI-SPEC) and C (labels/pilots/storyboard) were stopped by the wind-down before reporting**: **full round 50 launched on HEAD after resume**; log as #614+. Check-in armed.
-- **PR #2 body is one step behind:** HANDOFF-PRE-B says the WP7 (guide link, CVAT-zip loader) and EVAL (summed creator time) requests are in it; add those three bullets to the live body under "Requests for other WPs" (the draft `.agent/win/SAFECUT-PRE-B/pr2-body-draft.md` and the live body differ; the live one was posted from a condensed version).
-- PRE-A head last seen: `6e2ca00`.
+## In flight / left unfinished
+- **Nothing half-done; nothing reverted.** Every finding through #613 is fixed and pushed. The WIN goal (two consecutive clean audit rounds + final PR #2 comment) was **not met**: rounds 24–49 each found new defects (48: 14, 49A: 6). Round 49 B/C and round 50 A/B/C were stopped (wind-down / finish goal) before reporting; no findings from them were received.
+- **PR #2 body** was refreshed at round 48A, and the final wind-down added the WP7 (guide link, CVAT-zip loader) and EVAL (summed creator time) request bullets and the gate's last line.
+- **Win gate** (`bash .agent/win-gate.sh SAFECUT-PRE-B`, script on `origin/main`, run from a copy because this branch predates it; `.agent/win/SAFECUT-PRE-B/gate.conf` points it at `docs/WIN-CHECKLIST-PRE-B.md` and `docs/BLOCKED-PRE-B.md`): its last line is recorded in the PR #2 body and status comment. Expected FAIL items for a docs-only package: the branch lacks `.agent/win-gate.sh` (merge `origin/main` or `git checkout origin/main -- .agent/win-gate.sh`), and there is no `reaudit.md`, `break-it.md` or `checks.sh` (docs-only: no code to soak or test; the audit trail is WIN-CHECKLIST §3). The checklist check passes (641 resolved, 14 parked, none open).
+- PRE-A head last seen: `6673a74`.
 - Owner rules (keep): every Agent subagent uses model sonnet, effort high; main session verifies each finding before fixing; push when a substantial task is complete and green (no timer, no wip commits, exactly one PR #2); never idle; stop only for usage limit or met /goal; WIND DOWN steps when told.
-- Gates used: `grep -c '^- \[ \]' docs/WIN-CHECKLIST-PRE-B.md` → 0; a relative-link checker over docs (recreate: resolve every `](path)` in PRE-B files; last 0 broken); parse every ```json block in docs/UI-SPEC.md (last: all parse); PILOTS word counts DM 106 / email 113 (placeholders one word).
-- Key decisions this session: OFFICIAL-GUIDE.md committed verbatim and reconciled (RULES-CHECKLIST §0); repo stays private until the owner OKs it, public by Nov 4 20:00 EAT; demo on X before submitting; end card states first product-code commit, hero 1 filming date, labelling during the event, Sigmora line only if 8.1 shows Sigmora; PRE-A's open-weight audit second opinion (Muse Spark Open on Baseten) named from `audit.open_weight.model` and disclosed (Data bullet 4, consent note); "Standard model IDs" wording; deletion "from Safe Cut's servers".
+- Gates used: `grep -c '^- \[ \]' docs/WIN-CHECKLIST-PRE-B.md` → 0; relative-link checker over docs (0 broken); every ```json block in docs/UI-SPEC.md parses; PILOTS word counts DM 106 / email 113.
 
 ## Next steps (in order)
 1. Audit round 49 (same 3 scopes, fresh agents, fixed sha; hot zone = latest fix diff, then `git diff 5bb95f0..HEAD -- docs/`). Log as #614+. Repeat until two consecutive rounds find nothing new. Findings cluster in UI-SPEC §2.6.1/§3.5/§10.3–§10.5 and mock fixtures, and in the Nov 3 sequence (STORYBOARD §3, BLOCKED); re-read neighbouring rules before each fix.
