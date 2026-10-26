@@ -572,6 +572,15 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#531 (win audit 44)**: (audit B) `{runs_per_clip}` rendered "2–2 runs". Fix: single value when min = max.
 - [x] **#532 (win audit 44)**: (audit B) No-turn mocks kept the hero introduction index. Fix: `null` in both.
 - [x] **#533 (win audit 44)**: (audit B) The results-rows sentence omitted "suggestions accepted"; the footer said uploads are deleted outright. Fix: both.
+- [x] **#534 (win audit 45)**: (audit B) A rejected `undo` couldn't be put back (the undone entry wasn't stored). Fix: the `undo` edit's `pending` entry stores `undone: {entry, index}`; R31b.
+- [x] **#535 (win audit 45)**: (audit B) [Try again] on a rejected object keep failed `CONFIRM_KEEP`'s `confirm` precondition. Fix: `KEEP`'s precondition only; R31c.
+- [x] **#536 (win audit 45)**: (audit B) `rejected` was missing from the reducer fixture and never cleared. Fix: fixture key; cleared by `RETRY` or when the toast is replaced or closed.
+- [x] **#537 (win audit 45)**: (audit B) The hold-vs-status invariant was stricter than PRE-A for `no_roles`. Fix: `failed_votes` 3 and unescalated `unsure` included.
+- [x] **#538 (win audit 45)**: (audit B) Copy notes cited UI-SPEC §10.6 for a PRE-A fact. Fix: "PRE-A §10.6".
+- [x] **#539 (win audit 45)**: (audit B) Data bullet 1 said "Standard-mode models" while the note banned the claim. Fix: "Standard model IDs".
+- [x] **#540 (win audit 45)**: (audit B) Tab and ↑/↓ didn't cover the new chip `<article>` stop. Fix: both rows.
+- [x] **#541 (win audit 45)**: (audit B) The Baseten sentence had no UI trigger. Fix: step B, from `codes/check`'s `open_weight` (request 21).
+- [x] **#542 (win audit 45)**: (audit B) The header counts line had no deck string or plural. Fix: "`{u}` need(s) you".
 
 ## 4. Which builder reads what
 
