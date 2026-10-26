@@ -236,7 +236,7 @@ async def test_upload_timeout_finds_and_deletes_the_orphan(
     make_harness: Callable[..., Harness], mock_api: respx.MockRouter, clip: Path, tmp_path: Path
 ) -> None:
     h = make_harness()
-    size = len(clip.read_bytes())  # noqa: ASYNC240 -- a tiny test fixture read
+    size = len(clip.read_bytes())
     mock_api.post("/files").mock(side_effect=httpx.ReadTimeout("slow"))
     listing = {
         "data": [

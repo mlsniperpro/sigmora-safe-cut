@@ -1,0 +1,84 @@
+{
+ "_source": "PRE-A docs/API-NOTES.md \u00a711.1, produced by Meta's meta-sam-parser 0.1.0 on 2026-10-24. Documented shape, not a live response.",
+ "S1": {
+  "lines": [
+   "<7f>0<|box;x1=10;y1=20;x2=14;y2=24;w=100;h=80|><|mask;x=0;y=0;data=5,5,!!!!!(QO(0lu8?|>"
+  ],
+  "terminal": true,
+  "expect": {
+   "records": [
+    {
+     "object_id": "0",
+     "frame": 7,
+     "box": [
+      10,
+      20,
+      15,
+      25
+     ],
+     "mask": "one_bit 5x5, 10 px"
+    }
+   ],
+   "status": "completed",
+   "errors": 0
+  }
+ },
+ "S3": {
+  "lines": [
+   "<7f>0<|box;x1=10;y1=20;x2=14;y2=24;w=100;h=80;c=0.75|><|mask;x=0;y=0;data=5,5,!!!!!(QO(0lu8?|>"
+  ],
+  "terminal": true,
+  "expect": {
+   "box_confidence": 0.75,
+   "mask_confidence": null
+  }
+ },
+ "S4": {
+  "lines": [
+   "<9f>12<|box;x1=10;y1=20;x2=14;y2=24;w=100;h=80|><|mask;x=0;y=0;data=5,5,!!!!!(QO(0lu8?|>",
+   "<7f>0<|box;x1=10;y1=20;x2=14;y2=24;w=100;h=80|><|mask;x=0;y=0;data=5,5,!!!!!(QO(0lu8?|>"
+  ],
+  "terminal": true,
+  "expect": {
+   "order": [
+    [
+     "12",
+     9
+    ],
+    [
+     "0",
+     7
+    ]
+   ]
+  }
+ },
+ "S5": {
+  "lines": [
+   "<0f>"
+  ],
+  "terminal": true,
+  "expect": {
+   "records": [],
+   "errors": 1,
+   "diagnostic": "malformed_record"
+  }
+ },
+ "S6": {
+  "lines": [],
+  "terminal": true,
+  "expect": {
+   "records": [],
+   "errors": 0
+  }
+ },
+ "S7": {
+  "lines": [
+   "<7f>0<|box;x1=10;y1=20;x2=14;y2=24;w=100;h=80|><|mask;x=0;y=0;data=5,5,!!!!!(QO(0lu8?|>"
+  ],
+  "terminal": false,
+  "expect": {
+   "status": "incomplete",
+   "reason": "eof"
+  }
+ }
+}
