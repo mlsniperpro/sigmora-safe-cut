@@ -37,6 +37,6 @@ Where sources were silent, the docs record a decision instead of a question: see
 
 ## From the official guide (`docs/OFFICIAL-GUIDE.md`, 2026-10-26)
 - [ ] **Make the repo public at submission** (the guide: "Repositories must be public"; check the repo is public, the video link works and every contributor is listed). Repos stay private until the owner OKs it; do it before Nov 5 02:00 UTC (Nov 4 21:00 ET). Before flipping it, check no real-public clip, raw API response for one, key or PID-bearing agent file is in the history (AGENTS rule 4).
-- [ ] **Request Baseten credits** (up to $100, 2M TPM) and add `BASETEN_API_KEY` as a deploy secret, for the open-weight second opinion (API-NOTES §3.8) and the "Best Build on Meta Open-Weight Models" bonus. Without it, `SAFECUT_OPEN_WEIGHT_AUDIT=off` and nothing else changes.
-- [ ] **Post the demo on X** and submit the post link by Nov 8 EOD if going for "Most Viral" (PR #2 STORYBOARD owns the cut).
-
+- [ ] **By Oct 29 (before WP4 starts): request Baseten credits** (up to $100, 2M TPM), add `BASETEN_API_KEY` as a deploy secret **and** to this environment's secrets, and add Baseten's inference host to the network allowlist (for WP0 probe h), for the open-weight second opinion (API-NOTES §3.8) and the "Best Build on Meta Open-Weight Models" bonus. Without it, `SAFECUT_OPEN_WEIGHT_AUDIT=off` and nothing else changes.
+- [ ] **Post the demo on X before submitting on Nov 4** (BLOCKED-PRE-B; the post link goes into the submission, which can't be edited after the deadline), if going for "Most Viral"; engagement counts to Nov 8 EOD. PR #2 STORYBOARD owns the cut.
+- [ ] **Meta credits and the card on file:** in Meta's developer console, check what happens after the $150 (auto top-up, overage to the card) and set a spend limit or turn auto top-up off if offered (API-NOTES §9.2); WP0 probe a records what the console shows.
