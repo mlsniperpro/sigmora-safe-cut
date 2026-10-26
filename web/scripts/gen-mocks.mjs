@@ -167,6 +167,8 @@ cafe.job.prepared_url = "https://example.invalid/j_cafe/prepared.mp4";
 
 // ---------------------------------------------------------------- helpers
 const withJob = (base, over) => ({ ...clone(base), ...clone(over) });
+/** With no transcript turns there's nothing to point an introduction at (UI-SPEC §10.1). */
+const noIntro = (scene) => ({ ...clone(scene), participants: scene.participants.map((p) => ({ ...p, introduced_in_turn: null, introduction_quote: null })) });
 const statusOnly = (id, over) => ({
   job_id: id, mode: "live", deletes_at: DELETES_AT, has_render: false,
   job: { ...clone(hero.job), source_name: "street-interview.mp4", prepared_url: `https://example.invalid/${id}/prepared.mp4` },
@@ -292,10 +294,11 @@ mocks["job-done-edited"] = withJob(hero, { status: "review", has_render: true, r
   }
   mocks["job-review-200-items"] = m;
 }
-mocks["job-review-no-audio"] = withJob(hero, { job: { ...hero.job, audio: false }, transcript: { status: "ok", source: null, source_kind: null, degraded: false, turns: [] } });
+mocks["job-review-no-audio"] = withJob(hero, { job: { ...hero.job, audio: false }, transcript: { status: "ok", source: null, source_kind: null, degraded: false, turns: [] }, scene: noIntro(hero.scene) });
 {
   const m = clone(hero);
   m.transcript = { status: "ok", source: "muse-spark-1.2", source_kind: "fallback", degraded: true, turns: [] };
+  m.scene = noIntro(m.scene);
   Object.assign(m.items[0], { decision: "needs_you", hold: "no_speech", reason: "speech check was limited, so not kept automatically", style: "pixelate", decided_by: "policy" });
   addRegion(m, 3, { item_id: "i_1", shape: "box", box: [390, 106, 480, 224], mask: null, style: "pixelate", grid: [390, 106, 15] });
   addRegion(m, 9, { item_id: "i_1", shape: "box", box: [400, 108, 490, 226], mask: null, style: "pixelate", grid: [390, 106, 15] });
@@ -399,7 +402,8 @@ mocks["error-500-delete"] = err(500, "internal");
   Object.assign(items[3], { decision: "hide", decided_by: "creator" });
   mocks["review-ack"] = { status: 200, body: { edit_id: "e_hide_i4", mode: "live", status: "review", has_render: false, items, plan: clone(hero.plan), audit: null } };
 }
-mocks["code-check-ok"] = { status: 200, body: { kind: "judge", valid_from: "2026-11-05T00:00:00Z", valid_until: "2026-11-10T23:59:59Z" } };
+mocks["code-check-ok"] = { status: 200, body: { kind: "judge", valid_from: "2026-11-05T00:00:00Z", valid_until: "2026-11-10T23:59:59Z", open_weight: false } };
+mocks["code-check-ok-open-weight"] = { status: 200, body: { kind: "recording", valid_from: null, valid_until: "2026-11-03T23:59:59Z", open_weight: true } };
 mocks["error-401"] = err(401, "unauthorized");
 mocks["error-401-job-render"] = err(401, "unauthorized");
 mocks["error-401-job-expired-audit"] = err(401, "code_not_active", { valid_from: "2026-11-05T00:00:00Z", valid_until: "2026-11-10T23:59:59Z" });
@@ -435,10 +439,11 @@ const demo = (model, plates) => ({
 });
 mocks["demo-hero"] = demo("egoblur-gen2", 0);
 mocks["demo-hero-yunet"] = demo("yunet-face", null);
+mocks["demo-hero-open-weight"] = { ...demo("egoblur-gen2", 0), audit: { ...demo("egoblur-gen2", 0).audit, open_weight: { model: "meta-models/muse-spark-open-1026", status: "ok" } } };
 const row = (method, variant, v) => ({ method, variant, recall: v, exposure: v === null ? null : 1 - v, leak_bursts: v === null ? null : 0, over_blur: v === null ? null : 0.5 });
 mocks["results-no-egoblur"] = {
   run_id: "fixture-run", rows: [row("Blur every face", "blur_all", 0.5), row("Detector only", "detector", 0.5), row("Muse Spark, no tracking", "muse_no_tracking", 0.5), row("Safe Cut", "full", 0.5)],
-  n_clips: 2, n_public: 1, n_staged: 1, runs_per_clip: 1, labellers: 1,
+  n_clips: 2, n_public: 1, n_staged: 1, runs_per_clip_min: 1, runs_per_clip_max: 1, labellers: 1,
 };
 mocks["results-two-labellers"] = {
   ...clone(mocks["results-no-egoblur"]), rows: [...clone(mocks["results-no-egoblur"].rows), row("EgoBlur Gen 2", "egoblur", 0.5)],

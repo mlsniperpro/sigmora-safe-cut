@@ -25,6 +25,7 @@ const RENDER: readonly Stage[] = ["render", "audit", "receipt"];
 /** Codes with scripted answers, so every `/try` refusal can be exercised in mock mode. */
 export const MOCK_CODES: Readonly<Record<string, { check?: MockName; create?: MockName; start?: MockName }>> = {
   wrong: { check: "error-401" },
+  "open-weight": { check: "code-check-ok-open-weight" },
   "not-yet": { check: "error-401-not-yet-active" },
   "rate-limited": { check: "error-429-rate" },
   expired: { create: "error-401-expired" },

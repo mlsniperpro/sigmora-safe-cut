@@ -3,6 +3,7 @@
   "body": {
     "kind": "judge",
     "valid_from": "2026-11-05T00:00:00Z",
-    "valid_until": "2026-11-10T23:59:59Z"
+    "valid_until": "2026-11-10T23:59:59Z",
+    "open_weight": false
   }
 }

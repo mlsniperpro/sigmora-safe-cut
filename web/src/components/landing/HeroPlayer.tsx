@@ -14,7 +14,7 @@ import { PlayCircleIcon } from "../icons";
 
 type Version = "raw" | "safecut";
 
-export function HeroPlayer({ onAuditor }: { onAuditor?: (model: string) => void }) {
+export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["audit"]) => void }) {
   const [demo, setDemo] = useState<DemoResponse | null>(null);
   const [failed, setFailed] = useState(false);
   const [version, setVersion] = useState<Version>("safecut");
@@ -30,7 +30,7 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (model: string) => void 
       .getDemo(SITE.heroId, controller.signal)
       .then((d) => {
         setDemo(d);
-        onAuditor?.(d.audit.egoblur.model);
+        onAuditor?.(d.audit);
       })
       .catch(() => {
         if (!controller.signal.aborted) setFailed(true);
@@ -99,7 +99,7 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (model: string) => void 
               aria-checked={version === v}
               tabIndex={version === v ? 0 : -1}
               disabled={!demo}
-              className={`min-h-9 rounded-md px-3 font-medium ${version === v ? "bg-surface text-text shadow-sm" : "text-muted"}`}
+              className={`min-h-11 rounded-md px-3 font-medium lg:min-h-9 ${version === v ? "bg-surface text-text shadow-sm" : "text-muted"}`}
               onClick={() => switchTo(v)}
               onKeyDown={(e) => {
                 if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) {
@@ -120,7 +120,7 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (model: string) => void 
         </span>
         <p className="text-muted">
           <span className="font-medium text-text">Precomputed result.</span>{" "}
-          {mock ? "Sample clip: drawn shapes, not real people." : "Staged demo. Everyone shown signed a release."}
+          {mock ? "Sample clip: drawn shapes, not real people." : SITE.heroHasChild ? "Staged demo. Everyone shown signed a release (a guardian signed for the child)." : "Staged demo. Everyone shown signed a release."}
         </p>
         {failed && <p>The demo video didn&apos;t load. You can still try Safe Cut with an access code.</p>}
       </figcaption>

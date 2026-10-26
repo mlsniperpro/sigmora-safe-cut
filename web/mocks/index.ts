@@ -2,9 +2,11 @@
 export const MOCK_LOADERS = {
   "audit-ack": () => import("./audit-ack.json"),
   "code-check-ok": () => import("./code-check-ok.json"),
+  "code-check-ok-open-weight": () => import("./code-check-ok-open-weight.json"),
   "create-job-ok": () => import("./create-job-ok.json"),
   "delete-ok": () => import("./delete-ok.json"),
   "demo-hero": () => import("./demo-hero.json"),
+  "demo-hero-open-weight": () => import("./demo-hero-open-weight.json"),
   "demo-hero-yunet": () => import("./demo-hero-yunet.json"),
   "error-401": () => import("./error-401.json"),
   "error-401-expired": () => import("./error-401-expired.json"),

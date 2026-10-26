@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import type { Box, JobResponse, KeyframeGeometry } from "@/lib/contracts";
 import { geometryMatches, regionWords, ringOnScreen } from "@/lib/keyframe";
-import { formatFrame } from "@/lib/time";
+import { formatFrame, formatFrameTenths } from "@/lib/time";
 import type { WhyModel } from "@/lib/why/model";
 import { CheckIcon, CloseIcon, CrossIcon, HiddenIcon, KeptIcon, LockIcon, NeedsIcon } from "../icons";
 
@@ -218,7 +218,9 @@ export function WhyDrawer({
                   </button>
                 </div>
               )}
-              <p className="mt-2 text-sm text-muted">This is the frame Muse Spark was shown. The labels are the objects SAM 3.1 tracked.</p>
+              <p className="mt-2 text-sm text-muted">
+                {frame !== undefined ? `Frame at ${formatFrameTenths(frame, fps)}. ` : ""}This is the frame Muse Spark was shown. The labels are the objects SAM 3.1 tracked.
+              </p>
               {model.primaryTrack && (
                 <p className="mt-1 font-mono text-xs text-muted">
                   On the keyframe: {model.primaryTrack}

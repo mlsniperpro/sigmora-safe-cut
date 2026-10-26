@@ -20,8 +20,8 @@ function clip(name = "street.mp4", type = "video/mp4", size = 1_000_000) {
   return new File([new Uint8Array(Math.min(size, 16))], name, { type });
 }
 
-function setup() {
-  backend = new MockBackend({ latencyMs: 0, stepMs: 1_000, now: () => now });
+function setup(latencyMs = 0) {
+  backend = new MockBackend({ latencyMs, stepMs: 1_000, now: () => now });
   setClientForTests(new SafeCutClient({ transport: backend, sleep: () => Promise.resolve() }));
   const user = userEvent.setup({ applyAccept: false });
   render(<TryFlow />);
@@ -110,7 +110,7 @@ describe("/try", () => {
     await user.upload(fileInput(), clip());
     await screen.findByText(/street\.mp4/);
     await user.click(screen.getByRole("button", { name: "Start" }));
-    expect(screen.getByText("Tick the box to confirm you can use this clip.")).toBeInTheDocument();
+    expect(screen.getByText("Tick the box to confirm you're 18 or over, can upload this clip and aren't in a restricted territory.")).toBeInTheDocument();
     expect(screen.getByRole("checkbox")).toHaveFocus();
   });
 
@@ -173,6 +173,39 @@ describe("/try", () => {
     expect(backend.log.some((l) => l.path.endsWith("/start"))).toBe(false);
   });
 
+  it("shows the Baseten line only for a code with open_weight", async () => {
+    const user = setup();
+    await enterCode(user, "open-weight");
+    expect(await screen.findByText("Sampled frames of the result also go to Baseten, which runs Muse Spark Open.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "territory where Meta's API is restricted" })).toHaveAttribute("href", "https://dev.meta.ai/legal/geographic-use-policy");
+  });
+
+  it("no Baseten line for an ordinary code", async () => {
+    const user = setup();
+    await enterCode(user, "judge");
+    await screen.findByRole("button", { name: "Choose a file" });
+    expect(screen.queryByText(/Baseten/)).toBeNull();
+  });
+
+  it("cancelling during the upload stays deleted and never re-uploads", async () => {
+    const user = setup(80);
+    await enterCode(user, "judge");
+    await screen.findByRole("button", { name: "Choose a file" });
+    await user.upload(fileInput(), clip());
+    await screen.findByText(/street\.mp4/);
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(screen.getByRole("button", { name: "Start" }));
+    await screen.findByRole("listitem", { current: "step" });
+    await user.click(screen.getByRole("button", { name: "Cancel and delete" }));
+    await user.click(within(await screen.findByRole("dialog", { name: "Delete this clip?" })).getByRole("button", { name: "Delete" }));
+    expect(await screen.findByText("Deleted from Safe Cut's servers.")).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 600));
+    expect(screen.getByText("Deleted from Safe Cut's servers.")).toBeInTheDocument();
+    expect(screen.queryByText(/The upload stopped/)).toBeNull();
+    expect(backend.log.filter((l) => l.path === "/v1/jobs")).toHaveLength(1);
+    expect(backend.log.some((l) => l.path.endsWith("/start"))).toBe(false);
+  });
+
   it("cancels and deletes from the progress step", async () => {
     const user = setup();
     await enterCode(user, "judge");
@@ -184,6 +217,6 @@ describe("/try", () => {
     await user.click(await screen.findByRole("button", { name: "Cancel and delete" }));
     const dialog = await screen.findByRole("dialog", { name: "Delete this clip?" });
     await user.click(within(dialog).getByRole("button", { name: "Delete" }));
-    expect(await screen.findByText("Deleted. Nothing from this clip is kept.")).toBeInTheDocument();
+    expect(await screen.findByText("Deleted from Safe Cut's servers.")).toBeInTheDocument();
   });
 });

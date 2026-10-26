@@ -9,7 +9,7 @@ export function Footer() {
           New work: Safe Cut was built during the hackathon (Oct 26 – Nov 4, 2026); the commit history shows every change. Sigmora is the existing product it plugs into.
         </p>
         <p className="flex flex-wrap gap-x-4 gap-y-1">
-          <span>Uploads are deleted after 24 hours.</span>
+          <span>Uploads are deleted from Safe Cut&apos;s servers after 24 hours.</span>
           <span>MIT licence</span>
           <a href={SITE.repoUrl} className="underline underline-offset-2" rel="noopener noreferrer" target="_blank">
             Source on GitHub

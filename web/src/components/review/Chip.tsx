@@ -15,6 +15,8 @@ const COLUMN_WORD = { hide: "Hidden", keep: "Kept clear", needs_you: "Needs you"
 export interface ChipHandlers {
   onSelect: (chip: ChipModel) => void;
   onWhy: (chip: ChipModel) => void;
+  /** The "Always hidden" help link: opens the drawer at the explanation. */
+  onLockedHelp: (chip: ChipModel) => void;
   onHide: (chip: ChipModel) => void;
   onKeep: (chip: ChipModel) => void;
   onConfirmKeep: () => void;
@@ -164,8 +166,8 @@ export function Chip({
     <article
       aria-label={chip.accessibleName}
       data-chip-id={chip.id}
-      tabIndex={-1}
-      className={`rounded-xl border bg-surface p-3 [contain-intrinsic-size:auto_150px] [content-visibility:auto] ${selected ? "border-accent ring-2 ring-accent" : "border-border"}`}
+      tabIndex={0}
+      className={`rounded-xl border bg-surface p-3 ${selected ? "border-accent ring-2 ring-accent" : "border-border"}`}
       onClick={(e) => {
         if ((e.target as HTMLElement).closest("button,a")) return;
         handlers.onSelect(chip);
@@ -173,8 +175,9 @@ export function Chip({
       onKeyDown={(e) => {
         if (e.key === "Enter" && e.target === e.currentTarget) {
           e.preventDefault();
+          // Enter selects, like a click on the body; the drawer opens from the chip's [Why?] (§3.8).
           if (chip.type === "spot") handlers.onJump(chip);
-          else handlers.onWhy(chip);
+          else handlers.onSelect(chip);
         }
       }}
     >
@@ -183,7 +186,8 @@ export function Chip({
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="font-semibold">{chip.label}</span>
-            <span className="text-sm text-muted">· {chip.kindWord}</span>
+            {/* A pending covered spot shows no kind until the server's answer brings it (§10.5 COVER_SPOT). */}
+            {!chip.id.startsWith("pending:") && <span className="text-sm text-muted">· {chip.kindWord}</span>}
             <span className="sr-only">{COLUMN_WORD[chip.column]}</span>
             <Icon size={12} className="text-muted" />
             {chip.locked && (
@@ -206,10 +210,10 @@ export function Chip({
         <div role="group" aria-label={`Confirm keeping ${chip.label} clear`} className="mt-3 rounded-lg bg-needs-bg p-2 text-sm text-needs-fg">
           <p>{confirmText}</p>
           <div className="mt-2 flex gap-2">
-            <button type="button" data-btn="confirm" className={actionClass} onClick={handlers.onConfirmKeep} autoFocus>
+            <button type="button" data-btn="confirm" className={actionClass} onClick={handlers.onConfirmKeep}>
               Keep clear
             </button>
-            <button type="button" data-btn="cancel" className={actionClass} onClick={handlers.onCancelConfirm}>
+            <button type="button" data-btn="cancel" className={actionClass} onClick={handlers.onCancelConfirm} autoFocus>
               Cancel
             </button>
           </div>
@@ -242,7 +246,7 @@ export function Chip({
             </button>
           )}
           {chip.locked && (
-            <button type="button" data-btn="locked" className="text-sm underline underline-offset-2" onClick={() => handlers.onWhy(chip)}>
+            <button type="button" data-btn="locked" className="min-h-11 text-sm underline underline-offset-2 lg:min-h-8" onClick={() => handlers.onLockedHelp(chip)}>
               Always hidden
             </button>
           )}

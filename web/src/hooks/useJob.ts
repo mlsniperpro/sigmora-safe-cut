@@ -32,11 +32,16 @@ export function useJob(jobId: string) {
   const viewStart = useRef<number | null>(null);
   const deleted = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Whether the last known status polls (§10.3); the tab-visible refetch only runs then. */
+  const polling = useRef(true);
+  /** Bumped by every local patch, so a GET that started before one can't overwrite it. */
+  const patches = useRef(0);
 
   useEffect(() => {
     if (deleted.current) return;
     viewStart.current ??= Date.now();
     const controller = new AbortController();
+    const startedAt = patches.current;
     const schedule = (ms: number) => {
       timer.current = setTimeout(() => setTick((t) => t + 1), ms);
     };
@@ -44,8 +49,10 @@ export function useJob(jobId: string) {
       .getJob(jobId, controller.signal)
       .then((job) => {
         if (deleted.current || controller.signal.aborted) return;
-        setLoad({ kind: "ready", job });
         const delay = nextPollDelay(job.status, Date.now() - (viewStart.current ?? Date.now()), job.retry_at, Date.now());
+        polling.current = delay !== null;
+        // A review ack or action ack landed while this GET was in flight: it's newer, keep it.
+        if (patches.current === startedAt) setLoad({ kind: "ready", job });
         if (delay !== null && document.visibilityState === "visible") schedule(delay);
       })
       .catch((error: unknown) => {
@@ -68,7 +75,7 @@ export function useJob(jobId: string) {
     const onVisibility = () => {
       if (document.visibilityState === "hidden") {
         if (timer.current) clearTimeout(timer.current);
-      } else {
+      } else if (polling.current) {
         setTick((t) => t + 1);
       }
     };
@@ -79,11 +86,13 @@ export function useJob(jobId: string) {
   /** Restart polling after an action (start, render, audit, Try again). */
   const resume = useCallback(() => {
     viewStart.current = Date.now();
+    polling.current = true;
     setTick((t) => t + 1);
   }, []);
 
   /** Apply a response we already have (a review ack, an action ack) without a fetch. */
   const patch = useCallback((update: (job: JobResponse) => JobResponse) => {
+    patches.current += 1;
     setLoad((prev) => (prev.kind === "ready" ? { kind: "ready", job: update(prev.job) } : prev));
   }, []);
 

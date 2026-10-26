@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useCallback, useState } from "react";
 import { auditStepBody } from "@/lib/copy";
+import type { DemoResponse } from "@/lib/contracts";
 import { HeroPlayer } from "./HeroPlayer";
 
 const STEPS = [
@@ -27,8 +28,8 @@ const LOOP = [
 ] as const;
 
 export function HeroAndSteps() {
-  const [auditor, setAuditor] = useState<string | null>(null);
-  const onAuditor = useCallback((m: string) => setAuditor(m), []);
+  const [audit, setAudit] = useState<DemoResponse["audit"] | null>(null);
+  const onAuditor = useCallback((a: DemoResponse["audit"]) => setAudit(a), []);
   return (
     <>
       <section className="mx-auto grid max-w-6xl gap-8 px-4 pt-10 pb-12 lg:grid-cols-[1fr_1.1fr] lg:items-center lg:pt-16">
@@ -59,7 +60,7 @@ export function HeroAndSteps() {
             How it works
           </h2>
           <ol className="mt-6 grid gap-4 md:grid-cols-3">
-            {[...STEPS, { n: 3, title: "An audit checks the render", body: auditStepBody(auditor) }].map((s) => (
+            {[...STEPS, { n: 3, title: "An audit checks the render", body: auditStepBody(audit?.egoblur.model ?? null, audit?.open_weight) }].map((s) => (
               <li key={s.n} className="rounded-xl border border-border bg-bg p-5">
                 <p className="flex items-baseline gap-3">
                   <span aria-hidden="true" className="text-2xl font-semibold text-accent">

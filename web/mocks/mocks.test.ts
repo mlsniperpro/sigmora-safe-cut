@@ -46,7 +46,7 @@ describe("mock fixtures", () => {
     if (n === "reducer-state") return;
     if (isEnvelope(v)) {
       if (v.status >= 400) errorBodySchema.parse(v.body);
-      else if (n === "code-check-ok") codeCheckSchema.parse(v.body);
+      else if (n.startsWith("code-check-ok")) codeCheckSchema.parse(v.body);
       else if (n === "create-job-ok") createJobResponseSchema.parse(v.body);
       else if (n.startsWith("review-ack")) reviewAckSchema.parse(v.body);
       else if (n.endsWith("-ack")) actionAckSchema.parse(v.body);

@@ -347,8 +347,8 @@
         "description": "woman in yellow jacket",
         "evidence": "introduces herself at the start: \"Hi, I'm Amina\"",
         "speaker": "S2",
-        "introduced_in_turn": 1,
-        "introduction_quote": "I'm Amina",
+        "introduced_in_turn": null,
+        "introduction_quote": null,
         "is_creator": false
       },
       {

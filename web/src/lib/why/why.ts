@@ -59,7 +59,26 @@ export function fixedSentence(w: WhyItem, primary: RoleTrack | undefined, object
   if (primary && primary.role === "unsure" && primary.votes.length === 3 && primary.votes.every((v) => v === "participant")) {
     return "All three checks said part of the story, but on only one keyframe, so Safe Cut wants you to confirm. It stays hidden unless you keep it clear.";
   }
+  const failed = primary ? Math.min(primary.failed_votes, 3) : 0;
+  if (primary && failed > 0 && remainingAgree(primary)) {
+    return `${failed} of the 3 checks didn't run, so Safe Cut couldn't decide on its own. It stays hidden unless you keep it clear.`;
+  }
   return "The checks didn't all agree, so Safe Cut couldn't decide on its own. It stays hidden unless you keep it clear.";
+}
+
+/** The votes left after dropping `failed_votes` placeholders (`unsure` entries), in order. */
+export function realVotes(track: Pick<RoleTrack, "votes" | "failed_votes">): Role[] {
+  const real = [...track.votes];
+  for (let k = 0; k < Math.min(track.failed_votes, real.length); k += 1) {
+    const at = real.lastIndexOf("unsure");
+    if (at >= 0) real.splice(at, 1);
+  }
+  return real;
+}
+
+function remainingAgree(track: Pick<RoleTrack, "votes" | "failed_votes">): boolean {
+  const real = realVotes(track);
+  return real.length > 0 && real.every((v) => v === real[0]);
 }
 
 export interface VoteMark {
@@ -109,11 +128,7 @@ export function votesSection(
     return { kind: "not_run", line: "3 of the 3 checks didn't run." };
   }
   // `failed_votes` of the `unsure` entries are placeholders, not judgements.
-  const real = [...primary.votes];
-  for (let k = 0; k < failed; k += 1) {
-    const at = real.lastIndexOf("unsure");
-    if (at >= 0) real.splice(at, 1);
-  }
+  const real = realVotes(primary);
   const top = majority(real);
   const marks = real.map((role, i) => {
     const agrees = top === null ? null : role === top;
@@ -132,7 +147,9 @@ export function votesSection(
       escalation.push(
         allParticipant
           ? "Because it was seen on only one keyframe, Muse Spark took a longer, closer look once."
-          : "The checks disagreed, so Muse Spark took a longer, closer look once.",
+          : failed > 0 && remainingAgree(primary)
+            ? `${failed} of the 3 checks didn't run, so Muse Spark took a longer, closer look once.`
+            : "The checks disagreed, so Muse Spark took a longer, closer look once.",
       );
       if (primary.suggested_role) {
         escalation.push(`A longer, closer look suggests: ${ROLE_WORD[primary.suggested_role]}. You decide.`);

@@ -32,7 +32,8 @@ function pct(v: number | null, better: "higher" | "lower"): string {
 
 function footnote(r: Results): string {
   const head = `${r.n_clips} test clips (${r.n_public} filmed in public, ${r.n_staged} staged with consenting actors), labelled by`;
-  const runs = `${r.runs_per_clip} run${r.runs_per_clip === 1 ? "" : "s"} per clip. Run ${r.run_id}.`;
+  const runCount = r.runs_per_clip_min === r.runs_per_clip_max ? `${r.runs_per_clip_min} run${r.runs_per_clip_min === 1 ? "" : "s"}` : `${r.runs_per_clip_min}–${r.runs_per_clip_max} runs`;
+  const runs = `${runCount} per clip. Run ${r.run_id}.`;
   if (r.labellers === 1) return `${head} one person. Agreement between two labellers wasn't measured. ${runs}`;
   const agreed = `They agreed on ${pct(r.percent_agreement ?? null, "higher")} of ${r.n_entities ?? 0} decisions (both said hide: ${r.a ?? 0} · only the first said hide: ${r.b ?? 0} · only the second said hide: ${r.c ?? 0} · both said keep: ${r.d ?? 0})`;
   if (r.kappa === null || r.kappa === undefined || !Number.isFinite(r.kappa)) {

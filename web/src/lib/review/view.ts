@@ -172,7 +172,8 @@ export function columnsOf(chips: readonly Chip[]): Record<Column, Chip[]> {
 
 /** "8 hidden · 2 kept clear · 1 needs you" (§3.9: each item once; U chips count as needing you). */
 export function headerCounts(columns: Record<Column, Chip[]>): string {
-  return `${columns.hide.length} hidden · ${columns.keep.length} kept clear · ${columns.needs_you.length} needs you`;
+  const n = columns.needs_you.length;
+  return `${columns.hide.length} hidden · ${columns.keep.length} kept clear · ${n} ${n === 1 ? "needs" : "need"} you`;
 }
 
 /** Kept participants offered as merge targets, the suggested one first (§3.4). */

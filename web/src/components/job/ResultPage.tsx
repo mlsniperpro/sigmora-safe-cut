@@ -15,8 +15,11 @@ import { useJob } from "@/hooks/useJob";
 import { CheckIcon, WarningIcon } from "../icons";
 import { useMode, useReportMode } from "../mode";
 import { StageList } from "../StageList";
-import { ConfirmDialog, btn } from "../ui";
+import { ConfirmDialog, MessagePage, btn } from "../ui";
+import { FailedJob } from "./FailedJob";
 import { JobSkeleton, loadMessage } from "./JobPage";
+
+const RECEIPT_TIMEOUT_MS = 15_000;
 
 type ResultLoad = { kind: "idle" } | { kind: "ready"; result: ResultResponse } | { kind: "error"; error: unknown };
 
@@ -40,6 +43,14 @@ export function ResultPage() {
   const job = load.kind === "ready" ? load.job : null;
   const [result, setResult] = useState<ResultLoad>({ kind: "idle" });
   const [receiptFailed, setReceiptFailed] = useState(false);
+  const [receiptLoaded, setReceiptLoaded] = useState(false);
+  const receiptUrl = result.kind === "ready" ? result.result.receipt_html_url : null;
+  // An iframe fires no error event for HTTP failures, so a receipt that hasn't loaded in time counts as failed (§5.4).
+  useEffect(() => {
+    if (!receiptUrl || receiptLoaded) return;
+    const t = setTimeout(() => setReceiptFailed(true), RECEIPT_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, [receiptUrl, receiptLoaded]);
   const [published, setPublished] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [confirm, setConfirm] = useState(false);
@@ -78,6 +89,8 @@ export function ResultPage() {
       </section>
     );
   }
+  if (j.status === "failed") return <FailedJob jobId={id} job={j} onResume={resume} onDeleted={markDeleted} />;
+  if (j.status === "created") return <MessagePage message={COPY.created} actions={[{ label: "Upload again", href: "/try" }]} />;
   if (j.status !== "done") return loadMessage("unexpected", resume);
   if (result.kind === "error") {
     const e = result.error instanceof ApiError ? result.error : null;
@@ -178,7 +191,7 @@ export function ResultPage() {
             sandbox=""
             referrerPolicy="no-referrer"
             className="mt-3 h-[28rem] w-full rounded-xl border border-border bg-white"
-            onError={() => setReceiptFailed(true)}
+            onLoad={() => setReceiptLoaded(true)}
           />
         )}
         <a href={r.receipt_html_url} target="_blank" rel="noopener noreferrer" className={btn.link}>

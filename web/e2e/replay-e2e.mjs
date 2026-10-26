@@ -175,7 +175,7 @@ try {
     await axe(page, `${v} result`);
     await page.getByRole("button", { name: "Delete everything now" }).click();
     await page.getByRole("dialog", { name: "Delete everything now?" }).getByRole("button", { name: "Delete" }).click();
-    await page.getByText("Deleted. Nothing from this clip is kept.").waitFor();
+    await page.getByText("Deleted from Safe Cut's servers.").waitFor();
     check(`${v}: delete everything now`, true);
 
     // States reachable by URL

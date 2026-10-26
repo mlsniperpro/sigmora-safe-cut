@@ -12,7 +12,7 @@ import type { Box, JobResponse, ReviewAck } from "@/lib/contracts";
 import { COPY, auditSummary, budgetCauseLine, expiresBefore, formatLocal, jobRefusalMessage } from "@/lib/copy";
 import { selectBar, type BarRow } from "@/lib/review/bar";
 import { effectiveDecision, initialState, step, tracksShown, visibleItems, type Action, type ReviewState, type ServerState } from "@/lib/review/reducer";
-import { buildChips, columnsOf, headerCounts, mergeTargets, type Chip as ChipModel, type Column } from "@/lib/review/view";
+import { buildChips, columnsOf, headerCounts, isObjectChip, mergeTargets, type Chip as ChipModel, type Column } from "@/lib/review/view";
 import { formatFrame } from "@/lib/time";
 import { buildWhy } from "@/lib/why/model";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
@@ -54,9 +54,13 @@ export interface ReviewPanelProps {
   onPatchJob: (update: (job: JobResponse) => JobResponse) => void;
   onResume: () => void;
   onDeleted: () => void;
+  /** Called when this page starts a render or audit, so the page can move on to the result when it's done. */
+  onRenderStarted: () => void;
+  /** Query parameters kept across links (`from`, `demo`), e.g. "?from=sigmora". */
+  query: string;
 }
 
-export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDeleted }: ReviewPanelProps) {
+export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDeleted, onRenderStarted, query }: ReviewPanelProps) {
   const context = useMemo(() => ({ tracks: job.tracks, roles: job.roles }), [job.tracks, job.roles]);
   const [state, setState] = useState<ReviewState>(() => initialState(serverStateOf(job), context));
   const [synced, setSynced] = useState(job);
@@ -135,11 +139,20 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
     setDrawer({ id: chip.id, locked });
   };
 
+  /** The chip an edit moved, so focus follows it to its new column (§3.8). */
+  const [edited, setEdited] = useState<string | null>(null);
   const handlers: ChipHandlers = {
     onSelect: select,
     onWhy: (chip) => openWhy(chip, false),
-    onHide: (chip) => dispatch({ type: "HIDE", id: chip.id, edit_id: newEditId() }),
-    onKeep: (chip) => dispatch({ type: "KEEP", id: chip.id, edit_id: newEditId() }),
+    onLockedHelp: (chip) => openWhy(chip, true),
+    onHide: (chip) => {
+      setEdited(chip.id);
+      dispatch({ type: "HIDE", id: chip.id, edit_id: newEditId() });
+    },
+    onKeep: (chip) => {
+      setEdited(chip.id);
+      dispatch({ type: "KEEP", id: chip.id, edit_id: newEditId() });
+    },
     onConfirmKeep: () => dispatch({ type: "CONFIRM_KEEP", edit_id: newEditId() }),
     onCancelConfirm: () => dispatch({ type: "CANCEL_CONFIRM" }),
     onMergeMenu: (chip) => setMergeFor(chip),
@@ -151,11 +164,31 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
     onCover: (chip) => dispatch({ type: "COVER_SPOT", spot_id: chip.id.replace(/^spot:/, ""), edit_id: newEditId() }),
   };
 
-  // Keep focus on a chip after it moves columns (§3.8).
+  // Keep focus on the chip an edit moved, in its new column (§3.8).
   const lastToast = state.toast;
   useEffect(() => {
-    if (lastToast?.kind === "edit" && selected) focusChip(selected);
-  }, [lastToast, selected]);
+    if (lastToast?.kind === "edit" && edited) focusChip(edited);
+  }, [lastToast, edited]);
+
+  // Focus must never land under the sticky player or the fixed bottom bar (WCAG 2.4.11, §3.8).
+  const stickyTop = useRef<HTMLDivElement>(null);
+  const bottomBar = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = document.documentElement;
+    const measure = () => {
+      root.style.setProperty("--sticky-top", `${desktop ? 0 : (stickyTop.current?.offsetHeight ?? 0)}px`);
+      root.style.setProperty("--sticky-bottom", `${(bottomBar.current?.offsetHeight ?? 0) + 8}px`);
+    };
+    const ro = new ResizeObserver(measure);
+    if (stickyTop.current) ro.observe(stickyTop.current);
+    if (bottomBar.current) ro.observe(bottomBar.current);
+    measure();
+    return () => {
+      ro.disconnect();
+      root.style.removeProperty("--sticky-top");
+      root.style.removeProperty("--sticky-bottom");
+    };
+  }, [desktop]);
 
   // ------------------------------------------------------------------ toasts and the refusal timer
   useEffect(() => {
@@ -181,6 +214,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
     try {
       const ack = await (button === "render" ? getClient().render(jobId) : getClient().audit(jobId));
       dispatch({ type: "ACTION_ACK", button, status: ack.status });
+      onRenderStarted();
       onPatchJob((j) => ({ ...j, status: ack.status, stage: ack.stage ?? j.stage }));
       onResume();
     } catch (error) {
@@ -370,7 +404,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
                   thumbUrl={chip.thumb ? job.keyframe_urls[String(chip.thumb.frame)] ?? null : null}
                   geometry={job.keyframe_geometry}
                   thumbSize={thumbSize}
-                  handlers={{ ...handlers, onWhy: (c) => openWhy(c, false) }}
+                  handlers={handlers}
                   readOnlyNote={state.status === "rendering"}
                 />
               </li>
@@ -382,7 +416,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
   };
 
   return (
-    <div className="mx-auto max-w-6xl px-4 pt-6 pb-48 lg:pb-32" style={{ ["--sticky-bottom" as string]: "11rem" }}>
+    <div className="mx-auto max-w-6xl px-4 pt-6 pb-48 lg:pb-32">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="font-medium">
           {job.job?.source_name ?? "Your clip"}
@@ -391,7 +425,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
         <p className="text-sm text-muted">{headerCounts(columns)}</p>
       </div>
 
-      <div className="sticky top-0 z-10 -mx-4 mt-3 bg-bg px-4 pb-2 lg:static lg:mx-0 lg:px-0">
+      <div ref={stickyTop} className="sticky top-0 z-10 -mx-4 mt-3 bg-bg px-4 pb-2 lg:static lg:mx-0 lg:px-0">
         <VideoPane
           ref={video}
           src={job.job?.prepared_url}
@@ -474,6 +508,8 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
         refusalValidUntil={refusalValidUntil}
         now={now}
         jobId={jobId}
+        query={query}
+        barRef={bottomBar}
         onRender={() => void runAction("render")}
         onAudit={() => void runAction("audit")}
         onDelete={() => setDeleteOpen(true)}
@@ -489,6 +525,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
       />
 
       <WhyDrawer
+        key={drawer?.id ?? "none"}
         open={!!drawer && !!whyModel}
         job={job}
         model={whyModel}
@@ -500,7 +537,14 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
           canHide: !!drawerChip?.buttons.hide,
           canKeep: !!drawerChip?.buttons.keep,
           onHide: () => drawer && dispatch({ type: "HIDE", id: drawer.id, edit_id: newEditId() }),
-          onKeep: () => drawer && dispatch({ type: "KEEP", id: drawer.id, edit_id: newEditId() }),
+          onKeep: () => {
+            if (!drawer) return;
+            // An object's keep asks for the in-chip confirm, so the drawer closes to show it.
+            if (drawerChip && isObjectChip(drawerChip)) setDrawer(null);
+            setEdited(drawer.id);
+            dispatch({ type: "KEEP", id: drawer.id, edit_id: newEditId() });
+            if (drawerChip && isObjectChip(drawerChip)) focusChip(drawer.id);
+          },
         }}
         onClose={() => {
           setDrawer(null);
@@ -515,13 +559,27 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
         confirm="Remove"
         cancel="Cancel"
         onConfirm={() => {
-          if (removeFor) dispatch({ type: "REMOVE_PERSON", id: removeFor.id, edit_id: newEditId() });
+          if (removeFor) {
+            setEdited(removeFor.id);
+            dispatch({ type: "REMOVE_PERSON", id: removeFor.id, edit_id: newEditId() });
+            focusChip(removeFor.id);
+          }
           setRemoveFor(null);
         }}
-        onCancel={() => setRemoveFor(null)}
+        onCancel={() => {
+          focusChip(removeFor?.id ?? null);
+          setRemoveFor(null);
+        }}
       />
 
-      <Dialog open={!!mergeFor} title={mergeFor ? `Who is ${mergeFor.label}?` : "Same person as…"} onClose={() => setMergeFor(null)}>
+      <Dialog
+        open={!!mergeFor}
+        title={mergeFor ? `Who is ${mergeFor.label}?` : "Same person as…"}
+        onClose={() => {
+          focusChip(mergeFor?.id ?? null);
+          setMergeFor(null);
+        }}
+      >
         <ul className="flex flex-col gap-2">
           {mergeFor &&
             mergeTargets(state, mergeFor.id).map((t) => {
@@ -534,6 +592,8 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
                     className="flex min-h-11 w-full items-center gap-3 rounded-lg border border-border p-2 text-left hover:bg-surface-2"
                     onClick={() => {
                       dispatch({ type: "MERGE", src: mergeFor.id, dst: t.id, edit_id: newEditId() });
+                      setEdited(t.id);
+                      focusChip(t.id);
                       setMergeFor(null);
                     }}
                   >
@@ -629,6 +689,8 @@ function BottomBar({
   refusalValidUntil,
   now,
   jobId,
+  query,
+  barRef,
   onRender,
   onAudit,
   onDelete,
@@ -643,6 +705,8 @@ function BottomBar({
   refusalValidUntil: string | null;
   now: number;
   jobId: string;
+  query: string;
+  barRef: React.RefObject<HTMLDivElement | null>;
   onRender: () => void;
   onAudit: () => void;
   onDelete: () => void;
@@ -739,7 +803,7 @@ function BottomBar({
       main = (
         <>
           {approve(true)}
-          <Link href={`/jobs/${encodeURIComponent(jobId)}/result`} className={btn.link}>
+          <Link href={`/jobs/${encodeURIComponent(jobId)}/result${query}`} className={btn.link}>
             Back to result
           </Link>
         </>
@@ -760,7 +824,7 @@ function BottomBar({
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface/95 backdrop-blur">
+    <div ref={barRef} className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface/95 backdrop-blur">
       <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-3">
         {state.capNote && <p className="text-sm">{COPY.codeCapJob}</p>}
         {text && <p className="font-medium">{text}</p>}
@@ -799,16 +863,16 @@ function ToastView({ state, onUndo, onRetry, onDismiss }: { state: ReviewState; 
           <div className="flex items-center gap-3 rounded-lg bg-text px-4 py-2 text-sm text-bg shadow-[var(--shadow)]">
             <span>{toast.text}</span>
             {undoable && (
-              <button type="button" className="min-h-9 font-semibold underline underline-offset-2 disabled:opacity-50" disabled={toast.edit_id in state.pending} onClick={() => onUndo(toast.edit_id)}>
+              <button type="button" className="min-h-11 font-semibold underline underline-offset-2 disabled:opacity-50 lg:min-h-9" disabled={toast.edit_id in state.pending} onClick={() => onUndo(toast.edit_id)}>
                 Undo
               </button>
             )}
             {toast.kind === "failed" && (
               <>
-                <button type="button" className="min-h-9 font-semibold underline underline-offset-2" onClick={() => onRetry(toast.edit_id)}>
+                <button type="button" className="min-h-11 font-semibold underline underline-offset-2 lg:min-h-9" onClick={() => onRetry(toast.edit_id)}>
                   Try again
                 </button>
-                <button type="button" className="min-h-9 underline underline-offset-2" onClick={onDismiss}>
+                <button type="button" className="min-h-11 underline underline-offset-2 lg:min-h-9" onClick={onDismiss}>
                   Dismiss
                 </button>
               </>

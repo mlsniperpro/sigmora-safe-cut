@@ -12,8 +12,9 @@ import { getClient } from "@/lib/client";
 import { COPY, codeWindowMessage, formatLocal } from "@/lib/copy";
 import { CODE_MAX_LENGTH, checkFiles, durationProblem, normaliseCode, sizeMb } from "@/lib/upload";
 import { useJob } from "@/hooks/useJob";
-import { StageList } from "../StageList";
-import { ConfirmDialog, btn } from "../ui";
+import { SITE } from "@/lib/site";
+import { ProgressView, fmtDuration } from "../job/ProgressView";
+import { btn } from "../ui";
 import { useReportMode } from "../mode";
 
 type Step = "code" | "file" | "progress" | "deleted";
@@ -52,16 +53,13 @@ function readDuration(file: File): Promise<number | null> {
   });
 }
 
-function fmtDuration(s: number): string {
-  const whole = Math.round(s);
-  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
-}
 
 export function TryFlow() {
   const router = useRouter();
   const [step, setStep] = useState<Step>("code");
   const [code, setCode] = useState("");
   const [showCode, setShowCode] = useState(false);
+  const [openWeight, setOpenWeight] = useState(false);
   const [codeError, setCodeError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const codeInput = useRef<HTMLInputElement>(null);
@@ -83,6 +81,7 @@ export function TryFlow() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [uploaded, setUploaded] = useState(false);
   const uploadAbort = useRef<AbortController | null>(null);
+  const deletedByUser = useRef(false);
   // Only compared against a refusal's `until`, which the timer below refreshes.
   const [now, setNow] = useState(0);
   const ids = { code: useId(), codeErr: useId(), file: useId(), rights: useId(), rightsErr: useId() };
@@ -112,7 +111,8 @@ export function TryFlow() {
     setChecking(true);
     setCodeError(null);
     try {
-      await getClient().checkCode(value);
+      const check = await getClient().checkCode(value);
+      setOpenWeight(check.open_weight);
       setCode(value);
       setStep("file");
       setRefusal(null);
@@ -223,6 +223,8 @@ export function TryFlow() {
         try {
           await client.upload(created.upload_url, file, contentType, (p) => setUploadPercent(Math.round(p * 100)), controller.signal);
         } catch {
+          // Cancelled by the creator's own delete: the "Deleted" page stays, nothing is retried.
+          if (deletedByUser.current) return;
           setStep("file");
           setUploadPercent(null);
           refuse({ message: COPY.uploadStalled, blockStart: true, retryUpload: true }, id, false);
@@ -230,10 +232,12 @@ export function TryFlow() {
         }
         setUploaded(true);
       }
+      if (deletedByUser.current) return;
       setStep("progress");
       setUploadPercent(100);
       await client.startJob(id);
     } catch (error) {
+      if (deletedByUser.current) return;
       setStep("file");
       setUploadPercent(null);
       handleStartError(error, id);
@@ -402,6 +406,7 @@ export function TryFlow() {
               {fileError}
             </p>
           </div>
+          {openWeight && <p className="mt-4 text-sm text-muted">Sampled frames of the result also go to Baseten, which runs Muse Spark Open.</p>}
           <div className="mt-4 flex items-start gap-2">
             <input
               ref={rightsBox}
@@ -415,7 +420,13 @@ export function TryFlow() {
                 if (e.target.checked) setRightsError(null);
               }}
             />
-            <label htmlFor={ids.rights}>I filmed this clip or have the right to use it.</label>
+            <label htmlFor={ids.rights}>
+              I&apos;m 18 or over, I have the right to upload this clip and the people in it, and I&apos;m not in a{" "}
+              <a href={SITE.geoPolicyUrl} className="underline underline-offset-2" target="_blank" rel="noopener noreferrer">
+                territory where Meta&apos;s API is restricted
+              </a>
+              .
+            </label>
           </div>
           <p id={ids.rightsErr} role="alert" className="mt-1 text-danger empty:hidden">
             {rightsError}
@@ -430,6 +441,7 @@ export function TryFlow() {
       )}
 
       {step === "progress" && jobId && <Progress jobId={jobId} fileName={file?.name ?? ""} duration={duration} uploadPercent={uploadPercent} onDeleted={() => {
+            deletedByUser.current = true;
             uploadAbort.current?.abort();
             setStep("deleted");
           }} onNavigate={(href) => router.push(href)} />}
@@ -442,7 +454,7 @@ function DataBullets() {
     <div className="mt-10 rounded-xl border border-border bg-surface p-5">
       <h2 className="font-semibold">What happens to your clip</h2>
       <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted">
-        <li>It&apos;s sent to Meta&apos;s Model API in Standard mode, never Contributor mode (Contributor mode can use inputs to improve Meta&apos;s models).</li>
+        <li>It&apos;s sent to Meta&apos;s Model API using Standard model IDs only, never a Contributor model ID.</li>
         <li>Your clip, the result and the receipt are deleted from Safe Cut&apos;s servers after 24 hours, or sooner if you choose.</li>
         <li>Up to 60 seconds and 150 MB. MP4 or MOV.</li>
       </ul>
@@ -500,88 +512,5 @@ function Progress({
         onDeleted={onDeleted}
       />
     </>
-  );
-}
-
-function ProgressView({
-  fileName,
-  duration,
-  active,
-  uploadPercent,
-  jobId,
-  etaS,
-  busy,
-  onDeleted,
-}: {
-  fileName: string;
-  duration: number | null;
-  active: Parameters<typeof StageList>[0]["active"];
-  uploadPercent?: number;
-  jobId: string;
-  etaS?: number | null;
-  busy?: boolean;
-  onDeleted: () => void;
-}) {
-  const [confirm, setConfirm] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-  const link = typeof window === "undefined" ? `/jobs/${jobId}` : `${window.location.origin}/jobs/${encodeURIComponent(jobId)}`;
-  const doDelete = async () => {
-    setConfirm(false);
-    try {
-      await getClient().deleteJob(jobId);
-      onDeleted();
-    } catch (error) {
-      setDeleteError(error instanceof ApiError && error.status === 429 ? COPY.rateLimited : COPY.unexpected);
-    }
-  };
-  return (
-    <div className="mt-8">
-      <p className="font-medium">
-        {fileName}
-        {duration !== null ? ` · ${fmtDuration(duration)}` : ""}
-      </p>
-      <h2 className="mt-4 text-xl font-semibold">Working on your clip</h2>
-      {busy && (
-        <p role="status" className="mt-3 rounded-lg bg-needs-bg p-3 text-needs-fg">
-          {COPY.metaBusy}
-        </p>
-      )}
-      <div className="mt-4">
-        <StageList active={active} kind="pipeline" {...(uploadPercent !== undefined && { uploadPercent })} etaS={etaS ?? null} />
-      </div>
-      <div className="mt-8 flex flex-wrap items-center gap-3 text-sm">
-        <span>You can leave this page. Your review link:</span>
-        <code className="rounded bg-surface-2 px-2 py-1">{link}</code>
-        <button
-          type="button"
-          className={btn.secondary}
-          onClick={() => {
-            void navigator.clipboard?.writeText(link).then(() => setCopied(true));
-          }}
-        >
-          {copied ? "Copied" : "Copy link"}
-        </button>
-      </div>
-      <div className="mt-4 flex flex-wrap items-center justify-end gap-3">
-        {deleteError && (
-          <p role="alert" className="text-danger">
-            {deleteError}
-          </p>
-        )}
-        <button type="button" className={btn.danger} onClick={() => setConfirm(true)}>
-          Cancel and delete
-        </button>
-      </div>
-      <ConfirmDialog
-        open={confirm}
-        title="Delete this clip?"
-        body="Delete this clip and stop processing? This can't be undone."
-        confirm="Delete"
-        cancel="Keep going"
-        onConfirm={() => void doDelete()}
-        onCancel={() => setConfirm(false)}
-      />
-    </div>
   );
 }

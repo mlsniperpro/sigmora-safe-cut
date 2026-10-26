@@ -381,6 +381,29 @@ describe("review reducer (UI-SPEC §10.5)", () => {
     expect(u.undo.map((e) => e.edit.edit_id)).toEqual(["h4", "h1"]);
   });
 
+  it("R31b/R31d: a rejected undo goes back on top with its prev, and a failed retry does the same", () => {
+    const a = run(fromFixture(), { type: "HIDE", id: "i_4", edit_id: "h" }).state;
+    const u = run({ ...a, pending: {} }, { type: "UNDO", target: "h", edit_id: "u" }, { type: "SERVER_REJECT", edit_id: "u" });
+    expect(u.state.items.i_4?.decision).toBe("hide");
+    expect(u.state.undo.map((e) => e.edit.edit_id)).toEqual(["h"]);
+    expect(u.state.toast).toMatchObject({ kind: "failed", edit_id: "u" });
+    const retried = run(u.state, { type: "RETRY", edit_id: "u" });
+    expect(retried.sent).toEqual([{ type: "undo", edit_id: "u", reverts: "h" }]);
+    const again = run(retried.state, { type: "SERVER_REJECT", edit_id: "u" }).state;
+    expect(again.undo.map((e) => e.edit.edit_id)).toEqual(["h"]);
+    expect(again.undo[0]?.prev.items.i_4?.decision).toBe("needs_you");
+    expect(again.items.i_4?.decision).toBe("hide");
+  });
+
+  it("R31c: Try again on a rejected object keep resends it with the same edit_id", () => {
+    const r = run(fromJob(cafeMock), { type: "KEEP", id: "i_6", edit_id: "k" }, { type: "CONFIRM_KEEP", edit_id: "k" }, { type: "SERVER_REJECT", edit_id: "k" });
+    expect(r.state.items.i_6?.decision).toBe("needs_you");
+    const retry = run(r.state, { type: "RETRY", edit_id: "k" });
+    expect(retry.sent).toEqual([{ type: "keep", edit_id: "k", item_id: "i_6" }]);
+    expect(retry.state.items.i_6?.decision).toBe("keep");
+    expect(retry.state.confirm).toBeNull();
+  });
+
   it("an undo of a pending edit sends nothing", () => {
     const a = run(fromFixture(), { type: "HIDE", id: "i_4", edit_id: "h" }).state;
     expect(run(a, { type: "UNDO", target: "h", edit_id: "u" }).sent).toHaveLength(0);

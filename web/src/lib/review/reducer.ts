@@ -499,7 +499,8 @@ export function step(state: ReviewState, action: Action): Step {
       const dismissed = { ...state, rejected, toast: null };
       if (!r) return { state: dismissed, send: null };
       if (r.action) {
-        const again = r.action.type === "CONFIRM_KEEP" ? { ...dismissed, confirm: state.confirm } : dismissed;
+        // A rejected CONFIRM_KEEP is retried against KEEP's precondition; `confirm` was cleared when it was sent.
+        const again = r.action.type === "CONFIRM_KEEP" && r.edit.type === "keep" ? { ...dismissed, confirm: { item_id: r.edit.item_id } } : dismissed;
         const result = runEdit(again, r.action);
         return result.send ? result : { state: dismissed, send: null };
       }

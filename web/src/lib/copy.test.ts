@@ -24,7 +24,7 @@ describe("audit summary (UI-SPEC §5.3, §5.6)", () => {
   it("clean, fixed (distinct items), unresolved", () => {
     expect(auditSummary(audit(cleanResult), 12)).toMatchObject({ state: "clean", lines: ["12 of 12 frames checked.", "No leaks found."], publishable: true });
     expect(auditSummary(audit(fixedResult), 12)).toMatchObject({ state: "fixed", leaksFixed: 1, lines: ["12 of 12 frames checked.", "1 leak found and fixed. Nothing left to fix."] });
-    expect(auditSummary(audit(unresolvedResult), 12)).toMatchObject({ state: "unresolved", publishable: false, lines: ["12 of 12 frames checked.", "1 spot couldn't be fixed automatically. Publishing is off until they're fixed."] });
+    expect(auditSummary(audit(unresolvedResult), 12)).toMatchObject({ state: "unresolved", publishable: false, lines: ["12 of 12 frames checked.", "1 spot couldn't be fixed automatically. Publishing is off until each is fixed."] });
   });
 
   it("counts unchecked frames without the unresolved leak rows", () => {
@@ -38,6 +38,10 @@ describe("audit summary (UI-SPEC §5.3, §5.6)", () => {
     expect(auditSummary(audit(cleanResult), 12).detail).toMatch(/^Meta's EgoBlur looked for faces and number plates/);
     expect(auditStepBody("yunet-face")).toContain("number plates are checked by Muse Spark only");
     expect(auditStepBody("egoblur-gen2")).toContain("Meta's EgoBlur checks the final render for faces and number plates");
+    expect(auditStepBody("egoblur-gen2")).toMatch(/Any leak it can fix is covered and recorded on your privacy receipt; anything it can't fix stops publishing\.$/);
+    expect(auditStepBody("egoblur-gen2", { model: "meta-models/muse-spark-open-1026", status: "ok" })).toMatch(/ Muse Spark Open, an open-weight model running on Baseten, gives a second opinion and can only add covers\.$/);
+    expect(auditStepBody("egoblur-gen2", { model: "other-open", status: "ok" })).toMatch(/ An open-weight model running on Baseten gives a second opinion and can only add covers\.$/);
+    expect(auditStepBody("egoblur-gen2", { model: "meta-models/muse-spark-open-1026", status: "failed" })).not.toContain("Baseten");
   });
 
   it("budget cause lines, with the expiry rule", () => {

@@ -4,16 +4,16 @@
  * status. `done` moves to the result unless opened with `?view=review`.
  */
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { COPY } from "@/lib/copy";
 import { keptQuery } from "@/lib/site";
 import { checkTimeline } from "@/lib/time";
 import { useJob, type JobLoad } from "@/hooks/useJob";
 import { useReportMode } from "../mode";
 import { ReviewPanel } from "../review/ReviewPanel";
-import { StageList } from "../StageList";
 import { MessagePage } from "../ui";
 import { FailedJob } from "./FailedJob";
+import { ProgressView } from "./ProgressView";
 
 export function loadMessage(kind: Exclude<JobLoad["kind"], "loading" | "ready">, retry: () => void): React.ReactNode {
   switch (kind) {
@@ -53,7 +53,9 @@ export function JobPage() {
   const job = load.kind === "ready" ? load.job : null;
   useReportMode(job?.mode);
 
-  const toResult = job?.status === "done" && !viewReview;
+  // A render this page started moves on to the result when it's done, even from ?view=review (§3.5).
+  const [renderedHere, setRenderedHere] = useState(false);
+  const toResult = job?.status === "done" && (!viewReview || renderedHere);
   useEffect(() => {
     if (toResult) router.replace(`/jobs/${encodeURIComponent(id)}/result${keptQuery(params)}`);
   }, [toResult, router, id, params]);
@@ -71,25 +73,24 @@ export function JobPage() {
     case "processing":
     case "retry_later":
       return (
-        <section className="mx-auto max-w-3xl px-4 py-10">
-          <h1 className="text-2xl font-semibold">Working on your clip</h1>
-          {j.status === "retry_later" && (
-            <p role="status" className="mt-4 rounded-lg bg-needs-bg p-3 text-needs-fg">
-              {COPY.metaBusy}
-            </p>
-          )}
-          <div className="mt-6">
-            <StageList kind="pipeline" active={j.stage && j.stage !== "review" ? j.stage : "queued"} etaS={j.eta_s ?? null} />
-          </div>
-          <p className="mt-6 text-sm text-muted">You can leave this page and come back with this link.</p>
+        <section className="mx-auto max-w-3xl px-4 py-2">
+          <ProgressView
+            fileName={j.job?.source_name ?? null}
+            duration={j.job ? j.job.frames / j.job.fps : null}
+            active={j.stage && j.stage !== "review" ? j.stage : "queued"}
+            jobId={id}
+            etaS={j.eta_s ?? null}
+            busy={j.status === "retry_later"}
+            onDeleted={markDeleted}
+          />
         </section>
       );
     case "failed":
       return <FailedJob jobId={id} job={j} onResume={resume} onDeleted={markDeleted} />;
     case "done":
-      if (!viewReview) return <JobSkeleton />;
-      return <ReviewPanel jobId={id} job={j} viewReview onPatchJob={patch} onResume={resume} onDeleted={markDeleted} />;
+      if (toResult) return <JobSkeleton />;
+      return <ReviewPanel jobId={id} job={j} viewReview onPatchJob={patch} onResume={resume} onDeleted={markDeleted} onRenderStarted={() => setRenderedHere(true)} query={keptQuery(params)} />;
     default:
-      return <ReviewPanel jobId={id} job={j} viewReview={viewReview} onPatchJob={patch} onResume={resume} onDeleted={markDeleted} />;
+      return <ReviewPanel jobId={id} job={j} viewReview={viewReview} onPatchJob={patch} onResume={resume} onDeleted={markDeleted} onRenderStarted={() => setRenderedHere(true)} query={keptQuery(params)} />;
   }
 }

@@ -27,6 +27,8 @@ describe("review view model (UI-SPEC §3.3, §3.9)", () => {
     expect(child.accessibleName).toBe("Face 4, Child, hidden, always hidden. Child in the background, not addressed. 0:00 to 0:00");
     expect(cols.needs_you[0]!.buttons).toMatchObject({ hide: true, keep: true, why: true });
     expect(headerCounts(cols)).toBe("2 hidden · 1 kept clear · 1 needs you");
+    expect(headerCounts({ hide: [], keep: [], needs_you: [] })).toBe("0 hidden · 0 kept clear · 0 need you");
+    expect(headerCounts({ ...cols, needs_you: [...cols.needs_you, ...cols.needs_you] })).toBe("2 hidden · 1 kept clear · 2 need you");
   });
 
   it("gives every chip whose evidence frame is a keyframe a thumbnail", () => {

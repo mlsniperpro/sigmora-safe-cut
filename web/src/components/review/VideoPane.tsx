@@ -159,7 +159,7 @@ export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function Vi
               role="radio"
               aria-checked={mode === m}
               tabIndex={mode === m ? 0 : -1}
-              className={`min-h-9 rounded-md px-3 font-medium ${mode === m ? "bg-surface shadow-sm" : "text-muted"}`}
+              className={`min-h-11 rounded-md px-3 font-medium lg:min-h-9 ${mode === m ? "bg-surface shadow-sm" : "text-muted"}`}
               onClick={() => setMode(m)}
               onKeyDown={(e) => {
                 if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) {

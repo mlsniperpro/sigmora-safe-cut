@@ -138,7 +138,7 @@ export function auditSummary(audit: Audit, frames: number, budgetLine?: string |
         ...base,
         state: "unresolved",
         title: "Not ready to publish",
-        lines: [checked, `${plural(unfixedSpots, "spot", "spots")} couldn't be fixed automatically. Publishing is off until they're fixed.`],
+        lines: [checked, `${plural(unfixedSpots, "spot", "spots")} couldn't be fixed automatically. Publishing is off until each is fixed.`],
         publishable: false,
       };
     case "audit_failed":
@@ -178,12 +178,21 @@ export function budgetCauseLine(cause: string | null | undefined, retryAt: strin
   }
 }
 
-/** Landing step 3 copy, by the auditor-name rule (§1.3). */
-export function auditStepBody(model: string | null): string {
-  if (model === "yunet-face") {
-    return "Before anything is published, a face detector (YuNet) checks every frame of the final render for faces; number plates are checked by Muse Spark only, and a second Muse Spark pass tries to read or recognise anything left. Any leak is fixed and recorded on your privacy receipt.";
-  }
-  return `Before anything is published, Meta's EgoBlur checks the final render for faces and number plates, and a second Muse Spark pass tries to read or recognise anything left. Any leak is fixed and recorded on your privacy receipt.`;
+/** Display name for the open-weight second opinion (copy notes, §1.3). */
+export function openWeightName(model: string): string | null {
+  return model.startsWith("meta-models/muse-spark-open") ? "Muse Spark Open" : null;
+}
+
+/** Landing step 3 copy, by the auditor-name rule (§1.3), plus the open-weight line when it ran. */
+export function auditStepBody(model: string | null, openWeight?: { model: string; status: string } | null): string {
+  const detector =
+    model === "yunet-face"
+      ? "a face detector (YuNet) checks the final render for faces; number plates are checked by Muse Spark only"
+      : "Meta's EgoBlur checks the final render for faces and number plates";
+  const base = `Before anything is published, ${detector}, and a second Muse Spark pass tries to read or recognise anything left. Any leak it can fix is covered and recorded on your privacy receipt; anything it can't fix stops publishing.`;
+  if (openWeight?.status !== "ok") return base;
+  const name = openWeightName(openWeight.model);
+  return `${base} ${name ? `${name}, an open-weight model running on Baseten, gives` : "An open-weight model running on Baseten gives"} a second opinion and can only add covers.`;
 }
 
 // ------------------------------------------------------------------ errors on actions (§2.6, §2.6.1, §10.3)
@@ -206,8 +215,8 @@ export const COPY = {
   uploadIncomplete: "The upload didn't finish, so nothing was processed. Choose the clip again to upload it.",
   auditorUnavailable: "Safe Cut's final check isn't available right now, so it can't start new clips. Try again later.",
   billing: "Safe Cut can't start new clips right now. Try again later.",
-  noRights: "Tick the box to confirm you can use this clip.",
-  deleted: "Deleted. Nothing from this clip is kept.",
+  noRights: "Tick the box to confirm you're 18 or over, can upload this clip and aren't in a restricted territory.",
+  deleted: "Deleted from Safe Cut's servers.",
   unreachable: "Safe Cut's service isn't responding right now. Your clip is safe and nothing has been published. Try again in a minute.",
   unexpected: "Something went wrong on our side. Nothing has been published.",
   expired: "This clip has been deleted. Safe Cut deletes everything automatically after 24 hours.",

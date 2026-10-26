@@ -10,6 +10,13 @@ const frame = z.number().int().nonnegative();
 export const boxSchema = z.tuple([z.number(), z.number(), z.number(), z.number()]);
 export type Box = z.infer<typeof boxSchema>;
 const isoTime = z.iso.datetime({ offset: true });
+/**
+ * A URL the API hands the browser (signed media, keyframes, receipts). Only
+ * https, or a same-origin path, so a compromised API can't inject `javascript:`.
+ */
+export const mediaUrl = z.string().refine((u) => u.startsWith("https://") || (u.startsWith("/") && !u.startsWith("//")), { message: "must be an https URL or a same-origin path" });
+/** The presigned upload URL; the mock backend's `mock://` scheme is accepted only in mock mode's own responses. */
+const uploadUrl = z.string().refine((u) => u.startsWith("https://") || u.startsWith("mock://"), { message: "must be an https URL" });
 
 export const roleSchema = z.enum(["participant", "bystander", "child", "unsure"]);
 export type Role = z.infer<typeof roleSchema>;
@@ -200,6 +207,7 @@ export const auditSchema = z.object({
   blocked_reason: blockedReasonSchema.nullable().default(null),
   sample_step: z.number().int().positive().optional(),
   spots: z.array(spotSchema).default([]),
+  open_weight: z.object({ model: z.string(), status: z.string() }).nullable().optional(),
   audit_budget_cause: budgetCauseSchema.nullable().optional(),
 });
 export type Audit = z.infer<typeof auditSchema>;
@@ -263,7 +271,7 @@ export const jobMetaSchema = z.object({
   audio: z.boolean().default(true),
   times: z.array(z.number().nullable()),
   created_at: isoTime.optional(),
-  prepared_url: z.string().optional(),
+  prepared_url: mediaUrl.optional(),
   source_name: z.string().optional(),
 });
 export type JobMeta = z.infer<typeof jobMetaSchema>;
@@ -297,10 +305,10 @@ export const jobResponseSchema = z.object({
   transcript: transcriptSchema.optional(),
   scene: sceneSchema.optional(),
   keyframe_geometry: keyframeGeometrySchema.optional(),
-  keyframe_urls: z.record(z.string(), z.string()).default({}),
+  keyframe_urls: z.record(z.string(), mediaUrl).default({}),
   audit: auditSchema.nullable().optional(),
   audit_budget_cause: budgetCauseSchema.nullable().optional(),
-  result: z.object({ video_url: z.string() }).nullable().optional(),
+  result: z.object({ video_url: mediaUrl }).nullable().optional(),
   models: z.record(z.string(), z.string()).optional(),
 });
 export type JobResponse = z.infer<typeof jobResponseSchema>;
@@ -311,10 +319,10 @@ export const resultResponseSchema = z.object({
   status: jobStatusSchema,
   deletes_at: isoTime,
   frames: z.number().int().nonnegative(),
-  video_url: z.string(),
-  captions_url: z.string().nullable().optional(),
-  receipt_html_url: z.string(),
-  receipt_json_url: z.string(),
+  video_url: mediaUrl,
+  captions_url: mediaUrl.nullable().optional(),
+  receipt_html_url: mediaUrl,
+  receipt_json_url: mediaUrl,
   audit: auditSchema,
   code_valid_until: isoTime.nullable().optional(),
 });
@@ -324,14 +332,14 @@ export const demoResponseSchema = z.object({
   hero_id: z.string(),
   mode: z.literal("replay"),
   job: z.object({
-    prepared_url: z.string(),
+    prepared_url: mediaUrl,
     fps: z.number(),
     frames: z.number().int().positive(),
     times: z.array(z.number().nullable()),
   }),
-  video_url: z.string(),
-  poster_url: z.string().nullable().optional(),
-  captions_url: z.string().nullable().optional(),
+  video_url: mediaUrl,
+  poster_url: mediaUrl.nullable().optional(),
+  captions_url: mediaUrl.nullable().optional(),
   audit: auditSchema,
 });
 export type DemoResponse = z.infer<typeof demoResponseSchema>;
@@ -340,13 +348,14 @@ export const codeCheckSchema = z.object({
   kind: z.enum(["judge", "public", "pilot", "recording", "owner"]),
   valid_from: isoTime.nullable(),
   valid_until: isoTime.nullable(),
+  open_weight: z.boolean().default(false),
 });
 export type CodeCheck = z.infer<typeof codeCheckSchema>;
 
 export const createJobResponseSchema = z.object({
   job_id: z.string().min(1),
   mode: modeSchema.default("live"),
-  upload_url: z.string(),
+  upload_url: uploadUrl,
   upload_expires_at: isoTime.optional(),
 });
 export type CreateJobResponse = z.infer<typeof createJobResponseSchema>;
@@ -409,7 +418,8 @@ export const resultsTableSchema = z.object({
   n_clips: z.number().int().nonnegative(),
   n_public: z.number().int().nonnegative(),
   n_staged: z.number().int().nonnegative(),
-  runs_per_clip: z.number().int().positive(),
+  runs_per_clip_min: z.number().int().positive(),
+  runs_per_clip_max: z.number().int().positive(),
   labellers: z.union([z.literal(1), z.literal(2)]),
   percent_agreement: z.number().min(0).max(1).nullable().optional(),
   n_entities: z.number().int().nonnegative().nullable().optional(),

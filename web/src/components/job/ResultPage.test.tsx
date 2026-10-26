@@ -46,7 +46,7 @@ describe("result and receipt (UI-SPEC §5)", () => {
 
   it("unresolved: publish off from Sigmora, with a link to review the spots", async () => {
     setup("result-unresolved", "from=sigmora");
-    expect(await screen.findByText("1 spot couldn't be fixed automatically. Publishing is off until they're fixed.")).toBeInTheDocument();
+    expect(await screen.findByText("1 spot couldn't be fixed automatically. Publishing is off until each is fixed.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Publish to Sigmora" })).toBeDisabled();
     expect(screen.getByRole("link", { name: "Review them" })).toHaveAttribute("href", "/jobs/result-unresolved?view=review&from=sigmora");
     expect(screen.getByText("This version has 1 unfixed spot.")).toBeInTheDocument();

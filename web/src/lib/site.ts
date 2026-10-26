@@ -4,6 +4,9 @@ export const SITE = {
   repoUrl: process.env.NEXT_PUBLIC_REPO_URL?.trim() || "https://github.com/mlsniperpro/sigmora-safe-cut",
   sigmoraUrl: process.env.NEXT_PUBLIC_SIGMORA_URL?.trim() || "https://sigmora.org",
   heroId: process.env.NEXT_PUBLIC_SAFECUT_HERO_ID?.trim() || "hero1",
+  /** WP8 sets this from the hero clip actually filmed (UI-SPEC §1.3 copy notes). */
+  heroHasChild: process.env.NEXT_PUBLIC_HERO_HAS_CHILD !== "false",
+  geoPolicyUrl: "https://dev.meta.ai/legal/geographic-use-policy",
   evalUrl: process.env.NEXT_PUBLIC_EVAL_URL?.trim() || "https://github.com/mlsniperpro/sigmora-safe-cut/blob/main/docs/EVAL.md",
 } as const;
 

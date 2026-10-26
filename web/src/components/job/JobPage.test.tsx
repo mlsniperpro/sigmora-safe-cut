@@ -185,7 +185,7 @@ describe("review panel", () => {
     await user.click(screen.getByRole("button", { name: "Delete everything now" }));
     const dialog = await screen.findByRole("dialog", { name: "Delete this clip?" });
     await user.click(within(dialog).getByRole("button", { name: "Delete" }));
-    expect(await screen.findByText("Deleted. Nothing from this clip is kept.")).toBeInTheDocument();
+    expect(await screen.findByText("Deleted from Safe Cut's servers.")).toBeInTheDocument();
   });
 
   it("keeps the page when a delete fails", async () => {

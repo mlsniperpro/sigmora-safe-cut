@@ -13,6 +13,7 @@ export function FailedJob({ jobId, job, onResume, onDeleted }: { jobId: string; 
   const view = failureView(job);
   const [note, setNote] = useState<string | null>(null);
   const [blocked, setBlocked] = useState(false);
+  const [blockedUntil, setBlockedUntil] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -37,8 +38,11 @@ export function FailedJob({ jobId, job, onResume, onDeleted }: { jobId: string; 
         setNote(COPY.pilotPoolJob);
         setBlocked(true);
       } else if (e?.status === 429 && e.code === "daily_cap") {
-        setNote(expiresBefore(e.detail?.retry_at, job.code_valid_until) ? COPY.dailyCapJobExpiring : COPY.dailyCapJob);
-        setBlocked(true);
+        const expiring = expiresBefore(e.detail?.retry_at, job.code_valid_until);
+        setNote(expiring ? COPY.dailyCapJobExpiring : COPY.dailyCapJob);
+        // Disabled until retry_at (for good when the code expires first, or with no retry_at).
+        if (expiring || !e.detail?.retry_at) setBlocked(true);
+        else setBlockedUntil(Date.parse(e.detail.retry_at));
       } else if (e?.status === 422) {
         setNote(COPY.jobCapJob);
         setBlocked(true);
@@ -64,7 +68,7 @@ export function FailedJob({ jobId, job, onResume, onDeleted }: { jobId: string; 
     }
   };
 
-  const waiting = retryAt !== null && (now === 0 || now < retryAt);
+  const waiting = (retryAt !== null && (now === 0 || now < retryAt)) || (blockedUntil !== null && (now === 0 || now < blockedUntil));
   return (
     <section className="mx-auto max-w-2xl px-4 py-16">
       <p role="alert" className="text-xl font-medium">
@@ -72,7 +76,7 @@ export function FailedJob({ jobId, job, onResume, onDeleted }: { jobId: string; 
       </p>
       <div className="mt-6 flex flex-wrap items-center gap-3">
         {view.actions.includes("try_again") && (
-          <button type="button" className={btn.primary} disabled={busy || blocked} onClick={() => void retry()}>
+          <button type="button" className={btn.primary} disabled={busy || blocked || waiting} onClick={() => void retry()}>
             Try again
           </button>
         )}

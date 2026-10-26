@@ -98,6 +98,21 @@ describe("Why drawer (UI-SPEC §4.3)", () => {
     expect(why(whyMock, "i_10").votes).toEqual({ kind: "not_run", line: "3 of the 3 checks didn't run." });
   });
 
+  it("says when a check didn't run and the rest agree, in the sentence and the escalation", () => {
+    const job = parse(whyMock);
+    const track = job.roles!.tracks.find((t) => t.track_id === "face:23")!;
+    track.votes = ["participant", "participant", "unsure"];
+    track.escalated = true;
+    track.suggested_role = "participant";
+    const item = job.items.find((i) => i.item_id === "i_23")!;
+    item.decision = "needs_you";
+    const w = buildWhy(job, "i_23", localOf(job, "i_23"))!;
+    expect(w.fixed).toBe("1 of the 3 checks didn't run, so Safe Cut couldn't decide on its own. It stays hidden unless you keep it clear.");
+    if (w.votes.kind !== "votes") throw new Error("expected votes");
+    expect(w.votes.count).toBe(2);
+    expect(w.votes.escalation[0]).toBe("1 of the 3 checks didn't run, so Muse Spark took a longer, closer look once.");
+  });
+
   it("names what the miss loop found for an other item", () => {
     expect(why(whyMock, "i_16").votes).toMatchObject({ kind: "object", missedLine: "Found when Muse Spark looked again for anything missed: addressed envelope" });
   });
