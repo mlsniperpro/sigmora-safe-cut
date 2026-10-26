@@ -175,7 +175,7 @@ export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function Vi
         <p className="text-muted">Preview. The final render covers the same areas.</p>
         {!rvfc && <p className="text-muted">Preview may lag by a frame in this browser. The final render isn&apos;t affected.</p>}
       </div>
-      <div aria-hidden="true" className="relative mt-2 flex flex-col gap-0.5">
+      <div aria-hidden="true" className="relative mt-2 hidden flex-col gap-0.5 lg:flex">
         {timeline.slice(0, 60).map((t) => (
           <div key={t.id} className="relative h-1.5 rounded bg-surface-2">
             <div
