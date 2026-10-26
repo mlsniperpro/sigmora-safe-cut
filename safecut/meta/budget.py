@@ -35,11 +35,16 @@ class CapLimit:
 
 @dataclass(frozen=True)
 class Caller:
-    """Who started the job, and the caps (besides the job cap) their spend counts against."""
+    """Who started the job, and the caps (besides the job cap) their spend counts against.
+
+    ``daily_usd`` puts the caller under the shared daily cap. Its bucket is the UTC day of each call, not of
+    the job's start, so a job that runs past 00:00 UTC counts against the new day's cap.
+    """
 
     code_kind: CodeKind
     code_id: str | None = None
     limits: tuple[CapLimit, ...] = ()
+    daily_usd: float | None = None
 
     @classmethod
     def local(cls, kind: Literal["owner", "eval"] = "owner") -> Caller:
@@ -47,14 +52,16 @@ class Caller:
         return cls(code_kind=kind)
 
     @classmethod
-    def daily(cls, settings: Settings, code_kind: CodeKind, code_id: str | None, *, now: datetime) -> Caller:
+    def daily(cls, settings: Settings, code_kind: CodeKind, code_id: str | None) -> Caller:
         """Judge, public, service and system callers count against the shared daily cap."""
+        return cls(code_kind=code_kind, code_id=code_id, daily_usd=settings.daily_usd_cap)
+
+    def limits_at(self, now: datetime) -> tuple[CapLimit, ...]:
+        """The caps a call made at ``now`` counts against."""
+        if self.daily_usd is None:
+            return self.limits
         day = now.astimezone(UTC).date().isoformat()
-        return cls(
-            code_kind=code_kind,
-            code_id=code_id,
-            limits=(CapLimit("daily", f"daily:{day}", settings.daily_usd_cap),),
-        )
+        return (*self.limits, CapLimit("daily", f"daily:{day}", self.daily_usd))
 
 
 def job_limit(settings: Settings, job_id: str) -> CapLimit:
@@ -75,7 +82,8 @@ class LocalLedger:
     """A SQLite-backed ledger (``:memory:`` by default). Thread-safe, and safe across processes on one file.
 
     ``reserve`` raises :class:`BudgetExceeded` naming the first cap that can't cover the estimate.
-    ``settle`` and ``release`` are idempotent per ``call_id``; an unknown ``call_id`` is an error.
+    ``reserve`` (with the same terms), ``settle`` and ``release`` are idempotent per ``call_id``; an unknown
+    ``call_id`` is an error.
     """
 
     def __init__(self, path: str | Path = ":memory:", *, clock: type[datetime] = datetime) -> None:
@@ -121,17 +129,26 @@ class LocalLedger:
         if usd < 0:
             raise ValueError("a reservation can't be negative")
         with self._lock:
-            if self._db.execute("SELECT 1 FROM reservation WHERE call_id = ?", (call_id,)).fetchone():
-                raise ValueError(f"call_id {call_id!r} already reserved")
             # BEGIN IMMEDIATE takes SQLite's write lock before the sums are read, so two processes
             # sharing one ledger file can't both pass the same stale total.
             self._db.execute("BEGIN IMMEDIATE")
             try:
-                self._check_and_insert(call_id, job_id, usd, limits)
+                if not self._same_reservation(call_id, job_id, usd, limits):
+                    self._check_and_insert(call_id, job_id, usd, limits)
                 self._db.execute("COMMIT")
             except BaseException:
                 self._db.execute("ROLLBACK")
                 raise
+
+    def _same_reservation(self, call_id: str, job_id: str | None, usd: float, limits: Sequence[CapLimit]) -> bool:
+        """A retried ``reserve`` whose ack was lost is a no-op (PRE-A §10.2); other terms under one id are a bug."""
+        row = self._db.execute("SELECT job_id, usd FROM reservation WHERE call_id = ?", (call_id,)).fetchone()
+        if row is None:
+            return False
+        keys = {str(k[0]) for k in self._db.execute("SELECT key FROM reservation_key WHERE call_id = ?", (call_id,))}
+        if row[0] != job_id or abs(float(row[1]) - usd) > _EPS or keys != {lim.key for lim in limits}:
+            raise ValueError(f"call_id {call_id!r} already reserved with different terms")
+        return True
 
     def _check_and_insert(self, call_id: str, job_id: str | None, usd: float, limits: Sequence[CapLimit]) -> None:
         if usd > 0:  # a free call (files, token counts, deletes) never trips a cap, even one already spent

@@ -23,15 +23,14 @@
   - `docs/ARCHITECTURE.md` §3/§4, synced with the contracts and config;
   - `docs/OFFICIAL-GUIDE.md`.
 - **Gate files** in `.agent/win/SAFECUT-WP0/`: `checks.sh`, `WIN-CHECKLIST.md`, `BLOCKED.md`, `reaudit.md`, `break-it.md`.
-- **Last fully green head:** 00e3b4c (233 passed, ruff and pyright clean). A fresh clone of b7fe6c9 was green in 41 s.
+- **Last fully green head:** the head of this push (372 passed, ruff and pyright clean).
 
-## In flight (exact state at WIND DOWN, ~18:59 UTC 2026-10-26)
-- Head 4fea3bb (pushed) is green: 293 passed, ruff and pyright clean. A fresh clone of 4fea3bb was green in 85 s on 2 CPUs (record it in break-it.md).
-- Audits #1–#4 and the code-review skill: every finding fixed with a test, or a recorded decision (reaudit.md). `CLEAN_AUDITS_IN_A_ROW` is still 0.
-- Audit #5 (Sonnet) was running at 4fea3bb when the wind-down came; its result is lost. Re-run it.
-- The 20k-example soak (`HYPOTHESIS_PROFILE=soak`) at 4fea3bb was stopped after 11 min, unfinished. Re-run it to completion (≈ 40+ min; test_chaos dominates) and record the result in break-it.md.
-- break-it.md is stale (TESTED_COMMIT 895500e). Rewrite it at the final head with: the soak result, the chaos and fuzz properties, the replay e2e (tests/test_probes_replay.py), the fresh-clone run, and `taskset -c 0` determinism of the clips.
-- Gate at 18:17 UTC (2d81848): FAIL (7). The open items were stale reaudit/break-it, the clean-audit count, pids and push state; the checklist has 0 open items now.
+## In flight (session_01FE6cwwWXD1E2eCpwUV9ftx, from 19:36 UTC 2026-10-26)
+- Lease claimed (44a24e5). Inherited head was green: 293 passed, and a fresh clone took 53 s on 4 CPUs.
+- Audit #5 (Sonnet) at 44a24e5 was NOT CLEAN: 0 critical, 0 high, 4 medium, 10 low. Every finding was verified, then fixed with a test or kept as a recorded decision (reaudit.md, tests/test_audit5.py). Suite: 372 passed; ruff and pyright clean.
+- PRE-A (origin/pre-a-research 7f7ab67) added §12 rows at 18:57 UTC. They are now implemented: responses.json, `responses_delete_requested`, `cost_usd_baseten`, `open_weight_attempted`, `SAFECUT_SAM_DELETE_RESPONSES` and `sam.ResponseLog`.
+- The 44a24e5 soak was stopped as stale. Re-run it at the final head.
+- Next: audit #6 and the soak at the new head, then break-it.md, the gate and the PR status.
 
 ## Next steps, in order
 1. Run `bash .agent/win/SAFECUT-WP0/checks.sh` (green at 4fea3bb).

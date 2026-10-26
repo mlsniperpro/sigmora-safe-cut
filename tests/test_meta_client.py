@@ -257,7 +257,7 @@ def test_ledger_reserve_settle_release(ledger: LocalLedger) -> None:
     assert ledger.spent("job:a") == pytest.approx(0.2)
     with pytest.raises(KeyError):
         ledger.settle("missing", 0.1)
-    with pytest.raises(ValueError, match="already"):
+    with pytest.raises(ValueError, match="different terms"):
         ledger.reserve("c3", "a", 0.1, [job])
     with pytest.raises(ValueError, match="negative"):
         ledger.reserve("c4", "a", -1, [job])
@@ -308,8 +308,10 @@ def test_ledger_never_lets_spend_pass_the_cap(ops: list[tuple[float, str]]) -> N
 
 
 def test_daily_caller_bucket(settings: Settings) -> None:
-    caller = Caller.daily(settings, "judge", "code-1", now=datetime(2026, 11, 5, 23, 0, tzinfo=UTC))
-    assert caller.limits == (CapLimit("daily", "daily:2026-11-05", 3.0),)
+    caller = Caller.daily(settings, "judge", "code-1")
+    assert caller.limits_at(datetime(2026, 11, 5, 23, 0, tzinfo=UTC)) == (CapLimit("daily", "daily:2026-11-05", 3.0),)
+    # A job still running after midnight UTC counts against the new day's bucket (audit #5 L7).
+    assert caller.limits_at(datetime(2026, 11, 6, 0, 30, tzinfo=UTC)) == (CapLimit("daily", "daily:2026-11-06", 3.0),)
 
 
 # --- request(): retries and cost lines (R1, R2, R3, R5, R12, R13) --------------
@@ -615,7 +617,7 @@ async def test_stream_total_timeout(make_harness: Callable[..., Harness], mock_a
 async def test_system_caller_logs_null_job(
     make_harness: Callable[..., Harness], mock_api: respx.MockRouter, settings: Settings
 ) -> None:
-    caller = Caller.daily(settings, "system", None, now=datetime.now(UTC))
+    caller = Caller.daily(settings, "system", None)
     h = make_harness(job_id=None, caller=caller)
     mock_api.post("/thing").mock(return_value=httpx.Response(200, json={}))
     await h.client.request("POST", "thing", _spec(stage="healthz"), meter=_meter)
@@ -807,7 +809,7 @@ async def test_request_refuses_contributor_models(make_harness: Callable[..., Ha
 def test_job_id_and_system_caller_must_agree(settings: Settings, ledger: LocalLedger) -> None:
     with pytest.raises(ValueError, match="system"):
         MetaClient(settings, job_id=None, caller=Caller.local(), ledger=ledger, cost_path="/dev/null")
-    caller = Caller.daily(settings, "system", None, now=datetime.now(UTC))
+    caller = Caller.daily(settings, "system", None)
     with pytest.raises(ValueError, match="system"):
         MetaClient(settings, job_id="j", caller=caller, ledger=ledger, cost_path="/dev/null")
 

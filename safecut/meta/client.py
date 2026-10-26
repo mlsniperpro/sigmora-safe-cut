@@ -315,7 +315,12 @@ class MetaClient:
             code_kind=self.caller.code_kind,
             code_id=self.caller.code_id,
         )
-        append_cost_line(line, self.cost_path)
+        try:
+            append_cost_line(line, self.cost_path)
+        except OSError:
+            # A failed write must not lose a billed result (a retry would bill it again) or skip the
+            # ledger settle that follows; the ledger still holds the charge.
+            log.exception("cost.jsonl write failed", extra={"stage": spec.stage, "usd": usd, "estimated": estimated})
 
     def _log_budget_stop(self, spec: CallSpec, exc: BudgetExceeded) -> None:
         line = CostLine(
@@ -351,20 +356,23 @@ class MetaClient:
             # Baseten credits are a separate pot: only its own per-job cap applies, never the Meta caps.
             key = f"baseten_job:{self.job_id or 'system'}"
             return [CapLimit("baseten_job", key, self.settings.open_weight_job_usd_cap)]
-        limits = list(self.caller.limits)
+        limits = list(self.caller.limits_at(now_utc()))
         if self.job_id is not None:
             limits.insert(0, job_limit(self.settings, self.job_id))
         return limits
 
     async def _ledger(self, fn: Callable[[], None], *, attempts: int = 2) -> None:
         """A ledger call, bounded and typed (PRE-A §10.2). A call that raised is retried once (a cold start);
-        then a fault, or any 10 s stall, is ``MetaUnavailable`` and no request is sent. Budget and bookkeeping
-        errors pass through."""
+        then a fault, or any 10 s stall, is ``MetaUnavailable`` and no request is sent. ``BudgetExceeded`` passes
+        through; a refusal (``KeyError``/``ValueError``, e.g. a conflicting call_id) is ``MetaUnavailable`` too, so
+        callers only ever see ``MetaError``."""
         for attempt in range(1, attempts + 1):
             try:
                 await asyncio.wait_for(asyncio.to_thread(fn), timeout=config.BUDGET_RESERVE_TIMEOUT_S)
-            except (BudgetExceeded, KeyError, ValueError):
+            except BudgetExceeded:
                 raise
+            except (KeyError, ValueError) as exc:
+                raise MetaUnavailable(f"the budget ledger refused the call: {exc}") from exc
             except TimeoutError as exc:
                 # Never retried: the timed-out call may still land, and a second reserve would double it.
                 # It expires after 2.5 h as an estimated charge (fail closed).
@@ -399,6 +407,10 @@ class MetaClient:
         ``attempt_fn`` calls its argument right before it sends the request, so a cancellation that lands
         before anything was sent releases the reservation instead of charging it.
         """
+        if self.settings.replay:
+            # Replay mode serves saved responses from the job directory: a stage that reaches the
+            # transport anyway would spend live credits, so it is refused here, before any reservation.
+            raise MetaConfigError("SAFECUT_REPLAY is on: live calls are refused (use the saved responses)")
         breaker = self.breaker if spec.breaker else None
         trial = breaker.before_call() if breaker else False
         try:

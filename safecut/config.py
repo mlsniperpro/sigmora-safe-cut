@@ -260,7 +260,7 @@ _SECRET_ENV: Mapping[str, str] = {"model_api_key": "MODEL_API_KEY", "baseten_api
 _JSON_FIELDS = frozenset(
     {"access_codes", "code_windows", "asr_language_bias", "service_keys", "open_weight_price", "open_weight_code_kinds"}
 )
-_BOOL_FIELDS = frozenset({"replay", "sam_send_store", "open_weight_grid_ok"})
+_BOOL_FIELDS = frozenset({"replay", "sam_send_store", "sam_delete_responses", "open_weight_grid_ok"})
 _TRUE = frozenset({"1", "true", "yes", "on"})
 _FALSE = frozenset({"0", "false", "no", "off"})
 
@@ -303,6 +303,9 @@ class Settings(BaseModel):
     meta_base_url: str = "https://api.meta.ai/v1"
     model_api_key: SecretStr | None = None
     sam_send_store: bool = True
+    #: ``DELETE /v1/responses/{id}`` after each SAM call that couldn't send ``store: false``. Unset means "on
+    #: exactly when ``sam_send_store`` is off" (PRE-A §12); read it through :attr:`delete_sam_responses`.
+    sam_delete_responses: bool | None = None
 
     # Spend guards (USD).
     job_usd_cap: float = Field(default=3.00, gt=0)
@@ -333,6 +336,10 @@ class Settings(BaseModel):
     r2_access_key_id: SecretStr | None = None
     r2_secret_access_key: SecretStr | None = None
     r2_bucket: str | None = None
+
+    @property
+    def delete_sam_responses(self) -> bool:
+        return (not self.sam_send_store) if self.sam_delete_responses is None else self.sam_delete_responses
 
     @field_validator("meta_base_url", "open_weight_base_url")
     @classmethod

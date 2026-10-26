@@ -83,6 +83,7 @@ class BudgetExceeded(MetaError):
 
 
 _CONFIG_PARAMS = ("model", "reasoning", "text.format", "text", "max_output_tokens", "metadata")
+_RETRYABLE_5XX = frozenset({500, 502, 503})
 
 
 def _error_fields(body: Any) -> tuple[str, str | None, str | None]:
@@ -137,5 +138,6 @@ def classify(status: int, body: Any, *, request_id: str | None = None) -> MetaEr
         # Meta: "do not simply retry, the same request will usually time out again".
         return MetaUnavailable(detail, retryable=False, **kwargs)
     if status >= 500:
-        return MetaUnavailable(detail, **kwargs)
+        # PRE-A §10.2 retries 500/502/503 only: 501, 505, 507, 511 … fail the same way every time.
+        return MetaUnavailable(detail, retryable=status in _RETRYABLE_5XX, **kwargs)
     return MetaBadRequest(detail, **kwargs)

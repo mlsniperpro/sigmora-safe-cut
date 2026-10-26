@@ -1,5 +1,5 @@
 {
- "job_id": "j_01",
+ "job_id": "j_example",
  "items": [
   {
    "item_id": "i_1",
@@ -142,6 +142,7 @@
    "muse-voice-transcribe-1.0"
   ],
   "files_deleted": true,
+  "responses_delete_requested": 0,
   "notes": [
    "Meta keeps content as needed to run its service and to review abuse; it publishes no fixed period, and zero data retention isn't enabled. Safe Cut sends store: false and deletes its uploads.",
    "store: false doesn't cover Meta's short-lived in-memory prompt cache."
@@ -151,6 +152,7 @@
  "approved_at": "2026-10-27T10:10:00Z",
  "cost_usd": 0.91,
  "cost_usd_estimated": 0.0,
+ "cost_usd_baseten": 0.0,
  "prev_hash": null,
- "hash": "9a129731105f2a1c13db620d381281b2858ea828a870f361353ad66514d4f1fd"
+ "hash": "c18b2d32392c92bc4c14caa229561f35baffdd37f5fd9575de2fc1ff0e4406cd"
 }

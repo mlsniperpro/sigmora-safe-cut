@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 import hashlib
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -160,11 +161,33 @@ class FileStore:
         finally:
             for handle in handles:
                 handle.close()
-        await self._record(FileEntry(name=up.name, sha256=up.digest, file_id=file_id, created_at=now_utc()))
+        try:
+            await _finish(self._keep(file_id, up))
+        except asyncio.CancelledError:
+            if result.maybe_orphaned:
+                await asyncio.shield(self._record_orphan(up))
+            raise
         if result.maybe_orphaned:
             # An earlier attempt may have reached the server before it failed: clean up its copy.
             await self._recover_or_record(up)
         return file_id
+
+    async def _keep(self, file_id: str, up: _Upload) -> None:
+        """Record a successful upload. If recording fails, this frame is the only one that knows the copy: delete
+        it by ID, or failing that record an orphan, so ``files_deleted`` can never be claimed over it."""
+        try:
+            await self._record(FileEntry(name=up.name, sha256=up.digest, file_id=file_id, created_at=now_utc()))
+        except Exception:
+            try:
+                await self.client.request(
+                    "DELETE", f"files/{file_id}", _spec("files:cleanup", config.FILES_DELETE_TIMEOUT_S), meter=_no_cost
+                )
+            except MetaFileGone:
+                pass
+            except Exception:
+                with contextlib.suppress(Exception):
+                    await self._record_orphan(up)
+            raise
 
     async def _recover_or_record(self, up: _Upload) -> None:
         """Recover orphans; if that is itself cancelled, still record that a copy may exist."""
@@ -222,13 +245,48 @@ class FileStore:
             )
         await self._mark_deleted(file_id)
 
+    async def reconcile_orphans(self) -> None:
+        """Resolve orphan entries: list ``/files``, delete every unrecorded copy of each orphan's name, then
+        mark the orphan resolved (``deleted_at`` set), so a cancelled upload doesn't block ``files_deleted``.
+
+        Each name is reconciled under its upload lock, so an upload in flight is never mistaken for an orphan.
+        A failed listing or delete leaves the orphan open (the sweeper or the 6 h expiry covers it) and raises.
+        """
+        names = sorted({e.name for e in self.index().root if e.orphan and e.deleted_at is None})
+        for name in names:
+            async with self._name_locks.setdefault(name, asyncio.Lock()):
+                orphans = [e for e in self.index().root if e.name == name and e.orphan and e.deleted_at is None]
+                if not orphans:
+                    continue
+                listing = await self.client.request(
+                    "GET",
+                    "files",
+                    _spec("files:cleanup", config.FILES_DELETE_TIMEOUT_S),
+                    meter=_no_cost,
+                    params={"purpose": "user_data", "limit": "10000", "order": "desc"},
+                )
+                not_before = min(e.created_at for e in orphans).timestamp() - config.FILES_EXPIRES_AFTER_S
+                known = {e.file_id for e in self.index().root if e.file_id}
+                remote = f"{self.job_id}-{name}"
+                for file_id in _matching_uploads(listing.body, remote, None, not_before):
+                    if file_id not in known:
+                        copy = FileEntry(name=name, sha256=orphans[0].sha256, file_id=file_id, created_at=now_utc())
+                        await self._record(copy)
+                        await self._delete(file_id)
+                await self._change(functools.partial(_resolve_orphans, name))
+
     async def delete_all(self) -> bool:
-        """Delete every live upload of this job. Returns ``FilesIndex.all_deleted`` (the receipt's flag).
+        """Delete every live upload of this job and resolve its orphans. Returns ``FilesIndex.all_deleted``
+        (the receipt's flag). Call it once the job's uploads have finished.
 
         A failed delete leaves its entry undeleted (the hourly sweeper retries it) and is re-raised after
         the others were tried, so one failure never strands the rest.
         """
         first_error: MetaError | None = None
+        try:
+            await self.reconcile_orphans()
+        except MetaError as exc:
+            first_error = exc
         for entry in [e for e in self.index().root if e.file_id and e.deleted_at is None]:
             try:
                 await self._delete(cast(str, entry.file_id))
@@ -244,6 +302,23 @@ class FileStore:
         return [e for e in self.index().root if e.file_id and e.deleted_at is None and e.created_at < cutoff]
 
 
+def _resolve_orphans(name: str, entries: list[FileEntry]) -> None:
+    for i, entry in enumerate(entries):
+        if entry.name == name and entry.orphan and entry.deleted_at is None:
+            entries[i] = entry.model_copy(update={"deleted_at": now_utc()})
+
+
+async def _finish(coro: Coroutine[Any, Any, None]) -> None:
+    """Run ``coro`` to its end even if the caller is cancelled meanwhile; the cancellation is re-raised after."""
+    task = asyncio.ensure_future(coro)
+    try:
+        await asyncio.shield(task)
+    except asyncio.CancelledError:
+        with contextlib.suppress(Exception):
+            await task
+        raise
+
+
 def _file_id(body: Any) -> str:
     if isinstance(body, dict):
         fid = cast(dict[str, Any], body).get("id")
@@ -252,7 +327,7 @@ def _file_id(body: Any) -> str:
     raise MetaConfigError("upload response has no file id (expected 'file-…' or 'file_…')")
 
 
-def _matching_uploads(body: Any, remote_name: str, size: int, not_before: float) -> list[str]:
+def _matching_uploads(body: Any, remote_name: str, size: int | None, not_before: float) -> list[str]:
     if not isinstance(body, dict):
         return []
     data = cast(dict[str, Any], body).get("data")
@@ -267,7 +342,7 @@ def _matching_uploads(body: Any, remote_name: str, size: int, not_before: float)
         file_id = entry.get("id")
         if (
             entry.get("filename") == remote_name
-            and entry.get("bytes") == size
+            and (size is None or entry.get("bytes") == size)
             and isinstance(created, int | float)
             and created >= not_before
             and isinstance(file_id, str)

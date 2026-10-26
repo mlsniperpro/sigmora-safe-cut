@@ -432,7 +432,7 @@ def test_files_index_orphans_and_live_lookup() -> None:
 
 
 def _copy_example(tmp_path: Path) -> Path:
-    target = tmp_path / "job"
+    target = tmp_path / "j_example"
     shutil.copytree(EXAMPLE, target)
     return target
 
@@ -441,6 +441,15 @@ def _edit(path: Path, fn: Any) -> None:
     data = json.loads(path.read_text())
     fn(data)
     path.write_text(json.dumps(data))
+
+
+def _edit_receipt(job_dir: Path, fn: Any) -> None:
+    """Mutate receipt.json and re-seal it, so only the cross-file rule under test can fail."""
+    path = job_dir / "receipt.json"
+    data = json.loads(path.read_text())
+    data.pop("hash")
+    fn(data)
+    path.write_text(c.Receipt.seal(c.ReceiptBody.model_validate(data)).model_dump_json())
 
 
 @pytest.mark.parametrize(
@@ -467,6 +476,171 @@ def test_no_audio_clip_rejects_turns(tmp_path: Path) -> None:
     _edit(job_dir / "job.json", lambda d: d.update({"audio": False}))
     with pytest.raises(c.ContractError, match="without audio"):
         c.validate_job_dir(job_dir)
+
+
+def test_unmodified_example_copy_validates(tmp_path: Path) -> None:
+    assert set(c.validate_job_dir(_copy_example(tmp_path))) == set(c.JOB_FILES)
+
+
+def test_job_id_must_match_the_directory_name(tmp_path: Path) -> None:
+    job_dir = _copy_example(tmp_path)
+    renamed = job_dir.rename(tmp_path / "j_other")
+    with pytest.raises(c.ContractError, match="job directory name"):
+        c.validate_job_dir(renamed)
+
+
+@pytest.mark.parametrize(
+    ("name", "mutate", "message"),
+    [
+        ("roles.json", lambda d: d["tracks"][0].update({"track_id": "face:99"}), "unknown track face:99"),
+        ("roles.json", lambda d: d["tracks"][0].update({"frames": [1, 12]}), "job.frames"),
+        ("roles.json", lambda d: d["tracks"][1].update({"escalation_frames": [40]}), "job.frames"),
+        ("roles.json", lambda d: d["objects"][0].update({"track_id": "screen:9"}), "unknown track screen:9"),
+        ("roles.json", lambda d: d["objects"][0].update({"frames": [12]}), "job.frames"),
+        ("roles.json", lambda d: d["missed"][0].update({"frame": 12}), "job.frames"),
+        ("roles.json", lambda d: d["missed"][0].update({"box": [1200, 500, 1300, 560]}), "exceeds"),
+        ("roles.json", lambda d: d["missed"][0].update({"point": {"x": 1280, "y": 5}}), "outside"),
+        ("roles.json", lambda d: d["missed"][0].update({"track_ids": ["envelope:9"]}), "unknown track envelope:9"),
+        ("plan.json", lambda d: d["frames"]["5"][0].update({"item_id": "i_99"}), "unknown item i_99"),
+        ("decisions.json", lambda d: d["items"][4].update({"box": [1250, 200, 1300, 280]}), "exceeds"),
+        ("decisions.json", lambda d: d["items"][4].update({"first": 12, "last": 13}), "job.frames"),
+        ("decisions.json", lambda d: d["items"][4].update({"last": 12}), "job.frames"),
+        ("decisions.json", lambda d: d["items"][0].update({"evidence_frames": [1, 12]}), "job.frames"),
+        (
+            "audit.json",
+            lambda d: d.update({"spots": [{"spot_id": "s1", "first": 1, "last": 2, "boxes": {"1": [0, 0, 1281, 5]}}]}),
+            "exceeds",
+        ),
+        (
+            "audit.json",
+            lambda d: d.update({"spots": [{"spot_id": "s1", "first": 1, "last": 12, "boxes": {"12": [0, 0, 5, 5]}}]}),
+            "job.frames",
+        ),
+        (
+            "audit.json",
+            lambda d: d.update({"spots": [{"spot_id": "s1", "first": 1, "last": 12, "boxes": {"3": [0, 0, 5, 5]}}]}),
+            "job.frames",
+        ),
+    ],
+)
+def test_linked_file_checks_catch_inconsistencies(tmp_path: Path, name: str, mutate: Any, message: str) -> None:
+    job_dir = _copy_example(tmp_path)
+    _edit(job_dir / name, mutate)
+    with pytest.raises(c.ContractError, match=message):
+        c.validate_job_dir(job_dir)
+
+
+def test_roles_and_plan_links_are_skipped_when_the_other_file_is_absent(tmp_path: Path) -> None:
+    job_dir = _copy_example(tmp_path)
+    (job_dir / "tracks.json").unlink()
+    (job_dir / "decisions.json").unlink()
+    (job_dir / "receipt.json").unlink()
+    assert "roles.json" in c.validate_job_dir(job_dir)
+
+
+def _first_item_geometry(d: Any) -> None:
+    d["items"][4]["box"] = [1250, 200, 1300, 280]
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (lambda d: d.update({"job_id": "j_other"}), "receipt.json: job_id"),
+        (lambda d: d["items"].pop(), r"missing \['p_1'\]"),
+        (lambda d: d["items"].append(d["items"][0]), r"unexpected \['i_1'\]"),
+        (lambda d: d["items"][1].update({"item_id": "i_9"}), r"missing \['i_2'\], unexpected \['i_9'\]"),
+        (_first_item_geometry, "exceeds"),
+        (lambda d: d["audit"].update({"leaks_found": 2}), "audit.leaks_found 2 != audit.json 1"),
+        (lambda d: d["audit"].update({"frames_scanned": 11}), "audit.frames_scanned"),
+        (lambda d: d["audit"].update({"passes": 3}), "audit.passes"),
+        (lambda d: d["audit"].update({"unresolved": 1, "blocked_reason": "audit_failed"}), "audit.unresolved"),
+    ],
+)
+def test_receipt_must_agree_with_the_job_files(tmp_path: Path, mutate: Any, message: str) -> None:
+    job_dir = _copy_example(tmp_path)
+    _edit_receipt(job_dir, mutate)
+    with pytest.raises(c.ContractError, match=message):
+        c.validate_job_dir(job_dir)
+
+
+def test_files_deleted_needs_every_upload_deleted(tmp_path: Path) -> None:
+    job_dir = _copy_example(tmp_path)
+    _edit(job_dir / "files.json", lambda d: d[0].update({"deleted_at": None}))
+    with pytest.raises(c.ContractError, match="files_deleted is true"):
+        c.validate_job_dir(job_dir)
+    _edit_receipt(job_dir, lambda d: d["data_handling"].update({"files_deleted": False}))
+    assert "receipt.json" in c.validate_job_dir(job_dir)
+
+
+def test_receipt_cost_must_match_the_measured_meta_total(tmp_path: Path) -> None:
+    job_dir = _copy_example(tmp_path)
+    cost = job_dir / "cost.jsonl"
+    for line in (
+        _cost(job_id="j_example", usd=0.5),
+        _cost(job_id="j_example", usd=0.41),
+        _cost(job_id="j_example", usd=0.25, estimated=True),
+        _cost(job_id="j_example", usd=7.0, provider="baseten"),
+    ):
+        c.append_cost_line(line, cost)
+    with pytest.raises(c.ContractError, match=r"cost_usd_estimated 0\.0 != cost\.jsonl"):
+        c.validate_job_dir(job_dir)
+    _edit_receipt(job_dir, lambda d: d.update({"cost_usd_estimated": 0.25}))
+    assert "receipt.json" in c.validate_job_dir(job_dir)
+    _edit_receipt(job_dir, lambda d: d.update({"cost_usd": 0.92}))
+    with pytest.raises(c.ContractError, match=r"cost_usd 0\.92 != cost\.jsonl"):
+        c.validate_job_dir(job_dir)
+    _edit_receipt(job_dir, lambda d: d.update({"cost_usd": 0.91 + 5e-7}))
+    assert "receipt.json" in c.validate_job_dir(job_dir)
+
+
+# --- path-like fields -------------------------------------------------------
+
+BAD_RELATIVE_PATHS = [
+    "../../../etc/passwd",
+    "a/../../b.jpg",
+    "thumbs/..",
+    "/etc/passwd",
+    "C:/Windows/x.jpg",
+    "thumbs\\i_1.jpg",
+    "a\x00b.jpg",
+    "",
+]
+
+
+@pytest.mark.parametrize("bad", BAD_RELATIVE_PATHS)
+def test_job_prepared_must_be_a_relative_path(bad: str) -> None:
+    with pytest.raises(ValidationError):
+        c.Job.model_validate(_raw("job.json") | {"prepared": bad})
+
+
+@pytest.mark.parametrize("bad", BAD_RELATIVE_PATHS)
+def test_roles_keyframes_must_be_relative_paths(bad: str) -> None:
+    with pytest.raises(ValidationError):
+        c.Roles.model_validate(_raw("roles.json") | {"keyframes": ["som/000001.jpg", bad]})
+
+
+@pytest.mark.parametrize("bad", BAD_RELATIVE_PATHS)
+def test_receipt_item_thumbnail_must_be_a_relative_path(bad: str) -> None:
+    item = _raw("receipt.json")["items"][0]
+    with pytest.raises(ValidationError):
+        c.ReceiptItem.model_validate(item | {"thumbnail": bad})
+
+
+def test_relative_paths_that_stay_inside_the_job_are_accepted() -> None:
+    item = _raw("receipt.json")["items"][0]
+    for good in ("thumbs/i_1.jpg", "./thumbs/i_1.jpg", "a..b/c.jpg", "..x/y"):
+        assert c.ReceiptItem.model_validate(item | {"thumbnail": good}).thumbnail == good
+    assert c.ReceiptItem.model_validate(item | {"thumbnail": None}).thumbnail is None
+    assert c.Job.model_validate(_raw("job.json") | {"prepared": "clips/prepared.mp4"}).prepared == "clips/prepared.mp4"
+
+
+def test_job_source_is_an_upload_name_so_only_traversal_and_nul_are_rejected() -> None:
+    data = _raw("job.json")
+    for bad in ("../../etc/passwd", "a/../b.mp4", "..\\..\\b.mp4", "a\x00.mp4", ""):
+        with pytest.raises(ValidationError):
+            c.Job.model_validate(data | {"source": bad})
+    for good in ("SC-A-01.mp4", "/data/clips/SC-A-01.mp4", "https://example.com/a.mp4", "C:\\clips\\a.mp4"):
+        assert c.Job.model_validate(data | {"source": good}).source == good
 
 
 def test_now_utc_is_aware() -> None:

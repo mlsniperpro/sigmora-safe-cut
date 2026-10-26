@@ -42,7 +42,8 @@ Every stage reads and writes plain JSON in `jobs/<job_id>/`. That lets each WP d
 ```json
 {"job_id": "j_01", "source": "SC-A-01.mp4", "source_sha256": "…",
  "prepared": "prepared.mp4", "fps": 30, "width": 1280, "height": 720, "frames": 900,
- "times": [0.0, 0.0333], "audio": true, "created_at": "2026-10-27T10:00:00Z", "consented": false}
+ "times": [0.0, 0.0333], "audio": true, "created_at": "2026-10-27T10:00:00Z", "consented": false,
+ "open_weight_attempted": false}
 ```
 
 ### 3.2 `tracks.json` (track)
@@ -125,18 +126,22 @@ Publishing is allowed only when `unresolved == 0`.
 {"job_id": "j_01", "items": [/* decisions.items + thumbnail paths */], "audit": {/* audit summary */},
  "models": {"scene": "muse-wonder-1.0", "roles": "muse-spark-1.3", "sam": "sam-3.1", "asr": "muse-voice-transcribe-1.0"},
  "data_handling": {"mode": "standard", "store": false, "store_by_model": {"muse-spark-1.3": false},
-                   "no_store_param": ["muse-voice-transcribe-1.0"], "files_deleted": true, "notes": []},
+                   "no_store_param": ["muse-voice-transcribe-1.0"], "files_deleted": true,
+                   "responses_delete_requested": 0, "notes": []},
  "approved_by": "creator", "approved_at": "…", "cost_usd": 0.91, "cost_usd_estimated": 0,
- "prev_hash": "…", "hash": "sha256(prev_hash + canonical_json(body))"}
+ "cost_usd_baseten": 0, "prev_hash": "…", "hash": "sha256(prev_hash + canonical_json(body))"}
 ```
 
 ### 3.10 `cost.jsonl`
 One line per API attempt: `{"ts", "provider", "job_id", "stage", "model", "attempt", "units", "usd", "estimated", "request_id", "cap", "code_kind", "code_id"}`. `estimated: true` marks an attempt whose billing is unknown (accepted, then lost); reported figures sum only `estimated: false` lines. A call whose worst-case estimate doesn't fit a cap is never sent and writes one `budget:<stage>` line naming the `cap`. `job_id` is null only on `system` lines (`/healthz`, the startup probe).
 
 ### 3.11 `files.json`
-A JSON array, one entry per upload: `[{"name": "sam_proxy.mp4", "sha256": "…", "file_id": "file-…", "purpose": "user_data", "created_at": "…Z", "deleted_at": null, "orphan": false}]`. Written before the file is used; `deleted_at` is set when `DELETE /v1/files/{id}` succeeds (or answers `file_not_found`). An upload whose ID never arrived is `file_id: null, orphan: true`, and `files_deleted: true` needs every entry deleted and no orphan.
+A JSON array, one entry per upload: `[{"name": "sam_proxy.mp4", "sha256": "…", "file_id": "file-…", "purpose": "user_data", "created_at": "…Z", "deleted_at": null, "orphan": false}]`. Written before the file is used; `deleted_at` is set when `DELETE /v1/files/{id}` succeeds (or answers `file_not_found`). An upload whose ID never arrived is `file_id: null, orphan: true`; the orphan is resolved (`deleted_at` set) once a `/files` listing found and deleted every unrecorded copy of its name (`FileStore.reconcile_orphans`, run by `delete_all`). `files_deleted: true` needs every entry, orphans included, to have `deleted_at` set.
 
-**Types and rules** live in `safecut/contracts.py` (PRE-A §12 implemented): boxes are int, half-open and non-empty; `job.fps` is an int 1–30 and `times` is non-decreasing; masks are frame-sized COCO RLE objects; `status` fields are `ok|failed|skipped`; children are always locked hides; an `audit_patch` item carries `box`/`first`/`last` and an `A<n>` label; `blocked_reason` is set exactly when `unresolved > 0`. `fixtures/contracts/j_example/` is a complete, cross-checked job directory.
+### 3.12 `responses.json`
+Only when SAM is called without `store: false` (`SAFECUT_SAM_SEND_STORE=false`): `[{"response_id": "resp_…", "requested_at": null}]`. The SAM client appends each response ID when the call completes, before parsing (`sam.ResponseLog.note`); after parsing, `ResponseLog.delete_pending` sends `DELETE /v1/responses/{id}` and sets `requested_at` (a 404 counts as done). A failed DELETE stays `null` for the cancel sweep and the hourly sweeper. The receipt's `data_handling.responses_delete_requested` counts the entries with `requested_at` set; Meta soft-deletes, so the receipt says "deletion requested", never "deleted".
+
+**Types and rules** live in `safecut/contracts.py` (PRE-A §12 implemented): boxes are int, half-open and non-empty; `job.fps` is an int 1–30 and `times` is non-decreasing; masks are frame-sized COCO RLE objects; `status` fields are `ok|failed|skipped`; children are always locked hides; an `audit_patch` item carries `box`/`first`/`last` and an `A<n>` label; `blocked_reason` is set exactly when `unresolved > 0`. Path fields (`job.prepared`, `roles.keyframes[]`, `receipt.items[].thumbnail`) are job-relative: no absolute path, `..` segment, backslash or NUL (`job.source` is the upload's own name and only rejects `..` and NUL). `validate_job_dir` cross-checks the files: `job_id` equals the directory name; IDs, frames and boxes in roles, decisions (including audit patches), plan and audit spots exist in the files they point at; and the receipt agrees with the job (`job_id`, item IDs, audit counts, `files_deleted` vs `files.json`, and `cost_usd`/`cost_usd_estimated` vs the Meta lines of `cost.jsonl` when present). `fixtures/contracts/j_example/` is a complete, cross-checked job directory.
 
 ## 4. Models and config (env, with defaults in `safecut/config.py`)
 
@@ -153,6 +158,7 @@ A JSON array, one entry per upload: `[{"name": "sam_proxy.mp4", "sha256": "…",
 | `SAFECUT_SPEECH_FALLBACK_MODEL` / `_EFFORT` | `muse-spark-1.2` / `omit` | speech fallback through the video soundtrack | PRE-A §3.4 |
 | `SAFECUT_ROLE_EFFORT`, `SAFECUT_SCENE_EFFORT`, `SAFECUT_REDTEAM_MODEL`, `SAFECUT_REDTEAM_EFFORT` | `medium`, `medium`, `muse-spark-1.3`, `medium` | efforts per pass | every effort is validated; `none` is refused (Meta returns 400) |
 | `SAFECUT_OPEN_WEIGHT_AUDIT`, `_MODEL`, `_BASE_URL`, `_EFFORT`, `_JOB_USD_CAP`, `_PRICE`, `_GRID_OK`, `_CODE_KINDS` | `off`, `meta-models/muse-spark-open-1026`, `https://inference.baseten.co/v1`, `medium`, `0.50`, none, `false`, `[]` | the open-weight second opinion in the audit (Muse Spark Open on Baseten, PRE-A §3.8) | Baseten credits, outside the $150; `provider: "baseten"` cost lines; key in `BASETEN_API_KEY` |
+| `SAFECUT_SAM_SEND_STORE`, `SAFECUT_SAM_DELETE_RESPONSES` | `true`, unset (= on exactly when `SAM_SEND_STORE` is `false`) | whether SAM is sent `store: false`; if it can't be, delete each SAM response after parsing (§3.12) | AGENTS rule 6; PRE-A §10.6 |
 | `MODEL_API_KEY` | none | Meta Model API key | secret; never logged |
 
 The full list (access codes, code windows, pilot and recording caps, R2 storage, EgoBlur, the test line) is in `safecut/config.py` and `.env.example`; PRE-A §12 explains each.

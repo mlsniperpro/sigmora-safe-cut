@@ -41,7 +41,7 @@ def test_classify_total(status: int, body: Any) -> None:
     assert err.status == status
     if status in (429, 500, 502, 503):
         assert err.retryable
-    if 400 <= status < 429 or status == 504:
+    if 400 <= status < 429 or (status >= 500 and status not in (500, 502, 503)):
         assert not err.retryable
 
 

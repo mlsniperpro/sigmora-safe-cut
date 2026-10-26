@@ -3,7 +3,8 @@
 Every stage reads and writes these files, so a change here is a contract change (AGENTS rule 3):
 update ARCHITECTURE §3 in the same PR. Coordinates are pixels of the prepared clip; boxes are
 half-open ``[x1, y1, x2, y2)`` ints; frames are 0-based prepared-clip indices. Per-file rules are
-model validators; rules that need two files (box bounds, mask sizes) live in :func:`validate_job_dir`.
+model validators; rules that need two files (box bounds, mask sizes, ID links, receipt totals) live in
+:func:`validate_job_dir`.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import hashlib
 import json
 import os
 import tempfile
+from collections import Counter
 from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -48,6 +50,39 @@ def _box(value: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
 
 Box = Annotated[tuple[int, int, int, int], AfterValidator(_box)]
 """Half-open pixel box ``[x1, y1, x2, y2)`` in prepared-clip pixels."""
+
+
+def _rel_path(value: str) -> str:
+    if not value:
+        raise ValueError("path is empty")
+    if "\x00" in value:
+        raise ValueError("path contains a NUL byte")
+    if "\\" in value:
+        raise ValueError(f"path {value!r} contains a backslash (paths use '/')")
+    if value.startswith("/") or (len(value) > 1 and value[1] == ":" and value[0].isalpha()):
+        raise ValueError(f"path {value!r} is absolute (job-relative paths only)")
+    if ".." in value.split("/"):
+        raise ValueError(f"path {value!r} has a '..' segment (it would leave the job directory)")
+    return value
+
+
+RelPath = Annotated[str, AfterValidator(_rel_path)]
+"""A path inside the job directory: not empty, relative, forward slashes, no ``..`` segment, no NUL."""
+
+
+def _source_name(value: str) -> str:
+    if not value:
+        raise ValueError("source is empty")
+    if "\x00" in value:
+        raise ValueError("source contains a NUL byte")
+    if ".." in value.replace("\\", "/").split("/"):
+        raise ValueError(f"source {value!r} has a '..' segment")
+    return value
+
+
+SourceName = Annotated[str, AfterValidator(_source_name)]
+"""The original upload's name (or the path or URL it was read from): never a job-dir path, so only
+NUL and ``..`` traversal are rejected."""
 
 Frame = NonNegativeInt
 Role = Literal["participant", "bystander", "child", "unsure"]
@@ -92,9 +127,9 @@ class Point(Contract):
 
 class Job(Contract):
     job_id: str = Field(min_length=1, pattern=r"^[A-Za-z0-9_-]+$")
-    source: str = Field(min_length=1)
+    source: SourceName
     source_sha256: str = Field(pattern=SHA256_PATTERN)
-    prepared: str = Field(min_length=1)
+    prepared: RelPath
     fps: int = Field(ge=1, le=30)
     width: PositiveInt
     height: PositiveInt
@@ -105,6 +140,8 @@ class Job(Contract):
     #: Gates the open-weight second opinion (PRE-A §3.8): true only for owner/recording codes (WP5) or the
     #: hero/dev eval splits; missing means false (fail closed).
     consented: StrictBool = False
+    #: The open-weight second opinion runs at most once per job, across audit re-runs (PRE-A §12, WP4).
+    open_weight_attempted: StrictBool = False
 
     @model_validator(mode="after")
     def _times(self) -> Job:
@@ -332,7 +369,7 @@ class Roles(Contract):
     tracks: list[RoleTrack]
     objects: list[RoleObject] = Field(default_factory=list[RoleObject])
     missed: list[Missed] = Field(default_factory=list[Missed])
-    keyframes: list[str] = Field(default_factory=list[str])
+    keyframes: list[RelPath] = Field(default_factory=list[RelPath])
 
     @model_validator(mode="after")
     def _status(self) -> Roles:
@@ -561,7 +598,7 @@ class Audit(Contract):
 
 
 class ReceiptItem(DecisionItem):
-    thumbnail: str | None = None
+    thumbnail: RelPath | None = None
 
 
 class ReceiptAudit(Contract):
@@ -580,6 +617,9 @@ class DataHandling(Contract):
     store_by_model: dict[str, bool]
     no_store_param: list[str]
     files_deleted: bool
+    #: SAM responses whose deletion was requested (``responses.json`` entries with ``requested_at`` set) when
+    #: ``store: false`` can't be sent; 0 when none were needed. Meta soft-deletes, so it's "deletion requested".
+    responses_delete_requested: NonNegativeInt
     notes: list[str] = Field(default_factory=list[str])
 
     @model_validator(mode="after")
@@ -604,6 +644,8 @@ class ReceiptBody(Contract):
     approved_at: UtcDatetime
     cost_usd: float = Field(ge=0)
     cost_usd_estimated: float = Field(default=0, ge=0)
+    #: Baseten spend (``provider: "baseten"`` cost lines), shown apart from the Meta ``cost_usd`` (PRE-A §3.8).
+    cost_usd_baseten: float = Field(default=0, ge=0)
     prev_hash: str | None = Field(pattern=SHA256_PATTERN)
 
 
@@ -690,13 +732,35 @@ class FileEntry(Contract):
 class FilesIndex(RootModel[list[FileEntry]]):
     @property
     def all_deleted(self) -> bool:
-        """``files_deleted: true`` needs every upload deleted and no orphan left (PRE-A §10.4)."""
-        return all(e.deleted_at is not None and not e.orphan for e in self.root)
+        """``files_deleted: true`` needs every upload deleted and every orphan resolved (PRE-A §10.4).
+
+        An orphan (an upload whose ID never arrived) is resolved, ``deleted_at`` set, only after a listing found
+        and deleted every unrecorded copy of its name (``FileStore.reconcile_orphans``).
+        """
+        return all(e.deleted_at is not None for e in self.root)
 
     def live(self, name: str) -> FileEntry | None:
         """The newest undeleted entry with a file ID for ``name``."""
         matches = [e for e in self.root if e.name == name and e.file_id and e.deleted_at is None]
         return max(matches, key=lambda e: e.created_at) if matches else None
+
+
+class ResponseEntry(Contract):
+    """One SAM response kept at Meta because ``store: false`` couldn't be sent (PRE-A §10.4 "SAM responses")."""
+
+    response_id: str = Field(min_length=1)
+    requested_at: UtcDatetime | None = None
+
+
+class ResponsesIndex(RootModel[list[ResponseEntry]]):
+    @property
+    def requested(self) -> int:
+        """The receipt's ``data_handling.responses_delete_requested``."""
+        return sum(e.requested_at is not None for e in self.root)
+
+    @property
+    def pending(self) -> list[str]:
+        return [e.response_id for e in self.root if e.requested_at is None]
 
 
 # ---------------------------------------------------------------------------
@@ -714,6 +778,7 @@ JOB_FILES: Mapping[str, type[BaseModel]] = {
     "audit.json": Audit,
     "receipt.json": Receipt,
     "files.json": FilesIndex,
+    "responses.json": ResponsesIndex,
 }
 
 
@@ -811,6 +876,9 @@ def _summarise(exc: ValidationError) -> str:
 # ---------------------------------------------------------------------------
 
 
+_COST_TOLERANCE = 1e-6
+
+
 def _check_box(box: tuple[int, int, int, int], job: Job, where: str) -> None:
     if box[2] > job.width or box[3] > job.height:
         raise ContractError(f"{where}: box {list(box)} exceeds the {job.width}x{job.height} frame")
@@ -844,10 +912,13 @@ def _check_transcript(transcript: Transcript, job: Job) -> None:
         raise ContractError("transcript.json: a successful transcript with audio needs source_kind")
 
 
-def _check_plan(plan: Plan, job: Job) -> None:
+def _check_plan(plan: Plan, job: Job, decisions: Decisions | None) -> None:
+    known = None if decisions is None else {i.item_id for i in decisions.items}
     for frame, entries in plan.frames.items():
         _check_frame(frame, job, "plan.json frames")
         for e in entries:
+            if known is not None and e.item_id not in known:
+                raise ContractError(f"plan.json frame {frame}: unknown item {e.item_id} (not in decisions.json)")
             _check_box(e.box, job, f"plan.json frame {frame} {e.item_id}")
             if e.mask is not None:
                 _check_rle(e.mask, job, f"plan.json frame {frame} {e.item_id}")
@@ -857,15 +928,65 @@ def _check_plan(plan: Plan, job: Job) -> None:
             _check_frame(frame, job, "plan.json crowd_fills")
 
 
-def _check_decisions(decisions: Decisions, tracks: Tracks) -> None:
-    known = {t.track_id for t in tracks.tracks}
+def _check_roles(roles: Roles, job: Job, tracks: Tracks | None) -> None:
+    known = None if tracks is None else {t.track_id for t in tracks.tracks}
+
+    def check_track(track_id: str, where: str) -> None:
+        if known is not None and track_id not in known:
+            raise ContractError(f"{where}: unknown track {track_id} (not in tracks.json)")
+
+    for t in roles.tracks:
+        where = f"roles.json track {t.track_id}"
+        check_track(t.track_id, where)
+        for frame in [*t.frames, *(t.escalation_frames or [])]:
+            _check_frame(frame, job, where)
+    for obj in roles.objects:
+        where = f"roles.json object {obj.track_id}"
+        check_track(obj.track_id, where)
+        for frame in obj.frames:
+            _check_frame(frame, job, where)
+    for m in roles.missed:
+        where = f"roles.json missed {m.sam_phrase!r}"
+        _check_frame(m.frame, job, where)
+        if m.box is not None:
+            _check_box(m.box, job, where)
+        if m.point is not None and (m.point.x >= job.width or m.point.y >= job.height):
+            raise ContractError(
+                f"{where}: point ({m.point.x}, {m.point.y}) is outside the {job.width}x{job.height} frame"
+            )
+        for track_id in m.track_ids:
+            check_track(track_id, where)
+
+
+def _check_item(item: DecisionItem, job: Job, where: str) -> None:
+    """Frame and box bounds of one decision item (a receipt item is a copy of one)."""
+    for frame in item.evidence_frames:
+        _check_frame(frame, job, f"{where} evidence_frames")
+    if item.box is not None:
+        _check_box(item.box, job, where)
+    for frame in (item.first, item.last):
+        if frame is not None:
+            _check_frame(frame, job, where)
+
+
+def _check_decisions(decisions: Decisions, job: Job, tracks: Tracks | None) -> None:
+    known = None if tracks is None else {t.track_id for t in tracks.tracks}
     for item in decisions.items:
-        missing = [tid for tid in item.track_ids if tid not in known]
-        if missing:
-            raise ContractError(f"decisions.json {item.item_id}: unknown track {missing[0]}")
+        where = f"decisions.json {item.item_id}"
+        if known is not None:
+            missing = [tid for tid in item.track_ids if tid not in known]
+            if missing:
+                raise ContractError(f"{where}: unknown track {missing[0]}")
+        _check_item(item, job, where)
 
 
 def _check_audit(audit: Audit, job: Job) -> None:
+    for spot in audit.spots:
+        where = f"audit.json spot {spot.spot_id}"
+        _check_frame(spot.last, job, where)
+        for frame, box in spot.boxes.items():
+            _check_frame(frame, job, where)
+            _check_box(box, job, f"{where} frame {frame}")
     for leak in audit.leaks:
         _check_frame(leak.frame, job, "audit.json leaks")
         _check_box(leak.box, job, f"audit.json leak at frame {leak.frame}")
@@ -876,6 +997,57 @@ def _check_audit(audit: Audit, job: Job) -> None:
                 _check_box(entry.box, job, f"audit.json {name} at frame {entry.frame}")
 
 
+def _check_receipt(
+    receipt: Receipt,
+    job: Job,
+    *,
+    decisions: Decisions | None,
+    audit: Audit | None,
+    files: FilesIndex | None,
+    responses: ResponsesIndex | None,
+    cost_path: Path,
+) -> None:
+    if receipt.job_id != job.job_id:
+        raise ContractError(f"receipt.json: job_id {receipt.job_id!r} != job.json job_id {job.job_id!r}")
+    for item in receipt.items:
+        _check_item(item, job, f"receipt.json {item.item_id}")
+    if decisions is not None:
+        receipt_ids = Counter(i.item_id for i in receipt.items)
+        decision_ids = Counter(i.item_id for i in decisions.items)
+        if receipt_ids != decision_ids:
+            missing = sorted((decision_ids - receipt_ids).elements())
+            extra = sorted((receipt_ids - decision_ids).elements())
+            raise ContractError(
+                f"receipt.json items do not match decisions.json: missing {missing}, unexpected {extra}"
+            )
+    if audit is not None:
+        summary = receipt.audit
+        for name, got, want in (
+            ("frames_scanned", summary.frames_scanned, audit.frames_scanned),
+            ("leaks_found", summary.leaks_found, len(audit.leaks)),
+            ("unresolved", summary.unresolved, audit.unresolved),
+            ("passes", summary.passes, audit.passes),
+            ("blocked_reason", summary.blocked_reason, audit.blocked_reason),
+        ):
+            if got != want:
+                raise ContractError(f"receipt.json audit.{name} {got!r} != audit.json {want!r}")
+    if receipt.data_handling.files_deleted and files is not None and not files.all_deleted:
+        raise ContractError("receipt.json: files_deleted is true but files.json has an undeleted or orphan upload")
+    if responses is not None and receipt.data_handling.responses_delete_requested != responses.requested:
+        raise ContractError(
+            f"receipt.json: responses_delete_requested {receipt.data_handling.responses_delete_requested}"
+            f" != {responses.requested} requested in responses.json"
+        )
+    if cost_path.exists():
+        measured, estimated = measured_usd(read_cost_lines(cost_path), provider="meta")
+        for name, got, want in (
+            ("cost_usd", receipt.cost_usd, measured),
+            ("cost_usd_estimated", receipt.cost_usd_estimated, estimated),
+        ):
+            if abs(got - want) > _COST_TOLERANCE:
+                raise ContractError(f"receipt.json {name} {got} != cost.jsonl Meta total {want}")
+
+
 def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:
     """Load every contract file present in ``job_dir`` and run the cross-file checks.
 
@@ -884,23 +1056,46 @@ def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:
     """
     job_dir = Path(job_dir)
     job = load(job_dir / "job.json", Job)
+    dir_name = job_dir.resolve().name
+    if job.job_id != dir_name:
+        raise ContractError(f"job.json: job_id {job.job_id!r} != job directory name {dir_name!r}")
     loaded: dict[str, BaseModel] = {"job.json": job}
     for name, model in JOB_FILES.items():
         if name != "job.json" and (job_dir / name).exists():
             loaded[name] = load(job_dir / name, model)
     tracks = loaded.get("tracks.json")
-    if isinstance(tracks, Tracks):
-        _check_tracks(tracks, job)
+    tracks = tracks if isinstance(tracks, Tracks) else None
+    decisions = loaded.get("decisions.json")
+    decisions = decisions if isinstance(decisions, Decisions) else None
+    audit = loaded.get("audit.json")
+    audit = audit if isinstance(audit, Audit) else None
+    files = loaded.get("files.json")
+    files = files if isinstance(files, FilesIndex) else None
     transcript = loaded.get("transcript.json")
+    roles = loaded.get("roles.json")
+    plan = loaded.get("plan.json")
+    receipt = loaded.get("receipt.json")
+    if tracks is not None:
+        _check_tracks(tracks, job)
     if isinstance(transcript, Transcript):
         _check_transcript(transcript, job)
-    plan = loaded.get("plan.json")
+    if isinstance(roles, Roles):
+        _check_roles(roles, job, tracks)
+    if decisions is not None:
+        _check_decisions(decisions, job, tracks)
     if isinstance(plan, Plan):
-        _check_plan(plan, job)
-    decisions = loaded.get("decisions.json")
-    if isinstance(decisions, Decisions) and isinstance(tracks, Tracks):
-        _check_decisions(decisions, tracks)
-    audit = loaded.get("audit.json")
-    if isinstance(audit, Audit):
+        _check_plan(plan, job, decisions)
+    if audit is not None:
         _check_audit(audit, job)
+    if isinstance(receipt, Receipt):
+        responses = loaded.get("responses.json")
+        _check_receipt(
+            receipt,
+            job,
+            decisions=decisions,
+            audit=audit,
+            files=files,
+            responses=responses if isinstance(responses, ResponsesIndex) else None,
+            cost_path=job_dir / "cost.jsonl",
+        )
     return loaded

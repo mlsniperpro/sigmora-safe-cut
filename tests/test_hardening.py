@@ -159,7 +159,7 @@ def test_guard_requires_an_explicit_store_false() -> None:
 
 
 async def test_sam_without_store_param_passes_the_guard(
-    make_harness: Callable[..., Harness], mock_api: respx.MockRouter, settings: Settings
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter, settings: Settings, tmp_path: Path
 ) -> None:
     cfg = settings.model_copy(update={"sam_send_store": False})
     h = make_harness(cfg=cfg)
@@ -168,7 +168,7 @@ async def test_sam_without_store_param_passes_the_guard(
         return_value=stream_response(completed({"id": "r", "status": "completed", "usage": usage}))
     )
     body = sam.video_body(cfg, file_id="file-1", text="face")
-    result = await sam.segment_video(h.client, body, sam_frames=60)
+    result = await sam.segment_video(h.client, body, sam_frames=60, responses=sam.ResponseLog(tmp_path))
     assert result.usd == pytest.approx(0.012)
     assert "store" not in json.loads(route.calls[0].request.content)
 
@@ -263,7 +263,13 @@ async def test_cancelled_upload_records_an_orphan(
         await task
     (entry,) = store.index().root
     assert entry.orphan
-    assert await store.delete_all() is False
+    assert not store.index().all_deleted
+    # delete_all reconciles the orphan: the listing shows the copy the cancelled upload left (audit #5 L2).
+    copy = {"id": "file-77", "filename": "j_test-sam_proxy.mp4", "bytes": 300, "created_at": time.time()}
+    mock_api.get("/files").mock(return_value=httpx.Response(200, json={"data": [copy]}))
+    gone = mock_api.delete("/files/file-77").mock(return_value=httpx.Response(200, json={"deleted": True}))
+    assert await store.delete_all() is True
+    assert gone.call_count == 1
 
 
 async def test_cleanup_works_while_the_breaker_is_open(
