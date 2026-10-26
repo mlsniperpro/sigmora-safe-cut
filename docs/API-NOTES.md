@@ -734,6 +734,8 @@ Nothing is implemented yet (there's no code before kickoff), so these are **chan
 
 Not contract changes: a job's `retry_later` state lives in WP5's job record (API), not in a stage file. `job.json` keeps ARCHITECTURE §3.1's fields, with the meanings in §5b.
 
+Requests to the owner (no WP owns these files): `.gitignore` line 11 `jobs/` → `/jobs/` plus `!fixtures/jobs/**` (it silently drops WP6's `/jobs/[id]` routes and WP1's `fixtures/jobs/hero1/`), and a `!web/public/hero/**/*.mp4` exception if the landing ships a video (BLOCKED-PRE-A).
+
 Requests to PRE-B (PR #2):
 - **open (new, audit #45 C):** RULES-CHECKLIST l.26 (and WIN-CHECKLIST-PRE-B l.21) say the open-weight audit waits on WP0 "probe g"; it is **probe h** (WP0.md's g is image points, §3.8). Wherever Muse Spark Open is named (STORYBOARD end card, RULES-CHECKLIST l.28/l.101 models line, UI-SPEC l.163, README), add "the Muse Spark Open second opinion ran on the recorded hero runs only; the test-split numbers were measured without it" (§3.8 scope, §12 WP7 deviation; AGENTS rule 9). BLOCKED-PRE-B l.58: "add the card **first** (else every call answers `402 billing_not_configured`); set a spend limit or turn auto top-up off if the console offers it" (BLOCKED-PRE-A);
 - **done @ `ca8b4fa` (filed in audit #44 C):** the data-flow copy (UI-SPEC l.214, l.352; PILOTS l.65; the receipt notes) names only Meta's Model API; when `SAFECUT_OPEN_WEIGHT_AUDIT=on` (§3.8) add: "A second check sends sampled frames to an open-weight model hosted by Baseten; see the receipt for its retention terms.";
