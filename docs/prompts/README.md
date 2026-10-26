@@ -15,7 +15,7 @@ Test vectors for the deterministic rules around these calls (vote aggregation, e
 
 ## Rules that apply to every prompt
 1. **Standard models only**, `store: false`, files deleted afterwards (AGENTS rule 6).
-2. **Structured output on every call:** `text.format = {type: "json_schema", name, strict: true, schema}`. Every object sets `additionalProperties: false` and lists *every* property in `required`, so optional values are nullable instead. No recursive `$ref` (API-NOTES §3.2). Validate again with pydantic; on a validation failure, re-ask once (API-NOTES §10.6) and then fail closed. Transport retries follow API-NOTES §10.2 only.
+2. **Structured output on every call** (except the open-weight second opinion on Baseten, which has no structured outputs; `redteam.md` "Second opinion"): `text.format = {type: "json_schema", name, strict: true, schema}`. Every object sets `additionalProperties: false` and lists *every* property in `required`, so optional values are nullable instead. No recursive `$ref` (API-NOTES §3.2). Validate again with pydantic; on a validation failure, re-ask once (API-NOTES §10.6) and then fail closed. Transport retries follow API-NOTES §10.2 only.
 3. **Fail closed.** Any failure (HTTP error after retries, refusal, truncated JSON, schema mismatch) yields *no* "keep" evidence. Everything stays hidden and is marked `needs_you`. A model call can only ever **add** reasons to show something; it can never be required in order to hide something.
 4. **Never trust free-text times.** Only frame numbers that are burned into an image the model saw count as evidence. Scene-pass times are context only.
 5. **Stable prefix first** (system text, schema, scene context, images), per-call variation last, for prompt caching (API-NOTES §3.7).
