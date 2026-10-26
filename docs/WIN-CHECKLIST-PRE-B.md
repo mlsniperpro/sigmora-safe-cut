@@ -2,7 +2,7 @@
 
 Status: **live, updated each audit round** (first version 2026-10-24 17:30 UTC). This maps every judging criterion, every PRE-B deliverable and every audit finding to the evidence that covers it. The file name carries `-PRE-B` so it can't collide with PRE-A's `docs/WIN-CHECKLIST-PRE-A.md`.
 
-Judging facts are from [MAXXING.md](MAXXING.md) §1 and §3 (to be re-checked against the official rules on Oct 26, [RULES-CHECKLIST.md](RULES-CHECKLIST.md) §8).
+Judging facts are from the official participant guide, [OFFICIAL-GUIDE.md](OFFICIAL-GUIDE.md) (captured 2026-10-26 16:25Z), whose answers are applied in [RULES-CHECKLIST.md](RULES-CHECKLIST.md) §0; the weights match [MAXXING.md](MAXXING.md) §3.
 
 **Marks:** `[x]` done, with the evidence named on the line · `[P]` the PRE-B part is done, and the rest depends on an owner input in [BLOCKED-PRE-B.md](BLOCKED-PRE-B.md) or on a later WP building from this spec · `[-]` superseded or not applicable, with the reason. No line is left unmarked.
 
@@ -13,7 +13,12 @@ Judging facts are from [MAXXING.md](MAXXING.md) §1 and §3 (to be re-checked ag
 - [P] **Technical depth (20%)**: Hard parts solved, not glued. Evidence: Ground truth that isn't SAM-derived (LABELING-GUIDE §2.4); MOT export behaviour answered from CVAT v2.80.0 source ([CVAT-SETUP.md](labeling/CVAT-SETUP.md) §7.1); exact label schema, validator codes and test vectors ([LABEL-FORMAT.md](labeling/LABEL-FORMAT.md) §6–9); frame-accurate overlay on PRE-A's time axes (UI-SPEC §3.6, §10.6). Builder: WP6, WP7. Waiting on: build: WP6, WP7
 - [P] **Demo (25%)**: It works live and the video lands. Evidence: 20-shot storyboard at 2:50 with every number traced to a `metrics.json` (STORYBOARD §1–2); 11 named screen recordings (§3); demo-mode banner for replay (UI-SPEC §6); cut plans down to 2:00 and below (RULES-CHECKLIST §4). Builder: WP6, WP8, owner. Waiting on: owner input: hero footage, VO
 - [P] **Startup: holds up in production**: A deployed, safe, observable service. Evidence: Every state, validation rule, error and retry policy (UI-SPEC §2.6, §3.7, §10.2–10.4); deletion promise tied to the live cleanup (PILOTS §4); receipt and audit wording that can't overstate (UI-SPEC §5, distinct `patched_item` count). Builder: WP5, WP6. Waiting on: build: WP5, WP6
-- [x] **Bonus: community vote / most viral**: Shareable proof. Evidence: Rules-day actions for both bonus mechanics (RULES-CHECKLIST §6). Builder: WP8.
+- [x] **Stage 1 (pass/fail): theme fit and real Meta model use**: Build for Your World; Muse Spark, SAM 3.1 and Muse Voice Transcribe through the Meta Model API; not an anti-project. Evidence: RULES-CHECKLIST §0 (theme, anti-project and models rows).
+- [P] **New work only: a visible made-during-the-event boundary**: Evidence: RULES-CHECKLIST §0 (README and `SUBMISSION.md` "Built during the event" paragraph), STORYBOARD 9.1 end card with `{first_code_commit}`, the Sigmora label in 8.1. Builder: WP8.
+- [P] **Submission package: three-minute video, live product, public repo, every contributor listed**: Evidence: STORYBOARD (2:50), UI-SPEC (live product), BLOCKED-PRE-B (repo public once the owner OKs it, before submitting; contributors on the form). Owner input: BLOCKED-PRE-B.
+- [x] **Bonus: Community Vote / Most Viral**: Shareable proof. Evidence: RULES-CHECKLIST §0 and §6 (the demo posted on X before submitting, its link in the submission; the gallery link from Nov 9); BLOCKED-PRE-B Nov 4 steps. Builder: WP8.
+- [P] **Bonus: Best Agentic Use-Case**: Autonomy, task completion, usefulness. Evidence: RULES-CHECKLIST §0 (the miss loop, self-audit with patch loop and fail-closed holds, named in the submission). Builder: WP8.
+- [P] **Bonus: Best Build on Meta Open-Weight Models**: Evidence: RULES-CHECKLIST §0 (a request to PRE-A and the WP owners to decide by Oct 28; Baseten id `meta-models/muse-spark-open-1026`); BLOCKED-PRE-B (Baseten credits). Not PRE-B's decision (AGENTS rule 2).
 
 ## 2. PRE-B deliverables ([PRE-B.md](work-packages/PRE-B.md))
 
@@ -530,6 +535,13 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#494 (win audit 43)**: (audit B) The empty-MIME sentence put derivation in the reject branch. Fix: reworded.
 - [x] **#495 (win audit 43)**: (audit B) A pending `A?` chip had no kind source. Fix: no kind until `SERVER_ACK`.
 - [x] **#496 (win audit 43)**: (audit A) "Never Contributor mode" overclaimed given Meta's tier routing (PRE-A §7). Fix: "Standard-mode model IDs only" in UI-SPEC and PILOTS.
+- [x] **#497 (official guide)**: (official guide) WIN-CHECKLIST's judging facts pointed at MAXXING pending the rules. Fix: OFFICIAL-GUIDE.md committed verbatim; §1 cites it; Stage 1, new-work, submission-package and bonus rows added.
+- [x] **#498 (official guide)**: (official guide) RULES-CHECKLIST had no answers yet. Fix: §0 with an action per guide clause (theme, anti-projects, new work, team, track, video, live product, repo, weights, deadline, four bonus prizes, model list).
+- [x] **#499 (official guide)**: (official guide) BLOCKED made the repo public at kickoff; the owner keeps it private until they OK it. Fix: public before submitting, after the owner's OK.
+- [x] **#500 (official guide)**: (official guide) Most Viral needs the X post link in the submission, but the plan held all posts until after submitting. Fix: the demo goes on X just before submitting; RULES-CHECKLIST §6 silent default updated; BLOCKED step.
+- [x] **#501 (official guide)**: (official guide) Nothing in the video marked what was built during the event, and Sigmora's screen wasn't identified as existing. Fix: STORYBOARD 9.1 end card with `{first_code_commit}`, 8.1 label, placeholder source.
+- [x] **#502 (official guide)**: (official guide) The submit step didn't name the Representative or list contributors. Fix: added.
+- [x] **#503 (official guide)**: (official guide) The open-weight bonus had no path. Fix: owner requests Baseten credits by Oct 27; a decision request to PRE-A and WP owners by Oct 28.
 
 ## 4. Which builder reads what
 

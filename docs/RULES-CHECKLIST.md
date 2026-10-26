@@ -4,6 +4,29 @@ Status: **v1, 2026-10-24 (PRE-B, docs only).** The official rules publish at kic
 
 **How to use this:** for each item, find the clause, paste it into the "Found" line in the PR that updates MAXXING, pick the matching row, and **do the action straight away**. Claude decides every row; nothing here waits for an answer. Rows marked 🚩 could disqualify us, so their action happens the same evening. Steps only the owner can physically do (accepting the rules, filling the entry form, identity checks, creating or publishing a repo) go into [`BLOCKED-PRE-B.md`](BLOCKED-PRE-B.md) as checklist items with the default written in, and work continues around them. If the rules are silent, take the "silent" row.
 
+## 0. Answers from the official participant guide (captured 2026-10-26 16:25Z)
+
+The owner transcribed the login-gated participant guide into [OFFICIAL-GUIDE.md](OFFICIAL-GUIDE.md) (source: cerebralvalley.ai/e/meta-ai-developer-hackathon/details); it's the authoritative source for the rows below. Where the guide is silent, the "Silent" rows of §1–§11 still apply until the full legal rules are read.
+
+| Topic | The guide says | Row that applies → what we do |
+|---|---|---|
+| Theme (Stage 1, pass/fail) | Build toward "Build for Your World" or "Push the Frontier"; "reasonably uses the Meta Model API and/or Meta open-weight models" | **Build for Your World**: a creator's own problem (publishing street footage without exposing bystanders), solved with Muse Spark, SAM 3.1 and Muse Voice Transcribe through the Meta Model API. The submission names the theme in its first line (§5) |
+| Anti-projects | No medical advice, basic RAG, "simple image analyzers", education chatbots, job screeners, nutrition coaches, personality analyzers, sports coaches, politics or war | None apply. Safe Cut isn't a simple image analyzer: it's a video pipeline that tracks people through a clip, decides who's part of the story from speech and context, audits its own render and keeps a human approval step. The submission's first paragraph says so, so a Stage 1 reviewer can't file it as one. It analyses no one's personality, health or sport |
+| New work only (§1) | "The demo must show only features, code and functionality built during the Hackathon. Judges must be able to tell what was created during the event"; startups "must clearly identify what is new" | §1 row 2 (pre-existing work allowed if disclosed): every code commit is after Oct 26 16:00 UTC; the pre-kickoff commits are planning docs only. The README and `docs/SUBMISSION.md` (WP8) open with a **"Built during the event"** paragraph: first code commit, its time, and that Sigmora is an existing product while the Safe Cut integration with it is new. The video's end card says the same ([STORYBOARD.md](STORYBOARD.md) 9.1), and any Sigmora screen carries an on-screen label (8.1) |
+| Team (§7) | At most 4 people; solo allowed; "every contributor is listed"; one Representative submits | Solo entry by the owner (the Representative). If labeller B agrees, list them as a contributor (labels); Claude is a tool, not a contributor |
+| Track (§7) | Indie Developer track and Startups track; the problem statements are themes, not tracks | **Startups track** (MAXXING), theme Build for Your World |
+| Video (§4) | A three-minute demo video | §4 row "a limit of 3 minutes or more": keep the 2:50 cut; no Stage A/B cut needed |
+| Live product | Required, and "holds up live" is part of the Demo criterion | As planned (WP5/WP6 on the custom domain; judge codes Nov 5–10, §11) |
+| Repo (§3) | "Repositories must be public"; check it's public before submitting | Public at submission. The owner keeps it private until they OK it, so going public is an owner step in [BLOCKED-PRE-B.md](BLOCKED-PRE-B.md), after Claude's secrets-and-footage check |
+| Judging (§8) | Stage 2 weights Impact 30 · Meta tooling 25 · Technical depth 20 · Demo 25; Stage 3: top 5 per track, demo videos watched live | §8 row 1: same weights, no MAXXING change. Stage 3 means the video itself is the finals pitch |
+| Deadline (§5) | Nov 4 9:00 PM ET = Nov 5 02:00 UTC; Nov 3 is the last full day for technical questions | As planned: submit by Nov 4 23:00 EAT (20:00 UTC) |
+| Most Viral ($20k, §6) | Post the demo on X and submit the post link; engagement counted up to Nov 8 EOD | Post the demo on X **before** submitting, so the post link goes into the submission; then the launch thread. This replaces §6's "hold all posts until after submission" default for the X demo post |
+| Community Vote ($10k, §6) | Public gallery, one vote per verified account, announced Nov 16 | §6 row 1: the launch thread links to our gallery page from Nov 9 |
+| Best Agentic Use-Case ($5k) | Autonomy, task completion, practical usefulness | Target it: the miss loop, the self-audit with its patch loop and the fail-closed holds are autonomous steps with a human approval gate. WP8's submission names them in one paragraph |
+| Best Build on Meta Open-Weight Models ($10k) | Muse Glimmer or Muse Spark Open, own hardware or partner inference (Baseten id `meta-models/muse-spark-open-1026`); the partner verifies it | Not in the current pipeline. A request to PRE-A and the WP owners (model choice isn't PRE-B's, AGENTS rule 2): decide by Oct 28 whether one stage (e.g. a second opinion in the audit) can honestly run on Muse Spark Open via Baseten. The owner requests Baseten credits now so the option stays open ([BLOCKED-PRE-B.md](BLOCKED-PRE-B.md)) |
+| Best Creative Build ($5k) | Muse Image or Muse Wonder | Not targeted (Muse Wonder only if WP0 adopts it for its own reasons) |
+| Models listed | Muse Spark series, Muse Wonder, Muse Image, Muse Voice Transcribe, SAM 3.1; Muse Glimmer, Muse Spark Open; Muse Code | The "Meta models used" line (§5) names only these, plus EgoBlur as Meta's open-source detector when it runs |
+
 ## 1. Pre-existing code
 
 Look for: "pre-existing", "previously built", "prior work", "must be created during", "open-source libraries", "existing projects".
@@ -92,7 +115,7 @@ Look for: "community vote", "people's choice", "most viral", "social", "views", 
 | Votes must come from registered participants only | Ask other participants in the event community, not the general public |
 | 🚩 Buying views, vote-trading or bots disqualify | We do none of these. Note it in LAUNCH.md so nobody "helps" that way |
 | Posting before the deadline isn't allowed | Hold all posts until after submission |
-| Silent | Post after submitting, with plain claims and every number from RESULTS.md ([AGENTS.md](../AGENTS.md) rule 9) |
+| Silent | Post the demo on X just before submitting (the guide asks for the post link, §0); everything else after submitting, with plain claims and every number from RESULTS.md ([AGENTS.md](../AGENTS.md) rule 9) |
 
 ## 7. Team and track rules
 

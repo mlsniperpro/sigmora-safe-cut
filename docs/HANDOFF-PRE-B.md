@@ -1,10 +1,12 @@
-# HANDOFF (PRE-B), updated 2026-10-26 16:26 UTC
+# HANDOFF (PRE-B), updated 2026-10-26 16:28 UTC
 
 **State:** branch `pre-b-product`, PR #2 (the only PRE-B PR). Lease `.agent/win/SAFECUT-PRE-B/LEASE`: active, `session_01Tjy33tfkpth8jMhhnhhcYL` (RESUME 2026-10-26). Full hand-off: `.agent/win/SAFECUT-PRE-B/HANDOFF.md` (same facts, more detail).
 
-**Audit position:** rounds 24–43 done (three parallel fresh auditors each; from round 39 on Sonnet/high); every finding fixed; WIN-CHECKLIST covers #1–#496 with 0 unchecked lines. Round 38 found 9 (#355–#363), round 39 found 22 (#364–#385), round 40 found 21 (#388–#408), round 41 found 34 (#416–#449), round 42 found 24 (#453–#476), round 43 found 17 (#480–#496). **No clean round yet. Next is round 44; log findings as #497+.** The goal needs two consecutive rounds that find nothing new.
+**Audit position:** rounds 24–43 done (three parallel fresh auditors each; from round 39 on Sonnet/high); every finding fixed; WIN-CHECKLIST covers #1–#503 with 0 unchecked lines. Round 38 found 9 (#355–#363), round 39 found 22 (#364–#385), round 40 found 21 (#388–#408), round 41 found 34 (#416–#449), round 42 found 24 (#453–#476), round 43 found 17 (#480–#496). **No clean round yet. Next is round 44; log findings as #504+.** The goal needs two consecutive rounds that find nothing new.
 
 **Reconciled** with PRE-A @ `9ab5bd9` (#477–#479 its audit-#42 requests); (#409–#415 vs `02c605e`; #450–#451 vs PRE-A's audit-#36 requests at PR #2 `c944a4f`; its other open items were already fixed in #444–#446). Re-check `origin/pre-a-research` every round.
+
+**Official guide** (owner, 2026-10-26): committed verbatim as `docs/OFFICIAL-GUIDE.md`; reconciled in RULES-CHECKLIST §0, WIN-CHECKLIST §1, BLOCKED-PRE-B and STORYBOARD 8.1/9.1 (#497–#503). Repo stays private until the owner OKs it (BLOCKED).
 
 **Next:** round 43 → fix → repeat; then post the final status comment (the PR #2 body was refreshed this session; update its finding counts if more land). Remove `.agent/` before merge (#257).
 
