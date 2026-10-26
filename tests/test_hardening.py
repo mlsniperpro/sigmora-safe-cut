@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -12,10 +13,10 @@ from typing import Any
 import httpx
 import pytest
 import respx
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 from safecut.config import ConfigError, Settings, load_settings
-from safecut.contracts import read_cost_lines
+from safecut.contracts import Audit, Job, OpenWeightSummary, read_cost_lines
 from safecut.meta import asr, sam
 from safecut.meta.budget import Caller, LocalLedger
 from safecut.meta.client import CallSpec, MetaClient, guard_body
@@ -437,8 +438,8 @@ async def test_probe_h_runs_without_the_meta_key(tmp_path: Path) -> None:
     with respx.mock(assert_all_called=False) as router:
         router.post("https://inference.baseten.co/v1/chat/completions").mock(return_value=httpx.Response(401))
         results = await probes.run(["h"], settings=cfg, out_root=tmp_path, ledger=LocalLedger())
-    assert "error" not in results["h"]
     assert "MetaAuthError" in results["h"]["four_frames"]["error"]
+    assert results["h"]["grid_ok"] is None
     no_key = await probes.run(["h"], settings=Settings(), out_root=tmp_path / "x", ledger=LocalLedger())
     assert "BASETEN_API_KEY" in no_key["h"]["error"]
 
@@ -475,3 +476,124 @@ def test_probe_h_grid_mapping() -> None:
     mapped = probes.grid_box_to_frame(grid)
     assert all(abs(a - b) <= 2 for a, b in zip(mapped, box, strict=True))
     assert probes.grid_box_to_frame((1001, 1001, -5, -5)) == (0, 0, 1280, 720)
+
+
+# --- audit #4 ---------------------------------------------------------------------------------
+
+
+async def test_stream_redirects_are_config_errors(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter
+) -> None:
+    h = make_harness()
+    route = mock_api.post("/responses").mock(return_value=httpx.Response(301, headers={"location": "https://x"}))
+    with pytest.raises(MetaConfigError):
+        await h.client.stream(_spec(), {"model": "m", "store": False}, meter=_meter)
+    assert route.call_count == 1
+    assert [line.usd for line in h.costs()] == [0]
+
+
+class _SlowSettle(LocalLedger):
+    def settle(self, call_id: str, usd: float) -> None:
+        time.sleep(0.3)
+        super().settle(call_id, usd)
+
+
+async def test_settle_runs_off_the_event_loop(settings: Settings, tmp_path: Path, mock_api: respx.MockRouter) -> None:
+    mock_api.post("/thing").mock(return_value=httpx.Response(200, json={}))
+    client = MetaClient(
+        settings, job_id="j", caller=Caller.local(), ledger=_SlowSettle(), cost_path=tmp_path / "c.jsonl"
+    )
+    ticks = 0
+
+    async def ticker() -> None:
+        nonlocal ticks
+        while True:
+            await asyncio.sleep(0.01)
+            ticks += 1
+
+    task = asyncio.create_task(ticker())
+    await client.request("POST", "thing", _spec(), meter=_meter)
+    task.cancel()
+    await client.aclose()
+    assert ticks >= 10  # the loop kept running during the 0.3 s settle
+
+
+class _FlakyReserve(LocalLedger):
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls = 0
+
+    def reserve(self, call_id: str, job_id: str | None, usd: float, limits: Any) -> None:
+        self.calls += 1
+        if self.calls == 1:
+            raise OSError("cold start")
+        super().reserve(call_id, job_id, usd, limits)
+
+
+async def test_reserve_is_retried_once(settings: Settings, tmp_path: Path, mock_api: respx.MockRouter) -> None:
+    mock_api.post("/thing").mock(return_value=httpx.Response(200, json={}))
+    ledger = _FlakyReserve()
+    client = MetaClient(settings, job_id="j", caller=Caller.local(), ledger=ledger, cost_path=tmp_path / "c.jsonl")
+    await client.request("POST", "thing", _spec(), meter=_meter)
+    await client.aclose()
+    assert ledger.calls == 2
+
+
+class _SlowReserve(LocalLedger):
+    def reserve(self, call_id: str, job_id: str | None, usd: float, limits: Any) -> None:
+        time.sleep(0.2)
+        super().reserve(call_id, job_id, usd, limits)
+
+
+async def test_cancel_during_reserve_releases_it(
+    settings: Settings, tmp_path: Path, mock_api: respx.MockRouter
+) -> None:
+    ledger = _SlowReserve()
+    client = MetaClient(settings, job_id="j", caller=Caller.local(), ledger=ledger, cost_path=tmp_path / "c.jsonl")
+    task = asyncio.create_task(client.request("POST", "thing", _spec(estimate_usd=0.5), meter=_meter))
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    await client.aclose()
+    assert ledger.spent("job:j") == 0
+
+
+def test_open_weight_contract_rules() -> None:
+    with pytest.raises(ValidationError):
+        OpenWeightSummary.model_validate({"status": "ok", "model": None})
+    with pytest.raises(ValidationError):
+        OpenWeightSummary.model_validate({"status": "off", "frames": 9})
+    with pytest.raises(ValidationError):
+        OpenWeightSummary.model_validate({"status": "failed", "model": "m", "findings": 2})
+    example = Path(__file__).resolve().parent.parent / "fixtures" / "contracts" / "j_example"
+    job = json.loads((example / "job.json").read_text())
+    for lax in ("yes", 1, "on"):
+        with pytest.raises(ValidationError):
+            Job.model_validate(job | {"consented": lax})
+    audit = json.loads((example / "audit.json").read_text())
+    with pytest.raises(ValidationError, match="open-weight"):
+        Audit.model_validate(audit | {"redteam_open": [{"frame": 0, "finding": "none"}]})
+    ok = audit | {
+        "open_weight": {"model": "meta-models/muse-spark-open-1026", "status": "ok", "frames": 12, "findings": 0},
+        "redteam_open": [{"frame": 0, "finding": "none"}],
+    }
+    assert Audit.model_validate(ok).open_weight.status == "ok"
+
+
+async def test_probe_h_reports_not_run_honestly(tmp_path: Path) -> None:
+    cfg = Settings(baseten_api_key=SecretStr("bt"))
+    with respx.mock(assert_all_called=False) as router:
+        router.post("https://inference.baseten.co/v1/chat/completions").mock(return_value=httpx.Response(402))
+        results = await probes.run(["h"], settings=cfg, out_root=tmp_path, ledger=LocalLedger())
+    assert results["h"]["grid_ok"] is None
+    assert "not measured" in results["h"]["error"]
+
+
+async def test_probes_without_the_meta_key_still_run_h(tmp_path: Path) -> None:
+    cfg = Settings(baseten_api_key=SecretStr("bt"))
+    with respx.mock(assert_all_called=False) as router:
+        router.post("https://inference.baseten.co/v1/chat/completions").mock(return_value=httpx.Response(402))
+        results = await probes.run(["a", "h"], settings=cfg, out_root=tmp_path, ledger=LocalLedger())
+    assert "MODEL_API_KEY" in results["a"]["error"]
+    assert "four_frames" in results["h"]

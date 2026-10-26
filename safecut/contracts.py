@@ -25,6 +25,7 @@ from pydantic import (
     NonNegativeInt,
     PositiveInt,
     RootModel,
+    StrictBool,
     ValidationError,
     model_validator,
 )
@@ -103,7 +104,7 @@ class Job(Contract):
     created_at: UtcDatetime
     #: Gates the open-weight second opinion (PRE-A §3.8): true only for owner/recording codes (WP5) or the
     #: hero/dev eval splits; missing means false (fail closed).
-    consented: bool = False
+    consented: StrictBool = False
 
     @model_validator(mode="after")
     def _times(self) -> Job:
@@ -504,6 +505,16 @@ class OpenWeightSummary(Contract):
     frames: NonNegativeInt = 0
     findings: NonNegativeInt = 0
 
+    @model_validator(mode="after")
+    def _consistent(self) -> OpenWeightSummary:
+        if self.status == "off" and (self.model is not None or self.frames or self.findings):
+            raise ValueError("an open-weight opinion that didn't run has no model, frames or findings")
+        if self.status != "off" and self.model is None:
+            raise ValueError("an open-weight opinion that ran names its model (the receipt and README quote it)")
+        if self.status == "failed" and self.findings:
+            raise ValueError("a failed open-weight opinion adds no findings")
+        return self
+
 
 class Spot(Contract):
     spot_id: str = Field(pattern=r"^s[1-9][0-9]*$")
@@ -529,6 +540,10 @@ class Audit(Contract):
 
     @model_validator(mode="after")
     def _gate(self) -> Audit:
+        if self.open_weight.status != "ok" and (
+            self.redteam_open or any(leak.detector == "redteam_open" for leak in self.leaks)
+        ):
+            raise ValueError("redteam_open entries and leaks need a successful open-weight opinion")
         if (self.blocked_reason is not None) != (self.unresolved > 0):
             raise ValueError("blocked_reason is set exactly when unresolved > 0 (the one publish gate)")
         if (self.audit_budget_cause is not None) != (self.blocked_reason == "over_budget"):
@@ -854,6 +869,11 @@ def _check_audit(audit: Audit, job: Job) -> None:
     for leak in audit.leaks:
         _check_frame(leak.frame, job, "audit.json leaks")
         _check_box(leak.box, job, f"audit.json leak at frame {leak.frame}")
+    for name, entries in (("redteam", audit.redteam), ("redteam_open", audit.redteam_open)):
+        for entry in entries:
+            _check_frame(entry.frame, job, f"audit.json {name}")
+            if isinstance(entry, RedteamHit):
+                _check_box(entry.box, job, f"audit.json {name} at frame {entry.frame}")
 
 
 def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:

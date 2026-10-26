@@ -53,10 +53,15 @@ def _responses(request: httpx.Request) -> httpx.Response:
 
 def _baseten(request: httpx.Request) -> httpx.Response:
     body = json.loads(request.content)
-    images = sum(1 for part in body["messages"][0]["content"] if part.get("type") == "image_url")
-    # A text box near the true "AMINA K." box (frame 420,~314 → 707,~378; sent image is 1280x760 with a 40 px bar).
-    findings = [{"frame": 2, "kind": "text", "text": "AMINA K.", "box": [327, 462, 556, 550], "confidence": "high"}]
-    answer = json.dumps({"findings": findings if images else []})
+    frames = [
+        int(p["text"].split()[1].rstrip(":"))
+        for p in body["messages"][1]["content"]
+        if p.get("text", "").startswith("Frame ")
+    ]
+    # A text box near the true "AMINA K." box (sent image 1280x760 with a 40 px bar).
+    hit = {"kind": "text", "detail": "a name", "text": "AMINA K.", "box": [327, 462, 556, 550], "confidence": "high"}
+    answer = json.dumps({"frames": [{"frame": f, "findings": [hit] if f == 60 else []} for f in frames]})
+    images = len(frames)
     chunks = [
         {"id": "c", "choices": [{"delta": {"content": answer}}]},
         {"id": "c", "choices": [{"delta": {}, "finish_reason": "stop"}]},

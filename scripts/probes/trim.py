@@ -18,6 +18,7 @@ COPIES: tuple[tuple[str, str], ...] = (
     ("b/sam-red_square.events.json", "sam/live-red_square.events.json"),
     ("b/sam-face.events.json", "sam/live-face_zero_match.events.json"),
     ("d/asr.response.json", "asr/live-tone.json"),
+    ("h/baseten.answers.json", "open_weight/live-probe-h.json"),
 )
 
 
@@ -28,6 +29,7 @@ def trim(root: Path = ROOT) -> list[str]:
         if src.exists():
             json.loads(src.read_text())  # refuse to copy anything that isn't valid JSON
             dst = root / "fixtures" / dst_rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(src, dst)
             copied.append(dst_rel)
     scene = sorted((root / "fixtures" / "probes" / "c").glob("probe_c-*.response.json"))

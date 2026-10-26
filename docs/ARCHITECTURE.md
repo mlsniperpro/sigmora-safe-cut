@@ -113,7 +113,7 @@ Children are `locked: true` and `hide`; the creator can't un-hide them (DESIGN Â
 ### 3.8 `audit.json` (audit)
 ```json
 {"frames_scanned": 900, "egoblur": {"model": "egoblur-gen2", "faces": 0, "plates": 0},
- "leaks": [{"frame": 401, "box": [x1, y1, x2, y2], "kind": "face", "detector": "egoblur|redteam", "patched_item": "i_9"}],
+ "leaks": [{"frame": 401, "box": [x1, y1, x2, y2], "kind": "face", "detector": "egoblur|redteam|redteam_open", "patched_item": "i_9"}],
  "redteam": [{"frame": 450, "finding": "none"}], "unresolved": 0, "passes": 2,
  "sample_step": 30, "spots": [], "blocked_reason": null, "audit_budget_cause": null,
  "open_weight": {"model": null, "status": "off", "frames": 0, "findings": 0}, "redteam_open": []}

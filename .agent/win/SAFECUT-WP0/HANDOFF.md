@@ -26,8 +26,8 @@
 - **Last fully green head:** 00e3b4c (233 passed, ruff and pyright clean). A fresh clone of b7fe6c9 was green in 41 s.
 
 ## In flight (exact state)
-- 2026-10-26 ~19:00 UTC: audit #3 found 2 high, 4 medium and 6 low; all are fixed and tested (tests/test_hardening.py "audit #3", tests/test_open_weight.py), including PRE-A's new §3.8/§12 open-weight rows. 280 passed, ruff and pyright clean.
-- Next: push; the soak and audit #4 at that head; then audit #5 (two clean in a row); break-it.md; gate; PR status.
+- ~19:00 UTC: audit #4 found 1 high, 5 medium and 7 low; all are fixed and tested (reaudit.md). 293 passed, ruff and pyright clean.
+- Next: push; the soak at that head (HYPOTHESIS_PROFILE=soak, about 40 min, kill it by PID, never with `pkill -f` because the pattern matches the calling shell); audit #5, and #6 if #5 is clean; break-it.md; gate; PR status.
 
 ## Next steps, in order
 1. Make the suite green (above); run `bash .agent/win/SAFECUT-WP0/checks.sh`.
@@ -40,11 +40,8 @@
    - replace the provisional numbers in `docs/API-NOTES-WP0.md` §13.3 with measured ones and adjust the config defaults if needed;
    - put the total from `fixtures/probes/cost.jsonl` in the PR (it stays ≤ $6, enforced).
 
-## Open findings (not fixed yet)
-- **Audit #2 #6:** WP0.md probe f's "5 hard role calls from SoM keyframes" isn't implemented. Either add a role-call probe (it needs consented hero keyframes) or list it in BLOCKED.md. Also fix `docs/API-NOTES-WP0.md` §13.2, which says hero runs cover "b, d and f"; only b and d take `--clip`.
-- **Audit #2 #8:** `docs/API-NOTES-WP0.md` §13.4 says any HTTP error is `usd 0`. The code charges a 504 and any 5xx after 30 s as estimated; correct the doc.
-- **Audit #2 #9 and code review:** `probes.run` should catch `Exception` per probe; `_video_question` should also catch `MetaError` from `output_text`; `probe_d` should unlink the WAV in a `finally`.
-- **Not yet verified as fixed:** audit #2 #3 and #4 (cancelled upload; cleanup through the breaker), which the files rewrite targets.
+## Open findings
+None open. Every finding from audits #1–#4 and the code review is fixed, with its test named in reaudit.md, or is a recorded decision.
 
 ## Key decisions (the full list is in PR #3)
 - Built to PRE-A's spec (PR #1, unmerged); prices re-read live on 2026-10-26.

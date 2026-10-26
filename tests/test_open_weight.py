@@ -15,6 +15,7 @@ from safecut import open_weight
 from safecut.config import ConfigError, OpenWeightPrice, Settings, load_settings
 from safecut.contracts import measured_usd, read_cost_lines
 from safecut.meta.budget import Caller, CapLimit, LocalLedger
+from safecut.meta.client import MetaClient
 from safecut.meta.errors import BudgetExceeded, MetaIncomplete
 
 BT = "https://inference.baseten.co/v1"
@@ -185,3 +186,106 @@ def test_open_weight_config() -> None:
         load_settings({"SAFECUT_OPEN_WEIGHT_PRICE": '{"in": 0, "out": 1}'})
     with pytest.raises(ConfigError, match="BASETEN_API_KEY"):
         load_settings({}).open_api_key()
+
+
+# --- audit #4 -----------------------------------------------------------------------------------
+
+
+def test_image_data_urls_are_not_counted_as_text(cfg: Settings) -> None:
+    big = "data:image/jpeg;base64," + "A" * 130_000
+    frames = [(i, big) for i in range(50)]
+    body = open_weight.chat_body(cfg, open_weight.redteam_messages(frames))
+    text_bytes, images = open_weight._parts(body)  # pyright: ignore[reportPrivateUsage] -- the estimate's input
+    assert images == 50
+    assert text_bytes < 5_000
+
+
+async def test_fifty_frames_fit_the_default_cap(cfg: Settings, ledger: LocalLedger, tmp_path: Path) -> None:
+    client = _client(cfg, ledger, tmp_path)
+    frames = [(i, "data:image/jpeg;base64," + "A" * 130_000) for i in range(50)]
+    answer = json.dumps({"frames": [{"frame": i, "findings": []} for i in range(50)]})
+    usage = {"prompt_tokens": 80_000, "completion_tokens": 2_000}
+    with respx.mock(base_url=BT) as router:
+        router.post("/chat/completions").mock(return_value=httpx.Response(200, content=_chunks(answer, usage=usage)))
+        body = open_weight.chat_body(cfg, open_weight.redteam_messages(frames))
+        result = await open_weight.create(client, body, stage="redteam_open", price=PRICE)
+    await client.aclose()
+    assert len(open_weight.complete_answer(result.body, list(range(50))).frames) == 50
+
+
+def test_complete_answer_rules() -> None:
+    finding = {"kind": "text", "detail": "a name", "text": "AMINA K.", "box": [1, 2, 3, 4], "confidence": "high"}
+    answer = {
+        "text": json.dumps(
+            {
+                "frames": [
+                    {"frame": 0, "findings": [finding]},
+                    {"frame": 0, "findings": []},
+                    {"frame": 9, "findings": []},
+                    {"frame": 30, "findings": []},
+                ]
+            }
+        ),
+        "finish_reason": "stop",
+    }
+    parsed = open_weight.complete_answer(answer, [0, 30])
+    assert [f.frame for f in parsed.frames] == [0, 30]  # duplicates merged, unsent frame 9 dropped
+    with pytest.raises(MetaIncomplete, match="missing"):
+        open_weight.complete_answer(answer, [0, 30, 60])
+    bad = {
+        "text": json.dumps({"frames": [{"frame": 0, "findings": [finding | {"kind": "tattoo"}]}]}),
+        "finish_reason": "stop",
+    }
+    with pytest.raises(MetaIncomplete):
+        open_weight.complete_answer(bad, [0])
+
+
+def test_redteam_messages_bounds() -> None:
+    with pytest.raises(ValueError, match="1 to 50"):
+        open_weight.redteam_messages([])
+    with pytest.raises(ValueError, match="1 to 50"):
+        open_weight.redteam_messages([(i, "x") for i in range(51)])
+    messages = open_weight.redteam_messages([(90, "data:image/jpeg;base64,AA")], kept_clear="the host")
+    assert messages[0]["role"] == "system"
+    assert "the host" in messages[1]["content"][0]["text"]
+    assert "Report every frame" in messages[1]["content"][0]["text"]
+
+
+async def test_second_opinion_enforces_the_privacy_gate(cfg: Settings, ledger: LocalLedger, tmp_path: Path) -> None:
+    client = _client(cfg, ledger, tmp_path)
+    frames = [(0, "data:image/jpeg;base64,AA")]
+    with respx.mock(base_url=BT) as router:
+        route = router.post("/chat/completions")
+        with pytest.raises(open_weight.SecondOpinionRefusedError):
+            await open_weight.second_opinion(client, cfg, consented=True, code_kind="owner", frames=frames)
+        on = cfg.model_copy(
+            update={"open_weight_audit": "on", "open_weight_code_kinds": ("owner",), "open_weight_price": PRICE}
+        )
+        with pytest.raises(open_weight.SecondOpinionRefusedError):
+            await open_weight.second_opinion(client, on, consented=False, code_kind="owner", frames=frames)
+        assert route.call_count == 0
+        answer = json.dumps({"frames": [{"frame": 0, "findings": []}]})
+        route.mock(
+            return_value=httpx.Response(
+                200, content=_chunks(answer, usage={"prompt_tokens": 1600, "completion_tokens": 40})
+            )
+        )
+        result = await open_weight.second_opinion(client, on, consented=True, code_kind="owner", frames=frames)
+    await client.aclose()
+    assert result.frames[0].findings == []
+
+
+def test_keys_never_cross_providers(cfg: Settings, ledger: LocalLedger, tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="base URLs"):
+        MetaClient(cfg, job_id="j", caller=Caller.local(), ledger=ledger, cost_path=tmp_path / "c", base_url=BT)
+    with pytest.raises(ValueError, match="base URLs"):
+        MetaClient(
+            cfg,
+            job_id="j",
+            caller=Caller.local(),
+            ledger=ledger,
+            cost_path=tmp_path / "c",
+            base_url="https://api.meta.ai/v1",
+            api_key="bt",
+            provider="baseten",
+        )

@@ -52,3 +52,18 @@ cancelled or malformed-id upload (orphan entry, FILE_ID_PATTERN), streamed refus
 - L10 config hygiene → codes are SecretStr, service keys ≥ 16 chars, strict booleans, case-insensitive Contributor check, ASR request guard (test_config_hygiene, test_asr_request_refuses_contributor_models)
 - L11 3xx treated as success → MetaConfigError (test_redirects_are_never_success)
 - L12 the speech-fallback pair was missing from the startup probe set → `Settings.speech_fallback_pair()` (non-fatal by spec)
+
+## Audit 4 (independent Sonnet reviewer at 421d112): 0 critical, 1 high, 5 medium, 7 low. NOT CLEAN; all verified and fixed
+- H1 the open-weight estimate counted base64 images as text (≥ 8 frames could never fit $0.50) → `_parts` counts image_url parts as images (test_image_data_urls_are_not_counted_as_text, test_fifty_frames_fit_the_default_cap)
+- M2 probe h didn't use redteam.md's prompt or schema → `open_weight.REDTEAM_*`, `RedteamAnswer`, `complete_answer` (missing frames fail; duplicates merged; unsent dropped) (test_complete_answer_rules, test_redteam_messages_bounds)
+- M3 probe h reported "not run" as "failed", and its cap accumulated across runs → `grid_ok: null` plus `error` unless 3 tries answered; a per-run job id (test_probe_h_reports_not_run_honestly)
+- M4 `stream()` treated 3xx as eof → `_status_failure` maps redirects to MetaConfigError on every path (test_stream_redirects_are_config_errors)
+- M5 settle/release blocked the event loop → `_ledger_after` runs off the loop with a 10 s bound (test_settle_runs_off_the_event_loop)
+- M6 keys could cross providers → each provider's base URL is pinned to its own host (test_keys_never_cross_providers)
+- L7 cancel during reserve leaked the reservation → `_reserve` shields it and releases a late reserve (test_cancel_during_reserve_releases_it)
+- L8 reserve wasn't retried once → `_ledger` retries a raising call once; a timeout isn't retried, because the call may still land (test_reserve_is_retried_once)
+- L9 weak new contract fields → StrictBool consented, OpenWeightSummary consistency, redteam_open needs status ok, validate_job_dir checks redteam/redteam_open frames and boxes (test_open_weight_contract_rules)
+- L10 the privacy gate was advisory → `open_weight.second_opinion` enforces `enabled_for`; `create` is transport-level (probe h, synthetic only) (test_second_opinion_enforces_the_privacy_gate)
+- L11 `probes.py a h` died without the Meta key → per-probe client construction inside the try (test_probes_without_the_meta_key_still_run_h)
+- L12 probe h saved no raw answers → `h/baseten.answers.json`, plus a trim entry `fixtures/open_weight/live-probe-h.json`
+- L13 doc mismatches → API notes row h, §13.2b worst case ($0.358; 50 frames reserve $0.163), §13.4 baseten_job, ARCHITECTURE detector; HANDOFF's open-findings list cleaned up

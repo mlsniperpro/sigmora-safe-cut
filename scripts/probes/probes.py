@@ -495,26 +495,6 @@ async def probe_g(p: Probe) -> Summary:
 #: only to reserve probe h's own calls when SAFECUT_OPEN_WEIGHT_PRICE isn't set yet; probe h records it.
 BASETEN_PUBLISHED_PRICE = OpenWeightPrice.model_validate({"in": 1.25, "out": 4.25})
 NAME_TEXT = "AMINA K."
-REDTEAM_OPEN_PROMPT = (
-    "You check video frames before publication. Each image has a black bar on top with a frame number; ignore "
-    "it. List everything that could identify a real person: faces, people, readable personal text (names, "
-    "addresses, emails), number plates, screens. Answer with JSON only, no prose: "
-    '{"findings": [{"frame": <int>, "kind": "face"|"person"|"text"|"plate"|"screen"|"other", '
-    '"text": <string or null>, "box": [x1, y1, x2, y2], "confidence": "low"|"medium"|"high"}]}. '
-    "Boxes use a 0-1000 grid over the whole image you received: (0, 0) top-left, (1000, 1000) bottom-right."
-)
-
-
-class _OpenFinding(BaseModel):
-    frame: int | None = None
-    kind: str
-    text: str | None = None
-    box: tuple[int, int, int, int]
-    confidence: str | None = None
-
-
-class _OpenAnswer(BaseModel):
-    findings: list[_OpenFinding]
 
 
 def synthetic_frame(index: int, *, name: bool) -> tuple[str, tuple[int, int, int, int] | None]:
@@ -551,22 +531,24 @@ def grid_box_to_frame(box: tuple[int, int, int, int]) -> tuple[int, int, int, in
     return (min(max(x1, 0), IMG_W), min(max(y1, 0), IMG_H), min(max(x2, 0), IMG_W), min(max(y2, 0), IMG_H))
 
 
-def _frames_message(images: list[str]) -> list[dict[str, Any]]:
-    content: list[dict[str, Any]] = [{"type": "text", "text": REDTEAM_OPEN_PROMPT}]
-    content += [{"type": "image_url", "image_url": {"url": url}} for url in images]
-    return [{"role": "user", "content": content}]
-
-
 async def _open_call(
-    settings: Settings, client: MetaClient, images: list[str], *, effort: str, price: OpenWeightPrice
+    settings: Settings,
+    client: MetaClient,
+    frames: list[tuple[int, str]],
+    *,
+    effort: str,
+    price: OpenWeightPrice,
+    raw: list[Summary],
 ) -> Summary:
-    body = open_weight.chat_body(settings, _frames_message(images), effort=effort)
+    """One redteam.md call (the same prompt and schema WP4 uses), checked for every frame being answered."""
+    body = open_weight.chat_body(settings, open_weight.redteam_messages(frames), effort=effort)
     started = time.monotonic()
     try:
-        result = await open_weight.create(client, body, stage="probe_h", price=price, images=len(images))
+        result = await open_weight.create(client, body, stage="probe_h", price=price)
     except MetaError as exc:
         return {"effort": effort, "error": f"{type(exc).__name__}: {exc}"}
     answer = cast(Mapping[str, Any], result.body)
+    raw.append({"effort": effort, "frames": [n for n, _ in frames], "answer": dict(answer)})
     usage = open_weight.chat_units(answer.get("usage")) or {}
     row: Summary = {
         "effort": effort,
@@ -577,40 +559,53 @@ async def _open_call(
         "usd": result.usd,
     }
     try:
-        row["findings"] = [f.model_dump(mode="json") for f in open_weight.parse_json(_OpenAnswer, answer).findings]
+        parsed = open_weight.complete_answer(answer, [n for n, _ in frames])
     except MetaError as exc:
         row["invalid"] = str(exc)
+    else:
+        row["findings"] = [f.model_dump(mode="json") | {"frame": fr.frame} for fr in parsed.frames for f in fr.findings]
     return row
 
 
 async def probe_h(settings: Settings, client: MetaClient, out: Path) -> Summary:
-    """PRE-A §3.8 probe h: 4 synthetic frames, then the "AMINA K." grid check (IoU ≥ 0.3 in 2 of 3 tries) at
-    ``SAFECUT_OPEN_WEIGHT_EFFORT``, then one ``omit`` (xhigh) call to compare latency and reasoning tokens."""
+    """PRE-A §3.8 probe h, on synthetic frames only:
+    1. one request on 4 frames;
+    2. 3 tries of the "AMINA K." grid check (passes at IoU ≥ 0.3 in 2 of 3), at SAFECUT_OPEN_WEIGHT_EFFORT;
+    3. one ``omit`` (xhigh) call to compare latency and reasoning tokens.
+
+    ``grid_ok`` is ``None`` (not measured) unless all 3 tries answered.
+    """
     price = settings.open_weight_price or BASETEN_PUBLISHED_PRICE
-    four = [synthetic_frame(i, name=i == 2)[0] for i in range(4)]
+    four = [(i * 30, synthetic_frame(i, name=i == 2)[0]) for i in range(4)]
     name_image, true_box = synthetic_frame(2, name=True)
     if true_box is None:
         raise RuntimeError("the name frame has no text box")
-    first = await _open_call(settings, client, four, effort=settings.open_weight_effort, price=price)
+    raw: list[Summary] = []
+    first = await _open_call(settings, client, four, effort=settings.open_weight_effort, price=price, raw=raw)
     tries: list[Summary] = []
     for _ in range(3):
-        row = await _open_call(settings, client, [name_image], effort=settings.open_weight_effort, price=price)
-        boxes = [f["box"] for f in row.get("findings", []) if f.get("kind") == "text"]
+        row = await _open_call(
+            settings, client, [(60, name_image)], effort=settings.open_weight_effort, price=price, raw=raw
+        )
+        boxes = [f["box"] for f in row.get("findings", []) if f.get("kind") == "text" and len(f["box"]) == 4]
         best = max((_iou(list(grid_box_to_frame(tuple(b))), list(true_box)) for b in boxes), default=0.0)
         tries.append(row | {"best_iou": round(best, 3), "hit": best >= 0.3})
-    omit = await _open_call(settings, client, [name_image], effort="omit", price=price)
+    omit = await _open_call(settings, client, [(60, name_image)], effort="omit", price=price, raw=raw)
+    answered = [t for t in tries if "findings" in t]
     summary: Summary = {
         "model": settings.open_weight_model,
         "price_per_m": {"in": price.input, "out": price.output},
         "price_source": "SAFECUT_OPEN_WEIGHT_PRICE" if settings.open_weight_price else "baseten.co library page",
         "four_frames": first,
         "grid_tries": tries,
-        "grid_ok": sum(1 for t in tries if t["hit"]) >= 2,
+        "grid_ok": (sum(1 for t in tries if t["hit"]) >= 2) if len(answered) == 3 else None,
         "omit_effort": omit,
         "true_box": list(true_box),
     }
+    if len(answered) < 3:
+        summary["error"] = f"grid check not measured: {3 - len(answered)} of 3 tries failed or were invalid"
     out.mkdir(parents=True, exist_ok=True)
-    (out / "open-weight.summary.json").write_text(json.dumps(summary, indent=1) + "\n")
+    (out / "baseten.answers.json").write_text(json.dumps(raw, indent=1, ensure_ascii=False) + "\n")
     return summary
 
 
@@ -649,9 +644,17 @@ async def run(
         job_id = f"probe_{name}"
         out = out_root / name
         if name == "h":
-            results[name] = await _run_h(settings, job_id=job_id, out=out, ledger=ledger, cost_path=cost_path)
+            # A fresh job per run: the $0.50 baseten_job cap is per run, not accumulated across re-runs.
+            run_id = f"probe_h_{time.strftime('%Y%m%dT%H%M%S', time.gmtime())}"
+            results[name] = await _run_h(settings, job_id=run_id, out=out, ledger=ledger, cost_path=cost_path)
             continue
-        meta = MetaClient(settings, job_id=job_id, caller=caller, ledger=ledger, cost_path=cost_path, http=http)
+        try:
+            meta = MetaClient(settings, job_id=job_id, caller=caller, ledger=ledger, cost_path=cost_path, http=http)
+        except Exception as exc:
+            results[name] = {"error": f"{type(exc).__name__}: {exc}"}
+            out.mkdir(parents=True, exist_ok=True)
+            (out / "summary.json").write_text(json.dumps(results[name], indent=1) + "\n")
+            continue
         files = FileStore(meta, out / "job")
         probe_clip = clip if name in ("b", "d") else CLIP
         probe = Probe(

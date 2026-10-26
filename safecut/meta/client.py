@@ -8,6 +8,7 @@ accepted then lost → kept as an ``estimated`` charge; completed → the actual
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import functools
 import logging
 import random
@@ -188,6 +189,9 @@ def _status_failure(
     status: int, body: Any, headers: Mapping[str, str], rid: str | None, elapsed: float
 ) -> _AttemptFailed:
     """An HTTP error status. A 504, or any 5xx after :data:`SLOW_FAILURE_S`, may have been processed."""
+    if 300 <= status < 400:
+        # Redirects are never followed and never success: the path or host is wrong.
+        return _AttemptFailed(MetaConfigError(f"unexpected redirect (HTTP {status})", status=status), accepted=False)
     accepted = status == 504 or (status >= 500 and elapsed > SLOW_FAILURE_S)
     return _AttemptFailed(
         classify(status, body, request_id=rid),
@@ -258,8 +262,9 @@ class MetaClient:
             limits=httpx.Limits(max_connections=config.MAX_CONNECTIONS),
             timeout=httpx.Timeout(60.0, connect=config.CONNECT_TIMEOUT_S),
         )
-        allowed = frozenset(host for hosts in config.ALLOWED_HOSTS.values() for host in hosts)
-        self.base_url = config.trusted_base_url(base_url or settings.meta_base_url, allowed)
+        # Each provider's key may only go to that provider's host: never a Meta key to Baseten or back.
+        field = "open_weight_base_url" if provider == "baseten" else "meta_base_url"
+        self.base_url = config.trusted_base_url(base_url or settings.meta_base_url, config.ALLOWED_HOSTS[field])
         self._key = api_key if api_key is not None else settings.api_key()
         self.breaker = breaker or CircuitBreaker(clock=clock)
         # Process-wide bound: pass one shared semaphore to every client in a process (WP5 does).
@@ -351,16 +356,38 @@ class MetaClient:
             limits.insert(0, job_limit(self.settings, self.job_id))
         return limits
 
-    async def _ledger(self, fn: Callable[[], None]) -> None:
-        """A ledger call, bounded and typed: a fault or a 10 s stall is ``MetaUnavailable`` (PRE-A §10.2)."""
+    async def _ledger(self, fn: Callable[[], None], *, attempts: int = 2) -> None:
+        """A ledger call, bounded and typed (PRE-A §10.2). A call that raised is retried once (a cold start);
+        then a fault, or any 10 s stall, is ``MetaUnavailable`` and no request is sent. Budget and bookkeeping
+        errors pass through."""
+        for attempt in range(1, attempts + 1):
+            try:
+                await asyncio.wait_for(asyncio.to_thread(fn), timeout=config.BUDGET_RESERVE_TIMEOUT_S)
+            except (BudgetExceeded, KeyError, ValueError):
+                raise
+            except TimeoutError as exc:
+                # Never retried: the timed-out call may still land, and a second reserve would double it.
+                # It expires after 2.5 h as an estimated charge (fail closed).
+                raise MetaUnavailable("the budget ledger did not answer in time; no request was sent") from exc
+            except Exception as exc:
+                if attempt == attempts:
+                    raise MetaUnavailable(f"the budget ledger failed: {type(exc).__name__}") from exc
+            else:
+                return
+
+    async def _reserve(self, call_id: str, usd: float) -> None:
+        """Reserve, shielded from cancellation: a reserve that lands after a cancel is released, not leaked."""
+        task = asyncio.ensure_future(
+            self._ledger(functools.partial(self.ledger.reserve, call_id, self.job_id, usd, self._limits()))
+        )
         try:
-            await asyncio.wait_for(asyncio.to_thread(fn), timeout=config.BUDGET_RESERVE_TIMEOUT_S)
-        except (BudgetExceeded, KeyError, ValueError):
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            with contextlib.suppress(Exception):
+                await task
+            if task.done() and not task.cancelled() and task.exception() is None:
+                await self._ledger_after(lambda: self.ledger.release(call_id))
             raise
-        except TimeoutError as exc:
-            raise MetaUnavailable("the budget ledger did not answer in time; no request was sent") from exc
-        except Exception as exc:
-            raise MetaUnavailable(f"the budget ledger failed: {type(exc).__name__}") from exc
 
     # -- the attempt loop ---------------------------------------------------
 
@@ -396,9 +423,7 @@ class MetaClient:
             attempt += 1
             call_id = f"{self.job_id or 'system'}:{spec.stage}:{uuid.uuid4().hex}"
             try:
-                await self._ledger(
-                    functools.partial(self.ledger.reserve, call_id, self.job_id, spec.estimate_usd, self._limits())
-                )
+                await self._reserve(call_id, spec.estimate_usd)
             except BudgetExceeded as exc:
                 self._log_budget_stop(spec, exc)
                 raise
@@ -410,7 +435,7 @@ class MetaClient:
                 async with self._lanes[spec.lane], self._inflight:
                     outcome = await attempt_fn(sent.mark)
             except _AttemptFailed as failed:
-                self._account(spec, call_id, attempt, charged=failed.accepted, rid=failed.error.request_id)
+                await self._account(spec, call_id, attempt, charged=failed.accepted, rid=failed.error.request_id)
                 maybe_processed = maybe_processed or failed.accepted
                 delay = self._retry_delay(spec, attempt, failed, maybe_processed, breaker=breaker, trial=trial)
                 log.info("retrying", extra={"stage": spec.stage, "attempt": attempt, "delay_s": delay})
@@ -418,9 +443,9 @@ class MetaClient:
                 continue
             except BaseException:
                 # Cancellation or a bug mid-attempt: once the request was sent, billing is unknown.
-                self._account(spec, call_id, attempt, charged=sent.sent, rid=None)
+                await asyncio.shield(self._account(spec, call_id, attempt, charged=sent.sent, rid=None))
                 raise
-            self._settle(spec, call_id, attempt, outcome)
+            await self._settle(spec, call_id, attempt, outcome)
             if breaker:
                 breaker.record_success(trial)
             if outcome.error is not None:
@@ -428,24 +453,24 @@ class MetaClient:
                 raise outcome.error
             return outcome, attempt, maybe_processed
 
-    def _settle(self, spec: CallSpec, call_id: str, attempt: int, outcome: _Attempt) -> None:
+    async def _settle(self, spec: CallSpec, call_id: str, attempt: int, outcome: _Attempt) -> None:
         if outcome.usd is None:
             # Completed, but without usage: we can't measure it, so the reserved estimate stands.
-            self._account(spec, call_id, attempt, charged=True, rid=outcome.request_id)
+            await self._account(spec, call_id, attempt, charged=True, rid=outcome.request_id)
             return
         # cost.jsonl first: it's the record of truth, so a ledger fault can't lose a billed call.
         self._log_cost(
             spec, attempt=attempt, units=outcome.units, usd=outcome.usd, estimated=False, rid=outcome.request_id
         )
-        self._ledger_after(lambda: self.ledger.settle(call_id, cast(float, outcome.usd)))
+        await self._ledger_after(lambda: self.ledger.settle(call_id, cast(float, outcome.usd)))
 
-    def _ledger_after(self, fn: Callable[[], None]) -> None:
+    async def _ledger_after(self, fn: Callable[[], None]) -> None:
         """Settle or release after a call: a ledger fault is logged loudly, never allowed to lose the result.
 
         The open reservation then expires after 2.5 h and is kept as an estimated charge (fail closed).
         """
         try:
-            fn()
+            await asyncio.wait_for(asyncio.to_thread(fn), timeout=config.BUDGET_RESERVE_TIMEOUT_S)
         except Exception:
             log.exception("budget ledger settle/release failed; the reservation will expire as a charge")
 
@@ -478,16 +503,16 @@ class MetaClient:
             breaker.record_success(trial)
         raise error from None
 
-    def _account(self, spec: CallSpec, call_id: str, attempt: int, *, charged: bool, rid: str | None) -> None:
+    async def _account(self, spec: CallSpec, call_id: str, attempt: int, *, charged: bool, rid: str | None) -> None:
         """Charged: keep the estimate as an ``estimated`` line. Not charged: release it at ``usd 0``."""
         if charged:
             self._log_cost(
                 spec, attempt=attempt, units=spec.estimate_units, usd=spec.estimate_usd, estimated=True, rid=rid
             )
-            self._ledger_after(lambda: self.ledger.settle(call_id, spec.estimate_usd))
+            await self._ledger_after(lambda: self.ledger.settle(call_id, spec.estimate_usd))
         else:
             self._log_cost(spec, attempt=attempt, units={}, usd=0.0, estimated=False, rid=rid)
-            self._ledger_after(lambda: self.ledger.release(call_id))
+            await self._ledger_after(lambda: self.ledger.release(call_id))
 
     # -- plain requests -----------------------------------------------------
 
@@ -534,13 +559,7 @@ class MetaClient:
                 raise _AttemptFailed(MetaUnavailable("request exceeded its total time limit"), accepted=True) from exc
             body = _decode(resp.content)
             rid = _request_id(resp.headers, body)
-            if 300 <= resp.status_code < 400:
-                # Redirects are never followed and never success: the path or host is wrong.
-                raise _AttemptFailed(
-                    MetaConfigError(f"unexpected redirect (HTTP {resp.status_code})", status=resp.status_code),
-                    accepted=False,
-                )
-            if resp.status_code >= 400:
+            if resp.status_code >= 300:
                 raise _status_failure(resp.status_code, body, resp.headers, rid, self._clock() - started)
             if body is None and resp.content.strip():
                 raise _AttemptFailed(
@@ -574,7 +593,7 @@ class MetaClient:
                 async with self._http.stream(
                     "POST", self.url("responses"), headers=self._headers(), json=payload, timeout=spec.timeout
                 ) as resp:
-                    if resp.status_code >= 400:
+                    if resp.status_code >= 300:
                         parsed = _decode(await resp.aread())
                         raise _status_failure(
                             resp.status_code,
