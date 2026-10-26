@@ -41,7 +41,7 @@ Every stage reads and writes plain JSON in `jobs/<job_id>/`. That lets each WP d
 ### 3.1 `job.json` (prepare)
 ```json
 {"job_id": "j_01", "source": "SC-A-01.mp4", "source_sha256": "…",
- "prepared": "prepared.mp4", "fps": 30.0, "width": 1280, "height": 720, "frames": 900,
+ "prepared": "prepared.mp4", "fps": 30, "width": 1280, "height": 720, "frames": 900,
  "times": [0.0, 0.0333], "audio": true, "created_at": "2026-10-27T10:00:00Z"}
 ```
 
@@ -51,36 +51,44 @@ Every stage reads and writes plain JSON in `jobs/<job_id>/`. That lets each WP d
  "tracks": [
    {"track_id": "face:7", "concept": "face", "first": 120, "last": 410,
     "boxes": {"120": [x1, y1, x2, y2], "121": [x1, y1, x2, y2]},
-    "masks": {"120": "rle:…"},
+    "masks": {"120": {"size": [720, 1280], "counts": "…"}},
     "reentry_of": null,
-    "source": "sam-3.1", "prompt": "face"}
+    "source": "sam-3.1", "prompt": "face", "origin": "sam",
+    "sam_object": {"request": 0, "object_id": "3"}, "child_phrase": false, "conf": {"120": 0.91}}
  ],
+ "sam_fps": 8, "sam_frames": 240,
  "crowded_frames": [312, 313],
- "requests": [{"concept": "face", "file_id": "file_…", "frames_billed": 900, "usd": 0.18}]}
+ "requests": [{"kind": "phrase", "concept": "face", "file_id": "file_…", "fps": 8, "frames_billed": 240, "matches": 4, "usd": 0.048}]}
 ```
 `reentry_of` is informational only: a re-acquired object is ALWAYS a new `track_id` and starts hidden (DESIGN §2.5).
 
 ### 3.3 `transcript.json` (speech)
 ```json
-{"source": "muse-voice-transcribe-1.0",
+{"status": "ok", "source": "muse-voice-transcribe-1.0", "source_kind": "primary", "degraded": false,
  "turns": [{"speaker": "S1", "start": 0.4, "end": 3.1, "text": "Hi, I'm Amina, and today…"}]}
 ```
 
 ### 3.4 `scene.json` (scout, scene pass)
 ```json
-{"model": "muse-wonder-1.0", "summary": "street interview…",
- "participants": [{"description": "woman in yellow jacket", "evidence": "introduced as Amina by S1 at 0.4s", "speaker": "S2"}],
- "candidate_objects": [{"what": "phone screen showing a chat", "approx_time": "mid-clip"}]}
+{"status": "ok", "model": "muse-spark-1.3", "summary": "street interview…",
+ "participants": [{"description": "woman in yellow jacket", "evidence": "introduced as Amina by S1 at 0.4s", "speaker": "S2",
+                   "is_creator": false, "introduced_in_turn": 0, "introduction_quote": "I'm Amina"}],
+ "candidate_objects": [{"what": "phone screen showing a chat", "approx_time": "middle"}],
+ "children": [], "others_present": ""}
 ```
 
 ### 3.5 `roles.json` (scout, role pass)
 This is the same shape as DESIGN §2.3, plus vote detail:
 ```json
-{"tracks": [{"track_id": "face:7", "role": "participant|bystander|child|unsure",
+{"status": "ok", "model": "muse-spark-1.3",
+ "tracks": [{"track_id": "face:7", "role": "participant|bystander|child|unsure",
              "votes": ["participant", "participant", "participant"], "escalated": false,
-             "evidence": "introduced at frame 90, speaks to camera 120–600", "frames": [90, 120, 150]}],
+             "evidence": "introduced at frame 90, speaks to camera 120–600", "frames": [90, 120, 150],
+             "failed_votes": 0, "matches_participant": 0, "suggested_role": null,
+             "escalation_evidence": null, "escalation_frames": null}],
  "objects": [{"track_id": "screen:2", "sensitive": true, "content": "email inbox with names", "frames": [300]}],
- "missed": [{"what": "addressed envelope", "sam_phrase": "envelope", "frame": 420, "point": {"x": 512, "y": 640}}],
+ "missed": [{"what": "addressed envelope", "sam_phrase": "envelope", "frame": 420, "point": {"x": 512, "y": 640},
+             "box": null, "recurs": false, "track_ids": []}],
  "keyframes": ["som/000090.jpg"]}
 ```
 
@@ -89,14 +97,15 @@ This is the same shape as DESIGN §2.3, plus vote detail:
 {"items": [{"item_id": "i_3", "track_ids": ["face:7", "person:2"], "kind": "person|child|plate|screen|document|other",
             "decision": "hide|keep|needs_you", "reason": "bystander: walks behind guest, never addresses camera",
             "evidence_frames": [150, 300], "style": "solid|pixelate|person_solid",
-            "decided_by": "policy|model|creator", "locked": false}]}
+            "decided_by": "policy|model|creator", "locked": false,
+            "hold": null, "origin": "sam", "audit_label": null}]}
 ```
 Children are `locked: true` and `hide`; the creator can't un-hide them (DESIGN §2.5). `needs_you` renders hidden until the creator decides.
 
 ### 3.7 `plan.json` (guard)
 ```json
 {"padding": {"face": 0.15, "default": 0.08, "px": 8}, "temporal": {"extend": 8, "backfill": 15, "gap_hold_s": 2.0},
- "frames": {"150": [{"item_id": "i_3", "shape": "box|mask", "box": [x1, y1, x2, y2], "mask": null, "style": "solid", "grid": [gx, gy, cell]}]},
+ "frames": {"150": [{"item_id": "i_3", "shape": "box|mask", "box": [x1, y1, x2, y2], "mask": null, "style": "solid", "grid": null, "source": "decision"}]},
  "crowd_fills": [{"frames": [312, 313], "box": [0, 0, 1280, 400]}]}
 ```
 `grid` locks the pixelation grid to the item's track box so it doesn't shift between frames (DESIGN §2.7).
@@ -105,7 +114,8 @@ Children are `locked: true` and `hide`; the creator can't un-hide them (DESIGN �
 ```json
 {"frames_scanned": 900, "egoblur": {"model": "egoblur-gen2", "faces": 0, "plates": 0},
  "leaks": [{"frame": 401, "box": [x1, y1, x2, y2], "kind": "face", "detector": "egoblur|redteam", "patched_item": "i_9"}],
- "redteam": [{"frame": 450, "finding": "none"}], "unresolved": 0, "passes": 2}
+ "redteam": [{"frame": 450, "finding": "none"}], "unresolved": 0, "passes": 2,
+ "sample_step": 30, "spots": [], "blocked_reason": null, "audit_budget_cause": null}
 ```
 Publishing is allowed only when `unresolved == 0`.
 
@@ -113,13 +123,19 @@ Publishing is allowed only when `unresolved == 0`.
 ```json
 {"job_id": "j_01", "items": [/* decisions.items + thumbnail paths */], "audit": {/* audit summary */},
  "models": {"scene": "muse-wonder-1.0", "roles": "muse-spark-1.3", "sam": "sam-3.1", "asr": "muse-voice-transcribe-1.0"},
- "data_handling": {"mode": "standard", "store": false, "files_deleted": true},
- "approved_by": "creator", "approved_at": "…", "cost_usd": 0.91,
+ "data_handling": {"mode": "standard", "store": false, "store_by_model": {"muse-spark-1.3": false},
+                   "no_store_param": ["muse-voice-transcribe-1.0"], "files_deleted": true, "notes": []},
+ "approved_by": "creator", "approved_at": "…", "cost_usd": 0.91, "cost_usd_estimated": 0,
  "prev_hash": "…", "hash": "sha256(prev_hash + canonical_json(body))"}
 ```
 
 ### 3.10 `cost.jsonl`
-One line per API call: `{"ts", "stage", "model", "units", "usd", "request_id"}`. The pipeline refuses to start a stage that would exceed `SAFECUT_JOB_USD_CAP`.
+One line per API attempt: `{"ts", "job_id", "stage", "model", "attempt", "units", "usd", "estimated", "request_id", "cap", "code_kind", "code_id"}`. `estimated: true` marks an attempt whose billing is unknown (accepted, then lost); reported figures sum only `estimated: false` lines. A call whose worst-case estimate doesn't fit a cap is never sent and writes one `budget:<stage>` line naming the `cap`. `job_id` is null only on `system` lines (`/healthz`, the startup probe).
+
+### 3.11 `files.json`
+A JSON array, one entry per upload: `[{"name": "sam_proxy.mp4", "sha256": "…", "file_id": "file-…", "purpose": "user_data", "created_at": "…Z", "deleted_at": null, "orphan": false}]`. Written before the file is used; `deleted_at` is set when `DELETE /v1/files/{id}` succeeds (or answers `file_not_found`). An upload whose ID never arrived is `file_id: null, orphan: true`, and `files_deleted: true` needs every entry deleted and no orphan.
+
+**Types and rules** live in `safecut/contracts.py` (PRE-A §12 implemented): boxes are int, half-open and non-empty; `job.fps` is an int 1–30 and `times` is non-decreasing; masks are frame-sized COCO RLE objects; `status` fields are `ok|failed|skipped`; children are always locked hides; an `audit_patch` item carries `box`/`first`/`last` and an `A<n>` label; `blocked_reason` is set exactly when `unresolved > 0`. `fixtures/contracts/j_example/` is a complete, cross-checked job directory.
 
 ## 4. Models and config (env, with defaults in `safecut/config.py`)
 
@@ -130,9 +146,15 @@ One line per API call: `{"ts", "stage", "model", "units", "usd", "request_id"}`.
 | `SAFECUT_SCENE_MODEL` | `muse-spark-1.3` | scene pass on the whole clip (video) | switch to `muse-wonder-1.0` if the D1 probe shows it's better (WP0 decides and records why) |
 | `SAFECUT_ESCALATE_MODEL` | `muse-spark-1.3` (`reasoning.effort: max`) | disputed tracks, once | same as above: Wonder only if probes justify it |
 | `SAFECUT_ASR_MODEL` | `muse-voice-transcribe-1.0` | diarized transcript with turn timestamps | Meta's docs say Muse Spark 1.3 audio is **degraded**, and speech ("Hi, I'm Amina") is key participant evidence. Fallback: `SAFECUT_SPEECH_SOURCE=spark-1.2` |
-| `SAFECUT_JOB_USD_CAP` | `2.00` | per-clip spend guard | |
-| `SAFECUT_DAILY_USD_CAP` | `10.00` | service-wide guard for the public demo | |
+| `SAFECUT_JOB_USD_CAP` | `3.00` | per-clip spend guard | a busy 60 s clip models at $2.09 (PRE-A §9.1) |
+| `SAFECUT_DAILY_USD_CAP` | `3.00` | public and judge codes, service keys, `/healthz` | PRE-A §9.2 |
+| `SAFECUT_SAM_FPS` | `8` | SAM proxy frame rate (1–10) | PRE-A §5b |
+| `SAFECUT_SPEECH_FALLBACK_MODEL` / `_EFFORT` | `muse-spark-1.2` / `omit` | speech fallback through the video soundtrack | PRE-A §3.4 |
+| `SAFECUT_ROLE_EFFORT`, `SAFECUT_SCENE_EFFORT`, `SAFECUT_REDTEAM_MODEL`, `SAFECUT_REDTEAM_EFFORT` | `medium`, `medium`, `muse-spark-1.3`, `medium` | efforts per pass | every effort is validated; `none` is refused (Meta returns 400) |
+| `SAFECUT_OPEN_MODEL`, `SAFECUT_OPEN_BASE_URL` | `meta-models/muse-spark-open-1026`, `https://inference.baseten.co/v1` | Muse Spark Open (open weights) on Baseten | the official guide's hackathon ID; key in `BASETEN_API_KEY` |
 | `MODEL_API_KEY` | none | Meta Model API key | secret; never logged |
+
+The full list (access codes, code windows, pilot and recording caps, R2 storage, EgoBlur, the test line) is in `safecut/config.py` and `.env.example`; PRE-A §12 explains each.
 
 Endpoint: `https://api.meta.ai/v1` (OpenAI-compatible Responses, Files, ASR). The owner's design choice was depth with a few models, not a tour. Every model above does a job nothing else in the stack can do, and the README must say what each one is for.
 
