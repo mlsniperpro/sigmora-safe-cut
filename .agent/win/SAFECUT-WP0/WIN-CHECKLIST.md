@@ -36,6 +36,6 @@ Legend: `- [x]` done with evidence · `- [P]` parked on an owner input (BLOCKED.
 - [x] Production 'holds up': timeouts, bounded retries, breaker, caps, no secrets in logs or errors. Evidence: test_key_is_sent_and_never_logged, test_errors_never_echo_values
 
 ## Quality bar
-- [ ] State-of-the-art note in the PR (httpx, pydantic v2, meta-sam-parser) with links
+- [x] State-of-the-art note in the PR (httpx, pydantic v2, meta-sam-parser, backoff, RFC 9110) with links. Evidence: PR #3 "State of the art"
 - [ ] Self-review section in the PR; code-review skill run on the diff
 - [ ] Fresh-clone README run recorded in break-it.md
