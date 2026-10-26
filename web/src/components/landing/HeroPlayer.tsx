@@ -17,6 +17,8 @@ type Version = "raw" | "safecut";
 export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["audit"]) => void }) {
   const [demo, setDemo] = useState<DemoResponse | null>(null);
   const [failed, setFailed] = useState(false);
+  /** Presigned URLs live 15 minutes: a load error refetches the demo once for fresh ones (§1.4). */
+  const [refreshes, setRefreshes] = useState(0);
   const [version, setVersion] = useState<Version>("safecut");
   const reduced = useReducedMotion();
   const video = useRef<HTMLVideoElement>(null);
@@ -36,7 +38,7 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["au
         if (!controller.signal.aborted) setFailed(true);
       });
     return () => controller.abort();
-  }, [onAuditor]);
+  }, [onAuditor, refreshes]);
 
 
   const switchTo = (next: Version) => {
@@ -71,7 +73,10 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["au
                 if (!reduced) void e.currentTarget.play().catch(() => undefined);
               }
             }}
-            onError={() => setFailed(true)}
+            onError={() => {
+              if (refreshes === 0) setRefreshes(1);
+              else setFailed(true);
+            }}
             aria-label={version === "raw" ? "Raw footage of the demo clip" : "The demo clip after Safe Cut"}
           >
             {demo.captions_url && <track kind="captions" src={demo.captions_url} srcLang="en" label="English" default />}

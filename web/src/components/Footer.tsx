@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { SITE } from "@/lib/site";
 
 export function Footer() {
@@ -10,6 +11,9 @@ export function Footer() {
         </p>
         <p className="flex flex-wrap gap-x-4 gap-y-1">
           <span>Uploads are deleted from Safe Cut&apos;s servers after 24 hours.</span>
+          <Link href="/privacy" className="underline underline-offset-2">
+            Privacy
+          </Link>
           <span>MIT licence</span>
           <a href={SITE.repoUrl} className="underline underline-offset-2" rel="noopener noreferrer" target="_blank">
             Source on GitHub

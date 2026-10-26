@@ -7,6 +7,10 @@ export const SITE = {
   /** WP8 sets this from the hero clip actually filmed (UI-SPEC §1.3 copy notes). */
   heroHasChild: process.env.NEXT_PUBLIC_HERO_HAS_CHILD !== "false",
   geoPolicyUrl: "https://dev.meta.ai/legal/geographic-use-policy",
+  metaTermsUrl: "https://dev.meta.ai/legal/terms-of-service",
+  metaAupUrl: "https://dev.meta.ai/legal/acceptable-use-policy",
+  /** The owner's privacy contact (UI-SPEC §7.1); never committed, set in the deploy env. */
+  privacyContact: process.env.NEXT_PUBLIC_PRIVACY_CONTACT?.trim() || null,
   evalUrl: process.env.NEXT_PUBLIC_EVAL_URL?.trim() || "https://github.com/mlsniperpro/sigmora-safe-cut/blob/main/docs/EVAL.md",
 } as const;
 

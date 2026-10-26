@@ -437,7 +437,9 @@ export function TryFlow() {
               {fileError}
             </p>
           </div>
-          {openWeight && <p className="mt-4 text-sm text-muted">Sampled frames of the result also go to Baseten, which runs Muse Spark Open.</p>}
+          <p className="mt-4 text-sm text-muted">
+            {openWeight ? "Sampled frames of the result also go to Baseten, which runs Muse Spark Open." : "Your clip is never sent to Baseten or any open-weight model."}
+          </p>
           <div className="mt-4 flex items-start gap-2">
             <input
               ref={rightsBox}
@@ -459,6 +461,21 @@ export function TryFlow() {
               .
             </label>
           </div>
+          <p className="mt-1 pl-7 text-sm text-muted">
+            By uploading you agree to Meta&apos;s{" "}
+            <a href={SITE.metaTermsUrl} className="underline underline-offset-2" target="_blank" rel="noopener noreferrer">
+              Terms
+            </a>{" "}
+            and{" "}
+            <a href={SITE.metaAupUrl} className="underline underline-offset-2" target="_blank" rel="noopener noreferrer">
+              Acceptable Use Policy
+            </a>{" "}
+            and our{" "}
+            <Link href="/privacy" className="underline underline-offset-2">
+              Privacy page
+            </Link>
+            .
+          </p>
           <p id={ids.rightsErr} role="alert" className="mt-1 text-danger empty:hidden">
             {rightsError}
           </p>
@@ -485,7 +502,7 @@ function DataBullets() {
     <div className="mt-10 rounded-xl border border-border bg-surface p-5">
       <h2 className="font-semibold">What happens to your clip</h2>
       <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted">
-        <li>It&apos;s sent to Meta&apos;s Model API using Standard model IDs only, never a Contributor model ID.</li>
+        <li>It&apos;s sent to Meta&apos;s Model API using Standard model IDs only, never a Contributor model ID. Meta says it doesn&apos;t use content from its Standard services to train its models.</li>
         <li>Your clip, the result and the receipt are deleted from Safe Cut&apos;s servers after 24 hours, or sooner if you choose.</li>
         <li>Up to 60 seconds and 150 MB. MP4 or MOV.</li>
       </ul>

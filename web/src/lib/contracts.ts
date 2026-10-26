@@ -210,7 +210,7 @@ export const auditSchema = z.object({
   blocked_reason: blockedReasonSchema.nullable().default(null),
   sample_step: z.number().int().positive().optional(),
   spots: z.array(spotSchema).default([]),
-  open_weight: z.object({ model: z.string(), status: z.string() }).nullable().optional(),
+  open_weight: z.object({ model: z.string(), status: z.string(), frames: z.number().int().nonnegative().optional(), findings: z.number().int().nonnegative().optional() }).nullable().optional(),
   audit_budget_cause: budgetCauseSchema.nullable().optional(),
 });
 export type Audit = z.infer<typeof auditSchema>;

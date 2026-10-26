@@ -3,21 +3,20 @@
 ## Goal, deadline, PR
 - Build WP6 (`docs/work-packages/WP6.md`) to winning quality. Spec detail lives in PRE-B's `docs/UI-SPEC.md` (on `origin/pre-b-product` until it merges: `git show origin/pre-b-product:docs/UI-SPEC.md`). Official rules: `docs/OFFICIAL-GUIDE.md`.
 - Internal deadline 2026-11-04T18:00Z; official deadline 2026-11-05 02:00 UTC.
-- Branch `wp6-web`, which is pushed. **No PR is open yet.** Open exactly ONE PR wp6-web → main.
-- Done = `bash .agent/win-gate.sh SAFECUT-WP6` prints `GATE: PASS` on the pushed HEAD. The gate has not been run yet.
+- Branch `wp6-web`; its one PR is #4 (wp6-web → main).
+- Done = `bash .agent/win-gate.sh SAFECUT-WP6` prints `GATE: PASS` on the pushed HEAD.
 
-## State at wind-down (2026-10-26 ~20:40Z)
-- PR #4 is open (wp6-web → main) and its body is current. The branch is pushed. LEASE is released.
-- Audit rounds 1 and 2 are fixed: 38 findings, including 1 critical and 4 high. Record: `.agent/win/SAFECUT-WP6/reaudit.md`. Cache Components is OFF on purpose (see Decisions in the PR).
-- Last verified on 05481aa: 689 vitest tests and e2e 66/66 (`pnpm build && pnpm e2e`). A fresh clone runs `checks.sh` green (break-it.md records b2e384c; refresh it).
-- Gate status: FAILS only on (a) CLEAN_AUDITS_IN_A_ROW 0, and (b) reaudit.md and break-it.md being stale against HEAD. Everything else passes.
-
-## In flight at wind-down (nothing partial is committed)
-- Audit round 3 (a Sonnet subagent on 05481aa) was STOPPED before it reported. Rerun it.
-- A FUZZ_RUNS=100000 agreement soak on 05481aa was stopped; its result is unknown. Rerun: `cd web && FUZZ_RUNS=100000 node_modules/.bin/vitest run src/lib/review/agreement`.
+## State (2026-10-26, resumed after the cancelled wind-down)
+- PR #4 is open (wp6-web → main). LEASE is active for session_015tDis5YX6a2MfMLKywnL4y.
+- Adopted PRE-B's newest UI-SPEC (f51fcb6):
+  - A region proxy (`src/proxy.ts` + `lib/region.ts`) rewrites /try and /jobs/* to /unavailable for PRE-A §7 territories. Next ignores a status on a rewrite, so the response is 200 with the unavailable page; no upload form is served.
+  - Added /privacy, the consent line with Meta Terms/AUP links, the data bullets (open-weight aware) and Ctrl+Z with single-key shortcuts off.
+- Verified on this commit: lint 0 warnings, typecheck, 742 vitest tests, build, e2e 71/71.
+- Audit rounds 1 and 2 are fixed (38 findings). Round 3 is running on 4abd680; check its findings against this commit.
+- Gate fails only on CLEAN_AUDITS_IN_A_ROW and stale reaudit/break-it commits.
 
 ## Open audit findings
-- None known open. Round 3 never reported. Accepted (low): no chip-list virtualisation above 100 chips (reasoning in reaudit.md round 2 #12).
+- None known open. Accepted (low): no chip-list virtualisation above 100 chips (reasoning in reaudit.md round 2 #12).
 
 ## Next steps, in order
 1. Re-run a full audit (round 3) on HEAD, fix what it finds, and repeat until two full audits in a row find nothing (set AUDITED_COMMIT to HEAD and CLEAN_AUDITS_IN_A_ROW: 2).

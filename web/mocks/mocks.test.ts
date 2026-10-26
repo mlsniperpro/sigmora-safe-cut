@@ -134,6 +134,15 @@ describe("mock fixtures", () => {
       if (j.roles) expect(j.roles.status).toBeDefined();
     });
 
+    it("points introductions and speakers only at real transcript turns (UI-SPEC §10.1)", () => {
+      const turns = j.transcript?.turns ?? [];
+      const speakers = new Set(turns.map((t) => t.speaker));
+      for (const p of j.scene?.participants ?? []) {
+        if (p.introduced_in_turn !== null && p.introduced_in_turn !== undefined) expect(p.introduced_in_turn).toBeLessThan(turns.length);
+        if (p.speaker) expect(speakers.has(p.speaker), `${n}: speaker ${p.speaker}`).toBe(true);
+      }
+    });
+
     it("ties each hold to the stage that didn't run (UI-SPEC §10.1)", () => {
       // job-review-why-rows carries one item per hold with every stage ok, on purpose (the spec exempts it).
       if (n === "job-review-why-rows") return;

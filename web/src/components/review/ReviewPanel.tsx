@@ -330,10 +330,11 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
       next?.querySelector<HTMLElement>("[data-chip-id]")?.focus();
       return;
     }
-    if (!shortcuts || e.altKey || e.metaKey) return;
+    if (e.altKey || e.metaKey) return;
     const chipId = article?.getAttribute("data-chip-id") ?? null;
     const key = e.key.toLowerCase();
-    if (key === "z" && (e.ctrlKey || !e.shiftKey)) {
+    // Ctrl+Z isn't a single-character shortcut, so it works with the switch off; plain Z doesn't.
+    if (key === "z" && ((e.ctrlKey && !e.shiftKey) || (shortcuts && !e.ctrlKey && !e.shiftKey))) {
       const top = stateRef.current.undo.at(-1);
       if (top) {
         e.preventDefault();
@@ -341,7 +342,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
       }
       return;
     }
-    if (e.ctrlKey) return;
+    if (e.ctrlKey || !shortcuts) return;
     if (key === "h" && chipId) {
       e.preventDefault();
       act({ type: "HIDE", id: chipId, edit_id: newEditId() });
@@ -699,7 +700,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
               }
             }}
           />
-          Single-key shortcuts (H, C, Z, K, ?)
+          Single-key shortcuts
         </label>
         <div className="mt-4 flex justify-end">
           <button type="button" className={btn.secondary} onClick={() => setHelpOpen(false)} autoFocus>

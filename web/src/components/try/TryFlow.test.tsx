@@ -180,11 +180,15 @@ describe("/try", () => {
     expect(screen.getByRole("link", { name: "territory where Meta's API is restricted" })).toHaveAttribute("href", "https://dev.meta.ai/legal/geographic-use-policy");
   });
 
-  it("no Baseten line for an ordinary code", async () => {
+  it("an ordinary code says the clip never goes to Baseten, and links Meta's terms and our privacy page", async () => {
     const user = setup();
     await enterCode(user, "judge");
     await screen.findByRole("button", { name: "Choose a file" });
-    expect(screen.queryByText(/Baseten/)).toBeNull();
+    expect(screen.getByText("Your clip is never sent to Baseten or any open-weight model.")).toBeInTheDocument();
+    expect(screen.queryByText(/Sampled frames of the result also go to Baseten/)).toBeNull();
+    expect(screen.getByRole("link", { name: "Terms" })).toHaveAttribute("href", "https://dev.meta.ai/legal/terms-of-service");
+    expect(screen.getByRole("link", { name: "Acceptable Use Policy" })).toHaveAttribute("href", "https://dev.meta.ai/legal/acceptable-use-policy");
+    expect(screen.getByRole("link", { name: "Privacy page" })).toHaveAttribute("href", "/privacy");
   });
 
   it("cancelling during the upload stays deleted and never re-uploads", async () => {

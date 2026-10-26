@@ -44,7 +44,9 @@
     "spots": [],
     "open_weight": {
       "model": "meta-models/muse-spark-open-1026",
-      "status": "ok"
+      "status": "ok",
+      "frames": 12,
+      "findings": 0
     }
   }
 }

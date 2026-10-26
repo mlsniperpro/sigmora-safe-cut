@@ -383,7 +383,7 @@
       {
         "description": "woman in yellow jacket",
         "evidence": "introduces herself at the start: \"Hi, I'm Amina\"",
-        "speaker": "S2",
+        "speaker": null,
         "introduced_in_turn": null,
         "introduction_quote": null,
         "is_creator": false
@@ -391,7 +391,7 @@
       {
         "description": "man holding the microphone",
         "evidence": "asks the questions",
-        "speaker": "S1",
+        "speaker": null,
         "introduced_in_turn": null,
         "introduction_quote": null,
         "is_creator": true

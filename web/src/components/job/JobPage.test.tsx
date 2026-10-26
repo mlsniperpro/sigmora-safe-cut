@@ -222,6 +222,23 @@ describe("review panel", () => {
     expect(within(column(/^Hidden/)).getByRole("article", { name: /^Face 2,/ })).toBeInTheDocument();
   });
 
+  it("with single-key shortcuts off, H does nothing but Ctrl+Z still undoes", async () => {
+    const user = setup("job-review-hero1");
+    await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
+    await user.click(screen.getByRole("button", { name: "Keyboard shortcuts" }));
+    const dialog = await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+    await user.click(within(dialog).getByRole("checkbox", { name: "Single-key shortcuts" }));
+    await user.click(within(dialog).getByRole("button", { name: "Close" }));
+    act(() => chip("Face 2").focus());
+    await user.keyboard("h");
+    expect(within(column(/^Kept clear/)).getByRole("article", { name: /^Face 2,/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Hide Face 6" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Undo" })).toBeEnabled());
+    act(() => chip("Face 6").focus());
+    await user.keyboard("{Control>}z{/Control}");
+    expect(await screen.findByText("Undone.")).toBeInTheDocument();
+  });
+
   it("shows the demo-mode banner for a replayed job", async () => {
     setup("job-replay");
     expect(await screen.findByText(/You're seeing saved results from a real run/)).toBeInTheDocument();
@@ -230,7 +247,7 @@ describe("review panel", () => {
 
 describe("job states", () => {
   it.each([
-    ["error-404-expired", "This clip has been deleted. Safe Cut deletes everything automatically after 24 hours."],
+    ["error-404-expired", "This clip has been deleted. Safe Cut deletes clips from its servers automatically after 24 hours."],
     ["nope", "We couldn't find that clip. Check the link, or try another clip."],
     ["job-created", "This clip hasn't finished uploading. Upload it again to start."],
     ["job-failed-roles", "Something went wrong while working out who's part of the story. Your clip hasn't been published anywhere. You can try again, or delete it now."],

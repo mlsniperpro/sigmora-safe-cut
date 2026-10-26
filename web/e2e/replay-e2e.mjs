@@ -211,6 +211,21 @@ try {
     await context.close();
   }
 
+  // Region check (UI-SPEC §7): restricted territories get the unavailable page on /try; the landing stays open.
+  {
+    const context = await browser.newContext({ extraHTTPHeaders: { "x-vercel-ip-country": "UA", "x-vercel-ip-country-region": "43" } });
+    const page = await context.newPage();
+    await page.goto(`${BASE}/try`, { waitUntil: "networkidle" });
+    check("region: a restricted territory gets the unavailable page on /try", await page.getByText(/Safe Cut isn't available in your region/).isVisible());
+    check("region: no upload form is served there", (await page.getByLabel("Access code").count()) === 0);
+    const home = await page.goto(`${BASE}/`, { waitUntil: "networkidle" });
+    check("region: the landing page stays open", home?.status() === 200);
+    await page.goto(`${BASE}/privacy`, { waitUntil: "networkidle" });
+    check("privacy page is reachable", await page.getByRole("heading", { name: "Privacy", level: 1 }).isVisible());
+    await axe(page, "privacy");
+    await context.close();
+  }
+
   // A short landscape screen (or 200% zoom): the player isn't sticky, so the chips can scroll into view.
   {
     const context = await browser.newContext({ viewport: { width: 844, height: 390 } });

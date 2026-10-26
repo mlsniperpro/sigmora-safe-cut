@@ -111,7 +111,8 @@ export function votesSection(
   missedWhat: string | null,
   clock: FrameClock,
 ): VotesSection {
-  if (w.item.origin === "audit_patch" || w.item.origin === "static") return { kind: "none" };
+  // Audit-added and static items have no votes: the section shows only when an object ruling exists.
+  if ((w.item.origin === "audit_patch" || w.item.origin === "static") && !(object && object.content !== "")) return { kind: "none" };
   if (isObjectKind(w.item.kind)) {
     const has = object && object.content !== "";
     return {

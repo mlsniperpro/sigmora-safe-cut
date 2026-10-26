@@ -219,7 +219,7 @@ export const COPY = {
   deleted: "Deleted from Safe Cut's servers.",
   unreachable: "Safe Cut's service isn't responding right now. Your clip is safe and nothing has been published. Try again in a minute.",
   unexpected: "Something went wrong on our side. Nothing has been published.",
-  expired: "This clip has been deleted. Safe Cut deletes everything automatically after 24 hours.",
+  expired: "This clip has been deleted. Safe Cut deletes clips from its servers automatically after 24 hours.",
   notFound: "We couldn't find that clip. Check the link, or try another clip.",
   metaBusy: "Meta's service is busy right now. Safe Cut will try once more in a few minutes on its own; you can leave this page and come back with your review link. Nothing has been published.",
   created: "This clip hasn't finished uploading. Upload it again to start.",

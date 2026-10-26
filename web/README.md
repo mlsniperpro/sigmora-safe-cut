@@ -54,7 +54,7 @@ pnpm e2e         # Playwright on the production build in mock mode, with axe (ru
 
 ## Environment variables
 
-All are public build-time values (`NEXT_PUBLIC_*`); no secret ever reaches the browser.
+The `NEXT_PUBLIC_*` values are public and fixed at build time; no secret ever reaches the browser. `SAFECUT_BLOCKED_TERRITORIES` is read on the server only.
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -64,6 +64,9 @@ All are public build-time values (`NEXT_PUBLIC_*`); no secret ever reaches the b
 | `NEXT_PUBLIC_SIGMORA_URL` | `https://sigmora.org` | "Back to Sigmora", the publish target, and `frame-ancestors` |
 | `NEXT_PUBLIC_REPO_URL` | this repo on GitHub | "Source on GitHub" |
 | `NEXT_PUBLIC_EVAL_URL` | `docs/EVAL.md` on GitHub | "How we measured" under the results table |
+| `NEXT_PUBLIC_PRIVACY_CONTACT` | unset (falls back to "Open an issue on GitHub") | The email address shown on `/privacy` (UI-SPEC §7.1). The owner sets it at deploy time; it is never committed |
+| `NEXT_PUBLIC_HERO_HAS_CHILD` | `true` | Set `false` if the filmed hero clip has no child, so the landing copy doesn't promise one (UI-SPEC §1.3) |
+| `SAFECUT_BLOCKED_TERRITORIES` | PRE-A §7's list | JSON `{"countries":[…],"regions":{"UA":[…]}}` replacing the territories that `/try` and the job pages refuse (`src/proxy.ts`, which reads Vercel's `x-vercel-ip-country` headers). A malformed value makes the proxy throw when it loads, rather than silently opening uploads |
 
 ## Deploy
 
