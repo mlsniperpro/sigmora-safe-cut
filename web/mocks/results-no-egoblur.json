@@ -1,0 +1,42 @@
+{
+  "run_id": "fixture-run",
+  "rows": [
+    {
+      "method": "Blur every face",
+      "variant": "blur_all",
+      "recall": 0.5,
+      "exposure": 0.5,
+      "leak_bursts": 0,
+      "over_blur": 0.5
+    },
+    {
+      "method": "Detector only",
+      "variant": "detector",
+      "recall": 0.5,
+      "exposure": 0.5,
+      "leak_bursts": 0,
+      "over_blur": 0.5
+    },
+    {
+      "method": "Muse Spark, no tracking",
+      "variant": "muse_no_tracking",
+      "recall": 0.5,
+      "exposure": 0.5,
+      "leak_bursts": 0,
+      "over_blur": 0.5
+    },
+    {
+      "method": "Safe Cut",
+      "variant": "full",
+      "recall": 0.5,
+      "exposure": 0.5,
+      "leak_bursts": 0,
+      "over_blur": 0.5
+    }
+  ],
+  "n_clips": 2,
+  "n_public": 1,
+  "n_staged": 1,
+  "runs_per_clip": 1,
+  "labellers": 1
+}

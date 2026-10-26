@@ -1,0 +1,9 @@
+{
+  "status": 503,
+  "body": {
+    "error": {
+      "code": "auditor_unavailable",
+      "message": "auditor_unavailable (for logs only)"
+    }
+  }
+}

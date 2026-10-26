@@ -1,0 +1,61 @@
+{
+  "job_id": "j_hero1",
+  "mode": "live",
+  "status": "done",
+  "deletes_at": "2026-10-28T11:00:00Z",
+  "frames": 12,
+  "video_url": "https://example.invalid/j_hero1/redacted.mp4",
+  "captions_url": "https://example.invalid/j_hero1/captions.vtt",
+  "receipt_html_url": "https://example.invalid/j_hero1/receipt.html",
+  "receipt_json_url": "https://example.invalid/j_hero1/receipt.json",
+  "audit": {
+    "frames_scanned": 12,
+    "egoblur": {
+      "model": "egoblur-gen2",
+      "faces": 0,
+      "plates": 0
+    },
+    "leaks": [
+      {
+        "frame": 7,
+        "box": [
+          600,
+          200,
+          660,
+          250
+        ],
+        "kind": "face",
+        "detector": "egoblur",
+        "patched_item": null,
+        "unresolved": true
+      }
+    ],
+    "redteam": [
+      {
+        "frame": 0,
+        "finding": "none"
+      }
+    ],
+    "unresolved": 1,
+    "passes": 2,
+    "blocked_reason": "unresolved_leaks",
+    "sample_step": 30,
+    "spots": [
+      {
+        "spot_id": "s1",
+        "first": 7,
+        "last": 7,
+        "boxes": {
+          "7": [
+            600,
+            200,
+            660,
+            250
+          ]
+        },
+        "covered_by": null
+      }
+    ]
+  },
+  "code_valid_until": null
+}

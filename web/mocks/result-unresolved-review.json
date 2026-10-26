@@ -1,0 +1,444 @@
+{
+  "job_id": "j_hero1",
+  "mode": "live",
+  "status": "done",
+  "stage": "done",
+  "progress": 1,
+  "deletes_at": "2026-10-28T11:00:00Z",
+  "job": {
+    "fps": 30,
+    "width": 1280,
+    "height": 720,
+    "frames": 12,
+    "audio": true,
+    "times": [
+      0,
+      0.03333333333333333,
+      0.06666666666666667,
+      0.1,
+      0.13333333333333333,
+      0.16666666666666666,
+      0.2,
+      0.23333333333333334,
+      0.26666666666666666,
+      0.3,
+      0.3333333333333333,
+      0.36666666666666664
+    ],
+    "created_at": "2026-10-27T10:00:00Z",
+    "prepared_url": "https://example.invalid/j_hero1/prepared.mp4"
+  },
+  "items": [
+    {
+      "item_id": "i_1",
+      "track_ids": [
+        "face:2",
+        "person:1"
+      ],
+      "kind": "person",
+      "decision": "keep",
+      "reason": "the guest: introduced at the start, speaks to camera",
+      "evidence_frames": [
+        3,
+        9
+      ],
+      "style": null,
+      "decided_by": "policy",
+      "locked": false,
+      "removed_by_creator": false
+    },
+    {
+      "item_id": "i_2",
+      "track_ids": [
+        "face:4"
+      ],
+      "kind": "child",
+      "decision": "hide",
+      "reason": "child in the background, not addressed",
+      "evidence_frames": [
+        6
+      ],
+      "style": "solid",
+      "decided_by": "policy",
+      "locked": true,
+      "removed_by_creator": false
+    },
+    {
+      "item_id": "i_3",
+      "track_ids": [
+        "license plate:1"
+      ],
+      "kind": "plate",
+      "decision": "hide",
+      "reason": "number plate on a parked car",
+      "evidence_frames": [
+        1
+      ],
+      "style": "solid",
+      "decided_by": "policy",
+      "locked": false,
+      "removed_by_creator": false
+    },
+    {
+      "item_id": "i_4",
+      "track_ids": [
+        "face:6"
+      ],
+      "kind": "person",
+      "decision": "needs_you",
+      "reason": "looks at the camera; checks disagreed",
+      "evidence_frames": [
+        9
+      ],
+      "style": "pixelate",
+      "decided_by": "model",
+      "locked": false,
+      "removed_by_creator": false
+    }
+  ],
+  "tracks": [
+    {
+      "track_id": "face:2",
+      "concept": "face",
+      "first": 0,
+      "last": 11,
+      "reentry_of": null,
+      "boxes": {
+        "3": [
+          400,
+          120,
+          470,
+          210
+        ],
+        "9": [
+          410,
+          122,
+          480,
+          212
+        ]
+      }
+    },
+    {
+      "track_id": "person:1",
+      "concept": "person",
+      "first": 0,
+      "last": 11,
+      "reentry_of": null,
+      "boxes": {
+        "3": [
+          360,
+          100,
+          560,
+          700
+        ],
+        "9": [
+          370,
+          102,
+          570,
+          700
+        ]
+      }
+    },
+    {
+      "track_id": "face:4",
+      "concept": "face",
+      "first": 4,
+      "last": 10,
+      "reentry_of": null,
+      "boxes": {
+        "6": [
+          900,
+          200,
+          940,
+          250
+        ]
+      }
+    },
+    {
+      "track_id": "license plate:1",
+      "concept": "license plate",
+      "first": 0,
+      "last": 11,
+      "reentry_of": null,
+      "boxes": {
+        "1": [
+          1050,
+          560,
+          1150,
+          590
+        ]
+      }
+    },
+    {
+      "track_id": "face:6",
+      "concept": "face",
+      "first": 8,
+      "last": 11,
+      "reentry_of": null,
+      "boxes": {
+        "9": [
+          700,
+          150,
+          750,
+          215
+        ]
+      }
+    }
+  ],
+  "roles": {
+    "status": "ok",
+    "tracks": [
+      {
+        "track_id": "face:2",
+        "role": "participant",
+        "votes": [
+          "participant",
+          "participant",
+          "participant"
+        ],
+        "escalated": false,
+        "suggested_role": null,
+        "escalation_evidence": null,
+        "escalation_frames": null,
+        "matches_participant": 0,
+        "evidence": "introduced at F 000003, speaks to camera at F 000003 and F 000009",
+        "frames": [
+          3,
+          9
+        ]
+      },
+      {
+        "track_id": "face:4",
+        "role": "child",
+        "votes": [
+          "child",
+          "child",
+          "child"
+        ],
+        "escalated": false,
+        "suggested_role": null,
+        "escalation_evidence": null,
+        "escalation_frames": null,
+        "matches_participant": null,
+        "evidence": "small person walking with an adult behind the guest at F 000006",
+        "frames": [
+          6
+        ]
+      },
+      {
+        "track_id": "face:6",
+        "role": "unsure",
+        "votes": [
+          "bystander",
+          "participant",
+          "bystander"
+        ],
+        "escalated": true,
+        "suggested_role": "bystander",
+        "escalation_evidence": "faces the lens at F 000009 but is never addressed and never speaks",
+        "escalation_frames": [
+          9
+        ],
+        "matches_participant": null,
+        "evidence": "Judges disagreed: looks at the camera at frame 9, never speaks",
+        "frames": [
+          9
+        ]
+      }
+    ],
+    "objects": [
+      {
+        "track_id": "license plate:1",
+        "sensitive": true,
+        "content": "number plate, characters legible",
+        "frames": [
+          1
+        ]
+      }
+    ],
+    "missed": [],
+    "keyframes": [
+      "som/000001.jpg",
+      "som/000003.jpg",
+      "som/000006.jpg",
+      "som/000009.jpg",
+      "som/000007.jpg"
+    ]
+  },
+  "keyframe_geometry": {
+    "bar_h": 40,
+    "frame_width": 1280,
+    "frame_height": 720,
+    "image_width": 1280,
+    "image_height": 760
+  },
+  "keyframe_urls": {
+    "1": "https://example.invalid/j_hero1/som/000001.jpg",
+    "3": "https://example.invalid/j_hero1/som/000003.jpg",
+    "6": "https://example.invalid/j_hero1/som/000006.jpg",
+    "7": "https://example.invalid/j_hero1/som/000007.jpg",
+    "9": "https://example.invalid/j_hero1/som/000009.jpg"
+  },
+  "plan": {
+    "frames": {
+      "1": [
+        {
+          "item_id": "i_3",
+          "shape": "box",
+          "box": [
+            1042,
+            552,
+            1158,
+            598
+          ],
+          "mask": null,
+          "style": "solid",
+          "grid": null
+        }
+      ],
+      "6": [
+        {
+          "item_id": "i_2",
+          "shape": "box",
+          "box": [
+            894,
+            193,
+            946,
+            257
+          ],
+          "mask": null,
+          "style": "solid",
+          "grid": null
+        }
+      ],
+      "9": [
+        {
+          "item_id": "i_4",
+          "shape": "box",
+          "box": [
+            692,
+            140,
+            758,
+            225
+          ],
+          "mask": null,
+          "style": "pixelate",
+          "grid": [
+            692,
+            140,
+            11
+          ]
+        }
+      ]
+    },
+    "crowd_fills": []
+  },
+  "transcript": {
+    "status": "ok",
+    "source": "muse-voice-transcribe-1.0",
+    "source_kind": "primary",
+    "degraded": false,
+    "turns": [
+      {
+        "speaker": "S1",
+        "start": 0,
+        "end": 0.1,
+        "text": "So, who are you?"
+      },
+      {
+        "speaker": "S2",
+        "start": 0.1,
+        "end": 0.3,
+        "text": "Hi, I'm Amina, and today…"
+      }
+    ]
+  },
+  "scene": {
+    "status": "ok",
+    "model": "muse-spark-1.3",
+    "summary": "street interview with a guest",
+    "participants": [
+      {
+        "description": "woman in yellow jacket",
+        "evidence": "introduces herself at the start: \"Hi, I'm Amina\"",
+        "speaker": "S2",
+        "introduced_in_turn": 1,
+        "introduction_quote": "I'm Amina",
+        "is_creator": false
+      },
+      {
+        "description": "man holding the microphone",
+        "evidence": "asks the questions",
+        "speaker": "S1",
+        "introduced_in_turn": null,
+        "introduction_quote": null,
+        "is_creator": true
+      }
+    ],
+    "children": [
+      {
+        "description": "small child walking with an adult behind the guest"
+      }
+    ],
+    "others_present": "a few passers-by behind the guest",
+    "candidate_objects": [
+      {
+        "what": "parked car with a visible number plate",
+        "approx_time": "throughout"
+      }
+    ]
+  },
+  "has_render": true,
+  "result": {
+    "video_url": "https://example.invalid/j_hero1/redacted.mp4"
+  },
+  "audit": {
+    "frames_scanned": 12,
+    "egoblur": {
+      "model": "egoblur-gen2",
+      "faces": 0,
+      "plates": 0
+    },
+    "leaks": [
+      {
+        "frame": 7,
+        "box": [
+          600,
+          200,
+          660,
+          250
+        ],
+        "kind": "face",
+        "detector": "egoblur",
+        "patched_item": null,
+        "unresolved": true
+      }
+    ],
+    "redteam": [
+      {
+        "frame": 0,
+        "finding": "none"
+      }
+    ],
+    "unresolved": 1,
+    "passes": 2,
+    "blocked_reason": "unresolved_leaks",
+    "sample_step": 30,
+    "spots": [
+      {
+        "spot_id": "s1",
+        "first": 7,
+        "last": 7,
+        "boxes": {
+          "7": [
+            600,
+            200,
+            660,
+            250
+          ]
+        },
+        "covered_by": null
+      }
+    ]
+  }
+}

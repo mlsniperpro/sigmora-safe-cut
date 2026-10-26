@@ -1,0 +1,132 @@
+{
+  "status": 200,
+  "body": {
+    "edit_id": "e_hide_i4",
+    "mode": "live",
+    "status": "review",
+    "has_render": false,
+    "items": [
+      {
+        "item_id": "i_1",
+        "track_ids": [
+          "face:2",
+          "person:1"
+        ],
+        "kind": "person",
+        "decision": "keep",
+        "reason": "the guest: introduced at the start, speaks to camera",
+        "evidence_frames": [
+          3,
+          9
+        ],
+        "style": null,
+        "decided_by": "policy",
+        "locked": false,
+        "removed_by_creator": false
+      },
+      {
+        "item_id": "i_2",
+        "track_ids": [
+          "face:4"
+        ],
+        "kind": "child",
+        "decision": "hide",
+        "reason": "child in the background, not addressed",
+        "evidence_frames": [
+          6
+        ],
+        "style": "solid",
+        "decided_by": "policy",
+        "locked": true,
+        "removed_by_creator": false
+      },
+      {
+        "item_id": "i_3",
+        "track_ids": [
+          "license plate:1"
+        ],
+        "kind": "plate",
+        "decision": "hide",
+        "reason": "number plate on a parked car",
+        "evidence_frames": [
+          1
+        ],
+        "style": "solid",
+        "decided_by": "policy",
+        "locked": false,
+        "removed_by_creator": false
+      },
+      {
+        "item_id": "i_4",
+        "track_ids": [
+          "face:6"
+        ],
+        "kind": "person",
+        "decision": "hide",
+        "reason": "looks at the camera; checks disagreed",
+        "evidence_frames": [
+          9
+        ],
+        "style": "pixelate",
+        "decided_by": "creator",
+        "locked": false,
+        "removed_by_creator": false
+      }
+    ],
+    "plan": {
+      "frames": {
+        "1": [
+          {
+            "item_id": "i_3",
+            "shape": "box",
+            "box": [
+              1042,
+              552,
+              1158,
+              598
+            ],
+            "mask": null,
+            "style": "solid",
+            "grid": null
+          }
+        ],
+        "6": [
+          {
+            "item_id": "i_2",
+            "shape": "box",
+            "box": [
+              894,
+              193,
+              946,
+              257
+            ],
+            "mask": null,
+            "style": "solid",
+            "grid": null
+          }
+        ],
+        "9": [
+          {
+            "item_id": "i_4",
+            "shape": "box",
+            "box": [
+              692,
+              140,
+              758,
+              225
+            ],
+            "mask": null,
+            "style": "pixelate",
+            "grid": [
+              692,
+              140,
+              11
+            ]
+          }
+        ]
+      },
+      "crowd_fills": []
+    },
+    "audit": null
+  }
+}

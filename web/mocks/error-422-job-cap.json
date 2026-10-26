@@ -1,0 +1,9 @@
+{
+  "status": 422,
+  "body": {
+    "error": {
+      "code": "job_cap",
+      "message": "job_cap (for logs only)"
+    }
+  }
+}

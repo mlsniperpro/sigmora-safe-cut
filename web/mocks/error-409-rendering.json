@@ -1,0 +1,9 @@
+{
+  "status": 409,
+  "body": {
+    "error": {
+      "code": "rendering",
+      "message": "rendering (for logs only)"
+    }
+  }
+}
