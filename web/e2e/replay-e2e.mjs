@@ -196,6 +196,31 @@ try {
     check(`${v}: no unexpected console errors`, real.length === 0, real.slice(0, 3).join(" | "));
     await context.close();
   }
+
+  // Browsers without requestVideoFrameCallback: the rAF fallback still covers, and says it may lag (§3.6).
+  {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    await context.addInitScript(() => {
+      delete HTMLVideoElement.prototype.requestVideoFrameCallback;
+      delete HTMLVideoElement.prototype.cancelVideoFrameCallback;
+    });
+    const page = await context.newPage();
+    await page.goto(`${BASE}/jobs/job-review-sample`, { waitUntil: "networkidle" });
+    await page.getByText(/hidden · /).waitFor();
+    check("no rVFC: the lag note shows", await page.getByText("Preview may lag by a frame in this browser. The final render isn't affected.").isVisible());
+    await page.locator("video").first().evaluate((el) => new Promise((res) => (el.readyState >= 2 ? res(true) : el.addEventListener("loadeddata", () => res(true), { once: true }))));
+    const covered = await page.evaluate(async () => {
+      const video = document.querySelector("video");
+      const canvas = document.querySelector("canvas");
+      video.currentTime = 15.5 / 30;
+      await new Promise((r) => video.addEventListener("seeked", r, { once: true }));
+      await new Promise((r) => setTimeout(r, 300));
+      const s = canvas.width / 1280;
+      return canvas.getContext("2d").getImageData(Math.round(1080 * s), Math.round(652 * s), 1, 1).data[3] > 200;
+    });
+    check("no rVFC: the rAF fallback still covers the plate", covered);
+    await context.close();
+  }
 } catch (error) {
   check("e2e run", false, String(error?.message ?? error).split("\n").slice(0, 4).join(" | "));
   // Leave evidence of where it stopped.
