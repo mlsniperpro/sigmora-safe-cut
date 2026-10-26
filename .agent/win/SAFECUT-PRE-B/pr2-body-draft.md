@@ -15,7 +15,7 @@ The PRE-B work package: docs only, before kickoff (`date -u` when this session t
 | `docs/PILOTS.md` | Target profiles, outreach drafts (DM 102 words, email 109, placeholders as one word), consent and data note, the timed protocol, the $6-per-code / $20 caps, how results are reported (anonymous-only credits with ≤ 2 pilots) |
 | `docs/RULES-CHECKLIST.md` | Rule areas with an action for every answer, plus cut plans down to 2:00 |
 | `docs/BLOCKED-PRE-B.md` | Only what the owner must physically do, each with a default, a date, and the exact secret entries (codes without dates: each kind's window applies) |
-| `docs/WIN-CHECKLIST-PRE-B.md` | Every judging criterion, deliverable and audit finding (#1–#415) mapped to evidence; 0 unchecked lines |
+| `docs/WIN-CHECKLIST-PRE-B.md` | Every judging criterion, deliverable and audit finding (#1–#452) mapped to evidence; 0 unchecked lines |
 
 ## State of the art: the core choices and why
 
@@ -53,11 +53,11 @@ Sources (read 2026-10-24 from GitHub copies; the canonical sites don't resolve f
 
 ## Reconciliation with PRE-A (PR #1)
 
-Checked against `origin/pre-a-research` @ `02c605e`. PRE-A changed in parallel during a wind-down, working from this PR at `22283eb`, so PRE-B adopted PRE-A's API and cost facts where the two had diverged (#331): `422 job_cap`, the $3.00 headroom and $15.00 bound, per-kind code windows, the `owner` kind, `code_valid_until`, `failure.reason: "code_not_active"`, `503 auditor_unavailable`, 60 s costs $2.02–2.09 ($2.34 no-cache). Every item in PRE-A §12's "Requests to PRE-B" is now in PRE-B's text (#332: hold and static Why rows, union-box `cover_spot` with `origin`/`audit_label`, object rulings for `other`, `child_phrase` → child, "Voice S1" speaker labels, stage-file `status` in mocks), and since `02c605e` also #409–#415 (scene `introduced_in_turn`/`introduction_quote` in every mock, service keys `401` outside the judge window, an auditor name rule for the YuNet fallback, `503 billing` copy, the prompt-cache sentence and receipt check in the consent note, `…T23:59:59Z` window ends), and PRE-A's three `[P]` rows in its WIN-CHECKLIST §4 are satisfied here; PRE-A can mark them `[x]`. Labels and pilots stay PRE-B's; API and cost facts stay PRE-A's.
+Checked against `origin/pre-a-research` @ `df5b1dc`. PRE-A changed in parallel during a wind-down, working from this PR at `22283eb`, so PRE-B adopted PRE-A's API and cost facts where the two had diverged (#331): `422 job_cap`, the $3.00 headroom and $15.00 bound, per-kind code windows, the `owner` kind, `code_valid_until`, `failure.reason: "code_not_active"`, `503 auditor_unavailable`, 60 s costs $2.02–2.09 ($2.34 no-cache). Every item in PRE-A §12's "Requests to PRE-B" is now in PRE-B's text (#332: hold and static Why rows, union-box `cover_spot` with `origin`/`audit_label`, object rulings for `other`, `child_phrase` → child, "Voice S1" speaker labels, stage-file `status` in mocks), and since `02c605e` also #409–#415 (scene `introduced_in_turn`/`introduction_quote` in every mock, service keys `401` outside the judge window, an auditor name rule for the YuNet fallback, `503 billing` copy, the prompt-cache sentence and receipt check in the consent note, `…T23:59:59Z` window ends), and PRE-A's three `[P]` rows in its WIN-CHECKLIST §4 are satisfied here; PRE-A can mark them `[x]`. Labels and pilots stay PRE-B's; API and cost facts stay PRE-A's.
 
 ## Self-review
 
-- **This session:** full audit rounds 24–41 (and continuing until two consecutive rounds are clean), each with three independent fresh auditors in parallel (cross-package facts; UI-SPEC internals; labels, pilots and storyboard), each on a fixed commit. Findings #204–#415 were all fixed (or, for #257, answered). Many later findings were regressions of earlier fixes, so every round re-reads the latest diff and its neighbouring rules first.
+- **This session:** full audit rounds 24–41 (and continuing until two consecutive rounds are clean), each with three independent fresh auditors in parallel (cross-package facts; UI-SPEC internals; labels, pilots and storyboard), each on a fixed commit. Findings #204–#452 were all fixed (or, for #257, answered). Many later findings were regressions of earlier fixes, so every round re-reads the latest diff and its neighbouring rules first.
 - **Known limits:** hours per clip are estimates until two clips are timed; UI copy hasn't been seen by a user; the API field names in UI-SPEC §8 are proposals until WP5 exists; Feinstein & Cicchetti is cited, not fetched.
 
 ## Evidence
