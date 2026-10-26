@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from safecut import config
@@ -110,7 +110,6 @@ def test_missing_key_is_a_config_error() -> None:
 
 
 @given(st.sampled_from(["muse-spark-1.3", "sam-3.1", "x"]), st.booleans())
-@settings(max_examples=50)
 def test_contributor_suffix_always_refused(model: str, contributor: bool) -> None:
     env = {"SAFECUT_ROLE_MODEL": model + ("-contributor" if contributor else "")}
     if contributor:

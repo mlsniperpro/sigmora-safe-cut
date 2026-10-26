@@ -13,7 +13,7 @@ from typing import Any
 import httpx
 import pytest
 import respx
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 from meta_sam_parser import SegmentationBoxRecord, parse_responses_stream, video_segmentation_format
 from pydantic import BaseModel, SecretStr
@@ -66,7 +66,6 @@ _json_values = st.recursive(
 
 
 @given(st.lists(st.dictionaries(st.text(min_size=1, max_size=8), _json_values, min_size=1, max_size=4), max_size=8))
-@settings(max_examples=300)
 def test_sse_round_trips_any_json_objects(events: list[dict[str, Any]]) -> None:
     body = "".join(f"data: {json.dumps(e)}\n\n" for e in events)
     assert list(iter_sse(body.split("\n"))) == events

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -10,12 +11,21 @@ from typing import Any
 import httpx
 import pytest
 import respx
+from hypothesis import HealthCheck
+from hypothesis import settings as hypothesis_settings
 from pydantic import SecretStr
 
 from safecut.config import Settings
 from safecut.contracts import CostLine, read_cost_lines
 from safecut.meta.budget import Caller, LocalLedger
 from safecut.meta.client import MetaClient
+
+# Property-test volume: "dev" for every run, "soak" (HYPOTHESIS_PROFILE=soak) for long background runs.
+hypothesis_settings.register_profile("dev", max_examples=300, deadline=None)
+hypothesis_settings.register_profile(
+    "soak", max_examples=20_000, deadline=None, suppress_health_check=[HealthCheck.too_slow]
+)
+hypothesis_settings.load_profile(os.environ.get("HYPOTHESIS_PROFILE", "dev"))
 
 BASE = "https://api.meta.ai/v1"
 FAKE_KEY = "sk-test-not-a-real-key"

@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 import respx
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 
 from safecut import config
@@ -115,7 +115,6 @@ def test_parse_retry_after() -> None:
 
 
 @given(st.text(max_size=40))
-@settings(max_examples=300)
 def test_parse_retry_after_never_raises(value: str) -> None:
     result = parse_retry_after(value)
     assert result is None or result >= 0
@@ -201,7 +200,6 @@ def test_cost_rejects_bad_input() -> None:
     o=st.integers(0, 10**6),
     extra=st.integers(1, 10**5),
 )
-@settings(max_examples=500)
 def test_responses_cost_is_monotone(i: int, c: int, o: int, extra: int) -> None:
     c = min(c, i)
     base = cost.responses_usd("muse-spark-1.3", input_tokens=i, cached_tokens=c, output_tokens=o)
@@ -218,7 +216,6 @@ def test_responses_cost_is_monotone(i: int, c: int, o: int, extra: int) -> None:
         lambda kids: st.dictionaries(st.text(max_size=25), kids, max_size=5),
     )
 )
-@settings(max_examples=300)
 def test_usage_units_tolerates_any_shape(usage: object) -> None:
     units = cost.usage_units(usage if isinstance(usage, dict) else None)
     assert set(units) == {"input", "cached", "output", "reasoning"}
@@ -288,7 +285,6 @@ def test_ledger_sweeps_expired_reservations_as_charges() -> None:
 @given(
     st.lists(st.tuples(st.floats(0, 1, allow_nan=False), st.sampled_from(["settle", "release", "keep"])), max_size=40)
 )
-@settings(max_examples=200)
 def test_ledger_never_lets_spend_pass_the_cap(ops: list[tuple[float, str]]) -> None:
     ledger = LocalLedger()
     cap = CapLimit("job", "job:p", 2.0)

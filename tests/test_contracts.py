@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 from pydantic import BaseModel, ValidationError
 
@@ -97,7 +97,6 @@ class _BoxHolder(BaseModel):
     w=st.integers(-5, 2000),
     h=st.integers(-5, 2000),
 )
-@settings(max_examples=500)
 def test_box_accepts_exactly_non_empty_half_open_boxes(x1: int, y1: int, w: int, h: int) -> None:
     box = (x1, y1, x1 + w, y1 + h)
     if w > 0 and h > 0:
@@ -347,7 +346,6 @@ def test_canonical_json_is_sorted_compact_utf8() -> None:
     cost=st.floats(0, 100, allow_nan=False),
     notes=st.lists(st.text(max_size=40), max_size=3),
 )
-@settings(max_examples=200)
 def test_receipt_seal_round_trips(cost: float, notes: list[str]) -> None:
     data = _raw("receipt.json")
     data.pop("hash")
