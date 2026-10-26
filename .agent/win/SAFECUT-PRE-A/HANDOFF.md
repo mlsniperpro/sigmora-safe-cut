@@ -1,6 +1,6 @@
 # HANDOFF: SAFECUT-PRE-A (docs-only research package)
 
-**Held by** session_015NHPSLCF7hCdxi6Q9v8srB (resumed 2026-10-26 15:48 UTC on the owner's RESUME).
+**Released** by session_015NHPSLCF7hCdxi6Q9v8srB at 2026-10-26 17:10 UTC (owner WIND DOWN; this account ends). A successor on another account claims LEASE (`holder=<session> status=active`).
 
 ## Goal, deadline, PR
 - **Branch** `pre-a-research` · **PR #1** (the only PRE-A PR; never open another) · **Brief** `docs/work-packages/PRE-A.md` · **Rules** `AGENTS.md`: docs only, **no code, config or scaffolding before 2026-10-26 16:00 UTC**; stop the win loop by then at the latest.
@@ -14,9 +14,12 @@
 - Last pushes: `7ca667d` (audit #35 fixes), `b6fa465` (concurrency row). The PR #1 body still shows an older push; refresh it at the end (step 5).
 
 ## In flight
-- Loop continues past kickoff on the owner's /goal. Official guide committed (`docs/OFFICIAL-GUIDE.md`, authoritative) and reconciled (WIN-CHECKLIST §7, API-NOTES §3.8 open-weight second opinion on Baseten). Audits #36–#46 applied and logged; #42–#46 were full passes (21, 22, 21, 18, 21 findings). **Next: full audit #47 on the pushed HEAD**, then #48; done when two consecutive full audits find nothing new, then refresh the PR #1 body and re-post the final status comment. PR #2 open items: API-NOTES §12 lines marked **open**.
+- **Full audit #47 was started on `dbbb669` and stopped unfinished at the wind-down: no findings collected.** Re-run it as the first step.
+- Everything else is pushed: audits #36–#46 applied and logged in WIN-CHECKLIST §6 (#42–#46 were full three-lens passes with 21, 22, 21, 18, 21 findings; none clean). Official guide committed verbatim (`docs/OFFICIAL-GUIDE.md`, authoritative) and reconciled (WIN-CHECKLIST §7; API-NOTES §3.8 open-weight second opinion on Baseten, §9.2 window vs schedule).
+- The PR #1 body (refreshed 15:50 UTC) and the 15:57 UTC status comment predate audits #42–#46 and the guide; refresh both at the end.
 
 ## Next steps (in order)
+0. Claim LEASE. Run full audit #47 on HEAD: three parallel Agent subagents with model `sonnet`, effort `high` (A internal + arithmetic by script, B brief/AGENTS/WP files/OFFICIAL-GUIDE/live pages, C vs `origin/pre-b-product`), read-only, "report ONLY builder-impacting defects … else NO NEW FINDINGS". Verify each finding (live page, grep, script) before fixing; fix, log in WIN-CHECKLIST §6, gate, push; repeat until two consecutive full audits find nothing new. Then refresh the PR #1 body (latest sha, audits, PR #2 status, evidence output) and post the final docs status comment on PR #1 (no docs change after it).
 1. Lease is claimed (`status=active`); keep it so until a WIND DOWN.
 2. Run the next audit on HEAD: three parallel fresh agents (model sonnet, effort high), read-only, "report ONLY builder-impacting defects … if nothing, say exactly NO NEW FINDINGS", pointing them at the newest edits.
 3. Fix findings, log them in WIN-CHECKLIST §6, commit; repeat until **two consecutive rounds on the same HEAD** find nothing. Record the last clean audit only in the PR comment, so no docs change follows it.
