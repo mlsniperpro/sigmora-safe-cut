@@ -500,6 +500,16 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#464 (win audit 42)**: (audit C) Staged dev clips had no release or cast-only rule though they go to the bucket. Fix: same rules as hero 1.
 - [x] **#465 (win audit 42)**: (audit C) The pilot pre-send check didn't verify R2 upload deletion that the consent note promises. Fix: added to both check lines.
 - [x] **#466 (win audit 42)**: (audit C) The beat-1 caption said "Everyone signed" though a guardian signs for the child. Fix: wording, with the no-child variant.
+- [x] **#467 (win audit 42)**: (audit A) With an empty MIME the `PUT` could send no `Content-Type` and fail the signature. Fix: the `PUT` always sets it to the declared value (extends #453).
+- [x] **#468 (win audit 42)**: (audit A) PRE-A's failure-placeholder votes (`failed_votes`) would show as Muse Spark judgements. Fix: no marks for them, "{n} of the 3 checks didn't run.", whole section collapses when all failed; data table and Why-rows fixture.
+- [x] **#469 (win audit 42)**: (audit A) A static item's `reason` ("possible missed object at F{frame}") would show a raw frame number. Fix: the rewrite also applies to `reason`; §10.6 case.
+- [x] **#470 (win audit 42)**: (audit A) SCHEDULE had WP7's freezer refuse a >30 s mean, against PRE-A's cut-run-3 rule. Fix: warns and still freezes.
+- [x] **#471 (win audit 42)**: (audit A) The `source_kind` invariant broke PRE-A's failed/skipped transcript shape. Fix: `null` also when `status` isn't `ok`.
+- [x] **#472 (win audit 42)**: (audit A) PILOTS' per-pilot record lacked the clip language. Fix: added.
+- [x] **#473 (win audit 42)**: (audit A) The results footnotes and video footer omitted the run count. Fix: `{runs_per_clip}` in request 22, footnotes, 7.1 and the STORYBOARD sources.
+- [x] **#474 (win audit 42)**: (audit A) "Everything is deleted" overclaimed given Meta's unknown retention and prompt cache. Fix: "deleted from Safe Cut's servers".
+- [x] **#475 (win audit 42)**: (audit A) The VO said SAM tracks "frame by frame" (it sees an 8 fps proxy). Fix: "through the clip".
+- [x] **#476 (win audit 42)**: (audit A) Two stale requests to PRE-A (receipt stage after a re-audit; escalation field names) were already answered. Fix: removed.
 
 ## 4. Which builder reads what
 

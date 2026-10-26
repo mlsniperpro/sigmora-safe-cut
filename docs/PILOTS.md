@@ -91,7 +91,7 @@ If the check fails, no codes go out: the pilot window **shrinks** (it still ends
 
 **Order effect, stated honestly:** the usual way always comes first, so by the Safe Cut step they know the clip. That favours the second method slightly in time, and the submission says so. With 5 pilots this is a small, self-reported study, not a benchmark; it's reported as exactly that.
 
-**What we record per pilot** (private sheet, then committed numbers only): profile, region, clip length, usual-way minutes (and whether it was a capped attempt), Safe Cut minutes, chips changed, misses and wrong hides they reported, the three answers, permission status.
+**What we record per pilot** (private sheet, then committed numbers only): profile, region, clip length, clip language (§1), usual-way minutes (and whether it was a capped attempt), Safe Cut minutes, chips changed, misses and wrong hides they reported, the three answers, permission status.
 
 ## 6. How results appear in the submission
 
