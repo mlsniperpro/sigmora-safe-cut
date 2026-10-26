@@ -21,7 +21,7 @@ Status: **v1, 2026-10-24 (PRE-B, docs only).** Shot by shot for the beats in [DE
 | # | Time | Dur | Frame | On-screen text | VO | Source |
 |---|---|---|---|---|---|---|
 | **Beat 1: Hook** | | | | | | |
-| 1.1 | 0:00–0:03 | 3 s | H1A raw, full frame: the guest talking to the host on a busy street | Corner, for the whole of beat 1: "Staged with actors. Everyone signed a release." | "Here's a typical street interview." | `R-01` (H1A raw) |
+| 1.1 | 0:00–0:03 | 3 s | H1A raw, full frame: the guest talking to the host on a busy street | Corner, for the whole of beat 1: "Staged with actors. Everyone signed a release (a guardian signed for the child)." (no-child variant: "Staged with actors. Everyone signed a release.") | "Here's a typical street interview." | `R-01` (H1A raw) |
 | 1.2 | 0:03–0:12 | 9 s | Same clip continues; each problem gets a thin outline and label as it appears: the child passing, actor 2's phone with the fake number, the parked car's plate | "Child" · "Phone number" · "Number plate" (small labels next to each) · bottom: "In real footage, none of them agreed to be in it." | "It also shows a child, a stranger's phone number and a plate. In real footage, none of them agreed." | `R-01` + outlines from the labelled boxes of H1A |
 | **Beat 2: The status quo fails** | | | | | | |
 | 2.1 | 0:12–0:20 | 8 s | Split screen, same moment of H1A. Left: blur-every-face baseline (the guest is covered; plate and phone visible). Right: manual masking in an editor, time-lapse, real timer in the corner | Left: "Blur every face (baseline)". Right: "Masking by hand · `{manual_minutes}` min for this `{h1a_seconds}` s clip" | "Today you either blur everyone, including your guest," | `R-02` (H1A `blur_all`) + `SR-10` (manual masking, time-lapse) |

@@ -486,6 +486,20 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#450 (PRE-A @ `df5b1dc`)**: The upload contract lacked `content_type`, the signed `PUT` headers, the delete-and-restart retry and `409 upload_incomplete`. Fix: request 17, §2.6 rows, §10.3 rows, fixture `error-409-upload-incomplete.json`.
 - [x] **#451 (PRE-A @ `df5b1dc`)**: An audit-added item's `reason` must be PRE-A's fixed sentence, not a lowercase variant, and the drawer repeated it. Fix: the fixture uses it, request 4 exempts audit patches, the drawer shows only the fixed sentence.
 - [x] **#452 (self-review)**: The timeout rule implied a re-pressed `/start` or `/audit` gets `409`; only `/render` does (§10.3). Fix: narrowed.
+- [x] **#453 (win audit 42)**: An empty browser MIME type left no `content_type` for the signed upload. Fix: derive it from the extension and send it in both requests.
+- [x] **#454 (win audit 42)**: `job-review-speech-limited.json` left `i_1.style: null` on a covered item after #446. Fix: `pixelate`.
+- [x] **#455 (win audit 42)**: [Cover it] had an undo toast with no copy. Fix: §3.4 row "{U label} will be covered." and R19.
+- [x] **#456 (win audit 42)**: Polling didn't resume after a timed-out paid POST, and R25 assumed a poll while paused. Fix: "or timed out"; R25 uses an in-flight `GET`.
+- [x] **#457 (win audit 42)**: §0's frame-number rule ignored §4.3's exceptions. Fix: named.
+- [x] **#458 (win audit 42)**: Copy used "strangers" and "identifies", which the vocabulary rules ban. Fix: "bystanders", "reveals who someone is".
+- [x] **#459 (win audit 42)**: The Why-rows fixture lacked creator-decided keep and hide items. Fix: added.
+- [x] **#460 (win audit 42)**: The drawer ring used "the item's tracks" against the primary-track rule. Fix: primary track.
+- [x] **#461 (win audit 42)**: Loose references: §3.9 meant ARCHITECTURE §3.9; the `needs_you` action list contradicted row 2 for `job_cap`. Fix: both.
+- [x] **#462 (win audit 42)**: (audit C) No owner step handed Claude the Nov 3 run files and timings before the 24 h purge. Fix: a dated step with a cut-the-shots default.
+- [x] **#463 (win audit 42)**: (audit C) BLOCKED lacked the Dec 1 test-set deletion, the borrowed-machine wipe, conditional teammate and release-addendum steps, and Nov 4–9 steps. Fix: added.
+- [x] **#464 (win audit 42)**: (audit C) Staged dev clips had no release or cast-only rule though they go to the bucket. Fix: same rules as hero 1.
+- [x] **#465 (win audit 42)**: (audit C) The pilot pre-send check didn't verify R2 upload deletion that the consent note promises. Fix: added to both check lines.
+- [x] **#466 (win audit 42)**: (audit C) The beat-1 caption said "Everyone signed" though a guardian signs for the child. Fix: wording, with the no-child variant.
 
 ## 4. Which builder reads what
 
