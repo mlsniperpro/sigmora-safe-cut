@@ -19,6 +19,17 @@ Legend: `- [x]` done with evidence · `- [P]` parked on an owner input (BLOCKED.
 - [ ] PR lists total probe spend from cost.jsonl
 - [ ] tests/test_meta_client.py covers failure paths: timeouts, 4xx/5xx, 429 with Retry-After, malformed and empty bodies, partial streams
 
+## Official guide reconciliation (docs/OFFICIAL-GUIDE.md, captured 2026-10-26 16:25Z)
+- [x] Theme fit: "Build for Your World" (creator privacy on footage the creator films). Not on the anti-project list: Safe Cut is a multi-model video pipeline with a closed SAM ↔ Muse loop and an audit, not a simple image analyzer. Evidence: docs/OFFICIAL-GUIDE.md, MAXXING §0
+- [x] Deadline reconciled: Wed Nov 4 9:00 PM ET = 2026-11-05 02:00 UTC (ET is UTC-5 after Nov 1); the internal deadline stays 2026-11-04T18:00Z
+- [x] Rubric weights match MAXXING §1: Impact 30, Meta tooling 25, Technical depth 20, Demo 25
+- [x] New work only: every WP0 file is created on branch wp0-foundation after 2026-10-26 16:00 UTC (first commit 895500e at 16:1x UTC); the README's "built during the event" boundary is WP8's
+- [P] Stage 1 pass/fail needs real Meta Model API use: the client is built and tested, live calls wait on MODEL_API_KEY (BLOCKED.md)
+- [P] Public repo at submission (BLOCKED.md; owner approves)
+- [ ] Open-weight bonus path: config for Baseten `meta-models/muse-spark-open-1026` and an open-weight probe behind BASETEN_API_KEY
+- [-] 3-minute video and live product: WP8 and WP5/WP6 own them (DEMO.md plans 2:50, under the limit)
+- [-] Best Agentic Use-Case: the closed loop (SAM IDs → Muse rulings → new SAM prompts) is WP2's; WP0 supplies the client it runs on
+
 ## Judging criteria (WP0's share)
 - [ ] Technical depth 20%: typed, tested Meta client with honest cost accounting
 - [ ] Meta tooling 25%: Standard mode only, store:false, uploads deleted, every model ID from env
