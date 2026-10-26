@@ -6,14 +6,13 @@
 - Branch `wp6-web`, which is pushed. **No PR is open yet.** Open exactly ONE PR wp6-web → main.
 - Done = `bash .agent/win-gate.sh SAFECUT-WP6` prints `GATE: PASS` on the pushed HEAD. The gate has not been run yet.
 
-## State (2026-10-26 ~19:30Z)
-- PR #4 open (wp6-web → main), subscribed. Branch pushed; LEASE active.
-- Green on a fresh clone at b2e384c: `checks.sh` (lint, typecheck, 640 tests, build, e2e 60/60 with axe). Evidence: `.agent/win/SAFECUT-WP6/break-it.md`.
-- Audit round 1 (22 findings) is fixed (eda2876). Fresh-clone runs found and fixed three shipping bugs: the ignored `/jobs` routes, the ignored sample mp4s, and typecheck needing `next typegen`. Record: `reaudit.md`.
-- Implemented against PRE-B UI-SPEC @ f1ebc5e (`git show origin/pre-b-product:docs/UI-SPEC.md`). PRE-B is still editing it: diff it again each round and adopt the changes.
+## State (2026-10-26 ~20:30Z)
+- PR #4 open, body current. Branch pushed (HEAD 56a4aec or later). LEASE active.
+- Audit rounds 1 and 2 are fixed: 38 findings, including 1 critical and 4 high. Record: `reaudit.md`. Cache Components is now OFF (Activity state preservation caused round-2 #2, #6 and #7).
+- Local results: 689 tests and e2e 66/66 on 05481aa.
 
 ## In flight
-- Audit round 2 (a Sonnet subagent) on eda2876. On return: verify each finding, fix, then set `reaudit.md` AUDITED_COMMIT to HEAD and update CLEAN_AUDITS_IN_A_ROW (it resets to 0 if the audit finds anything).
+- Audit round 3 (a Sonnet subagent) on 05481aa. A FUZZ_RUNS=100000 agreement soak on 05481aa (log at scratchpad soak4.log; it's lost if the container restarts, so rerun it).
 
 ## Next steps, in order
 1. Fix round-2 findings, push, then run full audits until two in a row find nothing (CLEAN_AUDITS_IN_A_ROW: 2).
