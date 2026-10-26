@@ -58,6 +58,8 @@ def _baseten(request: httpx.Request) -> httpx.Response:
         for p in body["messages"][1]["content"]
         if p.get("text", "").startswith("Frame ")
     ]
+    if len(frames) > 8:  # Baseten's documented "Max images per request 8"
+        return httpx.Response(400, json={"error": {"message": "Max images per request 8"}})
     # A text box near the true "AMINA K." box (sent image 1280x760 with a 40 px bar).
     hit = {"kind": "text", "detail": "a name", "text": "AMINA K.", "box": [327, 462, 556, 550], "confidence": "high"}
     answer = json.dumps({"frames": [{"frame": f, "findings": [hit] if f == 60 else []} for f in frames]})
@@ -120,6 +122,9 @@ async def test_all_probes_replay(api: respx.MockRouter, tmp_path: Path) -> None:
     assert results["g"]["error_px"] < 5
     assert results["h"]["model"] == "meta-models/muse-spark-open-1026"
     assert results["h"]["grid_ok"] is True
+    assert "findings" in results["h"]["eight_images"]
+    assert "MetaBadRequest" in results["h"]["nine_images"]["error"]
+    assert results["h"]["image_limit_holds"] is True
     assert results["h"]["price_source"] == "baseten.co library page"
     assert "reasoning_effort" not in str(results["h"]["omit_effort"])
     assert all(r["uploads_deleted"] is True for name, r in results.items() if name != "h")

@@ -575,6 +575,8 @@ def test_files_deleted_needs_every_upload_deleted(tmp_path: Path) -> None:
 def test_receipt_cost_must_match_the_measured_meta_total(tmp_path: Path) -> None:
     job_dir = _copy_example(tmp_path)
     cost = job_dir / "cost.jsonl"
+    cost.unlink()
+    _edit_receipt(job_dir, lambda d: d.update({"cost_usd": 0.91}))
     for line in (
         _cost(job_id="j_example", usd=0.5),
         _cost(job_id="j_example", usd=0.41),
@@ -584,12 +586,90 @@ def test_receipt_cost_must_match_the_measured_meta_total(tmp_path: Path) -> None
         c.append_cost_line(line, cost)
     with pytest.raises(c.ContractError, match=r"cost_usd_estimated 0\.0 != cost\.jsonl"):
         c.validate_job_dir(job_dir)
-    _edit_receipt(job_dir, lambda d: d.update({"cost_usd_estimated": 0.25}))
+    _edit_receipt(job_dir, lambda d: d.update({"cost_usd_estimated": 0.25, "cost_usd_baseten": 7.0}))
     assert "receipt.json" in c.validate_job_dir(job_dir)
     _edit_receipt(job_dir, lambda d: d.update({"cost_usd": 0.92}))
     with pytest.raises(c.ContractError, match=r"cost_usd 0\.92 != cost\.jsonl"):
         c.validate_job_dir(job_dir)
     _edit_receipt(job_dir, lambda d: d.update({"cost_usd": 0.91 + 5e-7}))
+    assert "receipt.json" in c.validate_job_dir(job_dir)
+
+
+def test_example_cost_jsonl_matches_the_example_receipt() -> None:
+    lines = list(c.read_cost_lines(EXAMPLE / "cost.jsonl"))
+    assert lines
+    assert {line.job_id for line in lines} == {"j_example"}
+    receipt = c.load(EXAMPLE / "receipt.json", c.Receipt)
+    assert c.measured_usd(lines) == pytest.approx((receipt.cost_usd, 0.0), abs=1e-6)
+    assert c.measured_usd(lines, provider="baseten") == (0.0, 0.0)
+
+
+def test_receipt_baseten_cost_must_match_the_measured_baseten_total(tmp_path: Path) -> None:
+    job_dir = _copy_example(tmp_path)
+    c.append_cost_line(_cost(job_id="j_example", usd=0.5, provider="baseten", stage="audit"), job_dir / "cost.jsonl")
+    with pytest.raises(c.ContractError, match=r"cost_usd_baseten 0\.0 != cost\.jsonl Baseten total 0\.5"):
+        c.validate_job_dir(job_dir)
+    _edit_receipt(job_dir, lambda d: d.update({"cost_usd_baseten": 0.5}))
+    assert "receipt.json" in c.validate_job_dir(job_dir)
+    _edit_receipt(job_dir, lambda d: d.update({"cost_usd_baseten": 0.4}))
+    with pytest.raises(c.ContractError, match=r"cost_usd_baseten 0\.4 != cost\.jsonl Baseten total 0\.5"):
+        c.validate_job_dir(job_dir)
+
+
+def test_baseten_cost_is_not_checked_without_cost_jsonl(tmp_path: Path) -> None:
+    job_dir = _copy_example(tmp_path)
+    (job_dir / "cost.jsonl").unlink()
+    _edit_receipt(job_dir, lambda d: d.update({"cost_usd_baseten": 3.0, "cost_usd": 12.0}))
+    assert "receipt.json" in c.validate_job_dir(job_dir)
+
+
+def test_cost_jsonl_rejects_another_jobs_lines(tmp_path: Path) -> None:
+    job_dir = _copy_example(tmp_path)
+    c.append_cost_line(_cost(job_id="j_other", usd=0.5), job_dir / "cost.jsonl")
+    with pytest.raises(c.ContractError, match=r"another job's line in this job's cost\.jsonl"):
+        c.validate_job_dir(job_dir)
+
+
+def test_cost_jsonl_rejects_system_lines(tmp_path: Path) -> None:
+    job_dir = _copy_example(tmp_path)
+    c.append_cost_line(
+        _cost(job_id=None, code_kind="system", stage="healthz", model=None, usd=0.0, request_id=None),
+        job_dir / "cost.jsonl",
+    )
+    with pytest.raises(c.ContractError, match=r"system line in this job's cost\.jsonl"):
+        c.validate_job_dir(job_dir)
+
+
+def _edit_decisions_and_receipt_item(job_dir: Path, field: str, value: Any) -> None:
+    _edit_receipt(job_dir, lambda d: d["items"][2].update({field: value}))
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("reason", "a different reason"),
+        ("style", "solid"),
+        ("decided_by", "creator"),
+        ("locked", True),
+        ("evidence_frames", [1, 2]),
+        ("decision", "keep"),
+    ],
+)
+def test_receipt_items_must_equal_decisions_item_by_item(tmp_path: Path, field: str, value: Any) -> None:
+    job_dir = _copy_example(tmp_path)
+    if field == "decision":
+        _edit_receipt(job_dir, lambda d: d["items"][2].update({"decision": "keep", "style": None}))
+    else:
+        _edit_decisions_and_receipt_item(job_dir, field, value)
+    with pytest.raises(c.ContractError, match=rf"receipt\.json i_3 differs from decisions\.json in .*{field}"):
+        c.validate_job_dir(job_dir)
+
+
+def test_receipt_item_thumbnail_may_differ_from_decisions(tmp_path: Path) -> None:
+    job_dir = _copy_example(tmp_path)
+    _edit_receipt(job_dir, lambda d: d["items"][2].update({"thumbnail": "thumbs/other.jpg"}))
+    assert "receipt.json" in c.validate_job_dir(job_dir)
+    _edit_receipt(job_dir, lambda d: d["items"][2].update({"thumbnail": None}))
     assert "receipt.json" in c.validate_job_dir(job_dir)
 
 

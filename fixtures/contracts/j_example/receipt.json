@@ -150,9 +150,9 @@
  },
  "approved_by": "creator",
  "approved_at": "2026-10-27T10:10:00Z",
- "cost_usd": 0.91,
+ "cost_usd": 0.031848,
  "cost_usd_estimated": 0.0,
  "cost_usd_baseten": 0.0,
  "prev_hash": null,
- "hash": "c18b2d32392c92bc4c14caa229561f35baffdd37f5fd9575de2fc1ff0e4406cd"
+ "hash": "d626dc4d788da3e5165a6e296168c7a5b78be49498baf816386c8d24050a8932"
 }

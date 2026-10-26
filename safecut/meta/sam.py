@@ -6,9 +6,8 @@ One noun phrase (or one batch of object prompts) per request; the proxy clip's f
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, cast
 
@@ -19,7 +18,7 @@ from safecut.config import Settings
 from safecut.contracts import ResponseEntry, ResponsesIndex, dump, load, now_utc
 from safecut.meta import cost
 from safecut.meta.client import CallSpec, MetaClient, StreamResult, Units
-from safecut.meta.errors import MetaError
+from safecut.meta.errors import MetaConfigError, MetaError
 from safecut.meta.retry import RetryPolicy
 
 log = logging.getLogger(__name__)
@@ -85,49 +84,51 @@ def image_meter(_response: Mapping[str, Any]) -> tuple[Units, float | None]:
 class ResponseLog:
     """``responses.json`` for one job: SAM responses Meta keeps because ``store: false`` couldn't be sent.
 
-    Each ID is noted when its call completes, before parsing; :meth:`delete_pending` runs after parsing and
-    again on cancel, a failed stage and the segment's end (PRE-A §10.4 "SAM responses").
+    Each ID is noted the moment the stream names it (``response.created``, before parsing, on every attempt,
+    including ones that then fail, are retried or are cancelled); :meth:`delete_pending` runs after parsing
+    and again on cancel, a failed stage and the segment's end (PRE-A §10.4 "SAM responses").
+
+    Every read-modify-write here is synchronous (no ``await`` inside), so tasks on one event loop can't
+    interleave their updates.
     """
 
     NAME = "responses.json"
 
     def __init__(self, job_dir: str | Path) -> None:
         self.path = Path(job_dir) / self.NAME
-        self._lock = asyncio.Lock()
 
     def index(self) -> ResponsesIndex:
         return load(self.path, ResponsesIndex) if self.path.exists() else ResponsesIndex([])
 
-    async def note(self, response_id: str) -> None:
-        async with self._lock:
-            entries = list(self.index().root)
-            if all(e.response_id != response_id for e in entries):
-                entries.append(ResponseEntry(response_id=response_id))
-                dump(ResponsesIndex(entries), self.path)
+    def note(self, response_id: str) -> None:
+        entries = list(self.index().root)
+        if all(e.response_id != response_id for e in entries):
+            entries.append(ResponseEntry(response_id=response_id))
+            dump(ResponsesIndex(entries), self.path)
 
     async def delete_pending(self, client: MetaClient) -> int:
         """Request deletion of every noted response not yet requested. Returns the receipt's count.
 
-        A 404 counts as done (an earlier DELETE landed). Any other failure is logged and stays pending for
-        the sweeper; it never blocks the rest.
+        A 404 with an error body counts as done (an earlier DELETE landed); an empty-body 404 means a wrong
+        path (``MetaConfigError``) and is a failure. Any failure is logged and stays pending for the sweeper;
+        it never blocks the rest.
         """
         for response_id in self.index().pending:
             try:
                 await client.request("DELETE", f"responses/{response_id}", _delete_spec(), meter=_no_cost)
             except MetaError as exc:
-                if exc.status != 404:
+                if exc.status != 404 or isinstance(exc, MetaConfigError):
                     log.warning("SAM response delete failed", extra={"response_id": response_id, "error": str(exc)})
                     continue
-            await self._mark(response_id)
+            self._mark(response_id)
         return self.index().requested
 
-    async def _mark(self, response_id: str) -> None:
-        async with self._lock:
-            entries = [
-                e.model_copy(update={"requested_at": now_utc()}) if e.response_id == response_id else e
-                for e in self.index().root
-            ]
-            dump(ResponsesIndex(entries), self.path)
+    def _mark(self, response_id: str) -> None:
+        entries = [
+            e.model_copy(update={"requested_at": now_utc()}) if e.response_id == response_id else e
+            for e in self.index().root
+        ]
+        dump(ResponsesIndex(entries), self.path)
 
 
 def _no_cost(_: Any) -> tuple[Units, float]:
@@ -173,26 +174,16 @@ async def segment_video(
         total_timeout_s=config.SAM_TOTAL_TIMEOUT_S,
         store_param=client.settings.sam_send_store,
     )
-    _need_log(client, responses)
-    result = await client.stream(spec, body, meter=video_meter)
-    await _note(client, result, responses)
-    return result
+    return await client.stream(spec, body, meter=video_meter, on_response_id=_hook(client, responses))
 
 
-def _need_log(client: MetaClient, responses: ResponseLog | None) -> None:
-    """Refuse before spending: a SAM response that must be deleted needs somewhere to be recorded."""
-    if client.settings.delete_sam_responses and responses is None:
+def _hook(client: MetaClient, responses: ResponseLog | None) -> Callable[[str], None] | None:
+    """Where SAM response IDs go when they must be deleted; refuses before spending if there's nowhere."""
+    if not client.settings.delete_sam_responses:
+        return None
+    if responses is None:
         raise ValueError("SAFECUT_SAM_DELETE_RESPONSES is on: pass the job's ResponseLog so the response is deleted")
-
-
-async def _note(client: MetaClient, result: StreamResult, responses: ResponseLog | None) -> None:
-    if not client.settings.delete_sam_responses or responses is None:
-        return
-    response_id = result.response.get("id")
-    if isinstance(response_id, str) and response_id:
-        await responses.note(response_id)
-    else:
-        log.warning("SAM response without an id: it can't be deleted", extra={"request_id": result.request_id})
+    return responses.note
 
 
 async def segment_image(
@@ -209,7 +200,4 @@ async def segment_image(
         total_timeout_s=config.SAM_TOTAL_TIMEOUT_S,
         store_param=client.settings.sam_send_store,
     )
-    _need_log(client, responses)
-    result = await client.stream(spec, body, meter=image_meter)
-    await _note(client, result, responses)
-    return result
+    return await client.stream(spec, body, meter=image_meter, on_response_id=_hook(client, responses))

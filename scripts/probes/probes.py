@@ -539,9 +539,11 @@ async def _open_call(
     effort: str,
     price: OpenWeightPrice,
     raw: list[Summary],
+    max_images: int = open_weight.MAX_IMAGES,
 ) -> Summary:
     """One redteam.md call (the same prompt and schema WP4 uses), checked for every frame being answered."""
-    body = open_weight.chat_body(settings, open_weight.redteam_messages(frames), effort=effort)
+    messages = open_weight.redteam_messages(frames, max_images=max_images)
+    body = open_weight.chat_body(settings, messages, effort=effort, max_images=max_images)
     started = time.monotonic()
     try:
         result = await open_weight.create(client, body, stage="probe_h", price=price)
@@ -567,13 +569,23 @@ async def _open_call(
     return row
 
 
+def _limit_holds(eight: Summary, nine: Summary) -> bool | None:
+    if "error" not in nine:
+        return False  # Baseten took 9 images: the documented limit doesn't hold (or was raised)
+    if "error" in eight or "MetaBadRequest" not in str(nine["error"]):
+        return None  # not measured: the 8-image call failed too, or 9 failed for another reason
+    return True
+
+
 async def probe_h(settings: Settings, client: MetaClient, out: Path) -> Summary:
     """PRE-A §3.8 probe h, on synthetic frames only:
     1. one request on 4 frames;
-    2. 3 tries of the "AMINA K." grid check (passes at IoU ≥ 0.3 in 2 of 3), at SAFECUT_OPEN_WEIGHT_EFFORT;
-    3. one ``omit`` (xhigh) call to compare latency and reasoning tokens.
+    2. one 8-image call and one 9-image call, to confirm Baseten's "Max images per request 8" and its error;
+    3. 3 tries of the "AMINA K." grid check (passes at IoU ≥ 0.3 in 2 of 3), at SAFECUT_OPEN_WEIGHT_EFFORT;
+    4. one ``omit`` (xhigh) call to compare latency and reasoning tokens.
 
-    ``grid_ok`` is ``None`` (not measured) unless all 3 tries answered.
+    ``grid_ok`` is ``None`` (not measured) unless all 3 tries answered. ``image_limit_holds`` is ``True``
+    when 8 images were answered and 9 were refused, ``False`` when 9 were answered, else ``None``.
     """
     price = settings.open_weight_price or BASETEN_PUBLISHED_PRICE
     four = [(i * 30, synthetic_frame(i, name=i == 2)[0]) for i in range(4)]
@@ -582,6 +594,13 @@ async def probe_h(settings: Settings, client: MetaClient, out: Path) -> Summary:
         raise RuntimeError("the name frame has no text box")
     raw: list[Summary] = []
     first = await _open_call(settings, client, four, effort=settings.open_weight_effort, price=price, raw=raw)
+    many = [(i * 30, synthetic_frame(i % 4, name=False)[0]) for i in range(open_weight.MAX_IMAGES + 1)]
+    eight = await _open_call(
+        settings, client, many[: open_weight.MAX_IMAGES], effort=settings.open_weight_effort, price=price, raw=raw
+    )
+    nine = await _open_call(
+        settings, client, many, effort=settings.open_weight_effort, price=price, raw=raw, max_images=len(many)
+    )
     tries: list[Summary] = []
     for _ in range(3):
         row = await _open_call(
@@ -597,6 +616,9 @@ async def probe_h(settings: Settings, client: MetaClient, out: Path) -> Summary:
         "price_per_m": {"in": price.input, "out": price.output},
         "price_source": "SAFECUT_OPEN_WEIGHT_PRICE" if settings.open_weight_price else "baseten.co library page",
         "four_frames": first,
+        "eight_images": eight,
+        "nine_images": nine,
+        "image_limit_holds": _limit_holds(eight, nine),
         "grid_tries": tries,
         "grid_ok": (sum(1 for t in tries if t["hit"]) >= 2) if len(answered) == 3 else None,
         "omit_effort": omit,

@@ -1012,14 +1012,7 @@ def _check_receipt(
     for item in receipt.items:
         _check_item(item, job, f"receipt.json {item.item_id}")
     if decisions is not None:
-        receipt_ids = Counter(i.item_id for i in receipt.items)
-        decision_ids = Counter(i.item_id for i in decisions.items)
-        if receipt_ids != decision_ids:
-            missing = sorted((decision_ids - receipt_ids).elements())
-            extra = sorted((receipt_ids - decision_ids).elements())
-            raise ContractError(
-                f"receipt.json items do not match decisions.json: missing {missing}, unexpected {extra}"
-            )
+        _check_receipt_items(receipt, decisions)
     if audit is not None:
         summary = receipt.audit
         for name, got, want in (
@@ -1039,13 +1032,50 @@ def _check_receipt(
             f" != {responses.requested} requested in responses.json"
         )
     if cost_path.exists():
-        measured, estimated = measured_usd(read_cost_lines(cost_path), provider="meta")
-        for name, got, want in (
-            ("cost_usd", receipt.cost_usd, measured),
-            ("cost_usd_estimated", receipt.cost_usd_estimated, estimated),
-        ):
-            if abs(got - want) > _COST_TOLERANCE:
-                raise ContractError(f"receipt.json {name} {got} != cost.jsonl Meta total {want}")
+        _check_receipt_cost(receipt, job, cost_path)
+
+
+def _check_receipt_items(receipt: Receipt, decisions: Decisions) -> None:
+    """Item IDs match as a multiset, then every field but ``thumbnail`` matches item by item."""
+    receipt_ids = Counter(i.item_id for i in receipt.items)
+    decision_ids = Counter(i.item_id for i in decisions.items)
+    if receipt_ids != decision_ids:
+        missing = sorted((decision_ids - receipt_ids).elements())
+        extra = sorted((receipt_ids - decision_ids).elements())
+        raise ContractError(f"receipt.json items do not match decisions.json: missing {missing}, unexpected {extra}")
+    by_id = {d.item_id: d.model_dump() for d in decisions.items}
+    for item in receipt.items:
+        got = item.model_dump(exclude={"thumbnail"})
+        want = by_id[item.item_id]
+        differing = sorted(name for name in want if got[name] != want[name])
+        if differing:
+            raise ContractError(f"receipt.json {item.item_id} differs from decisions.json in {differing}")
+
+
+def _check_receipt_cost(receipt: Receipt, job: Job, cost_path: Path) -> None:
+    """Sum this job's ``cost.jsonl`` lines per provider and compare with the receipt.
+
+    A line of another job, or a system line (``job_id`` null: healthz, startup probe), has no place in a
+    job directory's ``cost.jsonl`` and is rejected rather than silently skipped.
+    """
+    lines = list(read_cost_lines(cost_path))
+    for number, line in enumerate(lines, start=1):
+        if line.job_id is None:
+            raise ContractError(f"cost.jsonl line {number}: a system line in this job's cost.jsonl")
+        if line.job_id != job.job_id:
+            raise ContractError(
+                f"cost.jsonl line {number}: another job's line in this job's cost.jsonl"
+                f" ({line.job_id!r} != {job.job_id!r})"
+            )
+    meta, meta_estimated = measured_usd(lines, provider="meta")
+    baseten, _ = measured_usd(lines, provider="baseten")
+    for name, got, want, label in (
+        ("cost_usd", receipt.cost_usd, meta, "Meta"),
+        ("cost_usd_estimated", receipt.cost_usd_estimated, meta_estimated, "Meta"),
+        ("cost_usd_baseten", receipt.cost_usd_baseten, baseten, "Baseten"),
+    ):
+        if abs(got - want) > _COST_TOLERANCE:
+            raise ContractError(f"receipt.json {name} {got} != cost.jsonl {label} total {want}")
 
 
 def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:

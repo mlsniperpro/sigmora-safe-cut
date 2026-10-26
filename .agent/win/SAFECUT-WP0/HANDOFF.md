@@ -25,20 +25,11 @@
 - **Gate files** in `.agent/win/SAFECUT-WP0/`: `checks.sh`, `WIN-CHECKLIST.md`, `BLOCKED.md`, `reaudit.md`, `break-it.md`.
 - **Last fully green head:** the head of this push (372 passed, ruff and pyright clean).
 
-## State at WIND DOWN (session_01FE6cwwWXD1E2eCpwUV9ftx, ~20:05 UTC 2026-10-26)
-- **Head:** the head is green, with nothing left half-done. At 8cc543c: 372 passed, ruff and pyright strict clean. The wind-down commit after it touches only `.agent/` files.
-- **Audit #5** (Sonnet) at 44a24e5: 4 medium and 10 low findings. All are fixed in 8cc543c with tests (`tests/test_audit5.py`, `tests/test_contracts.py`), or kept as recorded decisions. The details are in reaudit.md. `CLEAN_AUDITS_IN_A_ROW` is 0.
-- **PRE-A §12:** the rows that `origin/pre-a-research` 7f7ab67 added are implemented:
-  - `job.open_weight_attempted`;
-  - `receipt.cost_usd_baseten`;
-  - `data_handling.responses_delete_requested`;
-  - `responses.json`;
-  - `SAFECUT_SAM_DELETE_RESPONSES`, with `sam.ResponseLog`.
-- **Unfinished, stopped at wind-down** (no results lost: both were only starting):
-  - audit #6 (Sonnet) at 8cc543c: stopped, no report;
-  - the 20k soak at 8cc543c: stopped after about 5 min with no failure. Re-run it.
-- **break-it.md** is written at TESTED_COMMIT 8cc543c. It records honestly what ran where. The fresh-clone run was at 44a24e5, and the soak is unfinished.
-- **Last gate** at 8cc543c, before the wind-down commit: `GATE: FAIL (4): only 0 clean full audit(s) in a row; two consecutive audits must find nothing new`. The other failures were the stale reaudit and break-it headers (both updated since) and the uncommitted pids file (cleared).
+## Current state (session_01FE6cwwWXD1E2eCpwUV9ftx, resumed 22:26 UTC 2026-10-26)
+- **Head:** green. The audit #6 fixes are in this push: 393 passed, ruff and pyright strict clean.
+- **Audit #6** (Sonnet) at 8cc543c: 1 high, 3 medium and 5 low findings, all verified and handled (reaudit.md, tests/test_audit6.py). The high one: open weights now send ≤ 8 images per call, in all-or-nothing batches with no transport retry, as PRE-A §3.8 requires. `CLEAN_AUDITS_IN_A_ROW` is 0.
+- **Fresh clone at c708bf0** (code 8cc543c): 372 passed, 62 s on 4 CPUs. The clips are deterministic on 1 and 4 CPUs.
+- **Soak:** the 22:26 run at 8cc543c was stopped as stale. Re-run it at the final head.
 
 ## Next steps, in order
 1. Claim the lease, then run `bash .agent/win/SAFECUT-WP0/checks.sh`; expect 372 passed.

@@ -38,6 +38,7 @@ Legend: `- [x]` done with evidence · `- [P]` parked on an owner input (BLOCKED.
 - [x] PRE-A §12 contract rows (job.consented, job.open_weight_attempted, audit.open_weight, audit.redteam_open, cost.jsonl provider, cap baseten_job, receipt.cost_usd_baseten, responses.json + data_handling.responses_delete_requested, the SAFECUT_OPEN_WEIGHT_* and SAFECUT_SAM_DELETE_RESPONSES env vars with the SAM response delete step). Evidence: safecut/contracts.py, safecut/config.py, safecut/meta/sam.py, tests/test_open_weight.py, tests/test_audit5.py
 
 - [x] Audit #5 findings (4 medium, 10 low) fixed with tests or recorded decisions. Evidence: reaudit.md, tests/test_audit5.py
+- [x] Audit #6 findings (1 high, 3 medium, 5 low): open weights at ≤ 8 images per call in all-or-nothing batches with no transport retry, probe h's 8/9-image calls, SAM response IDs kept on every attempt, receipt cross-checks item by item and per provider. Evidence: reaudit.md, tests/test_audit6.py, tests/test_open_weight.py
 
 ## Quality bar
 - [x] Live smoke tests ready for the key: `uv run pytest -m live` (status, the model list, one metered Spark call ≤ $0.003). Evidence: tests/test_live.py, deselected from the default run

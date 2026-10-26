@@ -21,6 +21,7 @@ from typing import Any, Literal, cast
 
 import httpx
 import orjson
+from pydantic import ValidationError
 
 from safecut import __version__, config
 from safecut.config import Provider, Settings
@@ -200,6 +201,14 @@ def _status_failure(
     )
 
 
+def _report_response_id(event: Mapping[str, Any], on_response_id: Callable[[str], None]) -> None:
+    response = event.get("response")
+    if isinstance(response, Mapping):
+        rid = cast(Mapping[str, Any], response).get("id")
+        if isinstance(rid, str) and rid:
+            on_response_id(rid)
+
+
 def guard_body(body: Mapping[str, Any], *, store_param: bool = True) -> None:
     """AGENTS rule 6 at the transport: Standard models only, ``store`` never true, no ignored params."""
     model = body.get("model")
@@ -298,28 +307,39 @@ class MetaClient:
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._key}", "User-Agent": f"safecut/{__version__}"}
 
+    def _scrub(self, body: Any) -> Any:
+        """An error body with our own key masked: servers echo it ("Invalid API key: sk-…"), and error text
+        ends up in exceptions and logs."""
+        if isinstance(body, str):
+            return body.replace(self._key, "[redacted]") if self._key else body
+        if isinstance(body, dict):
+            return {k: self._scrub(v) for k, v in cast(dict[str, Any], body).items()}
+        if isinstance(body, list):
+            return [self._scrub(v) for v in cast(list[Any], body)]
+        return body
+
     def _log_cost(
         self, spec: CallSpec, *, attempt: int, units: Units, usd: float, estimated: bool, rid: str | None
     ) -> None:
-        line = CostLine(
-            ts=now_utc(),
-            provider=self.provider,
-            job_id=self.job_id,
-            stage=spec.stage,
-            model=spec.model,
-            attempt=attempt,
-            units=units,
-            usd=usd,
-            estimated=estimated,
-            request_id=rid,
-            code_kind=self.caller.code_kind,
-            code_id=self.caller.code_id,
-        )
         try:
+            line = CostLine(
+                ts=now_utc(),
+                provider=self.provider,
+                job_id=self.job_id,
+                stage=spec.stage,
+                model=spec.model,
+                attempt=attempt,
+                units=units,
+                usd=usd,
+                estimated=estimated,
+                request_id=rid,
+                code_kind=self.caller.code_kind,
+                code_id=self.caller.code_id,
+            )
             append_cost_line(line, self.cost_path)
-        except OSError:
-            # A failed write must not lose a billed result (a retry would bill it again) or skip the
-            # ledger settle that follows; the ledger still holds the charge.
+        except (OSError, ValidationError):
+            # A failed write (or a meter bug that yields an invalid line) must not lose a billed result (a
+            # retry would bill it again) or skip the ledger settle that follows; the ledger still holds it.
             log.exception("cost.jsonl write failed", extra={"stage": spec.stage, "usd": usd, "estimated": estimated})
 
     def _log_budget_stop(self, spec: CallSpec, exc: BudgetExceeded) -> None:
@@ -396,6 +416,19 @@ class MetaClient:
             if task.done() and not task.cancelled() and task.exception() is None:
                 await self._ledger_after(lambda: self.ledger.release(call_id))
             raise
+
+    async def preflight(self, spec: CallSpec, usd: float) -> None:
+        """Check that ``usd`` (every call of a multi-call pass) fits every cap now, spending nothing: reserve
+        and release at once. A stop raises ``BudgetExceeded`` and writes the ``budget:<stage>`` line."""
+        if self.settings.replay:
+            raise MetaConfigError("SAFECUT_REPLAY is on: live calls are refused (use the saved responses)")
+        call_id = f"{self.job_id or 'system'}:{spec.stage}:preflight:{uuid.uuid4().hex}"
+        try:
+            await self._reserve(call_id, usd)
+        except BudgetExceeded as exc:
+            self._log_budget_stop(spec, exc)
+            raise
+        await self._ledger_after(lambda: self.ledger.release(call_id))
 
     # -- the attempt loop ---------------------------------------------------
 
@@ -572,7 +605,7 @@ class MetaClient:
             body = _decode(resp.content)
             rid = _request_id(resp.headers, body)
             if resp.status_code >= 300:
-                raise _status_failure(resp.status_code, body, resp.headers, rid, self._clock() - started)
+                raise _status_failure(resp.status_code, self._scrub(body), resp.headers, rid, self._clock() - started)
             if body is None and resp.content.strip():
                 raise _AttemptFailed(
                     MetaUnavailable("response body is not JSON", status=resp.status_code), accepted=True
@@ -587,11 +620,20 @@ class MetaClient:
 
     # -- streamed Responses -------------------------------------------------
 
-    async def stream(self, spec: CallSpec, body: Mapping[str, Any], *, meter: Meter) -> StreamResult:
+    async def stream(
+        self,
+        spec: CallSpec,
+        body: Mapping[str, Any],
+        *,
+        meter: Meter,
+        on_response_id: Callable[[str], None] | None = None,
+    ) -> StreamResult:
         """``POST /responses`` with ``stream: true``; collects events up to the terminal one, with retries.
 
         A stream that ends without a terminal event is ``MetaIncomplete(eof=True)`` (retryable). A server
         ``incomplete`` status or a refusal is accounted at its actual usage and raised without retry.
+        ``on_response_id`` is called with each attempt's response ID as soon as an event carries it (the
+        first is ``response.created``), so a stored response is known even if the attempt then fails.
         """
         guard_body(body, store_param=spec.store_param)
         payload = dict(body) | {"stream": True}
@@ -609,7 +651,7 @@ class MetaClient:
                         parsed = _decode(await resp.aread())
                         raise _status_failure(
                             resp.status_code,
-                            parsed,
+                            self._scrub(parsed),
                             resp.headers,
                             resp.headers.get("x-request-id"),
                             self._clock() - started,
@@ -618,6 +660,8 @@ class MetaClient:
                     async with asyncio.timeout(spec.total_timeout_s):
                         async for event in aiter_sse(resp.aiter_lines()):
                             events.append(event)
+                            if on_response_id is not None:
+                                _report_response_id(event, on_response_id)
                             if event.get("type") in ("response.refusal.delta", "response.refusal.done"):
                                 # Keep reading: the terminal event carries the usage to bill.
                                 refused.append(str(event.get("delta") or event.get("refusal") or ""))
@@ -673,7 +717,7 @@ class MetaClient:
                         parsed = _decode(await resp.aread())
                         rid_header = resp.headers.get("x-request-id")
                         raise _status_failure(
-                            resp.status_code, parsed, resp.headers, rid_header, self._clock() - started
+                            resp.status_code, self._scrub(parsed), resp.headers, rid_header, self._clock() - started
                         )
                     async with asyncio.timeout(spec.total_timeout_s):
                         async for chunk in aiter_sse(resp.aiter_lines()):

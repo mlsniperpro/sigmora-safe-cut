@@ -142,13 +142,14 @@ async def create(
 ) -> StreamResult:
     """Stream one Responses call after reserving its worst-case cost.
 
-    ``effort`` sets the retry policy and idle timeout, so it must match ``body["reasoning"]["effort"]`` when the
-    body sends one (a body at ``max`` called as ``medium`` would retry a $0.23 call twice as often).
+    ``effort`` sets the retry policy and idle timeout, so it must match ``body["reasoning"]["effort"]``, or be
+    ``"omit"`` when the body sends none (a body at ``max`` called as ``medium`` would retry a $0.23 call twice
+    as often).
     """
     reasoning = body.get("reasoning")
     sent = cast(Mapping[str, Any], reasoning).get("effort") if isinstance(reasoning, Mapping) else None
-    if sent is not None and sent != effort:
-        raise ValueError(f"effort={effort!r} but the body sends reasoning.effort={sent!r}")
+    if (sent or "omit") != effort:
+        raise ValueError(f"effort={effort!r} but the body sends reasoning.effort={sent or 'omit (none)'!r}")
     model = cast(str, body["model"])
     max_out = cast(int, body["max_output_tokens"])
     text_bytes, images = _count_parts(body)

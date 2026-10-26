@@ -10,6 +10,7 @@ call is refused, because a zero reservation would let it spend unchecked.
 
 from __future__ import annotations
 
+import asyncio
 import math
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -27,7 +28,10 @@ from safecut.meta.errors import MetaIncomplete
 from safecut.meta.retry import RetryPolicy
 
 MAX_TOKENS = 16_000
-MAX_IMAGES = 50
+#: Baseten's limit for Muse Spark Open, "Max images per request 8" (PRE-A §3.8); probe h confirms it.
+MAX_IMAGES = 8
+#: Batches of one frame set in flight at once (PRE-A §3.8).
+MAX_PARALLEL = 4
 IDLE_TIMEOUT_S = 300.0
 _EMPTY: Mapping[str, Any] = {}
 
@@ -56,17 +60,24 @@ def open_weight_client(
 
 
 def chat_body(
-    settings: Settings, messages: Sequence[Mapping[str, Any]], *, effort: str | None = None
+    settings: Settings,
+    messages: Sequence[Mapping[str, Any]],
+    *,
+    effort: str | None = None,
+    max_images: int = MAX_IMAGES,
 ) -> dict[str, Any]:
-    """A Chat Completions body: no ``response_format`` (unsupported), reasoning effort unless ``omit``."""
+    """A Chat Completions body: no ``response_format`` (unsupported), reasoning effort unless ``omit``.
+
+    ``max_images`` is raised only by probe h's over-limit call, which checks Baseten's error.
+    """
     images = sum(
         1
         for m in messages
         for part in cast(list[Any], m.get("content") if isinstance(m.get("content"), list) else [])
         if isinstance(part, Mapping) and cast(Mapping[str, Any], part).get("type") == "image_url"
     )
-    if images > MAX_IMAGES:
-        raise ValueError(f"{images} images in one call; split frame sets into calls of at most {MAX_IMAGES}")
+    if images > max_images:
+        raise ValueError(f"{images} images in one call; split frame sets into calls of at most {max_images}")
     body: dict[str, Any] = {
         "model": settings.open_weight_model,
         "messages": [dict(m) for m in messages],
@@ -90,15 +101,20 @@ def chat_units(usage: object) -> Units | None:
     details = data.get("completion_tokens_details")
     detail_map = cast(Mapping[str, Any], details) if isinstance(details, Mapping) else _EMPTY
     prompt, completion = data.get("prompt_tokens"), data.get("completion_tokens")
-    if not isinstance(prompt, int) or not isinstance(completion, int) or prompt <= 0:
+    # A negative or non-int count is unknown usage (the estimate stands), never a negative charge.
+    if not _count(prompt) or not _count(completion) or cast(int, prompt) <= 0:
         return None
     reasoning = detail_map.get("reasoning_tokens")
     return {
-        "input": prompt,
+        "input": cast(int, prompt),
         "cached": 0,
-        "output": completion,
-        "reasoning": reasoning if isinstance(reasoning, int) else 0,
+        "output": cast(int, completion),
+        "reasoning": cast(int, reasoning) if _count(reasoning) else 0,
     }
+
+
+def _count(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
 def _parts(body: Mapping[str, Any]) -> tuple[int, int]:
@@ -131,11 +147,7 @@ async def create(
     """
     if client.provider != "baseten":
         raise ValueError("open-weight calls go through a Baseten client (open_weight_client)")
-    if price is None:
-        raise ConfigError("SAFECUT_OPEN_WEIGHT_PRICE is not set; the open-weight call is refused")
-    text_bytes, images = _parts(body)
-    fallback = cost.fallback_input_tokens(text_bytes=text_bytes, images=images, video_seconds=0)
-    max_tokens = cast(int, body["max_tokens"])
+    price = _need_price(price)
 
     def meter(answer: Mapping[str, Any]) -> tuple[Units, float | None]:
         units = chat_units(answer.get("usage"))
@@ -143,18 +155,32 @@ async def create(
             return {}, None
         return units, usd_for(price, int(units["input"]), int(units["output"]))
 
-    spec = CallSpec(
+    return await client.stream_chat(_spec(body, stage, price), body, meter=meter)
+
+
+def _need_price(price: OpenWeightPrice | None) -> OpenWeightPrice:
+    if price is None:
+        raise ConfigError("SAFECUT_OPEN_WEIGHT_PRICE is not set; the open-weight call is refused")
+    return price
+
+
+def _spec(body: Mapping[str, Any], stage: str, price: OpenWeightPrice) -> CallSpec:
+    text_bytes, images = _parts(body)
+    fallback = cost.fallback_input_tokens(text_bytes=text_bytes, images=images, video_seconds=0)
+    max_tokens = cast(int, body["max_tokens"])
+    return CallSpec(
         stage=stage,
         model=cast(str, body["model"]),
         estimate_usd=usd_for(price, fallback, max_tokens),
         estimate_units={"input": fallback, "cached": 0, "output": max_tokens, "reasoning": 0},
-        policy=RetryPolicy(attempts=config.ATTEMPTS_DEFAULT),
+        # PRE-A §3.8: no transport retry. A retry would resend consented frames to a third party and keep
+        # each accepted failure's estimate against the $0.50 cap; a failed call is a failed opinion.
+        policy=RetryPolicy(attempts=1),
         timeout=httpx.Timeout(IDLE_TIMEOUT_S, connect=config.CONNECT_TIMEOUT_S),
         lane="responses",
         total_timeout_s=config.RESPONSES_TOTAL_TIMEOUT_S,
         breaker=False,  # Baseten trouble must never trip the breaker guarding the Meta calls
     )
-    return await client.stream_chat(spec, body, meter=meter)
 
 
 def parse_json[M: BaseModel](model_type: type[M], answer: Any) -> M:
@@ -217,10 +243,12 @@ class RedteamAnswer(BaseModel):
     frames: list[RedteamFrame]
 
 
-def redteam_messages(frames: Sequence[tuple[int, str]], *, kept_clear: str = "none") -> list[dict[str, Any]]:
+def redteam_messages(
+    frames: Sequence[tuple[int, str]], *, kept_clear: str = "none", max_images: int = MAX_IMAGES
+) -> list[dict[str, Any]]:
     """redteam.md's prompt, with each frame's image (``(frame_number, data_url)``) in a user message."""
-    if not frames or len(frames) > MAX_IMAGES:
-        raise ValueError(f"send 1 to {MAX_IMAGES} frames per call")
+    if not frames or len(frames) > max_images:
+        raise ValueError(f"send 1 to {max_images} frames per call")
     content: list[dict[str, Any]] = [{"type": "text", "text": REDTEAM_USER.format(kept_clear=kept_clear)}]
     for number, url in frames:
         content.append({"type": "text", "text": f"Frame {number}:"})
@@ -254,16 +282,39 @@ async def second_opinion(
     settings: Settings,
     *,
     consented: bool,
-    code_kind: str,
     frames: Sequence[tuple[int, str]],
     kept_clear: str = "none",
 ) -> RedteamAnswer:
-    """The production entry point: the §3.8 privacy gate, then one ≤ 50-frame call, validated and complete."""
-    if not enabled_for(settings, consented=consented, code_kind=code_kind):
+    """The production entry point (PRE-A §3.8): the privacy gate, then ⌈N/8⌉ calls, up to 4 in parallel.
+
+    The code kind comes from the client's own ``Caller``, never from an argument. All or nothing: the
+    whole frame set's estimate must fit the Baseten cap before the first call (else ``BudgetExceeded``
+    and a ``budget:`` line, and WP4 records ``open_weight.status: "off"``), and any failed or incomplete
+    batch fails the whole opinion (the other batches are cancelled).
+    """
+    if not enabled_for(settings, consented=consented, code_kind=client.caller.code_kind):
         raise SecondOpinionRefusedError("the open-weight second opinion isn't enabled for this job")
-    body = chat_body(settings, redteam_messages(frames, kept_clear=kept_clear))
-    result = await create(client, body, stage="redteam_open", price=settings.open_weight_price)
-    return complete_answer(result.body, [number for number, _ in frames])
+    price = _need_price(settings.open_weight_price)
+    if not frames:
+        raise ValueError("the second opinion needs at least one frame")
+    batches = [list(frames[i : i + MAX_IMAGES]) for i in range(0, len(frames), MAX_IMAGES)]
+    bodies = [chat_body(settings, redteam_messages(batch, kept_clear=kept_clear)) for batch in batches]
+    specs = [_spec(body, "redteam_open", price) for body in bodies]
+    await client.preflight(specs[0], sum(spec.estimate_usd for spec in specs))
+    gate = asyncio.Semaphore(MAX_PARALLEL)
+
+    async def one(batch: list[tuple[int, str]], body: dict[str, Any]) -> RedteamAnswer:
+        async with gate:
+            result = await create(client, body, stage="redteam_open", price=price)
+        return complete_answer(result.body, [number for number, _ in batch])
+
+    try:
+        async with asyncio.TaskGroup() as group:
+            tasks = [group.create_task(one(batch, body)) for batch, body in zip(batches, bodies, strict=True)]
+    except ExceptionGroup as failed:
+        raise failed.exceptions[0] from None  # the first failure; the other batches were cancelled
+    answered = sorted((frame for task in tasks for frame in task.result().frames), key=lambda f: f.frame)
+    return RedteamAnswer(frames=answered)
 
 
 def enabled_for(settings: Settings, *, consented: bool, code_kind: str) -> bool:
@@ -272,5 +323,5 @@ def enabled_for(settings: Settings, *, consented: bool, code_kind: str) -> bool:
 
 
 def calls_for(frames: int) -> int:
-    """How many calls a frame set needs at ≤ 50 images per call."""
+    """How many calls a frame set needs at ≤ 8 images per call."""
     return math.ceil(frames / MAX_IMAGES) if frames else 0
