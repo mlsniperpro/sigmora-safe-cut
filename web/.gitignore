@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# The synthetic sample clips (drawn shapes, no people) are the mock-mode demo media; the
+# root *.mp4 rule keeps real footage out, so these few are allowed back in by name.
+!/public/sample/prepared.mp4
+!/public/sample/redacted.mp4
