@@ -553,6 +553,25 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#512 (win audit 44)**: (audit A; PRE-A open) The post-Nov-10 state was conditional. Fix: replay-only landing and code-outside-dates `/try` from Nov 11 stated as the plan.
 - [x] **#513 (win audit 44)**: (audit A) The API-key step omitted the credit form and card on file. Fix: added.
 - [x] **#514 (win audit 44)**: (audit A) The anti-project row ignored the protest-coverage persona. Fix: neutral-tool sentence; the persona stays out of submission copy.
+- [x] **#515 (win audit 44)**: (audit C) Sigmora's screen in 8.1 relied on the startup exception without a fallback. Fix: shown only in a Startups-track entry, else the download line.
+- [x] **#516 (win audit 44)**: (audit C) `{first_code_commit}` resolved to a pre-kickoff commit. Fix: `git log --since=2026-10-26T16:00:00Z -- safecut web eval tests`; RULES-CHECKLIST lists the pre-kickoff non-doc files.
+- [x] **#517 (win audit 44)**: (audit C) The repo-public step had no deadline order or default. Fix: check by Nov 4 12:00 EAT, public by 20:00 before the X post; no OK means no valid submission.
+- [x] **#518 (win audit 44)**: (audit C) The credits step had no spend-limit guard. Fix: console limit or alert at $150 if offered.
+- [x] **#519 (win audit 44)**: (audit C) PILOTS §5 had no eligibility line. Fix: 18+, rights, not in a restricted territory.
+- [x] **#520 (win audit 44)**: (audit C) No Nov 9 step posted the gallery link. Fix: dated BLOCKED step.
+- [x] **#521 (win audit 44)**: (audit C) `per_pilot.csv` could re-identify named pilots via region or language. Fix: minutes, chips and capped flag only, sorted; language stays private with a count in the footnote.
+- [x] **#522 (win audit 44)**: (audit C) RULES-CHECKLIST §0 had no row for the guide's rights clause. Fix: licence row (EgoBlur, SA-Co/VEval, releases, no music, SR-10 editor).
+- [x] **#523 (win audit 44)**: (audit B) `UNDO` and [Try again] needed `prev` and the rejected edit, which State dropped. Fix: `undo` holds `{edit, prev}`; `rejected` added.
+- [x] **#524 (win audit 44)**: (audit B) The Why-rows exemption pointed at a missing invariant. Fix: hold-vs-status and introduction-index invariants added.
+- [x] **#525 (win audit 44)**: (audit B) The YuNet wording reintroduced "every frame". Fix: removed.
+- [x] **#526 (win audit 44)**: (audit B) A keyboard user couldn't select a chip. Fix: chips are focusable and Enter selects; [Why?] opens the drawer.
+- [x] **#527 (win audit 44)**: (audit B) Notes sat inside copy cells (data bullet 1, caption variant). Fix: a "Copy notes" paragraph; cells hold only copy.
+- [x] **#528 (win audit 44)**: (audit B) The wireframes-vs-deck rule omitted §3.4, §3.5, §4.3. Fix: added.
+- [x] **#529 (win audit 44)**: (audit B) "(n checks)" lacked a plural marker. Fix: "check(s)".
+- [x] **#530 (win audit 44)**: (audit B) The failed-votes case fell to "didn't all agree". Fix: a "some checks didn't run" Why row in the table and precedence; fixture track escalated.
+- [x] **#531 (win audit 44)**: (audit B) `{runs_per_clip}` rendered "2–2 runs". Fix: single value when min = max.
+- [x] **#532 (win audit 44)**: (audit B) No-turn mocks kept the hero introduction index. Fix: `null` in both.
+- [x] **#533 (win audit 44)**: (audit B) The results-rows sentence omitted "suggestions accepted"; the footer said uploads are deleted outright. Fix: both.
 
 ## 4. Which builder reads what
 
