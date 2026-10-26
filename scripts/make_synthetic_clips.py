@@ -66,7 +66,8 @@ def write_clip(path: Path, *, fps: int, frames: int, audio: Path | None) -> None
            "-r", str(fps), "-i", "-"]  # fmt: skip
     if audio is not None:
         cmd += ["-i", str(audio), "-c:a", "aac", "-b:a", "48k", "-shortest"]
-    cmd += ["-c:v", "libx264", "-preset", "veryslow", "-crf", "30", "-pix_fmt", "yuv420p", "-g", str(fps),
+    # One encoder thread: x264's output depends on the thread count, and the test regenerates byte for byte.
+    cmd += ["-threads", "1", "-c:v", "libx264", "-preset", "veryslow", "-crf", "30", "-pix_fmt", "yuv420p", "-g", str(fps),
             "-bf", "0", "-movflags", "+faststart", "-map_metadata", "-1", "-fflags", "+bitexact",
             "-flags:v", "+bitexact", "-flags:a", "+bitexact", str(path)]  # fmt: skip
     raw = b"".join(frame_image(i, fps).tobytes() for i in range(frames))

@@ -25,12 +25,6 @@ class InvalidOutputError(MetaError):
     """A complete response whose JSON failed validation twice (the call and its one re-ask)."""
 
 
-def ensure_standard(model: str) -> str:
-    if model.endswith("-contributor"):
-        raise ValueError(f"{model!r} is a Contributor-mode model; Safe Cut uses Standard mode only")
-    return model
-
-
 def _check_images_in_user_messages(messages: Sequence[Mapping[str, Any]]) -> None:
     """Images on non-user roles are silently ignored by Meta, so refuse them before sending."""
     for message in messages:
@@ -61,7 +55,7 @@ def build_body(
     max_output_tokens: int | None = None,
 ) -> dict[str, Any]:
     """A Responses request body. ``effort`` ``omit`` sends no ``reasoning`` field (the Spark 1.2 fallback)."""
-    ensure_standard(model)
+    config.ensure_standard_model(model)
     if effort not in ("omit", "minimal", "low", "medium", "high", "xhigh", "max"):
         raise ValueError(f"unknown reasoning effort {effort!r}")
     _check_images_in_user_messages(messages)
@@ -123,6 +117,8 @@ async def count_input_tokens(client: MetaClient, body: Mapping[str, Any], *, sta
         estimate_units={},
         policy=RetryPolicy(attempts=config.ATTEMPTS_DEFAULT),
         timeout=httpx.Timeout(30.0, connect=config.CONNECT_TIMEOUT_S),
+        total_timeout_s=60.0,
+        breaker=False,
     )
     try:
         result = await client.request(

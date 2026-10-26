@@ -127,7 +127,8 @@ def classify(status: int, body: Any, *, request_id: str | None = None) -> MetaEr
         return MetaBadRequest(detail, **kwargs)
     if status == 400:
         lowered = message.lower()
-        if (param and param.split("[")[0] in _CONFIG_PARAMS) or "unsupported param" in lowered:
+        root = param.split("[")[0].split(".")[0] if param else None  # "reasoning.effort" -> "reasoning"
+        if (root and root in _CONFIG_PARAMS) or "unsupported param" in lowered:
             return MetaConfigError(detail, **kwargs)
         return MetaBadRequest(detail, **kwargs)
     if status == 429:

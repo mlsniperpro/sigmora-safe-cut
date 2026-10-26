@@ -110,28 +110,39 @@ class CircuitBreaker:
             return "open"
         return "half_open"
 
-    def before_call(self) -> None:
-        """Raise :class:`MetaUnavailable` without a request while open; admit one trial when half-open."""
+    def before_call(self) -> bool:
+        """Raise :class:`MetaUnavailable` without a request while open; admit one trial when half-open.
+
+        Returns whether this call is the half-open trial; pass that back to ``record_*``/``abandon_trial``.
+        """
         state = self.state
         if state == "open" or (state == "half_open" and self._trial_in_flight):
             raise MetaUnavailable("circuit breaker open: Meta calls are failing, try again shortly")
         if state == "half_open":
             self._trial_in_flight = True
+            return True
+        return False
 
-    def record_success(self) -> None:
+    def record_success(self, trial: bool = False) -> None:
+        """Any answered call proves the service is up: close the breaker."""
+        del trial  # any answered call closes the breaker, trial or not
         self._recent.clear()
         self._opened_at = None
         self._trial_in_flight = False
 
-    def abandon_trial(self) -> None:
+    def abandon_trial(self, trial: bool = True) -> None:
         """The trial call ended without telling us anything (budget stop, cancellation): allow another."""
-        self._trial_in_flight = False
-
-    def record_failure(self) -> None:
-        now = self.clock()
-        if self.state == "half_open":
-            self._opened_at = now
+        if trial:
             self._trial_in_flight = False
+
+    def record_failure(self, trial: bool = False) -> None:
+        now = self.clock()
+        if self._opened_at is not None:
+            # Open or half-open: a failure (the trial's, or a late call's) re-opens the full window.
+            # Only the trial itself frees the trial slot, so a late failure can't admit a second trial.
+            self._opened_at = now
+            if trial:
+                self._trial_in_flight = False
             return
         self._recent.append(now)
         while self._recent and now - self._recent[0] > self.window_s:

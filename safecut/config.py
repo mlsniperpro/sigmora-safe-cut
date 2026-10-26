@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 
 from pydantic import (
     AfterValidator,
+    AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
@@ -53,8 +54,24 @@ class ConfigError(ValueError):
     """The environment holds a value Safe Cut refuses to start with."""
 
 
-def _standard_model(model_id: str) -> str:
-    """Refuse Contributor-mode IDs (AGENTS rule 6): Safe Cut sends faces."""
+def trusted_base_url(value: str, allowed: frozenset[str]) -> str:
+    """The bearer key goes to this host, so only the provider's own HTTPS host is accepted."""
+    parts = urlsplit(value)
+    if (
+        parts.scheme != "https"
+        or parts.hostname not in allowed
+        or parts.username
+        or parts.password
+        or parts.port not in (None, 443)
+        or parts.query
+        or parts.fragment
+    ):
+        raise ValueError(f"base URLs must be https://{'|'.join(sorted(allowed))}/… with no credentials or port")
+    return value.rstrip("/")
+
+
+def ensure_standard_model(model_id: str) -> str:
+    """Refuse Contributor-mode IDs (AGENTS rule 6): Safe Cut sends faces. The one place this rule lives."""
     cleaned = model_id.strip()
     if not cleaned:
         raise ValueError("model ID is empty")
@@ -63,7 +80,7 @@ def _standard_model(model_id: str) -> str:
     return cleaned
 
 
-ModelId = Annotated[str, AfterValidator(_standard_model)]
+ModelId = Annotated[str, AfterValidator(ensure_standard_model)]
 
 # ---------------------------------------------------------------------------
 # Prices (dated). Read live from dev.meta.ai/docs/pricing-rate-limits on 2026-10-26.
@@ -177,9 +194,9 @@ class AccessCode(BaseModel):
 
     code: str = Field(min_length=4)
     kind: AccessCodeKind
-    cap_usd: float | None = Field(default=None, ge=0)
-    valid_from: datetime | None = None
-    valid_until: datetime | None = None
+    cap_usd: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    valid_from: AwareDatetime | None = None
+    valid_until: AwareDatetime | None = None
 
     @model_validator(mode="after")
     def _window_order(self) -> AccessCode:
@@ -202,8 +219,8 @@ class CodeWindow(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    start: datetime | None
-    until: datetime | None
+    start: AwareDatetime | None
+    until: AwareDatetime | None
 
 
 def _utc(text: str) -> datetime:
@@ -225,7 +242,7 @@ DEFAULT_CODE_WINDOWS: Mapping[WindowKind, CodeWindow] = {
 
 _ENV_PREFIX = "SAFECUT_"
 #: Where each base URL may point (AGENTS rule 7: calls go direct, never through a proxy).
-_ALLOWED_HOSTS: Mapping[str, frozenset[str]] = {
+ALLOWED_HOSTS: Mapping[str, frozenset[str]] = {
     "meta_base_url": frozenset({"api.meta.ai"}),
     "open_base_url": frozenset({"inference.baseten.co"}),
 }
@@ -237,7 +254,7 @@ _JSON_FIELDS = frozenset({"access_codes", "code_windows", "asr_language_bias", "
 class Settings(BaseModel):
     """Every runtime setting. Build it with :func:`load_settings` (env) or directly in tests."""
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
 
     # Models (ARCHITECTURE §4). WP0's probe results set the scene/escalate/speech defaults.
     sam_model: ModelId = "sam-3.1"
@@ -299,20 +316,7 @@ class Settings(BaseModel):
     @field_validator("meta_base_url", "open_base_url")
     @classmethod
     def _trusted_base(cls, value: str, info: ValidationInfo) -> str:
-        """The bearer key goes to this host, so only the provider's own HTTPS host is accepted."""
-        parts = urlsplit(value)
-        allowed = _ALLOWED_HOSTS[info.field_name or ""]
-        if (
-            parts.scheme != "https"
-            or parts.hostname not in allowed
-            or parts.username
-            or parts.password
-            or parts.port not in (None, 443)
-            or parts.query
-            or parts.fragment
-        ):
-            raise ValueError(f"base URLs must be https://{'|'.join(sorted(allowed))}/… with no credentials or port")
-        return value.rstrip("/")
+        return trusted_base_url(value, ALLOWED_HOSTS[info.field_name or ""])
 
     @field_validator("asr_language_bias")
     @classmethod
@@ -328,6 +332,22 @@ class Settings(BaseModel):
         merged = dict(DEFAULT_CODE_WINDOWS)
         merged.update(value)
         return merged
+
+    @model_validator(mode="after")
+    def _priced_models(self) -> Settings:
+        """A token model without a dated price would fail mid-job; refuse it at startup instead."""
+        token_models = {
+            self.role_model,
+            self.scene_model,
+            self.escalate_model,
+            self.redteam_model,
+            self.speech_fallback_model,
+            self.open_model,
+        }
+        unpriced = sorted(m for m in token_models if m not in TOKEN_PRICES)
+        if unpriced:
+            raise ValueError(f"no {PRICE_TABLE_DATE} price for {unpriced}; add it to TOKEN_PRICES first")
+        return self
 
     @model_validator(mode="after")
     def _code_caps(self) -> Settings:
@@ -369,8 +389,8 @@ class Settings(BaseModel):
         return sorted(pairs)
 
 
-_WINDOW_PAIRS: TypeAdapter[dict[WindowKind, tuple[datetime | None, datetime | None]]] = TypeAdapter(
-    dict[WindowKind, tuple[datetime | None, datetime | None]]
+_WINDOW_PAIRS: TypeAdapter[dict[WindowKind, tuple[AwareDatetime | None, AwareDatetime | None]]] = TypeAdapter(
+    dict[WindowKind, tuple[AwareDatetime | None, AwareDatetime | None]]
 )
 
 

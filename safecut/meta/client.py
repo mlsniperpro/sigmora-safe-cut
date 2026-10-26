@@ -75,6 +75,11 @@ class CallSpec:
     timeout: httpx.Timeout
     lane: Lane = "other"
     total_timeout_s: float | None = None
+    #: False for best-effort helpers (the free token count): their failures say nothing about the
+    #: endpoints that matter, so they neither open nor are refused by the circuit breaker.
+    breaker: bool = True
+    #: The endpoint takes ``store`` (every Responses model; SAM unless SAFECUT_SAM_SEND_STORE=false).
+    store_param: bool = True
 
 
 @dataclass(frozen=True)
@@ -158,15 +163,16 @@ def _status_failure(
     )
 
 
-def guard_body(body: Mapping[str, Any]) -> None:
+def guard_body(body: Mapping[str, Any], *, store_param: bool = True) -> None:
     """AGENTS rule 6 at the transport: Standard models only, ``store`` never true, no ignored params."""
     model = body.get("model")
     if not isinstance(model, str) or not model:
         raise ValueError("request body has no model")
-    if model.endswith("-contributor"):
-        raise ValueError(f"{model!r} is a Contributor-mode model; Safe Cut uses Standard mode only")
-    if body.get("store", False) is not False:
-        raise ValueError("store must be false (AGENTS rule 6)")
+    config.ensure_standard_model(model)
+    if store_param and body.get("store") is not False:
+        raise ValueError("store must be sent as false (AGENTS rule 6)")
+    if not store_param and "store" in body:
+        raise ValueError("this model takes no store parameter; don't send one")
     sent_forbidden = FORBIDDEN_PARAMS & set(body)
     if sent_forbidden:
         raise ValueError(f"parameters ignored or rejected by the Responses API: {sorted(sent_forbidden)}")
@@ -210,11 +216,14 @@ class MetaClient:
         self.ledger = ledger
         self.cost_path = Path(cost_path)
         self._owns_http = http is None
+        # trust_env=False: no HTTPS_PROXY or netrc from the environment ever sees the key (AGENTS rule 7).
         self._http = http or httpx.AsyncClient(
             limits=httpx.Limits(max_connections=config.MAX_CONNECTIONS),
             timeout=httpx.Timeout(60.0, connect=config.CONNECT_TIMEOUT_S),
+            trust_env=False,
         )
-        self.base_url = (base_url or settings.meta_base_url).rstrip("/")
+        allowed = frozenset().union(*config.ALLOWED_HOSTS.values())
+        self.base_url = config.trusted_base_url(base_url or settings.meta_base_url, allowed)
         self._key = api_key if api_key is not None else settings.api_key()
         self.breaker = breaker or CircuitBreaker(clock=clock)
         # Process-wide bound: pass one shared semaphore to every client in a process (WP5 does).
@@ -310,7 +319,8 @@ class MetaClient:
         ``attempt_fn`` calls its argument right before it sends the request, so a cancellation that lands
         before anything was sent releases the reservation instead of charging it.
         """
-        self.breaker.before_call()
+        breaker = self.breaker if spec.breaker else None
+        trial = breaker.before_call() if breaker else False
         attempt = 0
         maybe_processed = False
         while True:
@@ -320,7 +330,12 @@ class MetaClient:
                 self.ledger.reserve(call_id, self.job_id, spec.estimate_usd, self._limits())
             except BudgetExceeded as exc:
                 self._log_budget_stop(spec, exc)
-                self.breaker.abandon_trial()
+                if breaker:
+                    breaker.abandon_trial(trial)
+                raise
+            except BaseException:
+                if breaker:
+                    breaker.abandon_trial(trial)
                 raise
             sent = _SentFlag()
             try:
@@ -332,13 +347,19 @@ class MetaClient:
             except _AttemptFailed as failed:
                 self._account(spec, call_id, attempt, charged=failed.accepted, rid=failed.error.request_id)
                 maybe_processed = maybe_processed or failed.accepted
-                delay = self._retry_delay(spec, attempt, failed, maybe_processed)
+                delay = self._retry_delay(spec, attempt, failed, maybe_processed, breaker=breaker, trial=trial)
                 log.info("retrying", extra={"stage": spec.stage, "attempt": attempt, "delay_s": delay})
-                await self._sleep(delay)
+                try:
+                    await self._sleep(delay)
+                except BaseException:
+                    if breaker:
+                        breaker.abandon_trial(trial)
+                    raise
                 continue
             except BaseException:
                 # Cancellation or a bug mid-attempt: once the request was sent, billing is unknown.
-                self.breaker.abandon_trial()
+                if breaker:
+                    breaker.abandon_trial(trial)
                 self._account(spec, call_id, attempt, charged=sent.sent, rid=None)
                 raise
             if outcome.usd is None:
@@ -349,13 +370,23 @@ class MetaClient:
                 self._log_cost(
                     spec, attempt=attempt, units=outcome.units, usd=outcome.usd, estimated=False, rid=outcome.request_id
                 )
-            self.breaker.record_success()
+            if breaker:
+                breaker.record_success(trial)
             if outcome.error is not None:
                 outcome.error.maybe_processed = True
                 raise outcome.error
             return outcome, attempt, maybe_processed
 
-    def _retry_delay(self, spec: CallSpec, attempt: int, failed: _AttemptFailed, maybe_processed: bool) -> float:
+    def _retry_delay(
+        self,
+        spec: CallSpec,
+        attempt: int,
+        failed: _AttemptFailed,
+        maybe_processed: bool,
+        *,
+        breaker: CircuitBreaker | None,
+        trial: bool,
+    ) -> float:
         """The wait before the next attempt, or raise the final typed error (updating the breaker)."""
         error = failed.error
         error.maybe_processed = maybe_processed
@@ -363,14 +394,15 @@ class MetaClient:
             try:
                 return backoff_seconds(attempt, failed.retry_after, self._jitter())
             except RetryAfterTooLong as too_long:
-                self.breaker.record_failure()
+                if breaker:
+                    breaker.record_failure(trial)
                 too_long.maybe_processed = maybe_processed
                 raise too_long from error
-        if error.retryable:
-            self.breaker.record_failure()
-        else:
+        if breaker and error.retryable:
+            breaker.record_failure(trial)
+        elif breaker:
             # The server answered (a 4xx, a refusal): it's up, whatever this request's fault.
-            self.breaker.record_success()
+            breaker.record_success(trial)
         raise error from None
 
     def _account(self, spec: CallSpec, call_id: str, attempt: int, *, charged: bool, rid: str | None) -> None:
@@ -401,8 +433,8 @@ class MetaClient:
         """One non-streamed call with retries. The response body must be JSON (or empty on DELETE)."""
         payload: Any = json_body
         model: Any = cast(Mapping[str, Any], json_body).get("model") if isinstance(json_body, Mapping) else None
-        if model is not None and isinstance(model, str) and model.endswith("-contributor"):
-            raise ValueError(f"{model!r} is a Contributor-mode model; Safe Cut uses Standard mode only")
+        if isinstance(model, str):
+            config.ensure_standard_model(model)
 
         async def attempt(mark_sent: Callable[[], None]) -> _Attempt:
             # ``files`` is a factory so every attempt sends a fresh body (open file handles are single-use).
@@ -422,6 +454,9 @@ class MetaClient:
                     )
             except httpx.TransportError as exc:
                 raise _transport_failure(exc) from exc
+            except httpx.HTTPError as exc:
+                # Decoding errors, redirect loops: the request went out, so billing is unknown.
+                raise _AttemptFailed(MetaUnavailable(f"HTTP error: {type(exc).__name__}"), accepted=True) from exc
             except TimeoutError as exc:
                 raise _AttemptFailed(MetaUnavailable("request exceeded its total time limit"), accepted=True) from exc
             body = _decode(resp.content)
@@ -448,11 +483,12 @@ class MetaClient:
         A stream that ends without a terminal event is ``MetaIncomplete(eof=True)`` (retryable). A server
         ``incomplete`` status or a refusal is accounted at its actual usage and raised without retry.
         """
-        guard_body(body)
+        guard_body(body, store_param=spec.store_param)
         payload = dict(body) | {"stream": True}
 
         async def attempt(mark_sent: Callable[[], None]) -> _Attempt:
             events: list[dict[str, Any]] = []
+            refused: list[str] = []
             started = self._clock()
             try:
                 mark_sent()
@@ -472,18 +508,28 @@ class MetaClient:
                     async with asyncio.timeout(spec.total_timeout_s):
                         async for event in aiter_sse(resp.aiter_lines()):
                             events.append(event)
+                            if event.get("type") in ("response.refusal.delta", "response.refusal.done"):
+                                # Keep reading: the terminal event carries the usage to bill.
+                                refused.append(str(event.get("delta") or event.get("refusal") or ""))
+                                continue
                             terminal = self._terminal(event, meter)
                             if terminal is not None:
                                 terminal.value = events
+                                if refused and terminal.error is None:
+                                    terminal.error = MetaRefusal(f"the model refused: {''.join(refused)[:200]}")
                                 return terminal
             except httpx.TransportError as exc:
                 failure = _transport_failure(exc)
                 failure.accepted = failure.accepted or bool(events)
                 raise failure from exc
+            except httpx.HTTPError as exc:
+                raise _AttemptFailed(MetaUnavailable(f"HTTP error: {type(exc).__name__}"), accepted=True) from exc
             except TimeoutError as exc:
                 raise _AttemptFailed(MetaUnavailable("stream exceeded its total time limit"), accepted=True) from exc
             except SSEDecodeError as exc:
                 raise _AttemptFailed(MetaUnavailable(f"malformed stream: {exc}"), accepted=True) from exc
+            if refused:
+                raise _AttemptFailed(MetaRefusal(f"the model refused: {''.join(refused)[:200]}"), accepted=True)
             raise _AttemptFailed(MetaIncomplete("stream ended without a terminal event", eof=True), accepted=True)
 
         outcome, attempts, _ = await self._run(spec, attempt)
@@ -498,8 +544,6 @@ class MetaClient:
         kind = event.get("type")
         if kind in ("response.failed", "error"):
             raise _AttemptFailed(MetaUnavailable(f"stream reported {kind}"), accepted=True)
-        if kind in ("response.refusal.delta", "response.refusal.done"):
-            raise _AttemptFailed(MetaRefusal("the model refused"), accepted=True)
         if kind not in ("response.completed", "response.incomplete"):
             return None
         response = event.get("response")

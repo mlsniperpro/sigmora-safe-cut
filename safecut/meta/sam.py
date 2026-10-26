@@ -88,6 +88,7 @@ async def segment_video(
         timeout=httpx.Timeout(config.SAM_IDLE_TIMEOUT_S, connect=config.CONNECT_TIMEOUT_S),
         lane="sam",
         total_timeout_s=config.SAM_TOTAL_TIMEOUT_S,
+        store_param=client.settings.sam_send_store,
     )
     return await client.stream(spec, body, meter=video_meter)
 
@@ -102,5 +103,6 @@ async def segment_image(client: MetaClient, body: Mapping[str, Any], *, stage: s
         timeout=httpx.Timeout(config.SAM_IDLE_TIMEOUT_S, connect=config.CONNECT_TIMEOUT_S),
         lane="sam",
         total_timeout_s=config.SAM_TOTAL_TIMEOUT_S,
+        store_param=client.settings.sam_send_store,
     )
     return await client.stream(spec, body, meter=image_meter)
