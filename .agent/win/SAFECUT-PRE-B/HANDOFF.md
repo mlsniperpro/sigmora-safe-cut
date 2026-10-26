@@ -1,32 +1,32 @@
 # HANDOFF: SAFECUT-PRE-B (docs-only product-prep package)
 
-**Updated 2026-10-25 14:13 UTC** by session_01Tjy33tfkpth8jMhhnhhcYL (WOUND DOWN; lease released). **Branch** `pre-b-product` · **PR #2** (the only PRE-B PR; never open another) · **Brief** `docs/work-packages/PRE-B.md` · **Rules** `AGENTS.md` (docs only; no code before 2026-10-26 16:00 UTC). Short form: `docs/HANDOFF-PRE-B.md`.
+**Updated 2026-10-26 15:49 UTC** by session_01Tjy33tfkpth8jMhhnhhcYL (RESUMEd; lease active). **Branch** `pre-b-product` · **PR #2** (the only PRE-B PR; never open another) · **Brief** `docs/work-packages/PRE-B.md` · **Rules** `AGENTS.md` (docs only; no code before 2026-10-26 16:00 UTC). Short form: `docs/HANDOFF-PRE-B.md`.
 
 ## Goal (owner /goal, re-armed hourly)
 Met only when the transcript shows, after the last docs change: `grep -c '^- \[ \]' docs/WIN-CHECKLIST-PRE-B.md` → 0; **two consecutive full audits that find nothing new**; PRE-B and PRE-A reconciled on shared facts; `git status -sb` pushed; a final docs status comment on PR #2. Deadline: kickoff 2026-10-26 16:00 UTC. Never comment on other PRs. A WIND DOWN message: write handoff, release lease, push, delete own check-ins.
 
 ## Done (evidence)
 - Deliverables: `docs/labeling/{LABELING-GUIDE,CVAT-SETUP,LABEL-FORMAT,SCHEDULE}.md`, `docs/UI-SPEC.md`, `docs/STORYBOARD.md`, `docs/PILOTS.md`, `docs/RULES-CHECKLIST.md`, `docs/BLOCKED-PRE-B.md`, `docs/WIN-CHECKLIST-PRE-B.md` (0 unchecked; #1–#354 in §3).
-- Reconciled with PRE-A docs @ `02c605e` (#204–#211 vs `4bb3cec`; #331–#332 vs `565eee3`; #409–#415 now: scene `introduced_in_turn`/`introduction_quote`, service keys `401` outside the judge window, auditor name rule for the YuNet fallback, `503 billing`, prompt-cache consent sentence and receipt check, `T23:59:59Z` fixtures): `422 job_cap` on `/start`, `429` caller caps, $1.12 floor on `POST /v1/jobs`; $3.00 headroom, recording $12 raise ≤ $15.00; per-kind code windows (judge/public Nov 5 00:00–Nov 10 23:59 UTC, recording to Nov 3 23:59, pilot to Nov 2 23:59, owner to Nov 10 23:59), entries may only narrow, window checked on every paid request; `owner` kind; `code_valid_until`; `code_not_active` failure; `503 auditor_unavailable`; 60 s cost $2.02–2.09 ($2.34 no-cache); hold and static Why rows; union-box `cover_spot`; `other` object rulings; "Voice S1" labels; stage-file `status` in mocks. PRE-A's WIN-CHECKLIST §4 `[P]` rows and §12 "Requests to PRE-B" are satisfied here; PRE-A marks them (AGENTS rule 2).
+- Reconciled with PRE-A docs @ `df5b1dc` (#450–#451 upload contract and audit-patch reason; earlier #204–#211 vs `4bb3cec`; #331–#332 vs `565eee3`; #409–#415 now: scene `introduced_in_turn`/`introduction_quote`, service keys `401` outside the judge window, auditor name rule for the YuNet fallback, `503 billing`, prompt-cache consent sentence and receipt check, `T23:59:59Z` fixtures): `422 job_cap` on `/start`, `429` caller caps, $1.12 floor on `POST /v1/jobs`; $3.00 headroom, recording $12 raise ≤ $15.00; per-kind code windows (judge/public Nov 5 00:00–Nov 10 23:59 UTC, recording to Nov 3 23:59, pilot to Nov 2 23:59, owner to Nov 10 23:59), entries may only narrow, window checked on every paid request; `owner` kind; `code_valid_until`; `code_not_active` failure; `503 auditor_unavailable`; 60 s cost $2.02–2.09 ($2.34 no-cache); hold and static Why rows; union-box `cover_spot`; `other` object rulings; "Voice S1" labels; stage-file `status` in mocks. PRE-A's WIN-CHECKLIST §4 `[P]` rows and §12 "Requests to PRE-B" are satisfied here; PRE-A marks them (AGENTS rule 2).
 - Audit rounds 24–41 this session (A cross-package; B UI-SPEC internal; C labels/pilots/storyboard/BLOCKED timeline and privacy), each on a fixed sha; round 39 found 22, round 40 found 21 (#388–#408); round 41 found 34 (#416–#449). No clean round yet.
 
 ## In flight
-- Nothing running. Round 42 (three Sonnet/high auditors on `70a5c6d`) was **stopped by WIND DOWN before reporting**: re-run it from scratch on the current HEAD. All check-ins deleted. The refreshed PR #2 body draft is saved at `.agent/win/SAFECUT-PRE-B/pr2-body-draft.md` (counts updated to #1–#415 and rounds 24–41; bump to #449 before use).
+- Round 42 (three Sonnet/high auditors) launched on the HEAD after the #450–#452 push. PR #2 body draft: `.agent/win/SAFECUT-PRE-B/pr2-body-draft.md` (bump counts to the latest # before use).
 
 ## Next steps (in order)
-1. Audit round 42 (same 3 scopes, fresh agents, fixed sha; hot zone = latest fix diff, then `git diff 5bb95f0..HEAD -- docs/`). Log as #450+. Repeat until two consecutive rounds find nothing new. Findings cluster in UI-SPEC §2.6.1/§3.5/§10.3–§10.5 and mock fixtures, and in the Nov 3 sequence (STORYBOARD §3, BLOCKED); re-read neighbouring rules before each fix.
+1. Audit round 42 (same 3 scopes, fresh agents, fixed sha; hot zone = latest fix diff, then `git diff 5bb95f0..HEAD -- docs/`). Log as #453+. Repeat until two consecutive rounds find nothing new. Findings cluster in UI-SPEC §2.6.1/§3.5/§10.3–§10.5 and mock fixtures, and in the Nov 3 sequence (STORYBOARD §3, BLOCKED); re-read neighbouring rules before each fix.
 2. The PR #2 body was refreshed this session (Decisions 1–19, requests incl. request 22); update its finding counts, then push, show `git status -sb`, post the final docs status comment.
 3. Before merge: remove `.agent/` (#257).
 
 ## Open audit findings
-None known (#1–#449 fixed).
+None known (#1–#452 fixed).
 
 ## Key decisions (why)
 - PRE-A owns API, cost, model, ffmpeg/time-axis and access-window facts; PRE-B adopts them and only files requests (AGENTS rule 2). Reconciled to PRE-A `02c605e`; `b6fa465` added no new requests to PRE-B.
 - Docs-only until Oct 26 16:00 UTC (AGENTS rule 1); deadline Nov 4 21:00 ET (Nov 5 02:00 UTC). One PR only (#2, branch `pre-b-product`).
 - Fail-closed UI rules: auditor named from `audit.json` `egoblur.model` (YuNet fallback), blocking refusals vs `code_cap` note, per-kind code windows, no number without a committed `metrics.json` (AGENTS rule 9).
 - Footage: only signed cast in published clips, fake plates and fictional numbers; real-public test clips stay in owner custody, labelled in person.
-- Every finding is logged in `docs/WIN-CHECKLIST-PRE-B.md` §3 (#1–#449, all `[x]`).
+- Every finding is logged in `docs/WIN-CHECKLIST-PRE-B.md` §3 (#1–#452, all `[x]`).
 
 ## Install / test
 - Docs-only: no install. Gates: below (python3 scripts for link check and JSON parse of UI-SPEC ```json blocks; recreate them if the scratchpad is gone).

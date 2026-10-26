@@ -483,6 +483,9 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#447 (win audit 41)**: (audit A) §10.1's "PRE-A's additions" list omitted the introduction fields, stage `status`, `hold`, `origin`, `audit_label`. Fix: listed, plus PRE-A §12's other rows.
 - [x] **#448 (win audit 41)**: (audit A) The chip seek had no rule for an empty `evidence_frames`. Fix: the item's first frame.
 - [x] **#449 (win audit 41)**: (audit A) Smaller gaps: the read token's name, BLOCKED-PRE-A as the second owner list, the README naming the auditor, no WP1/WP4 rows in §4. Fix: each added.
+- [x] **#450 (PRE-A @ `df5b1dc`)**: The upload contract lacked `content_type`, the signed `PUT` headers, the delete-and-restart retry and `409 upload_incomplete`. Fix: request 17, §2.6 rows, §10.3 rows, fixture `error-409-upload-incomplete.json`.
+- [x] **#451 (PRE-A @ `df5b1dc`)**: An audit-added item's `reason` must be PRE-A's fixed sentence, not a lowercase variant, and the drawer repeated it. Fix: the fixture uses it, request 4 exempts audit patches, the drawer shows only the fixed sentence.
+- [x] **#452 (self-review)**: The timeout rule implied a re-pressed `/start` or `/audit` gets `409`; only `/render` does (§10.3). Fix: narrowed.
 
 ## 4. Which builder reads what
 
