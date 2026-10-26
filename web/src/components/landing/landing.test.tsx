@@ -1,0 +1,65 @@
+import { render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+import kappaUndefined from "../../../mocks/results-kappa-undefined.json";
+import noEgoblur from "../../../mocks/results-no-egoblur.json";
+import twoLabellers from "../../../mocks/results-two-labellers.json";
+import { SafeCutClient } from "@/lib/api";
+import { setClientForTests } from "@/lib/client";
+import { resultsTableSchema } from "@/lib/contracts";
+import { MockBackend } from "@/lib/mock-backend";
+import { ModeProvider } from "../mode";
+import { HeroAndSteps } from "./HeroAndSteps";
+import { ResultsTable } from "./ResultsTable";
+
+afterEach(() => setClientForTests(null));
+
+describe("results table (UI-SPEC §1.3)", () => {
+  it("shows the placeholder, never a number, before WP8 fills it", () => {
+    render(<ResultsTable results={null} />);
+    expect(screen.getByText("Numbers appear here after our frozen test runs. We publish them whether they're good or not.")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).toBeNull();
+  });
+
+  it("marks a missing EgoBlur baseline and uses the one-labeller footnote", () => {
+    render(<ResultsTable results={resultsTableSchema.parse(noEgoblur)} />);
+    const table = screen.getByRole("table");
+    expect(within(table).getByText("EgoBlur Gen 2: not run (EgoBlur weights unavailable)")).toBeInTheDocument();
+    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Method", "Recall", "Exposure", "Leak bursts", "Over-blur"]);
+    expect(screen.getByText(/labelled by one person\. Agreement between two labellers wasn't measured\. 1 run per clip\. Run fixture-run\./)).toBeInTheDocument();
+    expect(screen.queryByText(/κ/)).toBeNull();
+  });
+
+  it("always shows κ with the agreement and the 2×2 counts", () => {
+    render(<ResultsTable results={resultsTableSchema.parse(twoLabellers)} />);
+    expect(screen.getByText(/They agreed on 90\.0% of 10 decisions \(both said hide: 4 · only the first said hide: 1 · only the second said hide: 0 · both said keep: 5\); κ = 0\.80\./)).toBeInTheDocument();
+  });
+
+  it("says when κ can't be computed instead of printing null", () => {
+    render(<ResultsTable results={resultsTableSchema.parse(kappaUndefined)} />);
+    expect(screen.getByText(/κ can't be computed: both labellers made the same call on every item\./)).toBeInTheDocument();
+    expect(screen.queryByText(/null|NaN/)).toBeNull();
+  });
+
+  it("rounds in the unflattering direction", () => {
+    const r = resultsTableSchema.parse({ ...twoLabellers, rows: [{ method: "Safe Cut", variant: "full", recall: 0.92349, exposure: 0.01001, leak_bursts: 0, over_blur: 0.05 }] });
+    render(<ResultsTable results={r} />);
+    const row = screen.getByRole("row", { name: /Safe Cut/ });
+    expect(within(row).getAllByRole("cell").map((c) => c.textContent)).toEqual(["92.3%", "1.1%", "0", "5.0%"]);
+  });
+});
+
+describe("hero and steps (UI-SPEC §1)", () => {
+  it("plays the demo with a labelled raw/Safe Cut radio group and names the auditor from the demo job", async () => {
+    setClientForTests(new SafeCutClient({ transport: new MockBackend({ latencyMs: 0 }) }));
+    render(
+      <ModeProvider>
+        <HeroAndSteps />
+      </ModeProvider>,
+    );
+    const group = await screen.findByRole("radiogroup", { name: "Version" });
+    expect(within(group).getByRole("radio", { name: "■ Safe Cut" })).toHaveAttribute("aria-checked", "true");
+    expect(await screen.findByText(/Before anything is published, Meta's EgoBlur checks the final render/)).toBeInTheDocument();
+    expect(screen.getByText("Muse Spark decides who")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Try it with an access code" })).toHaveAttribute("href", "/try");
+  });
+});

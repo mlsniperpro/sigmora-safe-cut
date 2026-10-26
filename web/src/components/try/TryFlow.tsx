@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
+import type { JobResponse } from "@/lib/contracts";
 import { getClient } from "@/lib/client";
 import { COPY, codeWindowMessage, formatLocal } from "@/lib/copy";
 import { CODE_MAX_LENGTH, checkFiles, durationProblem, normaliseCode, sizeMb } from "@/lib/upload";
@@ -428,7 +429,10 @@ export function TryFlow() {
         </div>
       )}
 
-      {step === "progress" && jobId && <Progress jobId={jobId} fileName={file?.name ?? ""} duration={duration} uploadPercent={uploadPercent} onDeleted={() => setStep("deleted")} onNavigate={(href) => router.push(href)} />}
+      {step === "progress" && jobId && <Progress jobId={jobId} fileName={file?.name ?? ""} duration={duration} uploadPercent={uploadPercent} onDeleted={() => {
+            uploadAbort.current?.abort();
+            setStep("deleted");
+          }} onNavigate={(href) => router.push(href)} />}
     </section>
   );
 }
@@ -446,6 +450,17 @@ function DataBullets() {
   );
 }
 
+/** Polls the job once the upload is done and hands each response up; renders nothing. */
+function JobPoller({ jobId, onJob }: { jobId: string; onJob: (job: JobResponse) => void }) {
+  const { load } = useJob(jobId);
+  const job = load.kind === "ready" ? load.job : null;
+  useReportMode(job?.mode);
+  useEffect(() => {
+    if (job) onJob(job);
+  }, [job, onJob]);
+  return null;
+}
+
 function Progress({
   jobId,
   fileName,
@@ -461,23 +476,31 @@ function Progress({
   onDeleted: () => void;
   onNavigate: (href: string) => void;
 }) {
+  const [job, setJob] = useState<JobResponse | null>(null);
   const uploading = uploadPercent !== null && uploadPercent < 100;
-  return uploading ? (
-    <ProgressView fileName={fileName} duration={duration} active="uploading" uploadPercent={uploadPercent} jobId={jobId} onDeleted={onDeleted} />
-  ) : (
-    <PolledProgress jobId={jobId} fileName={fileName} duration={duration} onDeleted={onDeleted} onNavigate={onNavigate} />
+  const onJob = useCallback(
+    (j: JobResponse) => {
+      setJob(j);
+      if (!["processing", "retry_later", "created"].includes(j.status)) onNavigate(`/jobs/${encodeURIComponent(jobId)}`);
+    },
+    [jobId, onNavigate],
   );
-}
-
-function PolledProgress({ jobId, fileName, duration, onDeleted, onNavigate }: { jobId: string; fileName: string; duration: number | null; onDeleted: () => void; onNavigate: (href: string) => void }) {
-  const { load } = useJob(jobId);
-  const job = load.kind === "ready" ? load.job : null;
-  useReportMode(job?.mode);
-  useEffect(() => {
-    if (job && !["processing", "retry_later", "created"].includes(job.status)) onNavigate(`/jobs/${encodeURIComponent(jobId)}`);
-  }, [job, jobId, onNavigate]);
-  const stage = job?.stage && job.stage !== "review" ? job.stage : "queued";
-  return <ProgressView fileName={fileName} duration={duration} active={stage} jobId={jobId} etaS={job?.eta_s ?? null} busy={job?.status === "retry_later"} onDeleted={onDeleted} />;
+  const stage = uploading ? "uploading" : job?.stage && job.stage !== "review" ? job.stage : "queued";
+  return (
+    <>
+      {!uploading && <JobPoller jobId={jobId} onJob={onJob} />}
+      <ProgressView
+        fileName={fileName}
+        duration={duration}
+        active={stage}
+        {...(uploading && { uploadPercent: uploadPercent ?? 0 })}
+        jobId={jobId}
+        etaS={uploading ? null : (job?.eta_s ?? null)}
+        busy={job?.status === "retry_later"}
+        onDeleted={onDeleted}
+      />
+    </>
+  );
 }
 
 function ProgressView({
