@@ -25,26 +25,37 @@
 - **Gate files** in `.agent/win/SAFECUT-WP0/`: `checks.sh`, `WIN-CHECKLIST.md`, `BLOCKED.md`, `reaudit.md`, `break-it.md`.
 - **Last fully green head:** the head of this push (372 passed, ruff and pyright clean).
 
-## In flight (session_01FE6cwwWXD1E2eCpwUV9ftx, from 19:36 UTC 2026-10-26)
-- Lease claimed (44a24e5). Inherited head was green: 293 passed, and a fresh clone took 53 s on 4 CPUs.
-- Audit #5 (Sonnet) at 44a24e5 was NOT CLEAN: 0 critical, 0 high, 4 medium, 10 low. Every finding was verified, then fixed with a test or kept as a recorded decision (reaudit.md, tests/test_audit5.py). Suite: 372 passed; ruff and pyright clean.
-- PRE-A (origin/pre-a-research 7f7ab67) added §12 rows at 18:57 UTC. They are now implemented: responses.json, `responses_delete_requested`, `cost_usd_baseten`, `open_weight_attempted`, `SAFECUT_SAM_DELETE_RESPONSES` and `sam.ResponseLog`.
-- The 44a24e5 soak was stopped as stale. Re-run it at the final head.
-- Next: audit #6 and the soak at the new head, then break-it.md, the gate and the PR status.
+## State at WIND DOWN (session_01FE6cwwWXD1E2eCpwUV9ftx, ~20:05 UTC 2026-10-26)
+- **Head:** the head is green, with nothing left half-done. At 8cc543c: 372 passed, ruff and pyright strict clean. The wind-down commit after it touches only `.agent/` files.
+- **Audit #5** (Sonnet) at 44a24e5: 4 medium and 10 low findings. All are fixed in 8cc543c with tests (`tests/test_audit5.py`, `tests/test_contracts.py`), or kept as recorded decisions. The details are in reaudit.md. `CLEAN_AUDITS_IN_A_ROW` is 0.
+- **PRE-A §12:** the rows that `origin/pre-a-research` 7f7ab67 added are implemented:
+  - `job.open_weight_attempted`;
+  - `receipt.cost_usd_baseten`;
+  - `data_handling.responses_delete_requested`;
+  - `responses.json`;
+  - `SAFECUT_SAM_DELETE_RESPONSES`, with `sam.ResponseLog`.
+- **Unfinished, stopped at wind-down** (no results lost: both were only starting):
+  - audit #6 (Sonnet) at 8cc543c: stopped, no report;
+  - the 20k soak at 8cc543c: stopped after about 5 min with no failure. Re-run it.
+- **break-it.md** is written at TESTED_COMMIT 8cc543c. It records honestly what ran where. The fresh-clone run was at 44a24e5, and the soak is unfinished.
+- **Last gate** at 8cc543c, before the wind-down commit: `GATE: FAIL (4): only 0 clean full audit(s) in a row; two consecutive audits must find nothing new`. The other failures were the stale reaudit and break-it headers (both updated since) and the uncommitted pids file (cleared).
 
 ## Next steps, in order
-1. Run `bash .agent/win/SAFECUT-WP0/checks.sh` (green at 4fea3bb).
-2. Add tests for every `bd114c7` change. Then close the open findings below.
-3. Record audit #2 and the code-review findings in `reaudit.md`. Then run fresh full audits until two in a row find nothing (owner rule: any Agent subagent uses model `sonnet`, effort `high`). Verify every finding before fixing it.
-4. Run the soak in the background (`HYPOTHESIS_PROFILE=soak uv run pytest -m "not live" -q`, with its PID in `pids`), the chaos and replay e2e tests, and a fresh-clone run. Write `break-it.md` with `TESTED_COMMIT` = the final head.
-5. Close the remaining WIN-CHECKLIST items, push, run the gate, and put its last line in PR #3's Status.
-6. When `MODEL_API_KEY` arrives:
-   - run `uv run python -m scripts.probes.probes all`, then `uv run python -m scripts.probes.trim`;
-   - replace the provisional numbers in `docs/API-NOTES-WP0.md` §13.3 with measured ones and adjust the config defaults if needed;
-   - put the total from `fixtures/probes/cost.jsonl` in the PR (it stays ≤ $6, enforced).
+1. Claim the lease, then run `bash .agent/win/SAFECUT-WP0/checks.sh`; expect 372 passed.
+2. Run a fresh, full audit with a Sonnet subagent (effort high, read-only; give it PRE-A from `git show origin/pre-a-research:docs/API-NOTES.md`). Focus hardest on the audit #5 code: `files.py` reconcile and `_keep`, `sam.ResponseLog`, the `validate_job_dir` cross-checks, and the ledger's `_same_reservation`. Verify every finding before fixing it, and record it in reaudit.md. Repeat until two audits in a row are clean, then set `AUDITED_COMMIT` to the final head and `CLEAN_AUDITS_IN_A_ROW: 2`.
+3. At the final head:
+   - run the soak in the background (`HYPOTHESIS_PROFILE=soak uv run pytest -m "not live" -q`, its PID in `pids`, about 40+ min);
+   - do a fresh-clone run;
+   - rewrite break-it.md with `TESTED_COMMIT` = the final head;
+   - clear `pids`.
+4. Push, run the gate until it prints `GATE: PASS`, put its last line in PR #3's Status, and post the final status comment.
+5. When `MODEL_API_KEY` arrives:
+   - run the probes (`uv run python -m scripts.probes.probes all`, then `uv run python -m scripts.probes.trim`);
+   - replace the provisional numbers in `docs/API-NOTES-WP0.md` §13.3;
+   - put the `fixtures/probes/cost.jsonl` total (≤ $6) in the PR.
 
 ## Open findings
-None open. Every finding from audits #1–#4 and the code review is fixed, with its test named in reaudit.md, or is a recorded decision.
+None open. Every finding from audits #1–#5 and the code review is fixed with a named test, or is a recorded decision (reaudit.md).
 
 ## Key decisions (the full list is in PR #3)
 - Built to PRE-A's spec (PR #1, unmerged); prices re-read live on 2026-10-26.
