@@ -18,7 +18,7 @@ Judging facts are from the official participant guide, [OFFICIAL-GUIDE.md](OFFIC
 - [P] **Submission package: three-minute video, live product, public repo, every contributor listed**: Evidence: STORYBOARD (2:50), UI-SPEC (live product), BLOCKED-PRE-B (repo public once the owner OKs it, before submitting; contributors on the form). Owner input: BLOCKED-PRE-B.
 - [x] **Bonus: Community Vote / Most Viral**: Shareable proof. Evidence: RULES-CHECKLIST §0 and §6 (the demo posted on X before submitting, its link in the submission; the gallery link from Nov 9); BLOCKED-PRE-B Nov 4 steps. Builder: WP8.
 - [P] **Bonus: Best Agentic Use-Case**: Autonomy, task completion, usefulness. Evidence: RULES-CHECKLIST §0 (the miss loop, self-audit with patch loop and fail-closed holds, named in the submission). Builder: WP8.
-- [P] **Bonus: Best Build on Meta Open-Weight Models**: Evidence: RULES-CHECKLIST §0 (a request to PRE-A and the WP owners to decide by Oct 28; Baseten id `meta-models/muse-spark-open-1026`); BLOCKED-PRE-B (Baseten credits). Not PRE-B's decision (AGENTS rule 2).
+- [P] **Bonus: Best Build on Meta Open-Weight Models**: Decided by PRE-A (`docs/API-NOTES.md` §3.8): Muse Spark Open on Baseten as an additive audit second opinion. Evidence: PRE-B names it from `audit.open_weight.model` (UI-SPEC §1.3, RULES-CHECKLIST §0/§5, STORYBOARD 9.1) and discloses Baseten in the data copy and consent note; BLOCKED-PRE-B (credits, `BASETEN_API_KEY`). Builder: WP4, WP0 probe g.
 
 ## 2. PRE-B deliverables ([PRE-B.md](work-packages/PRE-B.md))
 
@@ -542,6 +542,17 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#501 (official guide)**: (official guide) Nothing in the video marked what was built during the event, and Sigmora's screen wasn't identified as existing. Fix: STORYBOARD 9.1 end card with `{first_code_commit}`, 8.1 label, placeholder source.
 - [x] **#502 (official guide)**: (official guide) The submit step didn't name the Representative or list contributors. Fix: added.
 - [x] **#503 (official guide)**: (official guide) The open-weight bonus had no path. Fix: owner requests Baseten credits by Oct 27; a decision request to PRE-A and WP owners by Oct 28.
+- [x] **#504 (win audit 44)**: (audit A; PRE-A §3.8) The open-weight bonus was recorded as undecided though PRE-A decided an audit second opinion on Muse Spark Open. Fix: RULES-CHECKLIST §0/§5, UI-SPEC auditor rule and data bullet, PILOTS consent, STORYBOARD 9.1, BLOCKED credits and `BASETEN_API_KEY`, WIN row.
+- [x] **#505 (win audit 44)**: (audit A) The end card claimed "everything shown" was built during the event, though Sigmora and the pre-kickoff footage and labels appear. Fix: a scoped claim naming all three; RULES-CHECKLIST §0 row matches.
+- [x] **#506 (win audit 44)**: (audit A) RULES-CHECKLIST §3 still made the repo public at kickoff. Fix: before submitting, after the owner's OK.
+- [x] **#507 (win audit 44)**: (audit A; PRE-A open) The §10.2 rights-tick validation copy was stale. Fix: the 18+ string.
+- [x] **#508 (win audit 44)**: (audit A; PRE-A open) The Nov 3 handover committed `audit.json` with private red-team text. Fix: text replaced by "text read (n characters)".
+- [x] **#509 (win audit 44)**: (audit A; PRE-A open) Nothing kept users or pilots in Meta's restricted territories out. Fix: the tick covers it (linking the policy); PILOTS excludes such recruits.
+- [x] **#510 (win audit 44)**: (audit A; PRE-A open) The consent note lacked Meta's retention (Terms §4.4). Fix: added, with the Baseten clause.
+- [x] **#511 (win audit 44)**: (audit A; PRE-A open) Request 15 excluded static fallback tracks. Fix: PRE-A's wording.
+- [x] **#512 (win audit 44)**: (audit A; PRE-A open) The post-Nov-10 state was conditional. Fix: replay-only landing and code-outside-dates `/try` from Nov 11 stated as the plan.
+- [x] **#513 (win audit 44)**: (audit A) The API-key step omitted the credit form and card on file. Fix: added.
+- [x] **#514 (win audit 44)**: (audit A) The anti-project row ignored the protest-coverage persona. Fix: neutral-tool sentence; the persona stays out of submission copy.
 
 ## 4. Which builder reads what
 
