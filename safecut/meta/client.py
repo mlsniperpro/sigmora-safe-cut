@@ -124,7 +124,10 @@ def _transport_failure(exc: httpx.TransportError) -> _AttemptFailed:
 
 
 class MetaClient:
-    """Async client for ``https://api.meta.ai/v1``. Use one per job; share ``http``/``breaker`` per process."""
+    """Async client for ``https://api.meta.ai/v1`` (or another OpenAI-style base such as Baseten's).
+
+    Use one per job; share ``http``/``breaker``/``inflight`` across jobs in one process.
+    """
 
     def __init__(
         self,
@@ -140,6 +143,8 @@ class MetaClient:
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         jitter: Callable[[], float] = random.random,
         clock: Callable[[], float] = time.monotonic,
+        base_url: str | None = None,
+        api_key: str | None = None,
     ) -> None:
         self.settings = settings
         self.job_id = job_id
@@ -151,7 +156,8 @@ class MetaClient:
             limits=httpx.Limits(max_connections=config.MAX_CONNECTIONS),
             timeout=httpx.Timeout(60.0, connect=config.CONNECT_TIMEOUT_S),
         )
-        self._key = settings.api_key()
+        self.base_url = (base_url or settings.meta_base_url).rstrip("/")
+        self._key = api_key if api_key is not None else settings.api_key()
         self.breaker = breaker or CircuitBreaker(clock=clock)
         self._inflight = inflight or asyncio.Semaphore(config.PROCESS_INFLIGHT)
         self._sleep = sleep
@@ -172,7 +178,7 @@ class MetaClient:
     # -- helpers ------------------------------------------------------------
 
     def url(self, path: str) -> str:
-        return f"{self.settings.meta_base_url}/{path.lstrip('/')}"
+        return f"{self.base_url}/{path.lstrip('/')}"
 
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._key}", "User-Agent": f"safecut/{__version__}"}

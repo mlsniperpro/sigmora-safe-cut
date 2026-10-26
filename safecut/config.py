@@ -85,6 +85,8 @@ TOKEN_PRICES: Mapping[str, TokenPrice] = {
     "muse-spark-1.2": TokenPrice(input=1.25, cached=0.15, output=4.25),
     "muse-spark-1.1": TokenPrice(input=1.25, cached=0.15, output=4.25),
     "muse-wonder-1.0": TokenPrice(input=4.00, cached=0.20, output=20.00),
+    # Baseten Model API, read from baseten.co/library/muse-spark-open on 2026-10-26.
+    "meta-models/muse-spark-open-1026": TokenPrice(input=1.25, cached=0.15, output=4.25),
 }
 SAM_USD_PER_FRAME = 0.20 / 1000
 SAM_USD_PER_IMAGE = 2.50 / 1000
@@ -220,6 +222,8 @@ DEFAULT_CODE_WINDOWS: Mapping[WindowKind, CodeWindow] = {
 # ---------------------------------------------------------------------------
 
 _ENV_PREFIX = "SAFECUT_"
+#: Secrets keep the names their providers document, without the SAFECUT_ prefix.
+_SECRET_ENV: Mapping[str, str] = {"model_api_key": "MODEL_API_KEY", "baseten_api_key": "BASETEN_API_KEY"}
 _JSON_FIELDS = frozenset({"access_codes", "code_windows", "asr_language_bias", "service_keys"})
 
 
@@ -243,6 +247,12 @@ class Settings(BaseModel):
     speech_fallback_model: ModelId = "muse-spark-1.2"
     speech_fallback_effort: FallbackEffort = "omit"
     asr_language_bias: tuple[str, ...] = ("English",)
+
+    # Open-weight Muse Spark Open on Baseten (OpenAI-compatible Chat Completions). The hackathon ID is
+    # ``meta-models/muse-spark-open-1026`` (official guide), not the docs' ``meta-models/muse-spark-open``.
+    open_model: ModelId = "meta-models/muse-spark-open-1026"
+    open_base_url: str = "https://inference.baseten.co/v1"
+    baseten_api_key: SecretStr | None = None
 
     # Endpoint and key.
     meta_base_url: str = "https://api.meta.ai/v1"
@@ -279,11 +289,11 @@ class Settings(BaseModel):
     r2_secret_access_key: SecretStr | None = None
     r2_bucket: str | None = None
 
-    @field_validator("meta_base_url")
+    @field_validator("meta_base_url", "open_base_url")
     @classmethod
     def _https_base(cls, value: str) -> str:
         if not value.startswith("https://"):
-            raise ValueError("SAFECUT_META_BASE_URL must be an https:// URL")
+            raise ValueError("base URLs must be https://")
         return value.rstrip("/")
 
     @field_validator("asr_language_bias")
@@ -323,6 +333,12 @@ class Settings(BaseModel):
         if self.model_api_key is None or not self.model_api_key.get_secret_value():
             raise ConfigError("MODEL_API_KEY is not set")
         return self.model_api_key.get_secret_value()
+
+    def open_api_key(self) -> str:
+        """The Baseten key for the open-weight model. Never log the return value."""
+        if self.baseten_api_key is None or not self.baseten_api_key.get_secret_value():
+            raise ConfigError("BASETEN_API_KEY is not set")
+        return self.baseten_api_key.get_secret_value()
 
     def model_effort_pairs(self) -> list[tuple[str, str]]:
         """Every configured (Responses model, effort) pair, for the startup probe (PRE-A §10.7)."""
@@ -365,7 +381,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     source = os.environ if env is None else env
     values: dict[str, Any] = {}
     for name in Settings.model_fields:
-        env_name = "MODEL_API_KEY" if name == "model_api_key" else f"{_ENV_PREFIX}{name.upper()}"
+        env_name = _SECRET_ENV.get(name, f"{_ENV_PREFIX}{name.upper()}")
         raw = source.get(env_name)
         if raw is None or raw.strip() == "":
             continue
