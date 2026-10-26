@@ -121,8 +121,17 @@ try {
 
     // Review
     await page.waitForURL(/\/jobs\/j_mock\d+$/, { timeout: 30_000 });
-    await page.getByText(/hidden · \d+ kept clear · \d+ needs you/).waitFor();
+    await page.getByText(/hidden · \d+ kept clear · \d+ needs? you/).waitFor();
     check(`${v}: lands on the review panel`, true);
+    if (v === "desktop") {
+      // Browser Back from the review panel shows a fresh /try, never a page that bounces forward again.
+      await page.goBack();
+      await page.getByLabel("Access code").waitFor();
+      await page.waitForTimeout(2500);
+      check(`${v}: Back from the review panel lands on a fresh /try`, page.url().endsWith("/try"));
+      await page.goForward();
+      await page.getByText(/hidden · \d+ kept clear · \d+ needs? you/).waitFor();
+    }
     await page.locator("video").first().evaluate((el) => new Promise((res) => (el.readyState >= 2 ? res(true) : el.addEventListener("loadeddata", () => res(true), { once: true }))));
     // Seek to the plate's first evidence frame and read the overlay pixels over the plate.
     const covered = await page.evaluate(async () => {
@@ -150,6 +159,11 @@ try {
     await page.getByRole("dialog", { name: "Who is Face 8?" }).getByRole("button", { name: /Same person as Face 1/ }).click();
     await page.getByText("Face 8 merged into Face 1. They'll be kept clear like Face 1.").waitFor();
     check(`${v}: re-entry merge into the kept guest`, true);
+    // On mobile the merge opened the Kept clear tab, where the guest now is (focus follows the edit).
+    if (v === "mobile") {
+      check(`${v}: the merge opens the tab the edited chip moved to`, (await page.getByRole("tab", { name: /Kept clear/ }).getAttribute("aria-selected")) === "true");
+      await page.getByRole("tab", { name: /Hidden/ }).click();
+    }
     await page.getByRole("button", { name: "Why? Face 4, hidden" }).click();
     const drawer = page.getByRole("dialog", { name: "Face 4 · Child" });
     await drawer.getByText("Children are always hidden. You can't change this, because Safe Cut can't check a parent's consent.").waitFor();
@@ -194,6 +208,21 @@ try {
 
     const real = errors.filter((e) => !e.includes("example.invalid") && !e.includes("ERR_NAME_NOT_RESOLVED") && !e.includes("ERR_TUNNEL_CONNECTION_FAILED") && !e.includes("load failed (404)") && !e.includes("Failed to load resource"));
     check(`${v}: no unexpected console errors`, real.length === 0, real.slice(0, 3).join(" | "));
+    await context.close();
+  }
+
+  // A short landscape screen (or 200% zoom): the player isn't sticky, so the chips can scroll into view.
+  {
+    const context = await browser.newContext({ viewport: { width: 844, height: 390 } });
+    const page = await context.newPage();
+    await page.goto(`${BASE}/jobs/job-review-sample`, { waitUntil: "networkidle" });
+    await page.getByText(/hidden · /).waitFor();
+    const position = await page.locator("video").first().evaluate((el) => getComputedStyle(el.closest("[class*='bg-bg']")).position);
+    check("landscape 844×390: the player isn't sticky", position !== "sticky", position);
+    const chip = page.getByRole("article").first();
+    await chip.focus();
+    const box = await chip.boundingBox();
+    check("landscape 844×390: a focused chip is on screen", !!box && box.y >= 0 && box.y < 390, box ? `y=${Math.round(box.y)}` : "no box");
     await context.close();
   }
 

@@ -82,6 +82,16 @@ export function TryFlow() {
   const [uploaded, setUploaded] = useState(false);
   const uploadAbort = useRef<AbortController | null>(null);
   const deletedByUser = useRef(false);
+  const [started, setStarted] = useState(false);
+  const section = useRef<HTMLElement>(null);
+  const previousStep = useRef<Step>("code");
+  // Move focus with the step, so it never falls to <body> when the focused button unmounts (§2.8).
+  useEffect(() => {
+    if (previousStep.current === step) return;
+    previousStep.current = step;
+    const target = step === "file" ? chooseButton.current : step === "code" ? codeInput.current : section.current?.querySelector<HTMLElement>("[data-step-heading]");
+    target?.focus();
+  }, [step]);
   // Only compared against a refusal's `until`, which the timer below refreshes.
   const [now, setNow] = useState(0);
   const ids = { code: useId(), codeErr: useId(), file: useId(), rights: useId(), rightsErr: useId() };
@@ -236,6 +246,10 @@ export function TryFlow() {
       setStep("progress");
       setUploadPercent(100);
       await client.startJob(id);
+      if (deletedByUser.current) return;
+      // Poll only once the job has really started: before that the server says "created",
+      // which stops polling (§10.4).
+      setStarted(true);
     } catch (error) {
       if (deletedByUser.current) return;
       setStep("file");
@@ -260,23 +274,40 @@ export function TryFlow() {
     setTimeout(() => codeInput.current?.focus(), 0);
   };
 
+  /** Back to step A with nothing kept: the same URL, so a link wouldn't remount the page. */
+  const startOver = () => {
+    deletedByUser.current = false;
+    uploadAbort.current = null;
+    setFile(null);
+    setDuration(null);
+    setFileError(null);
+    setRights(false);
+    setRightsError(null);
+    setRefusal(null);
+    setJobId(null);
+    setUploaded(false);
+    setStarted(false);
+    setUploadPercent(null);
+    setStep("code");
+  };
+
   const startDisabled = !file || busy || (refusal?.blockStart === true && !(refusal.until && now >= refusal.until));
 
   if (step === "deleted") {
     return (
-      <section className="mx-auto max-w-2xl px-4 py-16">
-        <p role="status" className="text-xl font-medium">
+      <section ref={section} className="mx-auto max-w-2xl px-4 py-16">
+        <p role="status" data-step-heading tabIndex={-1} className="text-xl font-medium">
           {COPY.deleted}
         </p>
-        <Link href="/try" className={`${btn.secondary} mt-6`}>
+        <button type="button" className={`${btn.secondary} mt-6`} onClick={startOver}>
           Try another clip
-        </Link>
+        </button>
       </section>
     );
   }
 
   return (
-    <section className="mx-auto max-w-3xl px-4 py-10">
+    <section ref={section} className="mx-auto max-w-3xl px-4 py-10">
       <h1 className="text-3xl font-semibold tracking-tight">Try Safe Cut on your own clip</h1>
 
       {step === "code" && (
@@ -440,7 +471,7 @@ export function TryFlow() {
         </div>
       )}
 
-      {step === "progress" && jobId && <Progress jobId={jobId} fileName={file?.name ?? ""} duration={duration} uploadPercent={uploadPercent} onDeleted={() => {
+      {step === "progress" && jobId && <Progress jobId={jobId} started={started} fileName={file?.name ?? ""} duration={duration} uploadPercent={uploadPercent} onDeleted={() => {
             deletedByUser.current = true;
             uploadAbort.current?.abort();
             setStep("deleted");
@@ -475,6 +506,7 @@ function JobPoller({ jobId, onJob }: { jobId: string; onJob: (job: JobResponse) 
 
 function Progress({
   jobId,
+  started,
   fileName,
   duration,
   uploadPercent,
@@ -482,6 +514,7 @@ function Progress({
   onNavigate,
 }: {
   jobId: string;
+  started: boolean;
   fileName: string;
   duration: number | null;
   uploadPercent: number | null;
@@ -497,10 +530,10 @@ function Progress({
     },
     [jobId, onNavigate],
   );
-  const stage = uploading ? "uploading" : job?.stage && job.stage !== "review" ? job.stage : "queued";
+  const stage = uploading ? "uploading" : started && job?.stage && job.stage !== "review" ? job.stage : "queued";
   return (
     <>
-      {!uploading && <JobPoller jobId={jobId} onJob={onJob} />}
+      {started && <JobPoller jobId={jobId} onJob={onJob} />}
       <ProgressView
         fileName={fileName}
         duration={duration}

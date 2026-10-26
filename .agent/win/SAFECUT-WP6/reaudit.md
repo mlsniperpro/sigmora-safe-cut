@@ -39,3 +39,26 @@ Break-it (fresh clone) also found, after round 1:
 - **high** the synthetic sample clips (`*.mp4`) were ignored the same way, so a fresh clone had no video. Fixed in 898e116.
 
 Fresh-clone README run also found: `pnpm typecheck` failed before any build (Next route types). Fixed in f7efd29 (`next typegen && tsc`).
+
+## Round 2 (audited eda2876 by a Sonnet reviewer; each finding verified here; fixes in the next commit)
+
+1 critical, 2 high, 5 medium, 8 low.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | critical | /try started polling at 100% upload, before `POST /start`; a "created" answer stopped polling for good, so a slow start hung on "Waiting to start" | fixed: polling starts only after `/start` resolves; regression test with a 300 ms start |
+| 2 | high | Cache Components kept /try (and every page) mounted but hidden (Next 16 `<Activity>`): Back returned to a stale progress page that pushed forward again; "Try another clip" after a delete was a dead link | fixed: Cache Components turned off (flow pages gain nothing from it); "Try another clip" resets the page; e2e checks Back lands on a fresh /try |
+| 3 | high | The demo-mode banner latched from the landing hero into live /try and job pages ("Nothing is sent to Meta right now" during a real upload) | fixed: demo mode belongs to the page that got the replay response; test |
+| 4 | med | Focus lost after shortcut edits, undo, jump, cancel; on mobile the moved chip was in an unmounted tab | fixed: every edit goes through one `act()` that focuses the moved chip and opens its tab; test + e2e |
+| 5 | med | Sticky player taller than a landscape phone / 200% zoom viewport | fixed: player capped at 40vh below 1024 px; sticky only when the viewport is ≥ 640 px tall; e2e at 844×390 |
+| 6 | med | Video audio kept playing on hidden pages | fixed by #2 (pages unmount) |
+| 7 | med | `renderedHere` survived under Activity; not set on the 409 path | fixed by #2; 409 path sets it |
+| 8 | med | Expired signed media URLs not refetched | fixed: one refetch on a media error (review and result), then the §7 page |
+| 9 | low | Raw/Safe Cut radio arrows didn't move focus | fixed |
+| 10 | low | No captions on the review player | fixed: WebVTT built from the transcript (escaped; property test) |
+| 11 | low | §5.3 audit detail missing "where possible … stops publishing" | fixed. Rejected: the claimed open-weight sentence in §5.3: the spec has it only in landing step 3 |
+| 12 | low | No virtualisation above 100 chips | accepted: all chips stay in the DOM so Tab order and screen readers see every one; 200 chips render without jank; content-visibility was removed because it clipped the ⋯ menu (round 1 #1) |
+| 13 | low | The miss-loop row disappeared after it ran | fixed: stays once seen |
+| 14 | low | Shortcut help reachable only by `?` | fixed: visible "Keyboard shortcuts" button |
+| 15 | low | `mediaUrl` accepted `/\evil.com` | fixed: no backslashes; same-origin paths must not start with `//`; test |
+| 16 | low | Focus dropped to `<body>` on /try step changes | fixed: focus moves to the new step |

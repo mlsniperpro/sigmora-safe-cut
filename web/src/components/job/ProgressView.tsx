@@ -35,6 +35,9 @@ export function ProgressView({
   onDeleted: () => void;
 }) {
   const [confirm, setConfirm] = useState(false);
+  // Once the optional miss-loop row has appeared it stays, so the list doesn't jump (§2.5).
+  const [seenMissLoop, setSeenMissLoop] = useState(false);
+  if (active === "miss_loop" && !seenMissLoop) setSeenMissLoop(true);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const link = typeof window === "undefined" ? `/jobs/${jobId}` : `${window.location.origin}/jobs/${encodeURIComponent(jobId)}`;
@@ -55,14 +58,16 @@ export function ProgressView({
           {duration !== null ? ` · ${fmtDuration(duration)}` : ""}
         </p>
       )}
-      <h2 className="mt-4 text-xl font-semibold">Working on your clip</h2>
+      <h2 data-step-heading tabIndex={-1} className="mt-4 text-xl font-semibold">
+        Working on your clip
+      </h2>
       {busy && (
         <p role="status" className="mt-3 rounded-lg bg-needs-bg p-3 text-needs-fg">
           {COPY.metaBusy}
         </p>
       )}
       <div className="mt-4">
-        <StageList active={active} kind="pipeline" {...(uploadPercent !== undefined && { uploadPercent })} etaS={etaS ?? null} />
+        <StageList active={active} kind="pipeline" showMissLoop={seenMissLoop} {...(uploadPercent !== undefined && { uploadPercent })} etaS={etaS ?? null} />
       </div>
       <div className="mt-8 flex flex-wrap items-center gap-3 text-sm">
         <span>You can leave this page. Your review link:</span>

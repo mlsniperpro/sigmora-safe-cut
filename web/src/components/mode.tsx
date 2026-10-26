@@ -3,6 +3,7 @@
  * Demo mode (UI-SPEC §6): any API response with `mode: "replay"` turns the
  * banner on for the page. Mock mode (no API configured) shows its own banner.
  */
+import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { Mode } from "@/lib/contracts";
 import { isMockMode } from "@/lib/api";
@@ -16,10 +17,17 @@ interface ModeContextValue {
 const ModeContext = createContext<ModeContextValue>({ replay: false, report: () => undefined });
 
 export function ModeProvider({ children }: { children: React.ReactNode }) {
-  const [replay, setReplay] = useState(false);
-  const report = useCallback((mode: Mode) => {
-    if (mode === "replay") setReplay(true);
-  }, []);
+  // Demo mode belongs to the page whose response said "replay" (§6): moving to another page
+  // (say from the landing hero to a live /try upload) must not carry the banner along.
+  const pathname = usePathname();
+  const [replayPath, setReplayPath] = useState<string | null>(null);
+  const replay = replayPath !== null && replayPath === pathname;
+  const report = useCallback(
+    (mode: Mode) => {
+      if (mode === "replay") setReplayPath(pathname);
+    },
+    [pathname],
+  );
   const value = useMemo(() => ({ replay, report }), [replay, report]);
   return <ModeContext.Provider value={value}>{children}</ModeContext.Provider>;
 }

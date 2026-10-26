@@ -14,6 +14,7 @@ import { JobPage } from "./JobPage";
 const nav = vi.hoisted(() => ({ id: "job-review-hero1", search: "", replace: vi.fn(), push: vi.fn() }));
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: nav.id }),
+  usePathname: () => `/jobs/${nav.id}`,
   useSearchParams: () => new URLSearchParams(nav.search),
   useRouter: () => ({ replace: nav.replace, push: nav.push }),
 }));
@@ -208,6 +209,17 @@ describe("review panel", () => {
     act(() => chip("Face 6").focus());
     await user.keyboard("z");
     expect(await screen.findByText("Undone.")).toBeInTheDocument();
+  });
+
+  it("focus follows the chip a shortcut moved, not an earlier one", async () => {
+    const user = setup("job-review-hero1");
+    await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
+    await user.click(screen.getByRole("button", { name: "Hide Face 6" }));
+    await waitFor(() => expect(chip("Face 6")).toHaveFocus());
+    act(() => chip("Face 2").focus());
+    await user.keyboard("h");
+    await waitFor(() => expect(chip("Face 2")).toHaveFocus());
+    expect(within(column(/^Hidden/)).getByRole("article", { name: /^Face 2,/ })).toBeInTheDocument();
   });
 
   it("shows the demo-mode banner for a replayed job", async () => {

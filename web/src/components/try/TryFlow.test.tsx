@@ -10,7 +10,7 @@ import { MockBackend } from "@/lib/mock-backend";
 import { TryFlow } from "./TryFlow";
 
 const push = vi.hoisted(() => vi.fn());
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push, replace: vi.fn() }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push, replace: vi.fn() }), usePathname: () => "/try" }));
 
 let backend: MockBackend;
 let now = 0;
@@ -204,6 +204,46 @@ describe("/try", () => {
     expect(screen.queryByText(/The upload stopped/)).toBeNull();
     expect(backend.log.filter((l) => l.path === "/v1/jobs")).toHaveLength(1);
     expect(backend.log.some((l) => l.path.endsWith("/start"))).toBe(false);
+  });
+
+  it("a slow POST /start still reaches the review panel (polling starts after start, not at 100% upload)", async () => {
+    backend = new MockBackend({ latencyMs: 0, stepMs: 1_000, now: () => now });
+    const slowStart = {
+      request: async (init: Parameters<MockBackend["request"]>[0]) => {
+        if (init.path.endsWith("/start")) await new Promise((r) => setTimeout(r, 300));
+        return backend.request(init);
+      },
+      upload: backend.upload.bind(backend),
+    };
+    setClientForTests(new SafeCutClient({ transport: slowStart, sleep: () => Promise.resolve() }));
+    const user = userEvent.setup({ applyAccept: false });
+    render(<TryFlow />);
+    await enterCode(user, "judge");
+    await screen.findByRole("button", { name: "Choose a file" });
+    await user.upload(fileInput(), clip());
+    await screen.findByText(/street\.mp4/);
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(backend.log.some((l) => l.path.endsWith("/start"))).toBe(true));
+    // No GET before the start is answered: a "created" answer would stop polling for good.
+    const startIndex = backend.log.findIndex((l) => l.path.endsWith("/start"));
+    expect(backend.log.slice(0, startIndex).some((l) => l.method === "GET")).toBe(false);
+    now = 1_000_000;
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/jobs/j_mock1"), { timeout: 5_000 });
+  });
+
+  it("Try another clip after a delete starts over at the access code", async () => {
+    const user = setup();
+    await enterCode(user, "judge");
+    await screen.findByRole("button", { name: "Choose a file" });
+    await user.upload(fileInput(), clip());
+    await screen.findByText(/street\.mp4/);
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(screen.getByRole("button", { name: "Start" }));
+    await user.click(await screen.findByRole("button", { name: "Cancel and delete" }));
+    await user.click(within(await screen.findByRole("dialog", { name: "Delete this clip?" })).getByRole("button", { name: "Delete" }));
+    await user.click(await screen.findByRole("button", { name: "Try another clip" }));
+    expect(screen.getByLabelText("Access code")).toHaveFocus();
   });
 
   it("cancels and deletes from the progress step", async () => {

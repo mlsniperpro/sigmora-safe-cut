@@ -26,8 +26,9 @@ const csp = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
-  cacheComponents: true,
-  partialPrefetching: true,
+  // Cache Components is off on purpose: with it, Next keeps visited pages mounted but hidden
+  // (<Activity>), so a flow page (/try, a job, a result) came back stale, kept polling into
+  // old jobs or kept playing audio. These pages are client-driven and gain nothing from it.
   poweredByHeader: false,
   reactStrictMode: true,
   turbopack: {

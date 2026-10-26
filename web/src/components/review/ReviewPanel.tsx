@@ -16,6 +16,7 @@ import { buildChips, columnsOf, headerCounts, isObjectChip, mergeTargets, type C
 import { formatFrame } from "@/lib/time";
 import { buildWhy } from "@/lib/why/model";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { useCaptions } from "@/hooks/useCaptions";
 import { useNow } from "@/hooks/useNow";
 import { HiddenIcon, KeptIcon, NeedsIcon, WarningIcon } from "../icons";
 import { StageList } from "../StageList";
@@ -103,6 +104,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
   );
 
   const desktop = useMediaQuery("(min-width: 1024px)");
+  const captionsUrl = useCaptions(job.transcript, job.job?.audio ?? false);
   const now = useNow(15_000);
   const chips = useMemo(() => buildChips(state, job), [state, job]);
   const columns = useMemo(() => columnsOf(chips), [chips]);
@@ -141,27 +143,64 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
 
   /** The chip an edit moved, so focus follows it to its new column (§3.8). */
   const [edited, setEdited] = useState<string | null>(null);
+  /**
+   * Every edit goes through here: it runs the action, then points focus at the chip it moved
+   * (and, on mobile, opens the tab that chip landed in), whichever route sent it: a button,
+   * a shortcut, the drawer, a dialog or Undo.
+   */
+  const act = (action: Action) => {
+    const before = stateRef.current;
+    let target: string | null = null;
+    switch (action.type) {
+      case "HIDE":
+      case "KEEP":
+      case "REMOVE_PERSON":
+        target = action.id;
+        break;
+      case "CONFIRM_KEEP":
+        target = before.confirm?.item_id ?? null;
+        break;
+      case "MERGE":
+        target = action.dst;
+        break;
+      case "UNDO":
+        target = Object.keys(before.undo.find((u) => u.edit.edit_id === action.target)?.prev.items ?? {}).find((id) => !id.startsWith("pending:")) ?? null;
+        break;
+      case "COVER_SPOT":
+        target = `pending:${action.edit_id}`;
+        break;
+      default:
+        break;
+    }
+    dispatch(action);
+    if (!target || stateRef.current === before) return;
+    // An object's keep only opened its in-chip confirm, which takes focus itself.
+    if (action.type === "KEEP" && stateRef.current.confirm?.item_id === target) return;
+    setEdited(target);
+    const column = effectiveDecision(stateRef.current, target);
+    if (column && !desktop) setTab(column);
+    focusChip(target);
+  };
   const handlers: ChipHandlers = {
     onSelect: select,
     onWhy: (chip) => openWhy(chip, false),
     onLockedHelp: (chip) => openWhy(chip, true),
-    onHide: (chip) => {
-      setEdited(chip.id);
-      dispatch({ type: "HIDE", id: chip.id, edit_id: newEditId() });
+    onHide: (chip) => act({ type: "HIDE", id: chip.id, edit_id: newEditId() }),
+    onKeep: (chip) => act({ type: "KEEP", id: chip.id, edit_id: newEditId() }),
+    onConfirmKeep: () => act({ type: "CONFIRM_KEEP", edit_id: newEditId() }),
+    onCancelConfirm: () => {
+      const id = stateRef.current.confirm?.item_id ?? null;
+      dispatch({ type: "CANCEL_CONFIRM" });
+      focusChip(id);
     },
-    onKeep: (chip) => {
-      setEdited(chip.id);
-      dispatch({ type: "KEEP", id: chip.id, edit_id: newEditId() });
-    },
-    onConfirmKeep: () => dispatch({ type: "CONFIRM_KEEP", edit_id: newEditId() }),
-    onCancelConfirm: () => dispatch({ type: "CANCEL_CONFIRM" }),
     onMergeMenu: (chip) => setMergeFor(chip),
     onRemove: (chip) => setRemoveFor(chip),
     onJump: (chip) => {
       setSelected(chip.id);
       video.current?.seekToFrame(chip.span?.first ?? chip.seekFrame);
+      focusChip(chip.id);
     },
-    onCover: (chip) => dispatch({ type: "COVER_SPOT", spot_id: chip.id.replace(/^spot:/, ""), edit_id: newEditId() }),
+    onCover: (chip) => act({ type: "COVER_SPOT", spot_id: chip.id.replace(/^spot:/, ""), edit_id: newEditId() }),
   };
 
   // Keep focus on the chip an edit moved, in its new column (§3.8).
@@ -220,6 +259,8 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
     } catch (error) {
       const e = error instanceof ApiError ? error : null;
       if (e?.status === 409) {
+        // Already rendering: the render this page asked for is under way.
+        onRenderStarted();
         onResume();
       } else if (e?.status === 401) {
         dispatch({ type: "ACTION_REFUSE", button, code: e.code === "code_not_active" ? "code_not_active" : "unauthorized", until: null });
@@ -296,17 +337,17 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
       const top = stateRef.current.undo.at(-1);
       if (top) {
         e.preventDefault();
-        dispatch({ type: "UNDO", target: top.edit.edit_id, edit_id: newEditId() });
+        act({ type: "UNDO", target: top.edit.edit_id, edit_id: newEditId() });
       }
       return;
     }
     if (e.ctrlKey) return;
     if (key === "h" && chipId) {
       e.preventDefault();
-      dispatch({ type: "HIDE", id: chipId, edit_id: newEditId() });
+      act({ type: "HIDE", id: chipId, edit_id: newEditId() });
     } else if (key === "c" && chipId) {
       e.preventDefault();
-      dispatch({ type: "KEEP", id: chipId, edit_id: newEditId() });
+      act({ type: "KEEP", id: chipId, edit_id: newEditId() });
     } else if (key === "k") {
       e.preventDefault();
       video.current?.togglePlay();
@@ -422,14 +463,20 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
           {job.job?.source_name ?? "Your clip"}
           {duration ? ` · ${duration}` : ""}
         </p>
-        <p className="text-sm text-muted">{headerCounts(columns)}</p>
+        <p className="flex flex-wrap items-center gap-3 text-sm text-muted">
+          <span>{headerCounts(columns)}</span>
+          <button type="button" className="min-h-11 underline underline-offset-2 lg:min-h-8" onClick={() => setHelpOpen(true)}>
+            Keyboard shortcuts
+          </button>
+        </p>
       </div>
 
-      <div ref={stickyTop} className="sticky top-0 z-10 -mx-4 mt-3 bg-bg px-4 pb-2 lg:static lg:mx-0 lg:px-0">
+      <div ref={stickyTop} className="-mx-4 mt-3 bg-bg px-4 pb-2 lg:static lg:mx-0 lg:px-0 [@media(min-height:640px)]:sticky [@media(min-height:640px)]:top-0 [@media(min-height:640px)]:z-10">
         <VideoPane
           ref={video}
           src={job.job?.prepared_url}
-          captionsUrl={null}
+          captionsUrl={captionsUrl}
+          onMediaError={onResume}
           fps={fps}
           frames={job.job?.frames ?? 1}
           width={job.job?.width ?? 1280}
@@ -519,7 +566,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
 
       <ToastView
         state={state}
-        onUndo={(id) => dispatch({ type: "UNDO", target: id, edit_id: newEditId() })}
+        onUndo={(id) => act({ type: "UNDO", target: id, edit_id: newEditId() })}
         onRetry={(id) => dispatch({ type: "RETRY", edit_id: id })}
         onDismiss={() => dispatch({ type: "DISMISS_TOAST" })}
       />
@@ -536,14 +583,12 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
         actions={{
           canHide: !!drawerChip?.buttons.hide,
           canKeep: !!drawerChip?.buttons.keep,
-          onHide: () => drawer && dispatch({ type: "HIDE", id: drawer.id, edit_id: newEditId() }),
+          onHide: () => drawer && act({ type: "HIDE", id: drawer.id, edit_id: newEditId() }),
           onKeep: () => {
             if (!drawer) return;
             // An object's keep asks for the in-chip confirm, so the drawer closes to show it.
             if (drawerChip && isObjectChip(drawerChip)) setDrawer(null);
-            setEdited(drawer.id);
-            dispatch({ type: "KEEP", id: drawer.id, edit_id: newEditId() });
-            if (drawerChip && isObjectChip(drawerChip)) focusChip(drawer.id);
+            act({ type: "KEEP", id: drawer.id, edit_id: newEditId() });
           },
         }}
         onClose={() => {
@@ -560,9 +605,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
         cancel="Cancel"
         onConfirm={() => {
           if (removeFor) {
-            setEdited(removeFor.id);
-            dispatch({ type: "REMOVE_PERSON", id: removeFor.id, edit_id: newEditId() });
-            focusChip(removeFor.id);
+            act({ type: "REMOVE_PERSON", id: removeFor.id, edit_id: newEditId() });
           }
           setRemoveFor(null);
         }}
@@ -591,9 +634,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
                     type="button"
                     className="flex min-h-11 w-full items-center gap-3 rounded-lg border border-border p-2 text-left hover:bg-surface-2"
                     onClick={() => {
-                      dispatch({ type: "MERGE", src: mergeFor.id, dst: t.id, edit_id: newEditId() });
-                      setEdited(t.id);
-                      focusChip(t.id);
+                      act({ type: "MERGE", src: mergeFor.id, dst: t.id, edit_id: newEditId() });
                       setMergeFor(null);
                     }}
                   >

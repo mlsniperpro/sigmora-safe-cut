@@ -28,6 +28,14 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe("mediaUrl", () => {
+  it("accepts https and same-origin paths only", async () => {
+    const { mediaUrl } = await import("./contracts");
+    for (const ok of ["https://cdn.example/a.mp4", "/sample/prepared.mp4"]) expect(mediaUrl.safeParse(ok).success).toBe(true);
+    for (const bad of ["javascript:alert(1)", "http://x/a.mp4", "//evil.com/a", "/\\evil.com/a", "data:text/html,x", ""]) expect(mediaUrl.safeParse(bad).success, bad).toBe(false);
+  });
+});
+
 describe("SafeCutClient", () => {
   it("parses a valid job response", async () => {
     const { client, calls } = scripted([{ status: 200, headers: headers(), body: heroMock }]);

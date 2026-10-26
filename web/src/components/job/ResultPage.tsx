@@ -42,6 +42,9 @@ export function ResultPage() {
   const { load, resume, markDeleted } = useJob(id);
   const job = load.kind === "ready" ? load.job : null;
   const [result, setResult] = useState<ResultLoad>({ kind: "idle" });
+  /** Signed URLs expire: a media error refetches the result once for fresh ones (§10.7). */
+  const [mediaRefreshes, setMediaRefreshes] = useState(0);
+  const [mediaFailed, setMediaFailed] = useState(false);
   const [receiptFailed, setReceiptFailed] = useState(false);
   const [receiptLoaded, setReceiptLoaded] = useState(false);
   const receiptUrl = result.kind === "ready" ? result.result.receipt_html_url : null;
@@ -74,7 +77,7 @@ export function ResultPage() {
         if (!controller.signal.aborted) setResult({ kind: "error", error });
       });
     return () => controller.abort();
-  }, [id, status]);
+  }, [id, status, mediaRefreshes]);
 
   if (load.kind === "loading" || redirect) return <JobSkeleton />;
   if (load.kind !== "ready") return loadMessage(load.kind, resume);
@@ -98,6 +101,7 @@ export function ResultPage() {
   }
   if (result.kind !== "ready") return <JobSkeleton />;
 
+  if (mediaFailed) return loadMessage("unexpected", resume);
   const r = result.result;
   const summary = auditSummary(r.audit, j.job?.frames ?? r.frames);
   const doDelete = async () => {
@@ -115,7 +119,18 @@ export function ResultPage() {
       <h1 className="text-3xl font-semibold tracking-tight">Your clip is ready</h1>
       <div className="mt-6 grid gap-6 lg:grid-cols-[1.6fr_1fr]">
         <div>
-          <video className="aspect-video w-full rounded-xl bg-black" src={r.video_url} controls playsInline preload="metadata" aria-label="Your clip after Safe Cut">
+          <video
+            className="aspect-video w-full rounded-xl bg-black"
+            src={r.video_url}
+            controls
+            playsInline
+            preload="metadata"
+            aria-label="Your clip after Safe Cut"
+            onError={() => {
+              if (mediaRefreshes === 0) setMediaRefreshes(1);
+              else setMediaFailed(true);
+            }}
+          >
             {r.captions_url && <track kind="captions" src={r.captions_url} srcLang="en" label="English" default />}
           </video>
         </div>

@@ -10,6 +10,7 @@ import { ResultPage } from "./ResultPage";
 const nav = vi.hoisted(() => ({ id: "result-clean", search: "", replace: vi.fn() }));
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: nav.id }),
+  usePathname: () => `/jobs/${nav.id}`,
   useSearchParams: () => new URLSearchParams(nav.search),
   useRouter: () => ({ replace: nav.replace, push: vi.fn() }),
 }));

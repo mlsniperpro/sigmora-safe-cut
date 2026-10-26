@@ -14,7 +14,10 @@ const isoTime = z.iso.datetime({ offset: true });
  * A URL the API hands the browser (signed media, keyframes, receipts). Only
  * https, or a same-origin path, so a compromised API can't inject `javascript:`.
  */
-export const mediaUrl = z.string().refine((u) => u.startsWith("https://") || (u.startsWith("/") && !u.startsWith("//")), { message: "must be an https URL or a same-origin path" });
+export const mediaUrl = z
+  .string()
+  // Browsers read a backslash as "/", so "/" + backslash + "evil.com" would be protocol-relative: no backslashes anywhere.
+  .refine((u) => !u.includes("\\") && (u.startsWith("https://") || /^\/(?!\/)/.test(u)), { message: "must be an https URL or a same-origin path" });
 /** The presigned upload URL; the mock backend's `mock://` scheme is accepted only in mock mode's own responses. */
 const uploadUrl = z.string().refine((u) => u.startsWith("https://") || u.startsWith("mock://"), { message: "must be an https URL" });
 

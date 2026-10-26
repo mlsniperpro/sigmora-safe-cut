@@ -130,7 +130,7 @@ export function auditSummary(audit: Audit, frames: number, budgetLine?: string |
     who === "yunet"
       ? "Muse Spark looked at sampled frames for number plates and anything else it could read or recognise."
       : "Muse Spark looked at sampled frames and tried to read or recognise anything.";
-  const detail = `${detector} It's meant to scan all of them; any frame it couldn't check counts as not checked, and publishing stays off until it is. ${muse} Anything they found that wasn't kept clear on purpose was covered, and the clip was rendered again.`;
+  const detail = `${detector} It's meant to scan all of them; any frame it couldn't check counts as not checked, and publishing stays off until it is. ${muse} Anything they found that wasn't kept clear on purpose was covered where possible, and the clip was rendered again; anything that couldn't be covered stops publishing.`;
   const base = { detail, uncheckedFrames, unfixedSpots, leaksFixed };
   switch (audit.blocked_reason) {
     case "unresolved_leaks":

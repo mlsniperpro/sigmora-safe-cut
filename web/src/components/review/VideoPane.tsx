@@ -15,6 +15,8 @@ export interface VideoPaneHandle {
 export interface VideoPaneProps {
   src: string | undefined;
   captionsUrl: string | null;
+  /** Called once when the video fails to load: a fresh GET brings fresh signed URLs (§10.7). */
+  onMediaError?: () => void;
   fps: number;
   frames: number;
   width: number;
@@ -27,7 +29,7 @@ export interface VideoPaneProps {
 const noSubscribe = () => () => undefined;
 
 export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function VideoPane(props, ref) {
-  const { src, captionsUrl, fps, frames, width, height, timeline, selected } = props;
+  const { src, captionsUrl, fps, frames, width, height, timeline, selected, onMediaError } = props;
   const video = useRef<HTMLVideoElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [mode, setMode] = useState<"safecut" | "raw">("safecut");
@@ -37,6 +39,8 @@ export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function Vi
     () => true,
   );
   const [failed, setFailed] = useState(false);
+  /** The src we already asked to refresh, so an expired URL gets exactly one retry. */
+  const [refreshedFor, setRefreshedFor] = useState<string | null>(null);
   const latest = useRef({ props, mode });
   useLayoutEffect(() => {
     latest.current = { props, mode };
@@ -131,7 +135,11 @@ export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function Vi
 
   return (
     <div>
-      <div className="relative w-full overflow-hidden rounded-xl bg-black" style={{ aspectRatio: `${width} / ${height}` }}>
+      {/* Below 1024 px the player is at most 40% of the viewport tall, so chips stay reachable at 200% zoom and in landscape. */}
+      <div
+        className="relative mx-auto w-[min(100%,var(--player-max-w))] overflow-hidden rounded-xl bg-black lg:w-full"
+        style={{ aspectRatio: `${width} / ${height}`, ["--player-max-w" as string]: `calc(40vh * ${width} / ${height})` }}
+      >
         {failed ? (
           <p className="flex h-full items-center justify-center p-4 text-sm text-white/80">The video didn&apos;t load. The decisions below still work.</p>
         ) : (
@@ -142,7 +150,14 @@ export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function Vi
             controls
             playsInline
             preload="auto"
-            onError={() => setFailed(true)}
+            onError={() => {
+              if (onMediaError && src && refreshedFor === null) {
+                setRefreshedFor(src);
+                onMediaError();
+              } else {
+                setFailed(true);
+              }
+            }}
             aria-label="Your clip, with the Safe Cut preview drawn over it"
           >
             {captionsUrl && <track kind="captions" src={captionsUrl} srcLang="en" label="English" default />}
@@ -157,6 +172,7 @@ export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function Vi
               key={m}
               type="button"
               role="radio"
+              data-mode={m}
               aria-checked={mode === m}
               tabIndex={mode === m ? 0 : -1}
               className={`min-h-11 rounded-md px-3 font-medium lg:min-h-9 ${mode === m ? "bg-surface shadow-sm" : "text-muted"}`}
@@ -164,7 +180,9 @@ export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function Vi
               onKeyDown={(e) => {
                 if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) {
                   e.preventDefault();
-                  setMode(m === "raw" ? "safecut" : "raw");
+                  const next = m === "raw" ? "safecut" : "raw";
+                  setMode(next);
+                  e.currentTarget.parentElement?.querySelector<HTMLButtonElement>(`[data-mode="${next}"]`)?.focus();
                 }
               }}
             >
