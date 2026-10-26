@@ -1,6 +1,6 @@
 # HANDOFF (PRE-B), updated 2026-10-26 17:10 UTC
 
-**State:** branch `pre-b-product`, PR #2 (the only PRE-B PR). Lease `.agent/win/SAFECUT-PRE-B/LEASE`: **released** (WIND DOWN 2026-10-26 17:10 UTC; round 46 A and C stopped before reporting, re-run them on HEAD).agent/win/SAFECUT-PRE-B/HANDOFF.md` (same facts, more detail).
+**State:** branch `pre-b-product`, PR #2 (the only PRE-B PR). Lease `.agent/win/SAFECUT-PRE-B/LEASE`: **released** (WIND DOWN 2026-10-26 17:10 UTC; round 46 A and C stopped before reporting, re-run them on HEAD). Full hand-off: `.agent/win/SAFECUT-PRE-B/HANDOFF.md` (same facts, more detail).
 
 **Audit position:** rounds 24–45 done (three parallel fresh auditors each; from round 39 on Sonnet/high); every finding fixed; WIN-CHECKLIST covers #1–#569 with 0 unchecked lines. Round 38 found 9 (#355–#363), round 39 found 22 (#364–#385), round 40 found 21 (#388–#408), round 41 found 34 (#416–#449), round 42 found 24 (#453–#476), round 43 found 17 (#480–#496), round 44 found 30 (#504–#533, incl. PRE-A @ 8dd5a0d), round 45 found 30 (#534–#563). **No clean round yet. Next is round 46; log findings as #570+.** The goal needs two consecutive rounds that find nothing new.
 
