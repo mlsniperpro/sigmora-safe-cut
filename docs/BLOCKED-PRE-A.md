@@ -34,3 +34,9 @@ PRE-A's documents are all written. Each item below needs the owner, either throu
 
 ## Already decided (no owner input needed)
 Where sources were silent, the docs record a decision instead of a question: see the "Decisions" section of PR #1.
+
+## From the official guide (`docs/OFFICIAL-GUIDE.md`, 2026-10-26)
+- [ ] **Make the repo public at submission** (the guide: "Repositories must be public"; check the repo is public, the video link works and every contributor is listed). Repos stay private until the owner OKs it; do it before Nov 5 02:00 UTC (Nov 4 21:00 ET). Before flipping it, check no real-public clip, raw API response for one, key or PID-bearing agent file is in the history (AGENTS rule 4).
+- [ ] **Request Baseten credits** (up to $100, 2M TPM) and add `BASETEN_API_KEY` as a deploy secret, for the open-weight second opinion (API-NOTES §3.8) and the "Best Build on Meta Open-Weight Models" bonus. Without it, `SAFECUT_OPEN_WEIGHT_AUDIT=off` and nothing else changes.
+- [ ] **Post the demo on X** and submit the post link by Nov 8 EOD if going for "Most Viral" (PR #2 STORYBOARD owns the cut).
+
