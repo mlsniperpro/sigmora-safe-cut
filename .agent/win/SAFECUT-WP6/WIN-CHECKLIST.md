@@ -48,7 +48,7 @@ Legend: `- [x]` done with evidence · `- [P]` waits on an owner input (BLOCKED.m
 - [x] One end-to-end test in mock/replay mode in a real browser (`web/e2e/replay-e2e.mjs`, 60/60)
 - [x] Failure paths covered: timeouts, network retries, schema violations, malformed JSON, 401/404/409/413/422/429/500/503, rejected edits, failed deletes
 - [x] Strict TS (strict + noUncheckedIndexedAccess), ESLint `--max-warnings=0` clean
-- [ ] Self-review section in the PR; expected load and first breaking point stated
+- [x] Self-review section in the PR with expected load and first breaking point (PR #4 body)
 
 ## Audit findings
 
