@@ -37,7 +37,7 @@ from safecut.meta.errors import (
     classify,
 )
 from safecut.meta.retry import CircuitBreaker, RetryAfterTooLong, RetryPolicy, backoff_seconds, parse_retry_after
-from safecut.meta.sse import SSEDecodeError, aiter_sse
+from safecut.meta.sse import SSEDecodeError, aiter_sse, aiter_sse_lines
 
 log = logging.getLogger("safecut.meta")
 
@@ -281,7 +281,9 @@ class MetaClient:
         # Per-job bounds (PRE-A §10.1): one client serves one job.
         self._lanes: dict[Lane, asyncio.Semaphore] = {
             "sam": asyncio.Semaphore(config.JOB_SAM_INFLIGHT),
-            "responses": asyncio.Semaphore(config.JOB_RESPONSES_INFLIGHT),
+            "responses": asyncio.Semaphore(
+                config.BASETEN_INFLIGHT if provider == "baseten" else config.JOB_RESPONSES_INFLIGHT
+            ),
             "other": asyncio.Semaphore(config.PROCESS_INFLIGHT),
         }
         self._sleep = sleep
@@ -512,8 +514,19 @@ class MetaClient:
     async def _ledger_after(self, fn: Callable[[], None]) -> None:
         """Settle or release after a call: a ledger fault is logged loudly, never allowed to lose the result.
 
-        The open reservation then expires after 2.5 h and is kept as an estimated charge (fail closed).
+        Shielded: a cancellation that lands while the ledger call is queued still lets it run (else the
+        reservation would stay open against cost.jsonl), then re-raises. A fault leaves the reservation
+        to expire after 2.5 h as an estimated charge (fail closed).
         """
+        task = asyncio.ensure_future(self._ledger_call(fn))
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            with contextlib.suppress(Exception):
+                await task
+            raise
+
+    async def _ledger_call(self, fn: Callable[[], None]) -> None:
         try:
             await asyncio.wait_for(asyncio.to_thread(fn), timeout=config.BUDGET_RESERVE_TIMEOUT_S)
         except Exception:
@@ -658,7 +671,7 @@ class MetaClient:
                         )
                     self._note_rate_headers(resp.headers)
                     async with asyncio.timeout(spec.total_timeout_s):
-                        async for event in aiter_sse(resp.aiter_lines()):
+                        async for event in aiter_sse(aiter_sse_lines(resp.aiter_bytes())):
                             events.append(event)
                             if on_response_id is not None:
                                 _report_response_id(event, on_response_id)
@@ -720,7 +733,7 @@ class MetaClient:
                             resp.status_code, self._scrub(parsed), resp.headers, rid_header, self._clock() - started
                         )
                     async with asyncio.timeout(spec.total_timeout_s):
-                        async for chunk in aiter_sse(resp.aiter_lines()):
+                        async for chunk in aiter_sse(aiter_sse_lines(resp.aiter_bytes())):
                             acc.add(chunk)
             except httpx.TransportError as exc:
                 failure = _transport_failure(exc)

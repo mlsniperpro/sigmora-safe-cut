@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import codecs
+import re
 from collections.abc import AsyncIterable, AsyncIterator, Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import Any, cast
@@ -67,8 +69,36 @@ def iter_sse(lines: Iterable[str]) -> Iterator[dict[str, Any]]:
         yield tail
 
 
+#: The only line endings in an event stream (WHATWG): not U+2028, U+2029 or U+0085, which JSON carries raw.
+_EOL = re.compile(r"\r\n|\r|\n")
+
+
+async def aiter_sse_lines(chunks: AsyncIterable[bytes]) -> AsyncIterator[str]:
+    """Split a byte stream into SSE lines (``httpx.Response.aiter_bytes()``).
+
+    httpx's ``aiter_lines`` splits on every ``str.splitlines`` separator, so a raw U+2028 inside a JSON
+    string would cut an event in two. Undecodable bytes become U+FFFD (inside a string, still valid JSON).
+    """
+    decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+    buffer = ""
+    async for chunk in chunks:
+        buffer += decoder.decode(chunk)
+        # A trailing "\r" may be the first half of "\r\n": keep it until the next chunk shows which.
+        held = buffer.endswith("\r")
+        *lines, rest = _EOL.split(buffer[:-1] if held else buffer)
+        buffer = rest + ("\r" if held else "")
+        for line in lines:
+            yield line
+    buffer += decoder.decode(b"", final=True)
+    *lines, rest = _EOL.split(buffer)
+    for line in lines:
+        yield line
+    if rest:
+        yield rest
+
+
 async def aiter_sse(lines: AsyncIterable[str]) -> AsyncIterator[dict[str, Any]]:
-    """Async twin of :func:`iter_sse`, for ``httpx.Response.aiter_lines()``."""
+    """Async twin of :func:`iter_sse`, for :func:`aiter_sse_lines` output."""
     pending = _Pending()
     async for line in lines:
         event = _feed(pending, line)

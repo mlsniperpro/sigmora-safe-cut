@@ -26,13 +26,14 @@
 - **Last fully green head:** the head of this push (372 passed, ruff and pyright clean).
 
 ## Current state (session_01FE6cwwWXD1E2eCpwUV9ftx, resumed 22:26 UTC 2026-10-26)
-- **Head:** green. The audit #6 fixes are in this push: 393 passed, ruff and pyright strict clean.
-- **Audit #6** (Sonnet) at 8cc543c: 1 high, 3 medium and 5 low findings, all verified and handled (reaudit.md, tests/test_audit6.py). The high one: open weights now send ≤ 8 images per call, in all-or-nothing batches with no transport retry, as PRE-A §3.8 requires. `CLEAN_AUDITS_IN_A_ROW` is 0.
-- **Fresh clone at c708bf0** (code 8cc543c): 372 passed, 62 s on 4 CPUs. The clips are deterministic on 1 and 4 CPUs.
-- **Soak:** the 22:26 run at 8cc543c was stopped as stale. Re-run it at the final head.
+- **Head:** green. Audits #6, #7 and #8 are fixed in this push: 408 passed, ruff and pyright strict clean.
+- **Audit #6** at 8cc543c: 1 high, 3 medium and 5 low findings, fixed in 2568819.
+- **Audits #7 and #8** (two in parallel) at 2568819: 1 medium and 8 low findings, fixed in this push.
+- All findings are verified, and each one is in reaudit.md with its test. `CLEAN_AUDITS_IN_A_ROW` is 0.
+- **Next:** run two fresh parallel audits, the soak and a fresh clone at this head.
 
 ## Next steps, in order
-1. Claim the lease, then run `bash .agent/win/SAFECUT-WP0/checks.sh`; expect 372 passed.
+1. Claim the lease, then run `bash .agent/win/SAFECUT-WP0/checks.sh`; expect 408 passed.
 2. Run a fresh, full audit with a Sonnet subagent (effort high, read-only; give it PRE-A from `git show origin/pre-a-research:docs/API-NOTES.md`). Focus hardest on the audit #5 code: `files.py` reconcile and `_keep`, `sam.ResponseLog`, the `validate_job_dir` cross-checks, and the ledger's `_same_reservation`. Verify every finding before fixing it, and record it in reaudit.md. Repeat until two audits in a row are clean, then set `AUDITED_COMMIT` to the final head and `CLEAN_AUDITS_IN_A_ROW: 2`.
 3. At the final head:
    - run the soak in the background (`HYPOTHESIS_PROFILE=soak uv run pytest -m "not live" -q`, its PID in `pids`, about 40+ min);

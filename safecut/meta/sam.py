@@ -7,6 +7,7 @@ One noun phrase (or one batch of object prompts) per request; the proxy clip's f
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, cast
@@ -15,13 +16,14 @@ import httpx
 
 from safecut import config
 from safecut.config import Settings
-from safecut.contracts import ResponseEntry, ResponsesIndex, dump, load, now_utc
+from safecut.contracts import RESPONSE_ID_PATTERN, ResponseEntry, ResponsesIndex, dump, load, now_utc
 from safecut.meta import cost
 from safecut.meta.client import CallSpec, MetaClient, StreamResult, Units
 from safecut.meta.errors import MetaConfigError, MetaError
 from safecut.meta.retry import RetryPolicy
 
 log = logging.getLogger(__name__)
+_RESPONSE_ID = re.compile(RESPONSE_ID_PATTERN)
 
 
 def video_body(settings: Settings, *, file_id: str, text: str, object_prompt: bool = False) -> dict[str, Any]:
@@ -89,22 +91,36 @@ class ResponseLog:
     and again on cancel, a failed stage and the segment's end (PRE-A §10.4 "SAM responses").
 
     Every read-modify-write here is synchronous (no ``await`` inside), so tasks on one event loop can't
-    interleave their updates.
+    interleave their updates. :meth:`note` never raises (it runs inside a paid stream): an ID it can't
+    write is kept in memory for :meth:`delete_pending`, and an ID that isn't a plain token is refused.
     """
 
     NAME = "responses.json"
 
     def __init__(self, job_dir: str | Path) -> None:
         self.path = Path(job_dir) / self.NAME
+        self._unsaved: list[str] = []
 
     def index(self) -> ResponsesIndex:
         return load(self.path, ResponsesIndex) if self.path.exists() else ResponsesIndex([])
 
+    def check(self) -> None:
+        """Raise now (before any spend) if ``responses.json`` can't be read."""
+        self.index()
+
     def note(self, response_id: str) -> None:
-        entries = list(self.index().root)
-        if all(e.response_id != response_id for e in entries):
-            entries.append(ResponseEntry(response_id=response_id))
-            dump(ResponsesIndex(entries), self.path)
+        if not _RESPONSE_ID.fullmatch(response_id):
+            log.warning("SAM response id refused: not a plain token", extra={"response_id": response_id[:64]})
+            return
+        try:
+            entries = list(self.index().root)
+            if all(e.response_id != response_id for e in entries):
+                entries.append(ResponseEntry(response_id=response_id))
+                dump(ResponsesIndex(entries), self.path)
+        except (OSError, ValueError):
+            log.exception("responses.json write failed; the id is kept in memory", extra={"response_id": response_id})
+            if response_id not in self._unsaved:
+                self._unsaved.append(response_id)
 
     async def delete_pending(self, client: MetaClient) -> int:
         """Request deletion of every noted response not yet requested. Returns the receipt's count.
@@ -113,15 +129,26 @@ class ResponseLog:
         path (``MetaConfigError``) and is a failure. Any failure is logged and stays pending for the sweeper;
         it never blocks the rest.
         """
-        for response_id in self.index().pending:
+        self._flush_unsaved()
+        unsaved_done = 0
+        for response_id in [*self.index().pending, *self._unsaved]:
             try:
                 await client.request("DELETE", f"responses/{response_id}", _delete_spec(), meter=_no_cost)
             except MetaError as exc:
                 if exc.status != 404 or isinstance(exc, MetaConfigError):
                     log.warning("SAM response delete failed", extra={"response_id": response_id, "error": str(exc)})
                     continue
-            self._mark(response_id)
-        return self.index().requested
+            if response_id in self._unsaved:
+                self._unsaved.remove(response_id)
+                unsaved_done += 1  # requested, but responses.json can't record it
+            else:
+                self._mark(response_id)
+        return self.index().requested + unsaved_done
+
+    def _flush_unsaved(self) -> None:
+        for response_id in list(self._unsaved):
+            self._unsaved.remove(response_id)
+            self.note(response_id)  # back into the list if the write still fails
 
     def _mark(self, response_id: str) -> None:
         entries = [
@@ -183,6 +210,7 @@ def _hook(client: MetaClient, responses: ResponseLog | None) -> Callable[[str], 
         return None
     if responses is None:
         raise ValueError("SAFECUT_SAM_DELETE_RESPONSES is on: pass the job's ResponseLog so the response is deleted")
+    responses.check()
     return responses.note
 
 

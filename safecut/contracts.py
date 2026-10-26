@@ -90,6 +90,8 @@ StageStatus = Literal["ok", "failed", "skipped"]
 SPEAKER_PATTERN = r"^[SU][1-9][0-9]*$"
 TRACK_ID_PATTERN = r"^[^:]+:[0-9]+$"
 FILE_ID_PATTERN = r"^file[-_][A-Za-z0-9_-]+$"
+#: A Responses ID is joined into a DELETE path, so it may hold no ``/``, ``?``, ``#`` or ``..``.
+RESPONSE_ID_PATTERN = r"^[A-Za-z0-9_-]{1,128}$"
 SHA256_PATTERN = r"^[0-9a-f]{64}$"
 
 
@@ -748,7 +750,7 @@ class FilesIndex(RootModel[list[FileEntry]]):
 class ResponseEntry(Contract):
     """One SAM response kept at Meta because ``store: false`` couldn't be sent (PRE-A §10.4 "SAM responses")."""
 
-    response_id: str = Field(min_length=1)
+    response_id: str = Field(pattern=RESPONSE_ID_PATTERN)
     requested_at: UtcDatetime | None = None
 
 

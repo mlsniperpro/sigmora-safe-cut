@@ -30,8 +30,8 @@ from safecut.meta.retry import RetryPolicy
 MAX_TOKENS = 16_000
 #: Baseten's limit for Muse Spark Open, "Max images per request 8" (PRE-A §3.8); probe h confirms it.
 MAX_IMAGES = 8
-#: Batches of one frame set in flight at once (PRE-A §3.8).
-MAX_PARALLEL = 4
+#: Batches of one frame set in flight at once (PRE-A §3.8); the Baseten client's lane has the same size.
+MAX_PARALLEL = config.BASETEN_INFLIGHT
 IDLE_TIMEOUT_S = 300.0
 _EMPTY: Mapping[str, Any] = {}
 

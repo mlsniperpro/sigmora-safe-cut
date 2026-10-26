@@ -175,6 +175,8 @@ MAX_CONNECTIONS = 16
 PROCESS_INFLIGHT = 8
 JOB_SAM_INFLIGHT = 4
 JOB_RESPONSES_INFLIGHT = 3
+#: Open-weight batches of one frame set in flight at once (PRE-A §3.8), on the Baseten client's own lane.
+BASETEN_INFLIGHT = 4
 
 # Upload limits shared with WP1, WP5 and the UI.
 MAX_CLIP_SECONDS = 60.05
