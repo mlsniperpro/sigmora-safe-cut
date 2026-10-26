@@ -608,6 +608,17 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#567 (win audit 46)**: (audit B) The RETRY sentence was garbled after #535. Fix: rewritten.
 - [x] **#568 (win audit 46)**: (audit B) §3.4 said pressing Undo again steps back, but "Undone." has no [Undo]. Fix: `Ctrl+Z`/`Z`.
 - [x] **#569 (win audit 46)**: (audit B) Several `/try` strings existed only in wireframes. Fix: §2.6 rows (title, judge hint, drop zone, reveal toggle Show/Hide, progress heading, leave note).
+- [x] **#570 (win audit 47)**: (audit B; PRE-A §12) The open-weight code-kind default was given as `owner` and `recording`; PRE-A's is `owner`, `recording` only after the addendum, and the switch must be on. Fix: copy note and `code-check-ok-open-weight.json` (now `owner`).
+- [x] **#571 (win audit 47)**: (audit B) The fallback model name produced "an open-weight model, an open-weight model…". Fix: a separate sentence for non-Muse-Spark-Open models.
+- [x] **#572 (win audit 47)**: (audit B) Request 21 stated the 200 shape twice, the second without `open_weight`. Fix: both carry it.
+- [x] **#573 (win audit 47)**: (audit B) `{review_url}` was undefined. Fix: origin + `/jobs/` + id, shown in full, copied as is.
+- [x] **#574 (win audit 47)**: (audit B) The 60.05 s server rule wasn't in request 17. Fix: added.
+- [x] **#575 (win audit 47)**: (audit B; PRE-A scene-pass.md) No-turn mocks kept participant speakers. Fix: `speaker` null; invariant extended.
+- [x] **#576 (win audit 47)**: (audit B) `REMOVE_PERSON` didn't set `decided_by`. Fix: `creator`.
+- [x] **#577 (win audit 47)**: (audit B) The Tab row's button order contradicted the NEW and U chips'. Fix: §3.3 order, with examples.
+- [x] **#578 (win audit 47)**: (audit B) With shortcuts off, older edits couldn't be undone. Fix: `Ctrl+Z` stays on; Tab row names the exception.
+- [x] **#579 (win audit 47)**: (audit B) The open-weight fixture lacked PRE-A's `frames` and `findings`. Fix: added.
+- [x] **#580 (win audit 47)**: (audit B) "First tab" on mobile was ambiguous. Fix: the tab selected on open; order unchanged.
 
 ## 4. Which builder reads what
 
