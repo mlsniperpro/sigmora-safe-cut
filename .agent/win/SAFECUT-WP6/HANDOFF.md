@@ -6,16 +6,21 @@
 - Branch `wp6-web`, which is pushed. **No PR is open yet.** Open exactly ONE PR wp6-web → main.
 - Done = `bash .agent/win-gate.sh SAFECUT-WP6` prints `GATE: PASS` on the pushed HEAD. The gate has not been run yet.
 
-## State (2026-10-26 ~20:30Z)
-- PR #4 open, body current. Branch pushed (HEAD 56a4aec or later). LEASE active.
-- Audit rounds 1 and 2 are fixed: 38 findings, including 1 critical and 4 high. Record: `reaudit.md`. Cache Components is now OFF (Activity state preservation caused round-2 #2, #6 and #7).
-- Local results: 689 tests and e2e 66/66 on 05481aa.
+## State at wind-down (2026-10-26 ~20:40Z)
+- PR #4 is open (wp6-web → main) and its body is current. The branch is pushed. LEASE is released.
+- Audit rounds 1 and 2 are fixed: 38 findings, including 1 critical and 4 high. Record: `.agent/win/SAFECUT-WP6/reaudit.md`. Cache Components is OFF on purpose (see Decisions in the PR).
+- Last verified on 05481aa: 689 vitest tests and e2e 66/66 (`pnpm build && pnpm e2e`). A fresh clone runs `checks.sh` green (break-it.md records b2e384c; refresh it).
+- Gate status: FAILS only on (a) CLEAN_AUDITS_IN_A_ROW 0, and (b) reaudit.md and break-it.md being stale against HEAD. Everything else passes.
 
-## In flight
-- Audit round 3 (a Sonnet subagent) on 05481aa. A FUZZ_RUNS=100000 agreement soak on 05481aa (log at scratchpad soak4.log; it's lost if the container restarts, so rerun it).
+## In flight at wind-down (nothing partial is committed)
+- Audit round 3 (a Sonnet subagent on 05481aa) was STOPPED before it reported. Rerun it.
+- A FUZZ_RUNS=100000 agreement soak on 05481aa was stopped; its result is unknown. Rerun: `cd web && FUZZ_RUNS=100000 node_modules/.bin/vitest run src/lib/review/agreement`.
+
+## Open audit findings
+- None known open. Round 3 never reported. Accepted (low): no chip-list virtualisation above 100 chips (reasoning in reaudit.md round 2 #12).
 
 ## Next steps, in order
-1. Fix round-2 findings, push, then run full audits until two in a row find nothing (CLEAN_AUDITS_IN_A_ROW: 2).
+1. Re-run a full audit (round 3) on HEAD, fix what it finds, and repeat until two full audits in a row find nothing (set AUDITED_COMMIT to HEAD and CLEAN_AUDITS_IN_A_ROW: 2).
 2. Keep break-it.md's TESTED_COMMIT current: rerun the fresh-clone `checks.sh` after the last code change.
 3. Gate until `GATE: PASS` on the pushed HEAD, then post the final status comment on PR #4 (put the gate's last line in it).
 4. Raise the bar if time remains: compare against past winners. Candidates: a live demo deployment once the owner sets up Vercel, a GIF of the review flow, Safari/Firefox runs.
