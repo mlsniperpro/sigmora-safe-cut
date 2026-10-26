@@ -14,7 +14,7 @@
 - Last pushes: `7ca667d` (audit #35 fixes), `b6fa465` (concurrency row). The PR #1 body still shows an older push; refresh it at the end (step 5).
 
 ## In flight
-- Nothing partial. Audits #36, #37 and #38 are applied and logged (WIN-CHECKLIST §6). #37 C and #38 C were clean; #37 A (6) and #38 A (2) found items, all fixed. Kickoff 2026-10-26 16:00 UTC ended the PRE-A docs win loop (brief) **without** two consecutive clean audits. The final PR #1 status comment says so. If the owner wants the loop continued after kickoff: run a full audit (A/B/C, sonnet/high) on HEAD, then another; PR #2's only open item is the 18+/rights tick (UI-SPEC l.232/277/349).
+- Loop continues past kickoff on the owner's /goal (docs-only package; AGENTS rule 1 doesn't forbid docs edits after it). Audits #36–#42 applied and logged (WIN-CHECKLIST §6); #42 was a full three-lens pass with 21 findings, all fixed or filed. **Next: full audit #43 on the pushed HEAD**, then #44; done when two consecutive full audits find nothing new, then re-post the final PR #1 status comment (the 15:57 UTC one predates #42). PR #2 open items: 18+ rights tick and the three audit #42 C requests (API-NOTES §12).
 
 ## Next steps (in order)
 1. Lease is claimed (`status=active`); keep it so until a WIND DOWN.

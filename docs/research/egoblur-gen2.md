@@ -82,7 +82,7 @@ Default for Safe Cut: **Gen 2 with `camera-rgb`**. Our prepared clips have a con
   - **Weights:** both generations' face and plate zips (O8, `docs/BLOCKED-PRE-A.md`).
   - **Thresholds:** each model at its **own calibrated default** (Gen 1: 0.9; Gen 2 `camera-rgb`: face 0.674, plate 0.745) and at **0.5**. Face and plate are reported separately, as recall plus false detections per minute.
   - **Selection is held out:** choose on **hero clip 1** (both takes), then report the chosen model's recall on hero clips 2–3 and the dev split. The reported "auditor recall" is never measured on the clips used to pick it.
-  - **Rule:** pick the highest recall whose false detections stay ≤ 2 per minute (each one costs an auto-patch, i.e. over-blur). If no setting meets that, Gen 2 at its defaults.
+  - **Rule:** the service always runs at **0.5** (face and plate); the comparison picks only the **generation**: the one with the higher recall at 0.5 whose false detections stay ≤ 2 per minute (each costs an auto-patch, i.e. over-blur). If neither meets that, Gen 2 at 0.5. The calibrated defaults are reported, never shipped.
   - The results report the auditor's own recall (`research/winning-patterns.md` R2).
 
 Gen 1's API is simpler (`gen1/script/demo_ego_blur_gen1.py`, read 2026-10-24): `torch.jit.load` the `.jit` file, call it on a **C×H×W BGR uint8** tensor with no resize, and it returns `(boxes, labels, scores, dims)`. Then apply `torchvision.ops.nms(boxes, scores, 0.3)` and keep the boxes whose score is above the threshold.
