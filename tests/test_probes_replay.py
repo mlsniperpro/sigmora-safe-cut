@@ -144,7 +144,7 @@ def test_grid_mapping_vectors() -> None:
 
 def test_cli_rejects_unknown_probes(capsys: pytest.CaptureFixture[str]) -> None:
     assert probes.main(["z"]) == 2
-    assert "unknown probe" in capsys.readouterr().err
+    assert "usage" in capsys.readouterr().err
 
 
 def test_dot_image_is_the_documented_size() -> None:
@@ -157,3 +157,19 @@ def test_dot_image_is_the_documented_size() -> None:
     assert r > 200
     assert g < 60
     assert b < 60
+
+
+async def test_hero_clip_runs_the_base_concepts(api: respx.MockRouter, tmp_path: Path) -> None:
+    hero = tmp_path / "hero.mp4"
+    hero.write_bytes(probes.CLIP.read_bytes())
+    cfg = Settings(model_api_key=SecretStr("k"))
+    results = await probes.run(["b"], settings=cfg, out_root=tmp_path / "out", ledger=LocalLedger(), clip=hero)
+    assert results["b"]["synthetic"] is False
+    assert set(results["b"]["concepts"]) == set(probes.HERO_CONCEPTS)
+    assert results["b"]["frames"] == 90
+    assert "input_video_fps_8" not in results["b"]
+
+
+def test_cli_rejects_a_missing_clip(capsys: pytest.CaptureFixture[str]) -> None:
+    assert probes.main(["b", "--clip=/nonexistent.mp4"]) == 2
+    assert "no such clip" in capsys.readouterr().err

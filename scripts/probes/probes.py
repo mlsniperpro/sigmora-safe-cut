@@ -49,6 +49,8 @@ CLIP = ROOT / "fixtures" / "clips" / "counter_30fps_audio.mp4"
 TRUTH = ROOT / "fixtures" / "clips" / "truth.json"
 PROBE_BUDGET_USD = 6.00
 SAM_CONCEPTS = ("red square", "blue square", "face", "license plate")
+#: ARCHITECTURE §3.2's base sweep concepts, used when a consented hero clip is given with ``--clip``.
+HERO_CONCEPTS = ("face", "person", "license plate", "screen")
 
 Summary = dict[str, Any]
 
@@ -62,6 +64,11 @@ class Probe:
     settings: Settings
     meta: MetaClient
     files: FileStore
+    clip: Path = CLIP
+
+    @property
+    def synthetic(self) -> bool:
+        return self.clip == CLIP
 
     def save(self, filename: str, data: Any) -> None:
         self.out.mkdir(parents=True, exist_ok=True)
@@ -168,7 +175,7 @@ async def _sam_once(p: Probe, file_id: str, concept: str, frames: int) -> Summar
         "diagnostics": [str(d) for d in final.diagnostics][:10],
     }
     colour = concept.split(maxsplit=1)[0]
-    if colour in ("red", "blue"):
+    if p.synthetic and colour in ("red", "blue"):
         gt = truth()["boxes_half_open"]
         ious = [
             _iou([b.left, b.top, b.right, b.bottom], gt[str(b.frame.frame_index)][colour])
@@ -179,15 +186,26 @@ async def _sam_once(p: Probe, file_id: str, concept: str, frames: int) -> Summar
     return summary
 
 
+def count_frames(clip: Path) -> int:
+    """Video frames as the bundled ffmpeg's ``framemd5`` counts them (PRE-A §5b: never duration × fps)."""
+    argv = [imageio_ffmpeg.get_ffmpeg_exe(), "-v", "error", "-i", str(clip), "-map", "0:v:0", "-c", "copy",
+            "-f", "framemd5", "-"]  # fmt: skip
+    out = subprocess.run(argv, check=True, capture_output=True, text=True).stdout  # noqa: S603 -- fixed argv
+    return sum(1 for line in out.splitlines() if line and not line.startswith("#"))
+
+
 async def probe_b(p: Probe) -> Summary:
-    frames = int(truth()["frames"])
-    file_id = await p.files.upload(CLIP, "sam_proxy.mp4")
-    out: Summary = {"clip": CLIP.name, "frames": frames, "size": truth()["size"], "concepts": {}}
-    for concept in SAM_CONCEPTS:
+    frames = await asyncio.to_thread(count_frames, p.clip)
+    file_id = await p.files.upload(p.clip, "sam_proxy.mp4")
+    concepts = SAM_CONCEPTS if p.synthetic else HERO_CONCEPTS
+    out: Summary = {"clip": p.clip.name, "synthetic": p.synthetic, "frames": frames, "concepts": {}}
+    for concept in concepts:
         try:
             out["concepts"][concept] = await _sam_once(p, file_id, concept, frames)
         except MetaError as exc:
             out["concepts"][concept] = {"error": f"{type(exc).__name__}: {exc}"}
+    if not p.synthetic:
+        return out
     # Does SAM accept an fps hint on the video part? (undocumented; PRE-A §1.6)
     body = sam.video_body(p.settings, file_id=file_id, text="red square")
     body["input"][0]["content"][1]["fps"] = 8
@@ -292,7 +310,7 @@ def _extract_wav(clip: Path, wav: Path) -> None:
 async def probe_d(p: Probe) -> Summary:
     wav = p.out / "audio.wav"
     p.out.mkdir(parents=True, exist_ok=True)
-    await asyncio.to_thread(_extract_wav, CLIP, wav)
+    await asyncio.to_thread(_extract_wav, p.clip, wav)
     started = time.monotonic()
     raw = await asr.transcribe(p.meta, wav, model=p.settings.asr_model, language_bias=p.settings.asr_language_bias)
     latency = time.monotonic() - started
@@ -304,7 +322,10 @@ async def probe_d(p: Probe) -> Summary:
         "audio_duration_ms": raw.audio_duration_ms,
         "turns": len(transcript.turns),
         "transcript": raw.transcript,
-        "note": "synthetic tone only: diarization quality needs the consented hero clips (BLOCKED.md)",
+        "clip": p.clip.name,
+        "speakers": sorted({t.speaker for t in transcript.turns}),
+        "turn_times": [[t.speaker, t.start, t.end] for t in transcript.turns][:50],
+        "note": "synthetic tone: no speech expected" if p.synthetic else "consented hero clip",
     }
 
 
@@ -425,8 +446,13 @@ async def run(
     out_root: Path,
     ledger: LocalLedger,
     http: httpx.AsyncClient | None = None,
+    clip: Path = CLIP,
 ) -> dict[str, Summary]:
-    """Run the named probes in order; a failing probe is recorded and the rest still run."""
+    """Run the named probes in order; a failing probe is recorded and the rest still run.
+
+    ``clip`` (a consented hero clip) replaces the synthetic clip for the SAM (b) and speech (d) probes;
+    the frame-number probes (c, e, f) always use the synthetic clip, whose burned-in counter is the truth.
+    """
     caller = Caller(code_kind="owner", code_id=None, limits=(CapLimit("code", "wp0-probes", PROBE_BUDGET_USD),))
     cost_path = out_root / "cost.jsonl"
     results: dict[str, Summary] = {}
@@ -435,7 +461,8 @@ async def run(
         out = out_root / name
         meta = MetaClient(settings, job_id=job_id, caller=caller, ledger=ledger, cost_path=cost_path, http=http)
         files = FileStore(meta, out / "job")
-        probe = Probe(name=name, out=out, settings=settings, meta=meta, files=files)
+        probe_clip = clip if name in ("b", "d") else CLIP
+        probe = Probe(name=name, out=out, settings=settings, meta=meta, files=files, clip=probe_clip)
         try:
             if name == "h":
                 open_meta = openweight.open_client(
@@ -460,17 +487,22 @@ async def run(
 
 
 def main(argv: list[str]) -> int:
-    names = sorted([*PROBES, "h"]) if argv in ([], ["all"]) else argv
+    clips = [a.removeprefix("--clip=") for a in argv if a.startswith("--clip=")]
+    args = [a for a in argv if not a.startswith("--clip=")]
+    names = sorted([*PROBES, "h"]) if args in ([], ["all"]) else args
     unknown = [n for n in names if n not in PROBES and n != "h"]
-    if unknown:
-        print(f"unknown probe(s): {unknown}; choose from a-h or all", file=sys.stderr)
+    if unknown or len(clips) > 1:
+        print("usage: probes.py [a-h ...|all] [--clip=<consented clip.mp4>]", file=sys.stderr)
+        return 2
+    clip = Path(clips[0]).resolve() if clips else CLIP
+    if not clip.is_file():
+        print(f"no such clip: {clip}", file=sys.stderr)
         return 2
     settings = load_settings()
     ledger_path = ROOT / "jobs" / "probes-ledger.sqlite"
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
-    results = asyncio.run(
-        run(names, settings=settings, out_root=ROOT / "fixtures" / "probes", ledger=LocalLedger(ledger_path))
-    )
+    out_root = ROOT / "fixtures" / "probes" if clip == CLIP else ROOT / "jobs" / "probes-hero"
+    results = asyncio.run(run(names, settings=settings, out_root=out_root, ledger=LocalLedger(ledger_path), clip=clip))
     print(json.dumps(results, indent=1))
     return 0
 
