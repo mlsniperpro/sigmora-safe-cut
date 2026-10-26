@@ -47,6 +47,8 @@ function readShortcutsPref(): boolean {
 }
 
 export interface ReviewPanelProps {
+  /** The job ID from the URL; every request uses it. */
+  jobId: string;
   job: JobResponse;
   viewReview: boolean;
   onPatchJob: (update: (job: JobResponse) => JobResponse) => void;
@@ -54,7 +56,7 @@ export interface ReviewPanelProps {
   onDeleted: () => void;
 }
 
-export function ReviewPanel({ job, viewReview, onPatchJob, onResume, onDeleted }: ReviewPanelProps) {
+export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDeleted }: ReviewPanelProps) {
   const context = useMemo(() => ({ tracks: job.tracks, roles: job.roles }), [job.tracks, job.roles]);
   const [state, setState] = useState<ReviewState>(() => initialState(serverStateOf(job), context));
   const [synced, setSynced] = useState(job);
@@ -78,7 +80,7 @@ export function ReviewPanel({ job, viewReview, onPatchJob, onResume, onDeleted }
       const edit = result.send;
       if (!edit) return;
       getClient()
-        .review(job.job_id, edit)
+        .review(jobId, edit)
         .then((ack: ReviewAck) => {
           const server: ServerState = { items: ack.items, plan: ack.plan, status: ack.status, has_render: ack.has_render, spots: ack.audit?.spots ?? [] };
           const acked = step(stateRef.current, { type: "SERVER_ACK", edit_id: edit.edit_id, server });
@@ -87,13 +89,13 @@ export function ReviewPanel({ job, viewReview, onPatchJob, onResume, onDeleted }
           onPatchJob((j) => ({ ...j, status: ack.status, has_render: ack.has_render, items: ack.items, plan: ack.plan, audit: j.audit ? { ...j.audit, spots: ack.audit?.spots ?? j.audit.spots } : j.audit }));
         })
         .catch((error: unknown) => {
-          console.error(`job ${job.job_id}: edit ${edit.type} rejected (${error instanceof ApiError ? (error.status ?? error.kind) : "error"})`);
+          console.error(`job ${jobId}: edit ${edit.type} rejected (${error instanceof ApiError ? (error.status ?? error.kind) : "error"})`);
           const rejected = step(stateRef.current, { type: "SERVER_REJECT", edit_id: edit.edit_id, rateLimited: error instanceof ApiError && error.status === 429 });
           stateRef.current = rejected.state;
           setState(rejected.state);
         });
     },
-    [job.job_id, onPatchJob],
+    [jobId, onPatchJob],
   );
 
   const desktop = useMediaQuery("(min-width: 1024px)");
@@ -177,7 +179,7 @@ export function ReviewPanel({ job, viewReview, onPatchJob, onResume, onDeleted }
     setActionBusy(true);
     setActionError(null);
     try {
-      const ack = await (button === "render" ? getClient().render(job.job_id) : getClient().audit(job.job_id));
+      const ack = await (button === "render" ? getClient().render(jobId) : getClient().audit(jobId));
       dispatch({ type: "ACTION_ACK", button, status: ack.status });
       onPatchJob((j) => ({ ...j, status: ack.status, stage: ack.stage ?? j.stage }));
       onResume();
@@ -216,7 +218,7 @@ export function ReviewPanel({ job, viewReview, onPatchJob, onResume, onDeleted }
     setDeleteOpen(false);
     setDeleteError(null);
     try {
-      await getClient().deleteJob(job.job_id);
+      await getClient().deleteJob(jobId);
       onDeleted();
     } catch (error) {
       if (error instanceof ApiError && error.status === 429) {
@@ -471,6 +473,7 @@ export function ReviewPanel({ job, viewReview, onPatchJob, onResume, onDeleted }
         error={actionError}
         refusalValidUntil={refusalValidUntil}
         now={now}
+        jobId={jobId}
         onRender={() => void runAction("render")}
         onAudit={() => void runAction("audit")}
         onDelete={() => setDeleteOpen(true)}
@@ -625,6 +628,7 @@ function BottomBar({
   error,
   refusalValidUntil,
   now,
+  jobId,
   onRender,
   onAudit,
   onDelete,
@@ -638,6 +642,7 @@ function BottomBar({
   error: string | null;
   refusalValidUntil: string | null;
   now: number;
+  jobId: string;
   onRender: () => void;
   onAudit: () => void;
   onDelete: () => void;
@@ -734,7 +739,7 @@ function BottomBar({
       main = (
         <>
           {approve(true)}
-          <Link href={`/jobs/${encodeURIComponent(job.job_id)}/result`} className={btn.link}>
+          <Link href={`/jobs/${encodeURIComponent(jobId)}/result`} className={btn.link}>
             Back to result
           </Link>
         </>

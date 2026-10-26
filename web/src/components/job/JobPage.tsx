@@ -85,11 +85,11 @@ export function JobPage() {
         </section>
       );
     case "failed":
-      return <FailedJob job={j} onResume={resume} onDeleted={markDeleted} />;
+      return <FailedJob jobId={id} job={j} onResume={resume} onDeleted={markDeleted} />;
     case "done":
       if (!viewReview) return <JobSkeleton />;
-      return <ReviewPanel job={j} viewReview onPatchJob={patch} onResume={resume} onDeleted={markDeleted} />;
+      return <ReviewPanel jobId={id} job={j} viewReview onPatchJob={patch} onResume={resume} onDeleted={markDeleted} />;
     default:
-      return <ReviewPanel job={j} viewReview={viewReview} onPatchJob={patch} onResume={resume} onDeleted={markDeleted} />;
+      return <ReviewPanel jobId={id} job={j} viewReview={viewReview} onPatchJob={patch} onResume={resume} onDeleted={markDeleted} />;
   }
 }

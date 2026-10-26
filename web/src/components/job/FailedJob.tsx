@@ -9,7 +9,7 @@ import type { JobResponse } from "@/lib/contracts";
 import { COPY, expiresBefore, failureView, formatLocal, jobRefusalMessage } from "@/lib/copy";
 import { ConfirmDialog, btn } from "../ui";
 
-export function FailedJob({ job, onResume, onDeleted }: { job: JobResponse; onResume: () => void; onDeleted: () => void }) {
+export function FailedJob({ jobId, job, onResume, onDeleted }: { jobId: string; job: JobResponse; onResume: () => void; onDeleted: () => void }) {
   const view = failureView(job);
   const [note, setNote] = useState<string | null>(null);
   const [blocked, setBlocked] = useState(false);
@@ -23,8 +23,8 @@ export function FailedJob({ job, onResume, onDeleted }: { job: JobResponse; onRe
     setBusy(true);
     setNote(null);
     try {
-      if (view.retry === "render") await getClient().render(job.job_id);
-      else await getClient().startJob(job.job_id);
+      if (view.retry === "render") await getClient().render(jobId);
+      else await getClient().startJob(jobId);
       onResume();
     } catch (error) {
       const e = error instanceof ApiError ? error : null;
@@ -57,7 +57,7 @@ export function FailedJob({ job, onResume, onDeleted }: { job: JobResponse; onRe
   const doDelete = async () => {
     setConfirm(false);
     try {
-      await getClient().deleteJob(job.job_id);
+      await getClient().deleteJob(jobId);
       onDeleted();
     } catch (error) {
       setDeleteError(error instanceof ApiError && error.status === 429 ? COPY.rateLimited : COPY.unexpected);
