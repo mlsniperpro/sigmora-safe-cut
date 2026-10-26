@@ -213,7 +213,7 @@ Goal: get from access code to the review panel with no surprises, and make the w
 │      Judges: the code is in the submission's testing instructions.                   │
 │                                                                                      │
 │      What happens to your clip                                                       │
-│      • Sent to Meta's Model API with Standard-mode models only.                      │
+│      • Sent to Meta's Model API with Standard model IDs only.                        │
 │      • Deleted from Safe Cut's servers after 24 hours, or sooner if you choose.      │
 │      • Up to 60 seconds and 150 MB. MP4 or MOV.                                      │
 └──────────────────────────────────────────────────────────────────────────────────────┘

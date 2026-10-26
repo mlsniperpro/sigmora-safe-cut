@@ -581,6 +581,19 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#540 (win audit 45)**: (audit B) Tab and ↑/↓ didn't cover the new chip `<article>` stop. Fix: both rows.
 - [x] **#541 (win audit 45)**: (audit B) The Baseten sentence had no UI trigger. Fix: step B, from `codes/check`'s `open_weight` (request 21).
 - [x] **#542 (win audit 45)**: (audit B) The header counts line had no deck string or plural. Fix: "`{u}` need(s) you".
+- [x] **#543 (win audit 45)**: (audit A) The end card and RULES-CHECKLIST said all footage and test labels were made before kickoff, against PRE-B's own schedule. Fix: hero 1's filming date (`{hero1_filmed_date}`), labelling during the event; the README lists dates.
+- [x] **#544 (win audit 45)**: (audit A) The redaction omitted `redteam_open[]`. Fix: added.
+- [x] **#545 (win audit 45)**: (audit A) The data-bullet wireframe and the consent note still said "Standard mode". Fix: "Standard model IDs".
+- [x] **#546 (win audit 45)**: (audit A) PRE-A's MAXXING request (judging dates, live window, O7) was unrecorded and RULES-CHECKLIST cited MAXXING §4 for Nov 5–10. Fix: request in HANDOFF and the PR body; cite marked stale.
+- [x] **#547 (win audit 45)**: (audit A) The end card's Sigmora sentence wasn't gated like 8.1. Fix: same conditions.
+- [x] **#548 (win audit 45)**: (audit A) STORYBOARD's `{runs_per_clip}` regressed to "2–2 runs". Fix: UI-SPEC's rule.
+- [x] **#549 (win audit 45)**: (audit A) The unsupported-language pilot count had no committed source. Fix: `n_unsupported_language` in `metrics.json` and STORYBOARD §2.
+- [x] **#550 (win audit 45)**: (audit A) RULES-CHECKLIST called EgoBlur's licence a research licence. Fix: the download's licence (Apache 2.0 per PRE-A, access by agreement).
+- [x] **#551 (win audit 45)**: (audit A) The open-weight switch cited probe g; the Baseten probe is h. Fix: probe h; PRE-A's own stale bullet noted as a request.
+- [x] **#552 (win audit 45)**: (audit A) The Baseten owner step lacked the environment secret and allowlist host. Fix: added, with both dates.
+- [x] **#553 (win audit 45)**: (audit A) HANDOFF bookkeeping was stale (round 43, round 44 count). Fix: corrected.
+- [x] **#554 (win audit 45)**: (audit A) PILOTS listed `per_pilot.csv` among places carrying quotes. Fix: removed.
+- [x] **#555 (win audit 45)**: (self-review) The reducer fixture lacked `rejected`; fixed with #536 (audit A also found it).
 
 ## 4. Which builder reads what
 

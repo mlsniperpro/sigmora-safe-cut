@@ -70,6 +70,8 @@ Checked against `origin/pre-a-research` @ `df5b1dc`. PRE-A changed in parallel d
 
 ## Requests for other WPs (not changed here)
 
+- **MAXXING (owner):** §1 judging dates → Nov 5–8 / finals Nov 9; §4 → live to Nov 10 23:59 UTC, demo-only from Nov 11; O7 → repo public before submitting, after the owner's OK (OFFICIAL-GUIDE; PRE-A request).
+
 - **WP1:** PRE-A §5b exactly (constant-rate prepared clip, `times` by step 4's `Fraction` rule, `job.frames` read back).
 - **WP2:** Set-of-Mark labels from track IDs; `matches_participant`, `suggested_role`, `escalation_evidence`/`escalation_frames`; `roles.missed[].track_ids`; `transcript.source_kind`; transcript times on the prepared clock.
 - **WP3:** `reason` ≤ 90 chars, lowercase-first; edits `keep`, `hide`, `merge`, `remove_person`, `cover_spot`, `undo`; `removed_by_creator`; kinds per UI-SPEC §0.
