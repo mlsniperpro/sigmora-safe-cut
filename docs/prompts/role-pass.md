@@ -90,7 +90,7 @@ WP2 inlines the `missed` item schema from `miss-loop.md`; strict mode needs it f
    - `matches_participant`: set **only if the final role is `participant` and all three votes gave the same non-null index**. Otherwise `null`, so the UI never links speech on a guess.
 
 ## Points (when the model gives coordinates)
-Only `missed[].point` carries coordinates. They're on the **0–1000 grid of the image sent**, which includes the frame-number bar. Convert with the single rule in API-NOTES §5: clamp to [0, 1000], scale by the **sent** image size, round half up (`floor(z + 0.5)`, Meta's documented rule), subtract the bar offset, then clamp to the frame.
+Only `missed[].point` and `missed[].box` carry coordinates. They're on the **0–1000 grid of the image sent**, which includes the frame-number bar. Convert with the single rule in API-NOTES §5: clamp to [0, 1000], scale by the **sent** image size, round half up (`floor(z + 0.5)`, Meta's documented rule), subtract the bar offset, then clamp to the frame.
 
 ## Failure handling
 - A failed call (after the transport retries in API-NOTES §10.2) → that vote = `unsure` for every track (counted in `failed_votes`), so nothing can reach 3/3. A track with `failed_votes == 3` (or `roles.json` `status != "ok"`) is **not escalated**: it has no judgement to dispute; it stays `unsure`, hidden, `hold: "no_roles"`.
