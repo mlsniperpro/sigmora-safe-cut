@@ -1,0 +1,19 @@
+[
+ {
+  "name": "sam_proxy.mp4",
+  "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "file_id": "file-123456",
+  "purpose": "user_data",
+  "created_at": "2026-10-27T10:00:05Z",
+  "deleted_at": "2026-10-27T10:04:00Z",
+  "orphan": false
+ },
+ {
+  "name": "prepared.mp4",
+  "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "file_id": "file-123457",
+  "purpose": "user_data",
+  "created_at": "2026-10-27T10:00:06Z",
+  "deleted_at": "2026-10-27T10:04:01Z"
+ }
+]

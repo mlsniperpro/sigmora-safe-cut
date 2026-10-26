@@ -30,3 +30,7 @@ weights/
 *.pth
 *.onnx
 .DS_Store
+# synthetic test clips (tiny, generated with ffmpeg)
+!fixtures/clips/*.mp4
+.coverage
+htmlcov/

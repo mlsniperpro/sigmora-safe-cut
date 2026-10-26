@@ -1,0 +1,49 @@
+{
+ "frames_scanned": 12,
+ "egoblur": {
+  "model": "egoblur-gen2",
+  "faces": 1,
+  "plates": 0
+ },
+ "leaks": [
+  {
+   "frame": 10,
+   "box": [
+    200,
+    200,
+    260,
+    280
+   ],
+   "kind": "face",
+   "detector": "egoblur",
+   "patched_item": "p_1"
+  }
+ ],
+ "redteam": [
+  {
+   "frame": 0,
+   "finding": "none"
+  },
+  {
+   "frame": 10,
+   "finding": "hit",
+   "kind": "face",
+   "text": null,
+   "detail": "a face at the left edge",
+   "box": [
+    200,
+    200,
+    260,
+    280
+   ],
+   "confidence": "high",
+   "excluded_by": null
+  }
+ ],
+ "unresolved": 0,
+ "passes": 2,
+ "sample_step": 30,
+ "spots": [],
+ "blocked_reason": null,
+ "audit_budget_cause": null
+}

@@ -1,0 +1,65 @@
+{
+ "padding": {
+  "face": 0.15,
+  "default": 0.08,
+  "px": 8
+ },
+ "temporal": {
+  "extend": 8,
+  "backfill": 57,
+  "gap_hold_s": 2.0
+ },
+ "frames": {
+  "5": [
+   {
+    "item_id": "i_2",
+    "shape": "box",
+    "box": [
+     91,
+     288,
+     169,
+     392
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
+    "item_id": "i_3",
+    "shape": "box",
+    "box": [
+     884,
+     384,
+     1116,
+     616
+    ],
+    "mask": null,
+    "style": "pixelate",
+    "grid": [
+     884,
+     384,
+     16
+    ],
+    "source": "decision"
+   }
+  ],
+  "10": [
+   {
+    "item_id": "p_1",
+    "shape": "box",
+    "box": [
+     195,
+     194,
+     265,
+     286
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "audit_patch"
+   }
+  ]
+ },
+ "crowd_fills": []
+}
