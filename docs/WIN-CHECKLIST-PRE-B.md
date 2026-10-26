@@ -594,6 +594,14 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#553 (win audit 45)**: (audit A) HANDOFF bookkeeping was stale (round 43, round 44 count). Fix: corrected.
 - [x] **#554 (win audit 45)**: (audit A) PILOTS listed `per_pilot.csv` among places carrying quotes. Fix: removed.
 - [x] **#555 (win audit 45)**: (self-review) The reducer fixture lacked `rejected`; fixed with #536 (audit A also found it).
+- [x] **#556 (win audit 45)**: (audit C) The new-work row still said the planning docs were written before kickoff, though they were updated after. Fix: "started before kickoff and updated during the event; git history dates every change" (with #543).
+- [x] **#557 (win audit 45)**: (audit C) The hero `audit.json` redaction had no check. Fix: Claude greps for remaining read text before committing (with #544).
+- [x] **#558 (win audit 45)**: (audit C) MAXXING's O7 "public at kickoff" clashed with BLOCKED's O7. Fix: BLOCKED says it supersedes MAXXING; request recorded (#546).
+- [x] **#559 (win audit 45)**: (audit C) `MODEL_API_KEY` wasn't added to the Modal secret, and no step created the Vercel project. Fix: both owner steps, dated, with defaults.
+- [x] **#560 (win audit 45)**: (audit C) The consent note said "we don't share it" while naming processors. Fix: "with anyone other than the processors named below".
+- [x] **#561 (win audit 45)**: (audit C) The anonymous credit example used a city. Fix: country.
+- [x] **#562 (win audit 45)**: (audit C) Hero releases didn't cover Baseten for the recording-kind second opinion. Fix: addendum before Nov 3, else `recording` stays out of `SAFECUT_OPEN_WEIGHT_CODE_KINDS`.
+- [x] **#563 (win audit 45)**: (audit C) The conditional rules item had no date. Fix: Oct 27, once the full rules are read.
 
 ## 4. Which builder reads what
 
