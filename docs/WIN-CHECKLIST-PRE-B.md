@@ -632,6 +632,11 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#591 (win audit 47)**: (audit A; PRE-A open) The credits step lacked card-first (else `402 billing_not_configured`), auto top-up and expiry. Fix: added; the judge window ends at expiry if earlier (RULES-CHECKLIST §11).
 - [x] **#592 (win audit 47)**: (audit A; PRE-A open) MAXXING's bonus list request and the probe-g remnants. Fix: request recorded in HANDOFF and the PR body; WIN-CHECKLIST says probe h; the stale HANDOFF sentence struck.
 - [x] **#593 (win audit 47)**: (PRE-A open) Presigned GETs live 15 min, and the landing page had no refetch. Fix: one `GET /v1/demo` refetch on 403; §10.3's row covers download and receipt URLs.
+- [x] **#594 (win audit 48)**: (audit A; PRE-A @ 715b977) The consent note and copy notes lacked Meta's refined retention (flagged requests up to 2 years; no training on Standard content). Fix: PRE-A's wording in PILOTS and the copy notes.
+- [x] **#595 (win audit 48)**: (audit A; PRE-A open) No `/privacy` page (Meta Terms §6.2), no Terms/AUP link on `/try`, no region page. Fix: UI-SPEC §7.1 `/privacy` with copy, footer link, a line under the rights tick, §7 "Not available in your region" page and a middleware test.
+- [x] **#596 (win audit 48)**: (audit A; PRE-A open) `/try` never said frames don't go to Baseten for non-consented codes. Fix: Data bullet 4's "otherwise" row.
+- [x] **#597 (win audit 48)**: (audit A; PRE-A open) No request told WP8 to write the README's event boundary, auditor names and scope note. Fix: WP8 request in HANDOFF and the PR body.
+- [x] **#598 (win audit 48)**: (audit A) The PR #2 body and HANDOFF line 3 were stale (counts, 22 requests, word counts, PRE-A sha). Fix: body refreshed from the draft; HANDOFF corrected. Also "Safe Cut deletes everything" on the expired page → "from its servers".
 
 ## 4. Which builder reads what
 
