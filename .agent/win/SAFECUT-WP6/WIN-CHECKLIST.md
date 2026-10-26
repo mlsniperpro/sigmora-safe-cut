@@ -2,7 +2,20 @@
 
 Legend: `- [x]` done with evidence · `- [P]` waits on an owner input (BLOCKED.md) · `- [-]` not applicable, why · `- [ ]` open.
 
-## Judging criteria (AGENTS.md: Impact 30 · Meta tooling 25 · Technical depth 20 · Demo 25; Startup: holds up in production)
+## Official guide reconciliation (docs/OFFICIAL-GUIDE.md, captured 2026-10-26 16:25Z)
+
+- [x] Rubric weights match: Impact 30 · Meta tooling 25 · Technical depth 20 · Demo 25 (guide Stage 2 = AGENTS.md); deadline Wed Nov 4 21:00 ET = 2026-11-05 02:00 UTC matches MAXXING §1 (05:00 EAT); internal deadline stays 2026-11-04T18:00Z
+- [x] Theme fit: "Build for Your World" (creators publishing street footage without exposing bystanders); not on the anti-project list (no medical advice; not a simple image analyzer: a multi-model video pipeline with tracking, role rulings, review and audit)
+- [ ] Stage 1 pass/fail made visible: every screen that shows a decision names the Meta model behind it (How it works, Why drawer, receipt models, footer)
+- [ ] "New work only": the site carries a made-during-the-event boundary ("Built during the Meta Global AI Developer Hackathon, Oct 26 – Nov 4, 2026"; Sigmora is the existing product, Safe Cut is new) on the landing page and footer, so judges can tell what was built during the event
+- [ ] Copy never frames Safe Cut as an "image analyzer" or "face recognition" (UI-SPEC §0 voice rule + anti-project list); a test scans the copy
+- [ ] Best Agentic Use-Case bonus: the landing "How it works" shows the closed agent loop (SAM 3.1 numbers objects → Muse Spark rules → Muse Spark writes new SAM prompts for misses → audit → auto-patch), and the Why drawer shows the loop's evidence per item
+- [ ] Most Viral bonus: share-ready Open Graph / X card metadata on the landing page (title, description, image) so a posted link renders well
+- [P] Best Build on Meta Open-Weight Models bonus (Muse Spark Open via Baseten `meta-models/muse-spark-open-1026`): pipeline-side (WP2) and needs Baseten credits; the web shows whichever models `receipt.models` reports, so no web change is needed. Requested in the PR's "Requests for other WPs"
+- [P] Live product + public repo at submission: needs the owner's Vercel project/domain and the repo made public (BLOCKED.md)
+- [P] 3-minute demo video: owner records; the web side is the demo-mode screens (STORYBOARD)
+
+## Judging criteria (Impact 30 · Meta tooling 25 · Technical depth 20 · Demo 25; Startup track: holds up in production)
 
 - [ ] Demo 25%: every WP6 screen works end to end against the mocks and reads as a product (UI-SPEC §1–§7)
 - [ ] Meta tooling 25%: the Why drawer shows the SAM 3.1 Set-of-Mark keyframe with the ring, Muse Spark's three votes and escalation, and Muse Voice Transcribe evidence (UI-SPEC §4)
