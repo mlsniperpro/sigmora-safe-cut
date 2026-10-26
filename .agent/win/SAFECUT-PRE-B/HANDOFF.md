@@ -1,6 +1,6 @@
 # HANDOFF: SAFECUT-PRE-B (docs-only product-prep package)
 
-**Updated 2026-10-26 17:10 UTC** by session_01Tjy33tfkpth8jMhhnhhcYL (WOUND DOWN for a repo-only successor; lease released). **Branch** `pre-b-product` · **PR #2** (the only PRE-B PR; never open another) · **Brief** `docs/work-packages/PRE-B.md` · **Rules** `AGENTS.md` (docs only; no code before 2026-10-26 16:00 UTC). Short form: `docs/HANDOFF-PRE-B.md`.
+**Updated 2026-10-26 17:10 UTC** by session_01Tjy33tfkpth8jMhhnhhcYL (RESUMEd 2026-10-26 18:02 UTC; lease active). **Branch** `pre-b-product` · **PR #2** (the only PRE-B PR; never open another) · **Brief** `docs/work-packages/PRE-B.md` · **Rules** `AGENTS.md` (docs only; no code before 2026-10-26 16:00 UTC). Short form: `docs/HANDOFF-PRE-B.md`.
 
 ## Goal (owner /goal, re-armed hourly)
 Met only when the transcript shows, after the last docs change: `grep -c '^- \[ \]' docs/WIN-CHECKLIST-PRE-B.md` → 0; **two consecutive full audits that find nothing new**; PRE-B and PRE-A reconciled on shared facts; `git status -sb` pushed; a final docs status comment on PR #2. Deadline: kickoff 2026-10-26 16:00 UTC. Never comment on other PRs. A WIND DOWN message: write handoff, release lease, push, delete own check-ins.
@@ -13,7 +13,7 @@ Met only when the transcript shows, after the last docs change: `grep -c '^- \[ 
 - Official participant guide (owner, 2026-10-26) committed verbatim as `docs/OFFICIAL-GUIDE.md` and reconciled (#497–#503): theme Build for Your World, new-work boundary (STORYBOARD 9.1 `{first_code_commit}`, Sigmora label), repo public only after the owner's OK, demo on X before submitting, bonus targets (agentic; open-weight via Baseten `meta-models/muse-spark-open-1026` is a request to PRE-A/WPs).
 
 ## In flight
-- Nothing running. Round 46: audit B reported and is fixed (#564–#569, pushed). Audits **46A (cross-package + OFFICIAL-GUIDE + PRE-A) and 46C (labels/pilots/storyboard/BLOCKED) were stopped by the wind-down before reporting**: re-run round 46 A and C (or a full round 47) on HEAD. No check-ins remain.
+- Round 46: B fixed (#564–#569); A and C were stopped by the wind-down. **Round 47 (full A/B/C, Sonnet/high) launched on `8dbcd3c` after RESUME**; log its findings as #570+. Check-in armed (send_later, ~50 min).
 - PR #2 body draft: `.agent/win/SAFECUT-PRE-B/pr2-body-draft.md` (bump counts to #1–#569 and rounds 24–46 before posting; it carries the MAXXING request under "Requests for other WPs").
 - PRE-A head last seen: `2287677` (origin/pre-a-research). Re-read its API-NOTES §12 "Requests to PRE-B" for items marked **open** first.
 - Owner rules (keep): every Agent subagent uses model sonnet, effort high; main session verifies each finding before fixing; push when a substantial task is complete and green (no timer, no wip commits, exactly one PR #2); never idle; stop only for usage limit or met /goal; WIND DOWN steps when told.
