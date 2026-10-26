@@ -222,7 +222,7 @@ class MetaClient:
             timeout=httpx.Timeout(60.0, connect=config.CONNECT_TIMEOUT_S),
             trust_env=False,
         )
-        allowed = frozenset().union(*config.ALLOWED_HOSTS.values())
+        allowed = frozenset(host for hosts in config.ALLOWED_HOSTS.values() for host in hosts)
         self.base_url = config.trusted_base_url(base_url or settings.meta_base_url, allowed)
         self._key = api_key if api_key is not None else settings.api_key()
         self.breaker = breaker or CircuitBreaker(clock=clock)
@@ -321,6 +321,22 @@ class MetaClient:
         """
         breaker = self.breaker if spec.breaker else None
         trial = breaker.before_call() if breaker else False
+        try:
+            return await self._attempts(spec, attempt_fn, breaker, trial)
+        except BaseException:
+            # Budget stop, cancellation (even mid-backoff), a final error: never strand the trial slot.
+            # After record_success/record_failure(trial) the slot is already free, so this is a no-op.
+            if breaker:
+                breaker.abandon_trial(trial)
+            raise
+
+    async def _attempts(
+        self,
+        spec: CallSpec,
+        attempt_fn: Callable[[Callable[[], None]], Awaitable[_Attempt]],
+        breaker: CircuitBreaker | None,
+        trial: bool,
+    ) -> tuple[_Attempt, int, bool]:
         attempt = 0
         maybe_processed = False
         while True:
@@ -330,12 +346,6 @@ class MetaClient:
                 self.ledger.reserve(call_id, self.job_id, spec.estimate_usd, self._limits())
             except BudgetExceeded as exc:
                 self._log_budget_stop(spec, exc)
-                if breaker:
-                    breaker.abandon_trial(trial)
-                raise
-            except BaseException:
-                if breaker:
-                    breaker.abandon_trial(trial)
                 raise
             sent = _SentFlag()
             try:
@@ -349,33 +359,29 @@ class MetaClient:
                 maybe_processed = maybe_processed or failed.accepted
                 delay = self._retry_delay(spec, attempt, failed, maybe_processed, breaker=breaker, trial=trial)
                 log.info("retrying", extra={"stage": spec.stage, "attempt": attempt, "delay_s": delay})
-                try:
-                    await self._sleep(delay)
-                except BaseException:
-                    if breaker:
-                        breaker.abandon_trial(trial)
-                    raise
+                await self._sleep(delay)
                 continue
             except BaseException:
                 # Cancellation or a bug mid-attempt: once the request was sent, billing is unknown.
-                if breaker:
-                    breaker.abandon_trial(trial)
                 self._account(spec, call_id, attempt, charged=sent.sent, rid=None)
                 raise
-            if outcome.usd is None:
-                # Completed, but without usage: we can't measure it, so the reserved estimate stands.
-                self._account(spec, call_id, attempt, charged=True, rid=outcome.request_id)
-            else:
-                self.ledger.settle(call_id, outcome.usd)
-                self._log_cost(
-                    spec, attempt=attempt, units=outcome.units, usd=outcome.usd, estimated=False, rid=outcome.request_id
-                )
+            self._settle(spec, call_id, attempt, outcome)
             if breaker:
                 breaker.record_success(trial)
             if outcome.error is not None:
                 outcome.error.maybe_processed = True
                 raise outcome.error
             return outcome, attempt, maybe_processed
+
+    def _settle(self, spec: CallSpec, call_id: str, attempt: int, outcome: _Attempt) -> None:
+        if outcome.usd is None:
+            # Completed, but without usage: we can't measure it, so the reserved estimate stands.
+            self._account(spec, call_id, attempt, charged=True, rid=outcome.request_id)
+            return
+        self.ledger.settle(call_id, outcome.usd)
+        self._log_cost(
+            spec, attempt=attempt, units=outcome.units, usd=outcome.usd, estimated=False, rid=outcome.request_id
+        )
 
     def _retry_delay(
         self,

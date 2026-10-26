@@ -48,7 +48,7 @@ def _spec(stage: str, timeout_s: float) -> CallSpec:
         timeout=httpx.Timeout(timeout_s, connect=config.CONNECT_TIMEOUT_S),
         total_timeout_s=timeout_s,
         # Cleanup (list, delete) must work exactly when Meta has been failing: never refused by the breaker.
-        breaker=stage != "files",
+        breaker=stage != "files:cleanup",
     )
 
 

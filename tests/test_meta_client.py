@@ -143,15 +143,21 @@ def test_breaker_opens_half_opens_and_closes() -> None:
     with pytest.raises(MetaUnavailable, match="breaker"):
         breaker.before_call()
     now[0] = 61.0
-    breaker.before_call()  # the one trial call
+    trial = breaker.before_call()  # the one trial call
+    assert trial is True
     with pytest.raises(MetaUnavailable):
         breaker.before_call()  # a second concurrent trial is refused
-    breaker.record_failure()
+    breaker.record_failure()  # a late, non-trial failure re-opens but keeps the trial slot taken
     assert breaker.state == "open"
     now[0] = 122.0
-    breaker.before_call()
-    breaker.record_success()
+    with pytest.raises(MetaUnavailable):
+        breaker.before_call()  # the trial hasn't reported yet
+    breaker.record_failure(trial)
+    now[0] = 183.0
+    trial = breaker.before_call()
+    breaker.record_success(trial)
     assert breaker.state == "closed"
+    assert breaker.before_call() is False
 
 
 def test_breaker_window_forgets_old_failures() -> None:
@@ -476,7 +482,9 @@ async def test_stream_completed_is_metered(make_harness: Callable[..., Harness],
         return_value=stream_response({"type": "response.created", "response": {"id": "resp_1"}}, completed(resp))
     )
 
-    result = await h.client.stream(_spec(), {"model": "muse-spark-1.3"}, meter=meter_for("muse-spark-1.3"))
+    result = await h.client.stream(
+        _spec(), {"model": "muse-spark-1.3", "store": False}, meter=meter_for("muse-spark-1.3")
+    )
     assert result.response["id"] == "resp_1"
     assert result.usd == pytest.approx(0.02625)
     assert route.calls[0].request.content.find(b'"stream":true') >= 0
@@ -491,7 +499,7 @@ async def test_r8_eof_then_complete(make_harness: Callable[..., Harness], mock_a
     mock_api.post("/responses").mock(
         side_effect=[stream_response(delta), stream_response(delta, completed(text_response("x")))]
     )
-    result = await h.client.stream(_spec(attempts=2), {"model": "sam-3.1"}, meter=_meter)
+    result = await h.client.stream(_spec(attempts=2), {"model": "sam-3.1", "store": False}, meter=_meter)
     assert result.attempts == 2
     assert [line.estimated for line in h.costs()] == [True, False]
 
@@ -500,7 +508,7 @@ async def test_r9_eof_twice_is_incomplete(make_harness: Callable[..., Harness], 
     h = make_harness()
     mock_api.post("/responses").mock(return_value=stream_response({"type": "response.output_text.delta", "delta": "x"}))
     with pytest.raises(MetaIncomplete) as info:
-        await h.client.stream(_spec(attempts=2), {"model": "sam-3.1"}, meter=_meter)
+        await h.client.stream(_spec(attempts=2), {"model": "sam-3.1", "store": False}, meter=_meter)
     assert info.value.eof
     assert len(h.costs()) == 2
 
@@ -512,7 +520,7 @@ async def test_r7_deep_effort_timeouts_stop_after_two(
     route = mock_api.post("/responses").mock(side_effect=httpx.ReadTimeout("slow"))
     spec = _spec(attempts=RetryPolicy.for_responses("max").attempts)
     with pytest.raises(MetaUnavailable):
-        await h.client.stream(spec, {"model": "muse-spark-1.3"}, meter=_meter)
+        await h.client.stream(spec, {"model": "muse-spark-1.3", "store": False}, meter=_meter)
     assert route.call_count == 2
     assert all(line.estimated for line in h.costs())
 
@@ -526,7 +534,7 @@ async def test_server_incomplete_is_billed_and_not_retried(
         return_value=stream_response({"type": "response.incomplete", "response": resp})
     )
     with pytest.raises(MetaIncomplete, match="max_output_tokens") as info:
-        await h.client.stream(_spec(), {"model": "muse-spark-1.3"}, meter=_meter)
+        await h.client.stream(_spec(), {"model": "muse-spark-1.3", "store": False}, meter=_meter)
     assert not info.value.eof
     assert route.call_count == 1
     assert [(line.usd, line.estimated) for line in h.costs()] == [(0.002, False)]
@@ -546,9 +554,9 @@ async def test_refusals(make_harness: Callable[..., Harness], mock_api: respx.Mo
         ]
     )
     with pytest.raises(MetaRefusal):
-        await h.client.stream(_spec(), {"model": "m"}, meter=_meter)
+        await h.client.stream(_spec(), {"model": "m", "store": False}, meter=_meter)
     with pytest.raises(MetaRefusal):
-        await h.client.stream(_spec(), {"model": "m"}, meter=_meter)
+        await h.client.stream(_spec(), {"model": "m", "store": False}, meter=_meter)
 
 
 async def test_stream_failed_event_is_retried(make_harness: Callable[..., Harness], mock_api: respx.MockRouter) -> None:
@@ -559,7 +567,7 @@ async def test_stream_failed_event_is_retried(make_harness: Callable[..., Harnes
             stream_response(completed(text_response("x"))),
         ]
     )
-    result = await h.client.stream(_spec(), {"model": "m"}, meter=_meter)
+    result = await h.client.stream(_spec(), {"model": "m", "store": False}, meter=_meter)
     assert result.attempts == 2
     assert h.sleeps == [1.0]
 
@@ -576,9 +584,9 @@ async def test_stream_http_error_and_malformed_data(
         ]
     )
     with pytest.raises(MetaAuthError):
-        await h.client.stream(_spec(), {"model": "m"}, meter=_meter)
+        await h.client.stream(_spec(), {"model": "m", "store": False}, meter=_meter)
     with pytest.raises(MetaUnavailable, match="malformed"):
-        await h.client.stream(_spec(attempts=2), {"model": "m"}, meter=_meter)
+        await h.client.stream(_spec(attempts=2), {"model": "m", "store": False}, meter=_meter)
 
 
 async def test_stream_total_timeout(make_harness: Callable[..., Harness], mock_api: respx.MockRouter) -> None:
@@ -601,7 +609,7 @@ async def test_stream_total_timeout(make_harness: Callable[..., Harness], mock_a
         total_timeout_s=0.05,
     )
     with pytest.raises(MetaUnavailable, match="total time"):
-        await h.client.stream(spec, {"model": "m"}, meter=_meter)
+        await h.client.stream(spec, {"model": "m", "store": False}, meter=_meter)
 
 
 async def test_system_caller_logs_null_job(
@@ -662,7 +670,9 @@ async def test_completed_without_usage_keeps_the_estimate(
     h = make_harness()
     no_usage = {"id": "r", "status": "completed", "output": []}
     mock_api.post("/responses").mock(return_value=stream_response(completed(no_usage)))
-    result = await h.client.stream(_spec(estimate=0.2), {"model": "muse-spark-1.3"}, meter=meter_for("muse-spark-1.3"))
+    result = await h.client.stream(
+        _spec(estimate=0.2), {"model": "muse-spark-1.3", "store": False}, meter=meter_for("muse-spark-1.3")
+    )
     assert result.usd == pytest.approx(0.2)
     (line,) = h.costs()
     assert (line.usd, line.estimated) == (pytest.approx(0.2), True)
@@ -774,7 +784,7 @@ async def test_total_timeout_on_plain_requests(
     [
         ({"model": "muse-spark-1.3-contributor"}, "Contributor"),
         ({"model": "muse-spark-1.3", "store": True}, "store"),
-        ({"model": "muse-spark-1.3", "temperature": 0.2}, "ignored or rejected"),
+        ({"model": "muse-spark-1.3", "store": False, "temperature": 0.2}, "ignored or rejected"),
         ({}, "no model"),
     ],
 )

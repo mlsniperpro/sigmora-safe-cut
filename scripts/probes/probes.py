@@ -65,6 +65,7 @@ class Probe:
     meta: MetaClient
     files: FileStore
     clip: Path = CLIP
+    keyframes: Path | None = None
 
     @property
     def synthetic(self) -> bool:
@@ -254,7 +255,10 @@ async def _video_question(p: Probe, *, model: str, effort: str, stage: str, file
         return {"model": model, "effort": effort, "error": f"{type(exc).__name__}: {exc}"}
     latency = time.monotonic() - started
     p.save(f"{stage}-{model}-{effort}.response.json", result.response)
-    answer = json.loads(responses.output_text(result.response))
+    try:
+        answer = json.loads(responses.output_text(result.response))
+    except (MetaError, json.JSONDecodeError) as exc:
+        return {"model": model, "effort": effort, "error": f"{type(exc).__name__}: {exc}", "usd": result.usd}
     usage = result.response.get("usage", {})
     truth_frame = _frame_when_red_crosses_centre()
     got = answer.get("frame_red_centre_crosses_middle")
@@ -294,6 +298,82 @@ async def probe_f(p: Probe) -> Summary:
         out[f"{model}@{effort}"] = await _video_question(
             p, model=model, effort=effort, stage="probe_f", file_id=file_id
         )
+    if p.keyframes is not None:
+        out["role_calls"] = await _role_calls(p, p.keyframes)
+    return out
+
+
+ROLE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["role", "evidence"],
+    "properties": {
+        "role": {"type": "string", "enum": ["participant", "bystander", "child", "unsure"]},
+        "evidence": {"type": "string"},
+    },
+}
+
+
+class RoleCall(BaseModel):
+    """One hard role call: a consented Set-of-Mark keyframe, the label to judge, and the right answer."""
+
+    image: str
+    label: str
+    context: str = ""
+    expected: str
+
+
+class _RoleAnswer(BaseModel):
+    role: str
+    evidence: str
+
+
+async def _role_calls(p: Probe, keyframes: Path) -> Summary:
+    """WP0.md probe f's role calls: Spark 1.3 vs Wonder 1.0, both at ``max``, on consented keyframes.
+
+    ``keyframes/role_calls.json`` lists :class:`RoleCall` entries; images sit next to it. The boxes may be
+    hand-drawn (WP0.md). Only consented hero keyframes may be used (AGENTS rule 5).
+    """
+    calls = [RoleCall.model_validate(c) for c in json.loads((keyframes / "role_calls.json").read_text())]
+    out: Summary = {}
+    for model in ("muse-spark-1.3", "muse-wonder-1.0"):
+        rows: list[Summary] = []
+        for call in calls:
+            data = base64.b64encode((keyframes / call.image).read_bytes()).decode()
+            prompt = (
+                f"Decide the role of the person marked {call.label} in this frame of a creator's video: participant "
+                "(part of the story), bystander, child, or unsure. Context: " + (call.context or "none")
+            )
+            content = [
+                {"type": "input_text", "text": prompt},
+                {"type": "input_image", "image_url": f"data:image/jpeg;base64,{data}"},
+            ]
+            body = responses.build_body(
+                model, [{"role": "user", "content": content}], effort="max", schema=ROLE_SCHEMA, schema_name="role_call"
+            )
+            started = time.monotonic()
+            try:
+                answer, result = await responses.create_json(p.meta, _RoleAnswer, body, stage="probe_f", effort="max")
+            except MetaError as exc:
+                rows.append({"image": call.image, "error": f"{type(exc).__name__}: {exc}"})
+                continue
+            rows.append(
+                {
+                    "image": call.image,
+                    "expected": call.expected,
+                    "got": answer.role,
+                    "correct": answer.role == call.expected,
+                    "usd": result.usd,
+                    "latency_s": round(time.monotonic() - started, 2),
+                }
+            )
+        answered = [r for r in rows if "correct" in r]
+        out[model] = {
+            "calls": rows,
+            "correct": sum(1 for r in answered if r["correct"]),
+            "answered": len(answered),
+            "usd": round(sum(float(r["usd"]) for r in answered), 6),
+        }
     return out
 
 
@@ -312,9 +392,11 @@ async def probe_d(p: Probe) -> Summary:
     p.out.mkdir(parents=True, exist_ok=True)
     await asyncio.to_thread(_extract_wav, p.clip, wav)
     started = time.monotonic()
-    raw = await asr.transcribe(p.meta, wav, model=p.settings.asr_model, language_bias=p.settings.asr_language_bias)
+    try:
+        raw = await asr.transcribe(p.meta, wav, model=p.settings.asr_model, language_bias=p.settings.asr_language_bias)
+    finally:
+        wav.unlink(missing_ok=True)  # never leave a (possibly hero) voice track on disk
     latency = time.monotonic() - started
-    wav.unlink()
     p.save("asr.response.json", raw.model_dump(by_alias=True))
     transcript = asr.to_transcript(raw, source_model=p.settings.asr_model)
     return {
@@ -447,6 +529,7 @@ async def run(
     ledger: LocalLedger,
     http: httpx.AsyncClient | None = None,
     clip: Path = CLIP,
+    keyframes: Path | None = None,
 ) -> dict[str, Summary]:
     """Run the named probes in order; a failing probe is recorded and the rest still run.
 
@@ -462,7 +545,9 @@ async def run(
         meta = MetaClient(settings, job_id=job_id, caller=caller, ledger=ledger, cost_path=cost_path, http=http)
         files = FileStore(meta, out / "job")
         probe_clip = clip if name in ("b", "d") else CLIP
-        probe = Probe(name=name, out=out, settings=settings, meta=meta, files=files, clip=probe_clip)
+        probe = Probe(
+            name=name, out=out, settings=settings, meta=meta, files=files, clip=probe_clip, keyframes=keyframes
+        )
         try:
             if name == "h":
                 open_meta = openweight.open_client(
@@ -474,7 +559,7 @@ async def run(
                     await open_meta.aclose()
             else:
                 results[name] = await PROBES[name](probe)
-        except (MetaError, ValueError) as exc:
+        except Exception as exc:
             results[name] = {"error": f"{type(exc).__name__}: {exc}"}
         finally:
             try:
@@ -488,21 +573,29 @@ async def run(
 
 def main(argv: list[str]) -> int:
     clips = [a.removeprefix("--clip=") for a in argv if a.startswith("--clip=")]
-    args = [a for a in argv if not a.startswith("--clip=")]
+    frames = [a.removeprefix("--keyframes=") for a in argv if a.startswith("--keyframes=")]
+    args = [a for a in argv if not a.startswith(("--clip=", "--keyframes="))]
     names = sorted([*PROBES, "h"]) if args in ([], ["all"]) else args
     unknown = [n for n in names if n not in PROBES and n != "h"]
-    if unknown or len(clips) > 1:
-        print("usage: probes.py [a-h ...|all] [--clip=<consented clip.mp4>]", file=sys.stderr)
+    if unknown or len(clips) > 1 or len(frames) > 1:
+        print("usage: probes.py [a-h ...|all] [--clip=<consented clip.mp4>] [--keyframes=<dir>]", file=sys.stderr)
         return 2
     clip = Path(clips[0]).resolve() if clips else CLIP
     if not clip.is_file():
         print(f"no such clip: {clip}", file=sys.stderr)
         return 2
+    keyframes = Path(frames[0]).resolve() if frames else None
+    if keyframes is not None and not (keyframes / "role_calls.json").is_file():
+        print(f"no role_calls.json in {keyframes}", file=sys.stderr)
+        return 2
     settings = load_settings()
     ledger_path = ROOT / "jobs" / "probes-ledger.sqlite"
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
     out_root = ROOT / "fixtures" / "probes" if clip == CLIP else ROOT / "jobs" / "probes-hero"
-    results = asyncio.run(run(names, settings=settings, out_root=out_root, ledger=LocalLedger(ledger_path), clip=clip))
+    ledger = LocalLedger(ledger_path)
+    results = asyncio.run(
+        run(names, settings=settings, out_root=out_root, ledger=ledger, clip=clip, keyframes=keyframes)
+    )
     print(json.dumps(results, indent=1))
     return 0
 

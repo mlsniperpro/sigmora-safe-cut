@@ -114,14 +114,14 @@ def test_missing_key_is_a_config_error() -> None:
         load_settings({}).api_key()
 
 
-@given(st.sampled_from(["muse-spark-1.3", "sam-3.1", "x"]), st.booleans())
+@given(st.sampled_from(["sam-3.1", "sam-4", "x"]), st.booleans())
 def test_contributor_suffix_always_refused(model: str, contributor: bool) -> None:
-    env = {"SAFECUT_ROLE_MODEL": model + ("-contributor" if contributor else "")}
+    env = {"SAFECUT_SAM_MODEL": model + ("-contributor" if contributor else "")}
     if contributor:
         with pytest.raises(ConfigError):
             load_settings(env)
     else:
-        assert load_settings(env).role_model == model
+        assert load_settings(env).sam_model == model
 
 
 def test_price_table_covers_every_default_model() -> None:

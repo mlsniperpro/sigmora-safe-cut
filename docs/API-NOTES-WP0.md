@@ -28,7 +28,7 @@ This file extends PRE-A's `docs/API-NOTES.md` (PR #1, not merged yet). It become
 | g | Muse Spark 1.3 point on a red dot in a 1280×760 image (40 px bar): the 0–1000 grid, clamping, error in px after PRE-A §5's mapping | synthetic image | ≤ $0.07 |
 | h | The same point question on Muse Spark Open (Baseten) | synthetic image | ≤ $0.07 |
 
-Modelled worst case ≤ $1.47 (the reservations; real usage is lower), well under the $6 WP0 budget. Hero-clip runs of b, d and f (real faces, real speech) add about $1.20 and wait on `SAFECUT_CLIPS_URL` (BLOCKED.md).
+Modelled worst case ≤ $1.47 (the reservations; real usage is lower), well under the $6 WP0 budget. Hero runs (real faces and speech: `--clip=` for b and d, plus `--keyframes=<dir>` for probe f's role calls, Spark 1.3 vs Wonder 1.0 at `max` on consented Set-of-Mark keyframes listed in `role_calls.json`) add about $1.20 for b and d and a worst-case reservation of $3.46 for 5 role calls on both models ($1.03 Spark, $2.43 Wonder; real usage is lower, and the $6 probe cap still applies), and wait on the consented hero footage (BLOCKED.md).
 
 ## 13.3 Recommendations (provisional: from prices and PRE-A's research, not yet from probes)
 
@@ -42,7 +42,7 @@ Modelled worst case ≤ $1.47 (the reservations; real usage is lower), well unde
 
 - **Retries:** 4 attempts (Responses up to `high`, ASR, Files); 2 (Responses `xhigh`/`max`, SAM, ASR 500). Backoff 1, 2, 4… s capped at 30 s, plus jitter; `Retry-After` is honoured up to 120 s and a longer one stops the call. 504 is never retried.
 - **Breaker:** 5 calls failed after all their attempts within 60 s open it for 60 s; then one trial call. Auth, billing and 4xx errors don't count.
-- **Cost lines:** rejected before processing (any HTTP error status, connect errors) → `usd 0`; accepted then lost (read timeout, a stream cut after it started, cancellation) → the reserved estimate with `estimated: true`; completed → the measured `usage` cost. `contracts.measured_usd` sums them apart (AGENTS rule 9).
+- **Cost lines:** rejected before processing (a 4xx, 429 or immediate 5xx, a connect error, a cancellation before sending) → `usd 0`; possibly processed (a 504 or a 5xx after 30 s, a read timeout, a stream cut after it started, a cancellation after sending, a completed response without usage) → the reserved estimate with `estimated: true`; completed with usage → the measured cost. `contracts.measured_usd` sums them apart (AGENTS rule 9).
 - **Budget stop:** a call whose worst-case estimate doesn't fit a cap is never sent; a `budget:<stage>` line names the cap (`job`, `daily`, `code`, `pilot_pool`, `test_line`).
 - **Files:** idempotent by SHA-256 through `files.json`; the multipart filename is `<job_id>-<name>`; `expires_after` is 21,600 s; a timed-out upload lists `/v1/files` to find and delete its orphan, or records `orphan: true` (so `files_deleted` can't be claimed).
 - **Streaming:** Responses and SAM always stream. A stream with no terminal event is `MetaIncomplete(eof=True)` and retried; a server `incomplete` or a refusal is billed at its usage and not retried.

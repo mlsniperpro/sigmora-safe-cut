@@ -100,7 +100,7 @@ async def _scenario(calls: list[list[str]], attempts: int, cap: float) -> None:
                 )
                 before = route.call_count
                 with contextlib.suppress(MetaError):
-                    await client.stream(spec, {"model": "muse-spark-1.3"}, meter=_meter)
+                    await client.stream(spec, {"model": "muse-spark-1.3", "store": False}, meter=_meter)
                 assert route.call_count - before <= attempts
         await client.aclose()
         lines = list(read_cost_lines(cost_path))

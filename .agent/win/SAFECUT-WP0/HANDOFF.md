@@ -25,26 +25,9 @@
 - **Gate files** in `.agent/win/SAFECUT-WP0/`: `checks.sh`, `WIN-CHECKLIST.md`, `BLOCKED.md`, `reaudit.md`, `break-it.md`.
 - **Last fully green head:** 00e3b4c (233 passed, ruff and pyright clean). A fresh clone of b7fe6c9 was green in 41 s.
 
-## In flight (exact state at the last commit)
-Code commit `bd114c7` ("audit #2 and code-review fixes") was pushed **untested, and the suite is red**.
-
-**Why it's red:** `client.guard_body` now requires `"store": False` in every streamed body unless `CallSpec.store_param=False`. Tests that stream bodies without `store` fail. The first to fail is `tests/test_chaos.py` (body `{"model": "muse-spark-1.3"}`). Also check the `stream` calls in `tests/test_meta_client.py` that pass `{"model": ...}` or `{"model": "sam-3.1"}`. Fix the tests by adding `"store": False`; don't loosen the guard.
-
-**The other changes in `bd114c7` each need a test:**
-- `files.py` rewrite:
-  - a lock per name, plus an index lock that re-reads and writes the index;
-  - a cancelled upload records an `orphan: true` entry;
-  - list and delete calls use stage `files:cleanup`, with `breaker=False`;
-  - `_file_id` validates against `FILE_ID_PATTERN`.
-- Breaker: `before_call()` returns `trial: bool`, `record_*` and `abandon_trial(trial)` take it, and a cancel during the backoff sleep frees the trial.
-- Streamed refusal deltas are buffered until the terminal event, so they're billed at actual usage.
-- `httpx.HTTPError` outside `TransportError` is mapped to `MetaUnavailable` (accepted).
-- The free token-count call uses `CallSpec(breaker=False)`.
-- Dotted 400 params (`reasoning.effort`) are classified as `MetaConfigError`.
-- One shared `config.ensure_standard_model`.
-- `trust_env=False`, and `MetaClient` validates `base_url` through `config.trusted_base_url` against `config.ALLOWED_HOSTS`.
-- Config: `AwareDatetime` for code windows, `allow_inf_nan=False`, and every token model must be in `TOKEN_PRICES`.
-- The synthetic clips were regenerated with `-threads 1` (bytes no longer depend on CPU count).
+## In flight (exact state)
+- Resumed 2026-10-26 ~18:00 UTC by the same session (LEASE active). The suite is green: 265 passed, ruff and pyright clean. All audit #2 and code-review findings are fixed and tested (tests/test_hardening.py; listed in reaudit.md).
+- Next: audit #3 and audit #4 (two clean in a row), the soak at the final head, break-it.md, gate, PR status.
 
 ## Next steps, in order
 1. Make the suite green (above); run `bash .agent/win/SAFECUT-WP0/checks.sh`.
@@ -79,6 +62,12 @@ Code commit `bd114c7` ("audit #2 and code-review fixes") was pushed **untested, 
 - All checks: `bash .agent/win/SAFECUT-WP0/checks.sh` (about 60 s).
 - Gate: `bash .agent/win-gate.sh SAFECUT-WP0`. Never edit the gate, and never weaken a test.
 - Probes: `uv run python -m scripts.probes.probes [a-h|all] [--clip=path]`. Clips: `uv run python scripts/make_synthetic_clips.py`.
+
+## Commands (owner rules; keep across hand-offs)
+- Every subagent launched with the Agent tool sets model `sonnet` and effort `high` (auditors, reviewers, fixers, researchers, soak or log watchers). Integration, self-review, deciding which findings are real, and the gate stay in this session; verify every Sonnet finding before acting on it, and never drop one unchecked.
+- Push when a substantial task is complete and green (audit findings fixed and tested, a slice working, a soak or break-it pass recorded, the gate run). Don't wait for any timer. Pushes are meaningful, squashed commit sets; never push empty, format-only or "wip" commits. Exactly one PR.
+- Never sit idle, and never end a turn to wait: while a subagent, audit, soak or build runs, work on the next item and collect results when they arrive. Stop only at the API usage limit or when the /goal is met.
+- If a WIND DOWN message arrives, follow it exactly.
 
 ## Owner rules for this work
 - Subagents use `sonnet` with effort `high`.
