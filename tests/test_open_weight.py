@@ -16,7 +16,7 @@ from safecut.config import ConfigError, OpenWeightPrice, Settings, load_settings
 from safecut.contracts import measured_usd, read_cost_lines
 from safecut.meta.budget import Caller, CapLimit, LocalLedger
 from safecut.meta.client import MetaClient
-from safecut.meta.errors import BudgetExceeded, MetaBadRequest, MetaIncomplete
+from safecut.meta.errors import BudgetExceeded, MetaIncomplete
 
 BT = "https://inference.baseten.co/v1"
 PRICE = OpenWeightPrice.model_validate({"in": 1.25, "out": 4.25})
@@ -243,20 +243,30 @@ async def test_a_frame_set_over_the_cap_is_skipped_whole(cfg: Settings, ledger: 
     assert ledger.spent("baseten_job:j_open") == 0
 
 
-async def test_one_failed_batch_fails_the_whole_opinion(cfg: Settings, ledger: LocalLedger, tmp_path: Path) -> None:
+async def test_a_failed_batch_leaves_the_others_their_findings(
+    cfg: Settings, ledger: LocalLedger, tmp_path: Path
+) -> None:
+    # redteam.md "Second opinion → Failure": per batch; finished batches keep their findings (audit #10).
     client = _client(cfg, ledger, tmp_path, caller=Caller.local("owner"))
     frames = [(i, "data:image/jpeg;base64,AA") for i in range(16)]
+    hit = {"kind": "face", "detail": "a face", "text": None, "box": [1, 2, 3, 4], "confidence": "high"}
 
     def second_batch_fails(request: httpx.Request) -> httpx.Response:
         if '"Frame 8:"' in request.content.decode():
             return httpx.Response(400, json={"error": {"message": "bad image"}})
-        return _answer_for_sent_frames(request)
+        answer = json.dumps({"frames": [{"frame": f, "findings": [hit] if f == 3 else []} for f in range(8)]})
+        return httpx.Response(200, content=_chunks(answer, usage={"prompt_tokens": 9000, "completion_tokens": 50}))
 
     with respx.mock(base_url=BT) as router:
-        router.post("/chat/completions").mock(side_effect=second_batch_fails)
-        with pytest.raises(MetaBadRequest):
-            await open_weight.second_opinion(client, _on(cfg), consented=True, frames=frames)
+        route = router.post("/chat/completions").mock(side_effect=second_batch_fails)
+        result = await open_weight.second_opinion(client, _on(cfg), consented=True, frames=frames)
     await client.aclose()
+    assert route.call_count == 2
+    assert (result.status, result.failed_batches) == ("failed", 1)
+    assert "MetaBadRequest" in result.errors[0]
+    summary = result.summary()
+    assert (summary.status, summary.frames, summary.findings) == ("failed", 8, 1)
+    assert summary.model == "meta-models/muse-spark-open-1026"
 
 
 def test_negative_usage_is_unknown_not_a_crash() -> None:

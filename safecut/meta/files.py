@@ -233,9 +233,23 @@ class FileStore:
             for f in _matching_uploads(listing.body, up.remote_name, up.size, up.started.timestamp() - 60)
             if f not in known
         ]
-        for file_id in found:
-            await self._record(FileEntry(name=up.name, sha256=up.digest, file_id=file_id, created_at=now_utc()))
-            await self._delete(file_id)
+        # Record every copy before deleting any: a delete that fails mid-loop must not leave a later copy
+        # unrecorded (files_deleted would then be claimed over it). Then try every delete.
+        copies = [FileEntry(name=up.name, sha256=up.digest, file_id=f, created_at=now_utc()) for f in found]
+        if copies:
+            await self._change(lambda entries: entries.extend(copies))
+        await self._delete_each(found)
+
+    async def _delete_each(self, file_ids: list[str]) -> None:
+        """Delete every ID, carrying on past failures; the first failure is re-raised after the rest."""
+        first_error: MetaError | None = None
+        for file_id in file_ids:
+            try:
+                await self._delete(file_id)
+            except MetaError as exc:
+                first_error = first_error or exc
+        if first_error is not None:
+            raise first_error
 
     async def _delete(self, file_id: str) -> None:
         # A 404 file_not_found means it's already gone, which is what we wanted.
@@ -268,11 +282,12 @@ class FileStore:
                 not_before = min(e.created_at for e in orphans).timestamp() - config.FILES_EXPIRES_AFTER_S
                 known = {e.file_id for e in self.index().root if e.file_id}
                 remote = f"{self.job_id}-{name}"
-                for file_id in _matching_uploads(listing.body, remote, None, not_before):
-                    if file_id not in known:
-                        copy = FileEntry(name=name, sha256=orphans[0].sha256, file_id=file_id, created_at=now_utc())
-                        await self._record(copy)
-                        await self._delete(file_id)
+                found = [f for f in _matching_uploads(listing.body, remote, None, not_before) if f not in known]
+                sha = orphans[0].sha256
+                copies = [FileEntry(name=name, sha256=sha, file_id=f, created_at=now_utc()) for f in found]
+                if copies:
+                    await self._change(lambda entries, copies=copies: entries.extend(copies))
+                await self._delete_each(found)  # a failure raises here: the orphan stays open for the sweeper
                 await self._change(functools.partial(_resolve_orphans, name))
 
     async def delete_all(self) -> bool:

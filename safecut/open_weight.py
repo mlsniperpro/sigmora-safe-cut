@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import math
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -21,10 +22,11 @@ from pydantic import BaseModel, ValidationError
 
 from safecut import config
 from safecut.config import ConfigError, OpenWeightPrice, Settings
+from safecut.contracts import OpenWeightSummary
 from safecut.meta import cost
 from safecut.meta.budget import Caller, Ledger
 from safecut.meta.client import CallResult, CallSpec, MetaClient, Units
-from safecut.meta.errors import MetaIncomplete
+from safecut.meta.errors import MetaError, MetaIncomplete
 from safecut.meta.retry import RetryPolicy
 
 MAX_TOKENS = 16_000
@@ -277,6 +279,27 @@ class SecondOpinionRefusedError(ValueError):
     """The job isn't eligible (switch off, not consented, or a code kind outside the allowed list)."""
 
 
+@dataclass(frozen=True)
+class SecondOpinion:
+    """What the batches returned (redteam.md "Second opinion → Failure"): finished batches keep their
+    findings; ``status`` is ``failed`` when any batch didn't finish, with ``frames`` counting only the
+    finished batches. It never blocks the job and adds nothing to ``unresolved``."""
+
+    model: str
+    frames: list[RedteamFrame]
+    failed_batches: int
+    errors: list[str]
+
+    @property
+    def status(self) -> Literal["ok", "failed"]:
+        return "failed" if self.failed_batches else "ok"
+
+    def summary(self) -> OpenWeightSummary:
+        """``audit.open_weight`` for WP4."""
+        findings = sum(len(frame.findings) for frame in self.frames)
+        return OpenWeightSummary(model=self.model, status=self.status, frames=len(self.frames), findings=findings)
+
+
 async def second_opinion(
     client: MetaClient,
     settings: Settings,
@@ -284,13 +307,15 @@ async def second_opinion(
     consented: bool,
     frames: Sequence[tuple[int, str]],
     kept_clear: str = "none",
-) -> RedteamAnswer:
-    """The production entry point (PRE-A §3.8): the privacy gate, then ⌈N/8⌉ calls, up to 4 in parallel.
+) -> SecondOpinion:
+    """The production entry point (PRE-A §3.8, redteam.md): the privacy gate, then ⌈N/8⌉ calls, up to 4 in
+    parallel.
 
-    The code kind comes from the client's own ``Caller``, never from an argument. All or nothing: the
-    whole frame set's estimate must fit the Baseten cap before the first call (else ``BudgetExceeded``
-    and a ``budget:`` line, and WP4 records ``open_weight.status: "off"``), and any failed or incomplete
-    batch fails the whole opinion (the other batches are cancelled).
+    The code kind comes from the client's own ``Caller``, never from an argument. The whole frame set's
+    estimate must fit the Baseten cap before the first call (else ``BudgetExceeded`` and a ``budget:`` line,
+    and WP4 records ``open_weight.status: "off"``): it never runs partially for lack of budget. Each batch
+    then stands alone: one that errors, times out or answers invalid JSON contributes nothing (no re-ask, no
+    retry), and the others keep their findings.
     """
     if not enabled_for(settings, consented=consented, code_kind=client.caller.code_kind):
         raise SecondOpinionRefusedError("the open-weight second opinion isn't enabled for this job")
@@ -308,13 +333,24 @@ async def second_opinion(
             result = await create(client, body, stage="redteam_open", price=price)
         return complete_answer(result.body, [number for number, _ in batch])
 
-    try:
-        async with asyncio.TaskGroup() as group:
-            tasks = [group.create_task(one(batch, body)) for batch, body in zip(batches, bodies, strict=True)]
-    except ExceptionGroup as failed:
-        raise failed.exceptions[0] from None  # the first failure; the other batches were cancelled
-    answered = sorted((frame for task in tasks for frame in task.result().frames), key=lambda f: f.frame)
-    return RedteamAnswer(frames=answered)
+    outcomes = await asyncio.gather(
+        *(one(batch, body) for batch, body in zip(batches, bodies, strict=True)), return_exceptions=True
+    )
+    answered: list[RedteamFrame] = []
+    errors: list[str] = []
+    for outcome in outcomes:
+        if isinstance(outcome, MetaError):
+            errors.append(f"{type(outcome).__name__}: {outcome}")
+        elif isinstance(outcome, BaseException):
+            raise outcome  # a bug or a cancellation, not a failed batch
+        else:
+            answered.extend(outcome.frames)
+    return SecondOpinion(
+        model=settings.open_weight_model,
+        frames=sorted(answered, key=lambda f: f.frame),
+        failed_batches=len(errors),
+        errors=errors,
+    )
 
 
 def enabled_for(settings: Settings, *, consented: bool, code_kind: str) -> bool:

@@ -10,6 +10,7 @@ dependencies = [
     "fastapi>=0.115",
     "httpx>=0.27",
     "imageio-ffmpeg>=0.5",
+    "matplotlib>=3.9",
     "meta-sam-parser==0.1.0",
     "numpy>=2.0",
     "opencv-python-headless>=4.8",
@@ -32,8 +33,9 @@ dev = [
     "respx>=0.21",
     "ruff>=0.8",
 ]
-audit = ["torch==2.9.1", "torchvision"]
-deploy = ["modal>=0.66"]
+# PRE-A §12: EgoBlur 2.0.1 hard-pins torch 2.9.1, torchvision 0.24.1 and vrs 1.2.2 (default-PyPI torch).
+audit = ["egoblur==2.0.1", "torch==2.9.1", "torchvision==0.24.1", "vrs==1.2.2"]
+deploy = ["modal==1.6.2"]
 
 [build-system]
 requires = ["hatchling"]

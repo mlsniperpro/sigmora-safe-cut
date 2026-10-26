@@ -107,7 +107,7 @@ UtcDatetime = Annotated[datetime, AfterValidator(_utc_datetime)]
 class Contract(BaseModel):
     """Base for every contract model: unknown keys are an error, so typos never pass silently."""
 
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = ConfigDict(extra="forbid", populate_by_name=True, allow_inf_nan=False)
 
 
 class Rle(Contract):
@@ -136,7 +136,7 @@ class Job(Contract):
     width: PositiveInt
     height: PositiveInt
     frames: PositiveInt
-    times: list[float]
+    times: list[Annotated[float, Field(ge=0)]]
     audio: bool
     created_at: UtcDatetime
     #: Gates the open-weight second opinion (PRE-A §3.8): true only for owner/recording codes (WP5) or the
@@ -550,8 +550,7 @@ class OpenWeightSummary(Contract):
             raise ValueError("an open-weight opinion that didn't run has no model, frames or findings")
         if self.status != "off" and self.model is None:
             raise ValueError("an open-weight opinion that ran names its model (the receipt and README quote it)")
-        if self.status == "failed" and self.findings:
-            raise ValueError("a failed open-weight opinion adds no findings")
+        # "failed" may still carry findings and frames: batches that finished keep theirs (redteam.md).
         return self
 
 
@@ -1080,6 +1079,68 @@ def _check_receipt_cost(receipt: Receipt, job: Job, cost_path: Path) -> None:
             raise ContractError(f"receipt.json {name} {got} != cost.jsonl {label} total {want}")
 
 
+def _check_plan_covers(plan: Plan, decisions: Decisions, tracks: Tracks | None, job: Job) -> None:
+    """Every hidden item (``hide``, or ``needs_you``, which renders hidden) has a plan entry on every frame of
+    its span: its tracks' first..last, or an audit patch's own first..last (clamped to the clip)."""
+    spans = {t.track_id: (t.first, t.last) for t in tracks.tracks} if tracks is not None else None
+    planned = {(frame, e.item_id) for frame, entries in plan.frames.items() for e in entries}
+    for item in decisions.items:
+        if item.decision not in ("hide", "needs_you"):
+            continue
+        if item.first is not None and item.last is not None:
+            first, last = item.first, item.last
+        elif spans is not None and item.track_ids:
+            first = min(spans[t][0] for t in item.track_ids if t in spans)
+            last = max(spans[t][1] for t in item.track_ids if t in spans)
+        else:
+            continue
+        missing = [f for f in range(first, min(last, job.frames - 1) + 1) if (f, item.item_id) not in planned]
+        if missing:
+            raise ContractError(f"plan.json: hidden item {item.item_id} has no entry on frames {missing[:10]}")
+
+
+def _check_links(
+    scene: Scene | None,
+    transcript: Transcript | None,
+    roles: Roles | None,
+    decisions: Decisions | None,
+    audit: Audit | None,
+) -> None:
+    """Indexes and IDs one file takes from another (WP3 indexes ``scene.participants[matches_participant]``)."""
+    if scene is not None and roles is not None:
+        for track in roles.tracks:
+            index = track.matches_participant
+            if index is not None and index >= len(scene.participants):
+                raise ContractError(
+                    f"roles.json {track.track_id}: matches_participant {index} but scene.json has"
+                    f" {len(scene.participants)} participants"
+                )
+    if scene is not None and transcript is not None:
+        for number, participant in enumerate(scene.participants):
+            turn = participant.introduced_in_turn
+            if turn is not None and turn >= len(transcript.turns):
+                raise ContractError(
+                    f"scene.json participant {number}: introduced_in_turn {turn} but transcript.json has"
+                    f" {len(transcript.turns)} turns"
+                )
+    if decisions is not None and audit is not None:
+        items = {item.item_id for item in decisions.items}
+        refs: list[tuple[str, str | None]] = []
+        for leak in audit.leaks:
+            refs += [(f"leak at frame {leak.frame} patched_item", leak.patched_item)]
+            refs += [(f"leak at frame {leak.frame} through_item", leak.through_item)]
+        refs += [(f"spot {spot.spot_id} covered_by", spot.covered_by) for spot in audit.spots]
+        for name, entries in (("redteam", audit.redteam), ("redteam_open", audit.redteam_open)):
+            refs += [
+                (f"{name} at frame {entry.frame} excluded_by", entry.excluded_by)
+                for entry in entries
+                if isinstance(entry, RedteamHit)
+            ]
+        for where, ref in refs:
+            if ref is not None and ref not in items:
+                raise ContractError(f"audit.json {where}: {ref!r} is not an item in decisions.json")
+
+
 def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:
     """Load every contract file present in ``job_dir`` and run the cross-file checks.
 
@@ -1119,6 +1180,16 @@ def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:
         _check_plan(plan, job, decisions)
     if audit is not None:
         _check_audit(audit, job)
+    if isinstance(plan, Plan) and decisions is not None:
+        _check_plan_covers(plan, decisions, tracks, job)
+    scene = loaded.get("scene.json")
+    _check_links(
+        scene if isinstance(scene, Scene) else None,
+        transcript if isinstance(transcript, Transcript) else None,
+        roles if isinstance(roles, Roles) else None,
+        decisions,
+        audit,
+    )
     if isinstance(receipt, Receipt):
         responses = loaded.get("responses.json")
         _check_receipt(

@@ -12,4 +12,4 @@ Everything here is safe to publish (AGENTS rule 4): synthetic media, documented 
 | `asr/diarization.json` | A Voice Transcribe `DIARIZATION` response with an unattributed turn | The documented response shape (PRE-A §4.2). **Not live** |
 | `probes/<a-h>/` | Raw responses and `summary.json` from the live D1 probes; `probes/cost.jsonl` is their spend | Written by `scripts/probes/probes.py` on synthetic clips only. Present once `MODEL_API_KEY` is set (see `.agent/win/SAFECUT-WP0/BLOCKED.md`) |
 
-When the live probes have run, `uv run python -m scripts.probes.trim` copies the live SAM, Muse and ASR responses next to the documented-shape ones as `live-*.json`, and every test that reads a documented-shape fixture also runs on its `live-*` twin when it exists.
+When the live probes have run, `uv run python -m scripts.probes.trim` copies the live SAM and ASR responses next to the documented-shape ones as `live-*.json` (and probe h's Baseten answers to `open_weight/live-probe-h.json`). The SAM and ASR fixture tests also run on each `live-*` twin when it exists; the Baseten answers are kept as evidence, and the Muse fixtures have no live twin until WP2 records one.

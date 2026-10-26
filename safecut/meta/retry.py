@@ -124,12 +124,12 @@ class CircuitBreaker:
         return False
 
     def record_success(self, trial: bool = False) -> None:
-        """An answered call while open or half-open (the trial, or a late call) proves the service is up:
-        close the breaker. While closed it changes nothing: PRE-A §10.2/R6 counts five failed calls within
-        60 s, not five in a row, so a partial outage (one endpoint failing while others answer) still opens it.
+        """Only the half-open trial's success closes the breaker (PRE-A §10.2/R6). While closed, a success
+        changes nothing: R6 counts five failed calls within 60 s, not five in a row, so a partial outage (one
+        endpoint failing while others answer) still opens it. While open, a late success from a call that
+        started before the breaker opened keeps it open for its full 60 s.
         """
-        del trial  # any answered call closes an open breaker, trial or not
-        if self._opened_at is None:
+        if not trial and self.state != "half_open":
             return
         self._recent.clear()
         self._opened_at = None

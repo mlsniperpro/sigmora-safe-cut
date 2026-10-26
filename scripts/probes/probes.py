@@ -149,10 +149,10 @@ async def probe_a(p: Probe) -> Summary:
 # -- b: SAM 3.1 video -------------------------------------------------------------
 
 
-async def _sam_once(p: Probe, file_id: str, concept: str, frames: int) -> Summary:
+async def _sam_once(p: Probe, file_id: str, concept: str, frames: int, log: sam.ResponseLog) -> Summary:
     body = sam.video_body(p.settings, file_id=file_id, text=concept)
     started = time.monotonic()
-    result = await sam.segment_video(p.meta, body, sam_frames=frames, stage="probe_b")
+    result = await sam.segment_video(p.meta, body, sam_frames=frames, stage="probe_b", responses=log)
     latency = time.monotonic() - started
     p.save(f"sam-{concept.replace(' ', '_')}.events.json", result.events)
     async with parse_responses_stream(_events(result.events), video_segmentation_format()) as parsed:
@@ -200,19 +200,32 @@ async def probe_b(p: Probe) -> Summary:
     frames = await asyncio.to_thread(count_frames, p.clip)
     file_id = await p.files.upload(p.clip, "sam_proxy.mp4")
     concepts = SAM_CONCEPTS if p.synthetic else HERO_CONCEPTS
-    out: Summary = {"clip": p.clip.name, "synthetic": p.synthetic, "frames": frames, "concepts": {}}
+    out: Summary = {
+        "clip": p.clip.name,
+        "synthetic": p.synthetic,
+        "frames": frames,
+        "store_false_sent": p.settings.sam_send_store,
+        "concepts": {},
+    }
+    log = sam.ResponseLog(p.out / "job")
     for concept in concepts:
         try:
-            out["concepts"][concept] = await _sam_once(p, file_id, concept, frames)
+            out["concepts"][concept] = await _sam_once(p, file_id, concept, frames, log)
         except MetaError as exc:
             out["concepts"][concept] = {"error": f"{type(exc).__name__}: {exc}"}
+    if p.settings.delete_sam_responses:
+        out["responses_delete_requested"] = await log.delete_pending(p.meta)
+        out["response_ids_refused"] = len(log.refused)
     if not p.synthetic:
         return out
+    # PRE-A §12: if SAM rejects store, SAM runs without it and each response is deleted after parsing.
+    # Record whether that delete works for SAM ids, and the id format the log accepts.
+    out["delete_without_store"] = await _sam_delete_check(p, file_id, frames)
     # Does SAM accept an fps hint on the video part? (undocumented; PRE-A §1.6)
     body = sam.video_body(p.settings, file_id=file_id, text="red square")
     body["input"][0]["content"][1]["fps"] = 8
     try:
-        hinted = await sam.segment_video(p.meta, body, sam_frames=frames, stage="probe_b")
+        hinted = await sam.segment_video(p.meta, body, sam_frames=frames, stage="probe_b", responses=log)
         out["input_video_fps_8"] = {
             "accepted": True,
             "frames_billed": hinted.response.get("usage", {}).get("video_frames_processed"),
@@ -220,6 +233,39 @@ async def probe_b(p: Probe) -> Summary:
     except MetaError as exc:
         out["input_video_fps_8"] = {"accepted": False, "error": f"{type(exc).__name__}: {exc}"}
     return out
+
+
+async def _sam_delete_check(p: Probe, file_id: str, frames: int) -> Summary:
+    """One SAM call sent without ``store``, then ``DELETE /responses/{id}`` twice (the repeat should 404)."""
+    settings = p.settings.model_copy(update={"sam_send_store": False, "sam_delete_responses": True})
+    client = MetaClient(
+        settings, job_id=p.meta.job_id, caller=p.meta.caller, ledger=p.meta.ledger, cost_path=p.meta.cost_path
+    )
+    log = sam.ResponseLog(p.out / "job-nostore")
+    try:
+        body = sam.video_body(settings, file_id=file_id, text="red square")
+        await sam.segment_video(client, body, sam_frames=frames, stage="probe_b", responses=log)
+        first = await log.delete_pending(client)
+        ids = [e.response_id for e in log.index().root]
+        repeat = {rid: await _delete_again(client, rid) for rid in ids}
+    except MetaError as exc:
+        return {"error": f"{type(exc).__name__}: {exc}"}
+    finally:
+        await client.aclose()
+    return {
+        "response_ids": ids,
+        "ids_refused_by_format": log.refused,
+        "delete_requested": first,
+        "repeat_delete": repeat,
+    }
+
+
+async def _delete_again(client: MetaClient, response_id: str) -> str:
+    try:
+        await client.request("DELETE", f"responses/{response_id}", sam.delete_spec(), meter=lambda _: ({}, 0.0))
+    except MetaError as exc:
+        return f"{type(exc).__name__}: {exc}"
+    return "deleted again"
 
 
 # -- c, e, f: video questions --------------------------------------------------------

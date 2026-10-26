@@ -10,6 +10,128 @@
   "gap_hold_s": 2.0
  },
  "frames": {
+  "1": [
+   {
+    "item_id": "i_3",
+    "shape": "box",
+    "box": [
+     884,
+     384,
+     1116,
+     616
+    ],
+    "mask": null,
+    "style": "pixelate",
+    "grid": [
+     884,
+     384,
+     16
+    ],
+    "source": "decision"
+   }
+  ],
+  "2": [
+   {
+    "item_id": "i_3",
+    "shape": "box",
+    "box": [
+     884,
+     384,
+     1116,
+     616
+    ],
+    "mask": null,
+    "style": "pixelate",
+    "grid": [
+     884,
+     384,
+     16
+    ],
+    "source": "decision"
+   },
+   {
+    "item_id": "p_1",
+    "shape": "box",
+    "box": [
+     195,
+     194,
+     265,
+     286
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "audit_patch"
+   }
+  ],
+  "3": [
+   {
+    "item_id": "i_3",
+    "shape": "box",
+    "box": [
+     884,
+     384,
+     1116,
+     616
+    ],
+    "mask": null,
+    "style": "pixelate",
+    "grid": [
+     884,
+     384,
+     16
+    ],
+    "source": "decision"
+   },
+   {
+    "item_id": "p_1",
+    "shape": "box",
+    "box": [
+     195,
+     194,
+     265,
+     286
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "audit_patch"
+   }
+  ],
+  "4": [
+   {
+    "item_id": "i_3",
+    "shape": "box",
+    "box": [
+     884,
+     384,
+     1116,
+     616
+    ],
+    "mask": null,
+    "style": "pixelate",
+    "grid": [
+     884,
+     384,
+     16
+    ],
+    "source": "decision"
+   },
+   {
+    "item_id": "p_1",
+    "shape": "box",
+    "box": [
+     195,
+     194,
+     265,
+     286
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "audit_patch"
+   }
+  ],
   "5": [
    {
     "item_id": "i_2",
@@ -42,9 +164,173 @@
      16
     ],
     "source": "decision"
+   },
+   {
+    "item_id": "p_1",
+    "shape": "box",
+    "box": [
+     195,
+     194,
+     265,
+     286
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "audit_patch"
+   }
+  ],
+  "6": [
+   {
+    "item_id": "i_2",
+    "shape": "box",
+    "box": [
+     94,
+     288,
+     172,
+     392
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
+    "item_id": "p_1",
+    "shape": "box",
+    "box": [
+     195,
+     194,
+     265,
+     286
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "audit_patch"
+   }
+  ],
+  "7": [
+   {
+    "item_id": "i_2",
+    "shape": "box",
+    "box": [
+     96,
+     288,
+     174,
+     392
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
+    "item_id": "p_1",
+    "shape": "box",
+    "box": [
+     195,
+     194,
+     265,
+     286
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "audit_patch"
+   }
+  ],
+  "8": [
+   {
+    "item_id": "i_2",
+    "shape": "box",
+    "box": [
+     99,
+     288,
+     177,
+     392
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
+    "item_id": "p_1",
+    "shape": "box",
+    "box": [
+     195,
+     194,
+     265,
+     286
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "audit_patch"
+   }
+  ],
+  "9": [
+   {
+    "item_id": "i_2",
+    "shape": "box",
+    "box": [
+     101,
+     288,
+     179,
+     392
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
+    "item_id": "i_4",
+    "shape": "box",
+    "box": [
+     294,
+     495,
+     386,
+     565
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
+    "item_id": "p_1",
+    "shape": "box",
+    "box": [
+     195,
+     194,
+     265,
+     286
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "audit_patch"
    }
   ],
   "10": [
+   {
+    "item_id": "p_1",
+    "shape": "box",
+    "box": [
+     195,
+     194,
+     265,
+     286
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "audit_patch"
+   }
+  ],
+  "11": [
    {
     "item_id": "p_1",
     "shape": "box",

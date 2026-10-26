@@ -92,7 +92,9 @@ class ResponseLog:
 
     Every read-modify-write here is synchronous (no ``await`` inside), so tasks on one event loop can't
     interleave their updates. :meth:`note` never raises (it runs inside a paid stream): an ID it can't
-    write is kept in memory for :meth:`delete_pending`, and an ID that isn't a plain token is refused.
+    write is kept in memory for :meth:`delete_pending`. An ID that isn't a plain token can't be put in a
+    DELETE path safely: it is kept in :attr:`refused` and logged as an error, so WP4's receipt notes says how
+    many responses could not be deleted.
     """
 
     NAME = "responses.json"
@@ -100,6 +102,8 @@ class ResponseLog:
     def __init__(self, job_dir: str | Path) -> None:
         self.path = Path(job_dir) / self.NAME
         self._unsaved: list[str] = []
+        self._requested_unrecorded: set[str] = set()  # deletion requested; responses.json couldn't record it
+        self.refused: list[str] = []
 
     def index(self) -> ResponsesIndex:
         return load(self.path, ResponsesIndex) if self.path.exists() else ResponsesIndex([])
@@ -110,7 +114,9 @@ class ResponseLog:
 
     def note(self, response_id: str) -> None:
         if not _RESPONSE_ID.fullmatch(response_id):
-            log.warning("SAM response id refused: not a plain token", extra={"response_id": response_id[:64]})
+            log.error("SAM response id refused: not a plain token; it can't be deleted", extra={"id": response_id[:64]})
+            if response_id not in self.refused:
+                self.refused.append(response_id)
             return
         try:
             entries = list(self.index().root)
@@ -122,28 +128,43 @@ class ResponseLog:
             if response_id not in self._unsaved:
                 self._unsaved.append(response_id)
 
+    def requested(self) -> int:
+        """The receipt's ``responses_delete_requested``: recorded in responses.json, plus any it couldn't hold."""
+        try:
+            recorded = self.index().requested
+        except (OSError, ValueError):
+            log.exception("responses.json unreadable; counting only in-memory requests")
+            recorded = 0
+        return recorded + len(self._requested_unrecorded)
+
     async def delete_pending(self, client: MetaClient) -> int:
-        """Request deletion of every noted response not yet requested. Returns the receipt's count.
+        """Request deletion of every noted response not yet requested. Returns :meth:`requested`.
 
         A 404 with an error body counts as done (an earlier DELETE landed); an empty-body 404 means a wrong
         path (``MetaConfigError``) and is a failure. Any failure is logged and stays pending for the sweeper;
-        it never blocks the rest.
+        it never blocks the rest, and an unreadable responses.json never blocks the in-memory IDs.
         """
         self._flush_unsaved()
-        unsaved_done = 0
-        for response_id in [*self.index().pending, *self._unsaved]:
+        try:
+            recorded = self.index().pending
+        except (OSError, ValueError):
+            log.exception("responses.json unreadable; deleting the in-memory ids only")
+            recorded = []
+        for response_id in [*recorded, *self._unsaved]:
+            if response_id in self._requested_unrecorded:
+                continue  # already requested; only the record of it failed
             try:
-                await client.request("DELETE", f"responses/{response_id}", _delete_spec(), meter=_no_cost)
+                await client.request("DELETE", f"responses/{response_id}", delete_spec(), meter=_no_cost)
             except MetaError as exc:
                 if exc.status != 404 or isinstance(exc, MetaConfigError):
                     log.warning("SAM response delete failed", extra={"response_id": response_id, "error": str(exc)})
                     continue
             if response_id in self._unsaved:
                 self._unsaved.remove(response_id)
-                unsaved_done += 1  # requested, but responses.json can't record it
+                self._requested_unrecorded.add(response_id)
             else:
                 self._mark(response_id)
-        return self.index().requested + unsaved_done
+        return self.requested()
 
     def _flush_unsaved(self) -> None:
         for response_id in list(self._unsaved):
@@ -151,18 +172,22 @@ class ResponseLog:
             self.note(response_id)  # back into the list if the write still fails
 
     def _mark(self, response_id: str) -> None:
-        entries = [
-            e.model_copy(update={"requested_at": now_utc()}) if e.response_id == response_id else e
-            for e in self.index().root
-        ]
-        dump(ResponsesIndex(entries), self.path)
+        try:
+            entries = [
+                e.model_copy(update={"requested_at": now_utc()}) if e.response_id == response_id else e
+                for e in self.index().root
+            ]
+            dump(ResponsesIndex(entries), self.path)
+        except (OSError, ValueError):
+            log.exception("responses.json write failed after a delete", extra={"response_id": response_id})
+            self._requested_unrecorded.add(response_id)
 
 
 def _no_cost(_: Any) -> tuple[Units, float]:
     return {}, 0.0
 
 
-def _delete_spec() -> CallSpec:
+def delete_spec() -> CallSpec:
     return CallSpec(
         stage="sam:delete_response",
         model=None,

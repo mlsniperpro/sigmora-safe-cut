@@ -93,6 +93,10 @@ def api(tmp_path: Path) -> Iterator[respx.MockRouter]:
             return_value=httpx.Response(200, json={"input_tokens": 6000})
         )
         router.post(f"{BASE}/responses").mock(side_effect=_responses)
+        deletes = iter([httpx.Response(200, json={"deleted": True})])
+        router.delete(url__regex=rf"{BASE}/responses/[A-Za-z0-9_-]+").mock(
+            side_effect=lambda _: next(deletes, httpx.Response(404, json={"error": {"message": "No response found"}}))
+        )
         router.post(f"{BASE}/asr/transcribe").mock(
             return_value=httpx.Response(200, json={"transcript": "", "audioDurationMs": 3000, "turns": []})
         )
@@ -112,6 +116,10 @@ async def test_all_probes_replay(api: respx.MockRouter, tmp_path: Path) -> None:
     assert red["frames_billed"] == 90
     assert red["mean_iou_vs_truth"] is not None
     assert results["b"]["input_video_fps_8"]["accepted"] is True
+    check = results["b"]["delete_without_store"]
+    assert check["delete_requested"] == len(check["response_ids"]) == 1
+    assert check["ids_refused_by_format"] == []
+    assert all("MetaBadRequest" in v for v in check["repeat_delete"].values())  # a repeat 404s
     assert results["c"]["frame_error"] == abs(64 - probes._frame_when_red_crosses_centre())
     assert results["d"]["audio_duration_ms"] == 3000
     assert set(results["f"]) - {"uploads_deleted"} == {

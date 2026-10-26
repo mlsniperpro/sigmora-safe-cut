@@ -73,6 +73,33 @@ def iter_sse(lines: Iterable[str]) -> Iterator[dict[str, Any]]:
 _EOL = re.compile(r"\r\n|\r|\n")
 
 
+class _LineSplitter:
+    """Incremental SSE line splitting: each text is scanned once, so a multi-MB line stays linear."""
+
+    def __init__(self) -> None:
+        self._line: list[str] = []  # the current line's text so far
+        self._skip_lf = False  # the last text ended with "\r": a leading "\n" completes that "\r\n"
+
+    def feed(self, text: str) -> list[str]:
+        if not text:
+            return []  # the decoder held a partial character: nothing changes, "\r" state included
+        if self._skip_lf and text.startswith("\n"):
+            text = text[1:]
+        self._skip_lf = False
+        if "\r" not in text and "\n" not in text:
+            if text:
+                self._line.append(text)
+            return []
+        first, *middle, last = _EOL.split(text)
+        lines = ["".join([*self._line, first]), *middle]
+        self._line = [last] if last else []
+        self._skip_lf = text.endswith("\r")
+        return lines
+
+    def close(self) -> list[str]:
+        return ["".join(self._line)] if self._line else []
+
+
 async def aiter_sse_lines(chunks: AsyncIterable[bytes]) -> AsyncIterator[str]:
     """Split a byte stream into SSE lines (``httpx.Response.aiter_bytes()``).
 
@@ -80,21 +107,12 @@ async def aiter_sse_lines(chunks: AsyncIterable[bytes]) -> AsyncIterator[str]:
     string would cut an event in two. Undecodable bytes become U+FFFD (inside a string, still valid JSON).
     """
     decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
-    buffer = ""
+    splitter = _LineSplitter()
     async for chunk in chunks:
-        buffer += decoder.decode(chunk)
-        # A trailing "\r" may be the first half of "\r\n": keep it until the next chunk shows which.
-        held = buffer.endswith("\r")
-        *lines, rest = _EOL.split(buffer[:-1] if held else buffer)
-        buffer = rest + ("\r" if held else "")
-        for line in lines:
+        for line in splitter.feed(decoder.decode(chunk)):
             yield line
-    buffer += decoder.decode(b"", final=True)
-    *lines, rest = _EOL.split(buffer)
-    for line in lines:
+    for line in [*splitter.feed(decoder.decode(b"", final=True)), *splitter.close()]:
         yield line
-    if rest:
-        yield rest
 
 
 async def aiter_sse(lines: AsyncIterable[str]) -> AsyncIterator[dict[str, Any]]:

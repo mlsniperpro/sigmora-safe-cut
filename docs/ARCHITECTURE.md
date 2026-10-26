@@ -171,5 +171,5 @@ Endpoint: `https://api.meta.ai/v1` (OpenAI-compatible Responses, Files, ASR). Th
 - **Web:** Next.js on Vercel at a custom domain (the owner's Vercel team blocks public `*.vercel.app` aliases). The owner and Claude set the domain and env.
 - **Public demo:** the landing page plays the precomputed hero results (labelled). "Try it" needs a judge access code (`SAFECUT_ACCESS_CODES`), is rate-limited per IP, and stops at `SAFECUT_DAILY_USD_CAP`.
 - **Replay mode** (`SAFECUT_REPLAY=1`): stages read saved API responses from the job directory instead of calling Meta. It's used for tests, the live-finals fallback (labelled "demo mode"), and cost-free UI work.
-- **Observability:** structured logs with job ID and stage timings, `cost.jsonl`, and a `/healthz` endpoint that checks the Meta API with a 1-token call at most once a minute.
+- **Observability:** structured logs with job ID and stage timings, `cost.jsonl`, and a `/healthz` endpoint that checks the Meta API with a minimal call (`max_output_tokens: 16`, the documented minimum) at most once a minute (once every 5 minutes before Nov 5 00:00 UTC; PRE-A §10.7).
 - **CI:** GitHub Actions (free for public repos) runs ruff + pytest + web lint/typecheck/test on every PR, and deploys Modal from `main` once WP5 lands.

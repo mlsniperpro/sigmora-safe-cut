@@ -26,14 +26,16 @@
 - **Last fully green head:** the head of this push (372 passed, ruff and pyright clean).
 
 ## Current state (session_01FE6cwwWXD1E2eCpwUV9ftx, resumed 22:26 UTC 2026-10-26)
-- **Head:** green. Audits #6, #7 and #8 are fixed in this push: 408 passed, ruff and pyright strict clean.
+- **Head:** green. Audits #6–#10 are all fixed: 425 passed, ruff and pyright strict clean. `CLEAN_AUDITS_IN_A_ROW` is 0.
 - **Audit #6** at 8cc543c: 1 high, 3 medium and 5 low findings, fixed in 2568819.
-- **Audits #7 and #8** (two in parallel) at 2568819: 1 medium and 8 low findings, fixed in this push.
-- All findings are verified, and each one is in reaudit.md with its test. `CLEAN_AUDITS_IN_A_ROW` is 0.
-- **Next:** run two fresh parallel audits, the soak and a fresh clone at this head.
+- **Audits #7–#8** at 2568819: 1 medium and 8 low findings, fixed in 5bba04c.
+- **Audits #9–#10** at 5bba04c: 4 medium and 10 low findings, fixed in this push.
+- **Re-lock:** the lock now includes the PRE-A §12 pins (egoblur, torchvision, vrs, modal, matplotlib). EgoBlur caps opencv below 5, so the synthetic clips were regenerated (truth unchanged).
+- **Audits run in pairs:** two independent Sonnet audits run in parallel at each head. Both clean at the same head counts as two clean audits in a row.
+- **Next:** two parallel audits, the soak and a fresh clone at this head, then break-it.md, the gate and the PR.
 
 ## Next steps, in order
-1. Claim the lease, then run `bash .agent/win/SAFECUT-WP0/checks.sh`; expect 408 passed.
+1. Claim the lease, then run `bash .agent/win/SAFECUT-WP0/checks.sh`; expect 425 passed.
 2. Run a fresh, full audit with a Sonnet subagent (effort high, read-only; give it PRE-A from `git show origin/pre-a-research:docs/API-NOTES.md`). Focus hardest on the audit #5 code: `files.py` reconcile and `_keep`, `sam.ResponseLog`, the `validate_job_dir` cross-checks, and the ledger's `_same_reservation`. Verify every finding before fixing it, and record it in reaudit.md. Repeat until two audits in a row are clean, then set `AUDITED_COMMIT` to the final head and `CLEAN_AUDITS_IN_A_ROW: 2`.
 3. At the final head:
    - run the soak in the background (`HYPOTHESIS_PROFILE=soak uv run pytest -m "not live" -q`, its PID in `pids`, about 40+ min);

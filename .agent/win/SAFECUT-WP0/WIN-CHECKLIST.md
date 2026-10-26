@@ -3,7 +3,7 @@
 Legend: `- [x]` done with evidence · `- [P]` parked on an owner input (BLOCKED.md) · `- [-]` not applicable · `- [ ]` open.
 
 ## WP0 brief
-- [x] pyproject (Python 3.12, uv) with main/dev/audit/deploy groups, plus the PRE-A §12 additions (meta-sam-parser, pycocotools, scipy, boto3, pytest-cov). Evidence: `uv lock` resolved 99 packages; `uv sync --locked` passes in checks.sh
+- [x] pyproject (Python 3.12, uv) with main/dev/audit/deploy groups, plus the PRE-A §12 additions (meta-sam-parser, pycocotools, scipy, boto3, matplotlib, pytest-cov; audit = egoblur==2.0.1 with torch 2.9.1, torchvision 0.24.1, vrs 1.2.2; deploy = modal==1.6.2). Evidence: `uv lock` resolved 99 packages; `uv sync --locked` passes in checks.sh
 - [x] config.py holds every env var in ARCHITECTURE §4 and the PRE-A §12 table, typed, with defaults; refuses -contributor IDs. Evidence: commit 895500e
 - [x] contracts.py: a model for every §3 file plus every PRE-A §12 row as of pre-a-research 7f7ab67 (incl. job.open_weight_attempted, receipt.cost_usd_baseten, data_handling.responses_delete_requested, responses.json), load/dump helpers, and `validate_job_dir` cross-checks (ids, frames, boxes, receipt vs decisions/audit/files/responses/cost). Evidence: tests/test_contracts.py, tests/test_audit5.py
 - [x] Round-trip tests for every contract using a coherent example job directory. Evidence: test_example_round_trips × 11 files
@@ -38,6 +38,7 @@ Legend: `- [x]` done with evidence · `- [P]` parked on an owner input (BLOCKED.
 - [x] PRE-A §12 contract rows (job.consented, job.open_weight_attempted, audit.open_weight, audit.redteam_open, cost.jsonl provider, cap baseten_job, receipt.cost_usd_baseten, responses.json + data_handling.responses_delete_requested, the SAFECUT_OPEN_WEIGHT_* and SAFECUT_SAM_DELETE_RESPONSES env vars with the SAM response delete step). Evidence: safecut/contracts.py, safecut/config.py, safecut/meta/sam.py, tests/test_open_weight.py, tests/test_audit5.py
 
 - [x] Audit #5 findings (4 medium, 10 low) fixed with tests or recorded decisions. Evidence: reaudit.md, tests/test_audit5.py
+- [x] Audits #9 and #10 findings (4 medium, 10 low): linear SSE splitting, PRE-A §12 dependency pins, probe b without store plus the SAM DELETE check, per-batch open-weight failure, orphan copies recorded before deletes, cross-file pointers and full plan coverage, no NaN in contracts. Evidence: reaudit.md, tests/test_audit9.py, tests/test_audit10.py
 - [x] Audits #7 and #8 findings (1 medium, 8 low): SSE split only on SSE line endings, shielded settle/release, the breaker's 60 s window, response-ID hygiene, a failure-proof response log, 4 Baseten batches in flight. Evidence: reaudit.md, tests/test_audit7.py
 - [x] Audit #6 findings (1 high, 3 medium, 5 low): open weights at ≤ 8 images per call in all-or-nothing batches with no transport retry, probe h's 8/9-image calls, SAM response IDs kept on every attempt, receipt cross-checks item by item and per provider. Evidence: reaudit.md, tests/test_audit6.py, tests/test_open_weight.py
 

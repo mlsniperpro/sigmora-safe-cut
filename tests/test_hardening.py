@@ -570,8 +570,9 @@ def test_open_weight_contract_rules() -> None:
         OpenWeightSummary.model_validate({"status": "ok", "model": None})
     with pytest.raises(ValidationError):
         OpenWeightSummary.model_validate({"status": "off", "frames": 9})
-    with pytest.raises(ValidationError):
-        OpenWeightSummary.model_validate({"status": "failed", "model": "m", "findings": 2})
+    # A failed opinion keeps the findings of the batches that finished (redteam.md, audit #10).
+    failed = OpenWeightSummary.model_validate({"status": "failed", "model": "m", "frames": 8, "findings": 2})
+    assert failed.findings == 2
     example = Path(__file__).resolve().parent.parent / "fixtures" / "contracts" / "j_example"
     job = json.loads((example / "job.json").read_text())
     for lax in ("yes", 1, "on"):
