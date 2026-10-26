@@ -641,6 +641,11 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#600 (win audit 48)**: (audit C; OFFICIAL-GUIDE) The guide's building period starts Oct 27 while our boundary is Oct 26 16:00 UTC, and WP0/WP6 committed product code on Oct 26. Fix: RULES-CHECKLIST §0 row and a BLOCKED step to ask in #office-hours by Nov 3; default keeps kickoff and lists the Oct 26 commits in the README.
 - [x] **#601 (win audit 48)**: (audit C) RULES-CHECKLIST §1 said "docs only before kickoff", against §0 and PRE-A's since-removed calculation script. Fix: §0's wording plus the README disclosure.
 - [x] **#602 (win audit 48)**: (audit C) BLOCKED's default pilot credit omitted the 1–2-pilot anonymous override. Fix: added, with telling the pilot why.
+- [x] **#603 (win audit 48)**: (audit B) The shortcuts switch was reachable only by `?`, which it disables. Fix: a visible [Keyboard shortcuts] button in the Tab order; dialog title and switch label given.
+- [x] **#604 (win audit 48)**: (audit B) Receipt URLs had no field names, and the 403 refetch pointed at an endpoint that didn't return them. Fix: `result: {video_url, receipt_html_url, receipt_json_url}` on both routes.
+- [x] **#605 (win audit 48)**: (audit B) How the access code reaches the server was unspecified. Fix: `POST /v1/jobs` takes `code`, bound to the job; later paid requests use the job link and that binding.
+- [x] **#606 (win audit 48)**: (audit B) Static items had no defined votes section. Fix: omitted (heading included) for static and audit-added items unless an object ruling exists.
+- [x] **#607 (win audit 48)**: (audit B) `job-failed-render.json` cited §10.4 for its retry rule. Fix: §10.3.
 
 ## 4. Which builder reads what
 
