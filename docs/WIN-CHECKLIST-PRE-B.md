@@ -602,6 +602,12 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#561 (win audit 45)**: (audit C) The anonymous credit example used a city. Fix: country.
 - [x] **#562 (win audit 45)**: (audit C) Hero releases didn't cover Baseten for the recording-kind second opinion. Fix: addendum before Nov 3, else `recording` stays out of `SAFECUT_OPEN_WEIGHT_CODE_KINDS`.
 - [x] **#563 (win audit 45)**: (audit C) The conditional rules item had no date. Fix: Oct 27, once the full rules are read.
+- [x] **#564 (win audit 46)**: (audit B) The Baseten line sat "below the data bullets" on step B, where there are none, with no deck row, fixture or model-name rule. Fix: Data bullet 4 row (step B, above the tick), wireframe line, `open_weight` absent = false, `code-check-ok-open-weight.json`, `demo-hero-open-weight.json`, a display-name rule.
+- [x] **#565 (win audit 46)**: (audit B) The header-counts placeholders reused §3.5's `k` and `u`. Fix: `{n_hidden}`, `{n_kept}`, `{n_needs}`.
+- [x] **#566 (win audit 46)**: (audit B) A retried rejected `undo` lost its put-back data. Fix: `undone` typed in `pending`/`rejected`, carried by `RETRY`; R31d.
+- [x] **#567 (win audit 46)**: (audit B) The RETRY sentence was garbled after #535. Fix: rewritten.
+- [x] **#568 (win audit 46)**: (audit B) §3.4 said pressing Undo again steps back, but "Undone." has no [Undo]. Fix: `Ctrl+Z`/`Z`.
+- [x] **#569 (win audit 46)**: (audit B) Several `/try` strings existed only in wireframes. Fix: §2.6 rows (title, judge hint, drop zone, reveal toggle Show/Hide, progress heading, leave note).
 
 ## 4. Which builder reads what
 
