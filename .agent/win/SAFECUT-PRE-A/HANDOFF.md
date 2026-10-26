@@ -14,7 +14,7 @@
 - Last pushes: `7ca667d` (audit #35 fixes), `b6fa465` (concurrency row). The PR #1 body still shows an older push; refresh it at the end (step 5).
 
 ## In flight
-- Loop continues past kickoff on the owner's /goal. Official guide committed (`docs/OFFICIAL-GUIDE.md`, authoritative) and reconciled (WIN-CHECKLIST §7, API-NOTES §3.8 open-weight second opinion on Baseten). Audits #36–#45 applied and logged; #42–#45 were full passes (21, 22, 21, 15+ findings; 45B was still running when #45 was logged: collect it, verify, fix). **Next: full audit #46 on the pushed HEAD**, then #47; done when two consecutive full audits find nothing new, then refresh the PR #1 body and re-post the final status comment. PR #2 open items: API-NOTES §12 lines marked **open**.
+- Loop continues past kickoff on the owner's /goal. Official guide committed (`docs/OFFICIAL-GUIDE.md`, authoritative) and reconciled (WIN-CHECKLIST §7, API-NOTES §3.8 open-weight second opinion on Baseten). Audits #36–#46 applied and logged; #42–#46 were full passes (21, 22, 21, 18, 21 findings). **Next: full audit #47 on the pushed HEAD**, then #48; done when two consecutive full audits find nothing new, then refresh the PR #1 body and re-post the final status comment. PR #2 open items: API-NOTES §12 lines marked **open**.
 
 ## Next steps (in order)
 1. Lease is claimed (`status=active`); keep it so until a WIND DOWN.
