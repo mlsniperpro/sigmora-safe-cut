@@ -14,7 +14,7 @@
 - Last pushes: `7ca667d` (audit #35 fixes), `b6fa465` (concurrency row). The PR #1 body still shows an older push; refresh it at the end (step 5).
 
 ## In flight
-- Audit #36 fully applied (A, B, C) and logged in WIN-CHECKLIST §6. Kickoff (2026-10-26 16:00 UTC) ends the PRE-A docs win loop (brief): no clean audit pair was reached; audit #37 was not run. Remaining PRE-B open requests: API-NOTES §12 "Requests to PRE-B" lines marked **open**.
+- Audits #36 (A, B, C) applied and logged. Audit #37 (short, on the #36 fixes): C done, no new findings, PR #2 @ `9eec776` matches every shared number and contract; only its 18+/rights tick is open. 37A (internal check of `git diff 7ca667d..0b2cb01 -- docs/`) was still running at 15:51 UTC; if it was not collected, rerun it. Kickoff 16:00 UTC ends the PRE-A docs win loop (brief); the two-clean-audits condition was not reached. PR #1 body refreshed 15:50 UTC.
 
 ## Next steps (in order)
 1. Lease is claimed (`status=active`); keep it so until a WIND DOWN.
