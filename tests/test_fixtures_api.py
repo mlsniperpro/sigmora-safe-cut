@@ -91,8 +91,9 @@ async def test_sam_stream_fixtures_parse(path: Path) -> None:
         final = await parsed.final_result()
     assert not _errors(final)
     usage, usd = sam.video_meter(events[-1]["response"])
-    assert usage["frames"] >= 0
-    assert usd >= 0
+    assert usd is not None
+    assert usage["frames"] > 0
+    assert usd > 0
 
 
 def test_muse_fixtures() -> None:
@@ -108,6 +109,7 @@ def test_muse_fixtures() -> None:
     assert outcome is not None
     assert isinstance(outcome.error, MetaIncomplete)
     assert not outcome.error.eof
+    assert outcome.usd is not None
     assert outcome.usd > 0
 
 

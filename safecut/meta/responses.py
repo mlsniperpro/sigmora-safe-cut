@@ -18,20 +18,6 @@ from safecut.meta.client import CallSpec, MetaClient, Meter, StreamResult, Units
 from safecut.meta.errors import BudgetExceeded, MetaError, MetaIncomplete, MetaRefusal
 from safecut.meta.retry import RetryPolicy
 
-#: Parameters that are no-ops or 400s on Responses (PRE-A §3.6): never sent.
-FORBIDDEN_PARAMS = frozenset(
-    {
-        "temperature",
-        "top_p",
-        "stop",
-        "n",
-        "logprobs",
-        "logit_bias",
-        "response_format",
-        "truncation",
-        "previous_response_id",
-    }
-)
 _SCHEMA_NAME_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
 
 
@@ -117,9 +103,11 @@ def _count_parts(body: Mapping[str, Any]) -> tuple[int, int]:
 def meter_for(model: str) -> Meter:
     """Actual cost from a completed response's ``usage``."""
 
-    def meter(response: Mapping[str, Any]) -> tuple[Units, float]:
+    def meter(response: Mapping[str, Any]) -> tuple[Units, float | None]:
         usage = response.get("usage")
-        units = cost.usage_units(cast(Mapping[str, Any], usage) if isinstance(usage, Mapping) else None)
+        if not cost.has_token_usage(usage):
+            return {}, None
+        units = cost.usage_units(cast(Mapping[str, Any], usage))
         return units, cost.responses_usd_from_units(model, units)
 
     return meter

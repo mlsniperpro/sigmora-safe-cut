@@ -72,7 +72,7 @@ class Ledger(Protocol):
 
 
 class LocalLedger:
-    """A SQLite-backed ledger (``:memory:`` by default). Thread-safe; one writer per file.
+    """A SQLite-backed ledger (``:memory:`` by default). Thread-safe, and safe across processes on one file.
 
     ``reserve`` raises :class:`BudgetExceeded` naming the first cap that can't cover the estimate.
     ``settle`` and ``release`` are idempotent per ``call_id``; an unknown ``call_id`` is an error.
@@ -123,6 +123,18 @@ class LocalLedger:
         with self._lock:
             if self._db.execute("SELECT 1 FROM reservation WHERE call_id = ?", (call_id,)).fetchone():
                 raise ValueError(f"call_id {call_id!r} already reserved")
+            # BEGIN IMMEDIATE takes SQLite's write lock before the sums are read, so two processes
+            # sharing one ledger file can't both pass the same stale total.
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                self._check_and_insert(call_id, job_id, usd, limits)
+                self._db.execute("COMMIT")
+            except BaseException:
+                self._db.execute("ROLLBACK")
+                raise
+
+    def _check_and_insert(self, call_id: str, job_id: str | None, usd: float, limits: Sequence[CapLimit]) -> None:
+        if usd > 0:  # a free call (files, token counts, deletes) never trips a cap, even one already spent
             for limit in limits:
                 spent = self._spent(limit.key)
                 if spent + usd > limit.limit_usd + _EPS:
@@ -132,17 +144,11 @@ class LocalLedger:
                         limit_usd=limit.limit_usd,
                         needed_usd=usd,
                     )
-            expires = (self._now() + RESERVATION_TTL).isoformat()
-            self._db.execute("BEGIN")
-            try:
-                self._db.execute("INSERT INTO reservation VALUES (?, ?, ?, 'open', ?)", (call_id, job_id, usd, expires))
-                self._db.executemany(
-                    "INSERT OR IGNORE INTO reservation_key VALUES (?, ?)", [(call_id, lim.key) for lim in limits]
-                )
-                self._db.execute("COMMIT")
-            except BaseException:
-                self._db.execute("ROLLBACK")
-                raise
+        expires = (self._now() + RESERVATION_TTL).isoformat()
+        self._db.execute("INSERT INTO reservation VALUES (?, ?, ?, 'open', ?)", (call_id, job_id, usd, expires))
+        self._db.executemany(
+            "INSERT OR IGNORE INTO reservation_key VALUES (?, ?)", [(call_id, lim.key) for lim in limits]
+        )
 
     def _state(self, call_id: str) -> str:
         row = self._db.execute("SELECT state FROM reservation WHERE call_id = ?", (call_id,)).fetchone()

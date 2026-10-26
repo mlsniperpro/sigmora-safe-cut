@@ -86,6 +86,17 @@ def _int(data: Mapping[str, Any], key: str) -> int:
     return value
 
 
+def has_token_usage(usage: object) -> bool:
+    """A usage object we can bill from: integer ``input_tokens`` and ``output_tokens``, input above zero."""
+    if not isinstance(usage, Mapping):
+        return False
+    data = cast(Mapping[str, Any], usage)
+    tokens = (data.get("input_tokens"), data.get("output_tokens"))
+    if not all(isinstance(t, int) and not isinstance(t, bool) and t >= 0 for t in tokens):
+        return False
+    return cast(int, tokens[0]) > 0
+
+
 def usage_units(usage: Mapping[str, Any] | None) -> dict[str, float]:
     """``{"input", "cached", "output", "reasoning"}`` from a Responses ``usage`` object (missing → 0)."""
     usage = usage or {}

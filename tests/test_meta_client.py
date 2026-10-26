@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import httpx
 import pytest
@@ -650,3 +651,172 @@ async def test_half_open_trial_stopped_by_budget_frees_the_trial(
     route.mock(return_value=httpx.Response(200, json={}))
     await h.client.request("POST", "thing", _spec(), meter=_meter)
     assert h.client.breaker.state == "closed"
+
+
+# --- audit #1 findings: unknown usage, slow 5xx, cancellation, guards --------------
+
+
+async def test_completed_without_usage_keeps_the_estimate(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter, ledger: LocalLedger
+) -> None:
+    h = make_harness()
+    no_usage = {"id": "r", "status": "completed", "output": []}
+    mock_api.post("/responses").mock(return_value=stream_response(completed(no_usage)))
+    result = await h.client.stream(_spec(estimate=0.2), {"model": "muse-spark-1.3"}, meter=meter_for("muse-spark-1.3"))
+    assert result.usd == pytest.approx(0.2)
+    (line,) = h.costs()
+    assert (line.usd, line.estimated) == (pytest.approx(0.2), True)
+    assert ledger.spent("job:j_test") == pytest.approx(0.2)
+
+
+@pytest.mark.parametrize("usage", [None, {}, {"input_tokens": 0, "output_tokens": 0}, {"input_tokens": "7"}])
+def test_meter_treats_missing_usage_as_unknown(usage: object) -> None:
+    response = {} if usage is None else {"usage": usage}
+    assert meter_for("muse-spark-1.3")(response) == ({}, None)
+
+
+async def test_504_and_slow_5xx_count_as_accepted(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter
+) -> None:
+    h = make_harness()
+    mock_api.post("/thing").mock(return_value=_err(504))
+    with pytest.raises(MetaUnavailable):
+        await h.client.request("POST", "thing", _spec(estimate=0.05), meter=_meter)
+    assert [(line.usd, line.estimated) for line in h.costs()] == [(0.05, True)]
+
+    now = [0.0]
+
+    def slow_then_fail(_: httpx.Request) -> httpx.Response:
+        now[0] += 31.0
+        return _err(500)
+
+    slow = make_harness()
+    slow.client._clock = lambda: now[0]  # pyright: ignore[reportPrivateUsage] -- the injected test clock
+    mock_api.post("/slow").mock(side_effect=slow_then_fail)
+    with pytest.raises(MetaUnavailable):
+        await slow.client.request("POST", "slow", _spec(attempts=1, estimate=0.05), meter=_meter)
+    assert [line.estimated for line in slow.costs()] == [True]
+
+
+async def test_cancel_before_send_releases_and_after_send_charges(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter, ledger: LocalLedger
+) -> None:
+    gate = asyncio.Event()
+    h = make_harness()
+
+    async def hang(_: httpx.Request) -> httpx.Response:
+        await gate.wait()
+        return httpx.Response(200, json={})
+
+    mock_api.post("/hang").mock(side_effect=hang)
+    task = asyncio.create_task(h.client.request("POST", "hang", _spec(estimate=0.05), meter=_meter))
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert [(line.usd, line.estimated) for line in h.costs()] == [(0.05, True)]
+
+    held = asyncio.Semaphore(0)
+    queued = make_harness()
+    queued.client._inflight = held  # pyright: ignore[reportPrivateUsage] -- force the wait before sending
+    task = asyncio.create_task(queued.client.request("POST", "hang", _spec(estimate=0.05), meter=_meter))
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert [(line.usd, line.estimated) for line in queued.costs()] == [(0, False)]
+    assert ledger.spent("job:j_test") == pytest.approx(0.05)
+
+
+async def test_cancel_during_throttle_releases(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter, ledger: LocalLedger
+) -> None:
+    h = make_harness()
+
+    async def never(_: float) -> None:
+        await asyncio.Event().wait()
+
+    h.client._sleep = never  # pyright: ignore[reportPrivateUsage] -- block inside the throttle wait
+    h.client._throttle_until = float("inf")  # pyright: ignore[reportPrivateUsage]
+    task = asyncio.create_task(h.client.request("POST", "thing", _spec(estimate=0.05), meter=_meter))
+    await asyncio.sleep(0.02)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert ledger.spent("job:j_test") == 0
+
+
+async def test_total_timeout_on_plain_requests(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter
+) -> None:
+    h = make_harness()
+
+    async def slow(_: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(1)
+        return httpx.Response(200, json={})
+
+    mock_api.post("/slow").mock(side_effect=slow)
+    spec = CallSpec(
+        stage="s",
+        model=None,
+        estimate_usd=0.0,
+        estimate_units={},
+        policy=RetryPolicy(1),
+        timeout=httpx.Timeout(5.0),
+        total_timeout_s=0.05,
+    )
+    with pytest.raises(MetaUnavailable, match="total time"):
+        await h.client.request("POST", "slow", spec, meter=_meter)
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        ({"model": "muse-spark-1.3-contributor"}, "Contributor"),
+        ({"model": "muse-spark-1.3", "store": True}, "store"),
+        ({"model": "muse-spark-1.3", "temperature": 0.2}, "ignored or rejected"),
+        ({}, "no model"),
+    ],
+)
+async def test_stream_guards_agents_rule_6(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter, body: dict[str, object], message: str
+) -> None:
+    h = make_harness()
+    route = mock_api.post("/responses").mock(return_value=stream_response(completed(text_response("x"))))
+    with pytest.raises(ValueError, match=message):
+        await h.client.stream(_spec(), body, meter=_meter)
+    assert route.call_count == 0
+
+
+async def test_request_refuses_contributor_models(make_harness: Callable[..., Harness]) -> None:
+    h = make_harness()
+    with pytest.raises(ValueError, match="Contributor"):
+        await h.client.request("POST", "chat/completions", _spec(), meter=_meter, json_body={"model": "x-contributor"})
+
+
+def test_job_id_and_system_caller_must_agree(settings: Settings, ledger: LocalLedger) -> None:
+    with pytest.raises(ValueError, match="system"):
+        MetaClient(settings, job_id=None, caller=Caller.local(), ledger=ledger, cost_path="/dev/null")
+    caller = Caller.daily(settings, "system", None, now=datetime.now(UTC))
+    with pytest.raises(ValueError, match="system"):
+        MetaClient(settings, job_id="j", caller=caller, ledger=ledger, cost_path="/dev/null")
+
+
+def test_free_calls_pass_a_spent_cap(ledger: LocalLedger) -> None:
+    job = CapLimit("job", "job:z", 1.0)
+    ledger.reserve("c1", "z", 1.0, [job])
+    ledger.settle("c1", 1.5)
+    ledger.reserve("c2", "z", 0.0, [job])  # a delete or a token count is never blocked
+    with pytest.raises(BudgetExceeded):
+        ledger.reserve("c3", "z", 0.01, [job])
+
+
+def test_ledger_file_is_shared_safely(tmp_path: Path) -> None:
+    path = tmp_path / "ledger.sqlite"
+    one, two = LocalLedger(path), LocalLedger(path)
+    cap = CapLimit("job", "job:s", 1.0)
+    one.reserve("a", "s", 0.6, [cap])
+    with pytest.raises(BudgetExceeded):
+        two.reserve("b", "s", 0.6, [cap])
+    one.close()
+    two.close()

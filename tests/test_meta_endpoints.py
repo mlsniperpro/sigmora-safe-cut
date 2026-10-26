@@ -21,7 +21,8 @@ from pydantic import BaseModel, SecretStr
 from safecut.config import ConfigError, Settings
 from safecut.contracts import FilesIndex, load
 from safecut.meta import asr, openweight, responses, sam
-from safecut.meta.budget import Caller
+from safecut.meta.budget import Caller, job_limit
+from safecut.meta.client import FORBIDDEN_PARAMS
 from safecut.meta.errors import MetaConfigError, MetaIncomplete, MetaRefusal, MetaUnavailable
 from safecut.meta.files import FileStore, sha256_file
 from safecut.meta.sse import SSEDecodeError, iter_sse
@@ -94,7 +95,7 @@ def test_build_body_defaults() -> None:
         "strict": True,
         "schema": {"type": "object"},
     }
-    assert not responses.FORBIDDEN_PARAMS & set(body)
+    assert not FORBIDDEN_PARAMS & set(body)
     omit = responses.build_body("muse-spark-1.2", [_user("hi")], effort="omit")
     assert "reasoning" not in omit
     assert "text" not in omit
@@ -279,6 +280,7 @@ async def test_upload_response_without_an_id(
 ) -> None:
     h = make_harness()
     mock_api.post("/files").mock(return_value=httpx.Response(200, json={"object": "file"}))
+    mock_api.get("/files").mock(return_value=httpx.Response(200, json={"data": []}))
     with pytest.raises(MetaConfigError, match="no file id"):
         await FileStore(h.client, tmp_path / "job").upload(clip, "sam_proxy.mp4")
 
@@ -535,3 +537,79 @@ async def test_retried_upload_deletes_the_copy_an_earlier_attempt_left(
     live = store.index().live("sam_proxy.mp4")
     assert live is not None
     assert live.file_id == "file-2"
+
+
+async def test_reupload_after_file_gone(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter, clip: Path, tmp_path: Path
+) -> None:
+    h = make_harness()
+    route = mock_api.post("/files").mock(
+        side_effect=[httpx.Response(200, json={"id": "file-1"}), httpx.Response(200, json={"id": "file-2"})]
+    )
+    store = FileStore(h.client, tmp_path / "job")
+    assert await store.upload(clip, "sam_proxy.mp4") == "file-1"
+    assert await store.reupload(clip, "sam_proxy.mp4", gone="file-1") == "file-2"
+    assert route.call_count == 2
+    live = store.index().live("sam_proxy.mp4")
+    assert live is not None
+    assert live.file_id == "file-2"
+
+
+async def test_delete_all_works_after_the_job_cap_is_spent(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter, clip: Path, tmp_path: Path, ledger: Any
+) -> None:
+    h = make_harness()
+    mock_api.post("/files").mock(return_value=httpx.Response(200, json={"id": "file-1"}))
+    deleted = mock_api.delete("/files/file-1").mock(return_value=httpx.Response(200, json={"deleted": True}))
+    store = FileStore(h.client, tmp_path / "job")
+    await store.upload(clip, "sam_proxy.mp4")
+    ledger.reserve("big", "j_test", 3.0, [job_limit(h.client.settings, "j_test")])
+    ledger.settle("big", 3.5)
+    assert await store.delete_all() is True
+    assert deleted.call_count == 1
+
+
+async def test_upload_without_an_id_recovers_the_copy(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter, clip: Path, tmp_path: Path
+) -> None:
+    h = make_harness()
+    mock_api.post("/files").mock(return_value=httpx.Response(200, json={"id": "abc123"}))
+    listing = {
+        "data": [
+            {
+                "id": "file-7",
+                "filename": "j_test-sam_proxy.mp4",
+                "bytes": len(clip.read_bytes()),
+                "created_at": time.time(),
+            }
+        ]
+    }
+    mock_api.get("/files").mock(return_value=httpx.Response(200, json=listing))
+    deleted = mock_api.delete("/files/file-7").mock(return_value=httpx.Response(200, json={"deleted": True}))
+    store = FileStore(h.client, tmp_path / "job")
+    with pytest.raises(MetaConfigError):
+        await store.upload(clip, "sam_proxy.mp4")
+    assert deleted.call_count == 1
+    assert store.index().all_deleted
+
+
+async def test_breaker_refusal_records_no_orphan(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter, clip: Path, tmp_path: Path
+) -> None:
+    h = make_harness()
+    for _ in range(5):
+        h.client.breaker.record_failure()
+    store = FileStore(h.client, tmp_path / "job")
+    with pytest.raises(MetaUnavailable, match="breaker"):
+        await store.upload(clip, "sam_proxy.mp4")
+    assert store.index().root == []
+
+
+def test_asr_tolerates_numeric_speakers_and_float_durations() -> None:
+    raw = asr.AsrResponse.model_validate(
+        {"audioDurationMs": 5230.0, "turns": [{"startMs": 0, "endMs": 10, "transcript": "a", "speaker": 0}]}
+    )
+    assert raw.audio_duration_ms == 5230
+    assert asr.to_transcript(raw, source_model="m").turns[0].speaker == "S1"
+    assert asr._meter({"audioDurationMs": 5230.0}) == ({"audio_s": 5}, pytest.approx(5 * 0.18 / 3600))  # pyright: ignore[reportPrivateUsage]
+    assert asr._meter({}) == ({}, None)  # pyright: ignore[reportPrivateUsage]

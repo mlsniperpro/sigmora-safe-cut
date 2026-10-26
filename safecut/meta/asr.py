@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import IO, Any, Literal
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from safecut import config
 from safecut.contracts import Transcript, Turn
@@ -33,6 +33,12 @@ class AsrTurn(BaseModel):
     transcript: str = ""
     speaker: str | None = None
 
+    @field_validator("speaker", mode="before")
+    @classmethod
+    def _speaker_text(cls, value: object) -> object:
+        # Documented as a letter; accept a number too rather than fail a billed call on it.
+        return str(value) if isinstance(value, int | float) and not isinstance(value, bool) else value
+
 
 class AsrResponse(BaseModel):
     """The documented response shape; unknown fields are ignored, missing required ones are an error."""
@@ -41,6 +47,12 @@ class AsrResponse(BaseModel):
 
     transcript: str = ""
     audio_duration_ms: int = Field(alias="audioDurationMs", ge=0)
+
+    @field_validator("audio_duration_ms", mode="before")
+    @classmethod
+    def _whole_ms(cls, value: object) -> object:
+        return int(value) if isinstance(value, float) and value >= 0 else value
+
     turns: list[AsrTurn] = Field(default_factory=list[AsrTurn])
 
 
@@ -68,10 +80,11 @@ def _audio_facts(path: Path) -> tuple[int, float]:
     return path.stat().st_size, wav_seconds(path)
 
 
-def _meter(response: Mapping[str, Any]) -> tuple[Units, float]:
+def _meter(response: Mapping[str, Any]) -> tuple[Units, float | None]:
     duration = response.get("audioDurationMs")
-    ms = duration if isinstance(duration, int) and not isinstance(duration, bool) and duration >= 0 else 0
-    seconds = cost.asr_billed_seconds(ms)
+    if not isinstance(duration, int | float) or isinstance(duration, bool) or not duration > 0:
+        return {}, None
+    seconds = cost.asr_billed_seconds(int(duration))
     return {"audio_s": seconds}, cost.asr_usd(seconds)
 
 
@@ -104,6 +117,7 @@ async def transcribe(
         estimate_units={"audio_s": float(int(seconds) + 1)},
         policy=RetryPolicy.for_asr(),
         timeout=httpx.Timeout(config.ASR_TOTAL_TIMEOUT_S, connect=config.CONNECT_TIMEOUT_S),
+        total_timeout_s=config.ASR_TOTAL_TIMEOUT_S,
     )
     try:
         result = await client.request("POST", "asr/transcribe", spec, meter=_meter, files=body)

@@ -80,9 +80,13 @@ async def create_chat(client: MetaClient, body: Mapping[str, Any], *, stage: str
     fallback = cost.fallback_input_tokens(text_bytes=text_bytes, images=image_count, video_seconds=0)
     estimate = cost.responses_estimate(model, counted=None, fallback=fallback, max_output_tokens=max_tokens)
 
-    def meter(response: Mapping[str, Any]) -> tuple[Units, float]:
+    def meter(response: Mapping[str, Any]) -> tuple[Units, float | None]:
         usage = response.get("usage")
-        units = chat_units(cast(Mapping[str, Any], usage) if isinstance(usage, Mapping) else None)
+        if not isinstance(usage, Mapping):
+            return {}, None
+        units = chat_units(cast(Mapping[str, Any], usage))
+        if units["input"] <= 0:
+            return {}, None
         return units, cost.responses_usd_from_units(model, units)
 
     spec = CallSpec(

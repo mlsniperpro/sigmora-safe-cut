@@ -24,6 +24,8 @@ class MetaError(Exception):
         self.status = status
         self.request_id = request_id
         self.retryable = self.default_retryable if retryable is None else retryable
+        #: Set by the transport: some attempt may have reached the server and been processed.
+        self.maybe_processed = False
 
 
 class MetaAuthError(MetaError):

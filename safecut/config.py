@@ -12,6 +12,7 @@ import os
 from collections.abc import Mapping
 from datetime import datetime
 from typing import Annotated, Any, Literal
+from urllib.parse import urlsplit
 
 from pydantic import (
     AfterValidator,
@@ -21,6 +22,7 @@ from pydantic import (
     SecretStr,
     TypeAdapter,
     ValidationError,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
@@ -222,6 +224,11 @@ DEFAULT_CODE_WINDOWS: Mapping[WindowKind, CodeWindow] = {
 # ---------------------------------------------------------------------------
 
 _ENV_PREFIX = "SAFECUT_"
+#: Where each base URL may point (AGENTS rule 7: calls go direct, never through a proxy).
+_ALLOWED_HOSTS: Mapping[str, frozenset[str]] = {
+    "meta_base_url": frozenset({"api.meta.ai"}),
+    "open_base_url": frozenset({"inference.baseten.co"}),
+}
 #: Secrets keep the names their providers document, without the SAFECUT_ prefix.
 _SECRET_ENV: Mapping[str, str] = {"model_api_key": "MODEL_API_KEY", "baseten_api_key": "BASETEN_API_KEY"}
 _JSON_FIELDS = frozenset({"access_codes", "code_windows", "asr_language_bias", "service_keys"})
@@ -291,9 +298,20 @@ class Settings(BaseModel):
 
     @field_validator("meta_base_url", "open_base_url")
     @classmethod
-    def _https_base(cls, value: str) -> str:
-        if not value.startswith("https://"):
-            raise ValueError("base URLs must be https://")
+    def _trusted_base(cls, value: str, info: ValidationInfo) -> str:
+        """The bearer key goes to this host, so only the provider's own HTTPS host is accepted."""
+        parts = urlsplit(value)
+        allowed = _ALLOWED_HOSTS[info.field_name or ""]
+        if (
+            parts.scheme != "https"
+            or parts.hostname not in allowed
+            or parts.username
+            or parts.password
+            or parts.port not in (None, 443)
+            or parts.query
+            or parts.fragment
+        ):
+            raise ValueError(f"base URLs must be https://{'|'.join(sorted(allowed))}/… with no credentials or port")
         return value.rstrip("/")
 
     @field_validator("asr_language_bias")

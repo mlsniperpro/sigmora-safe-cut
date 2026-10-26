@@ -62,15 +62,16 @@ def image_body(settings: Settings, *, image_data_url: str, text: str) -> dict[st
     return body
 
 
-def video_meter(response: Mapping[str, Any]) -> tuple[Units, float]:
-    """Frames billed from ``usage.video_frames_processed`` (documented)."""
+def video_meter(response: Mapping[str, Any]) -> tuple[Units, float | None]:
+    """Frames billed from ``usage.video_frames_processed`` (documented); missing or zero → unknown."""
     usage = response.get("usage")
     frames = cast(Mapping[str, Any], usage).get("video_frames_processed") if isinstance(usage, Mapping) else None
-    n = frames if isinstance(frames, int) and not isinstance(frames, bool) and frames >= 0 else 0
-    return {"frames": n}, cost.sam_video_usd(n)
+    if not isinstance(frames, int) or isinstance(frames, bool) or frames <= 0:
+        return {}, None
+    return {"frames": frames}, cost.sam_video_usd(frames)
 
 
-def image_meter(_response: Mapping[str, Any]) -> tuple[Units, float]:
+def image_meter(_response: Mapping[str, Any]) -> tuple[Units, float | None]:
     return {"images": 1}, cost.sam_image_usd(1)
 
 

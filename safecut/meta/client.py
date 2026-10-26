@@ -39,7 +39,25 @@ log = logging.getLogger("safecut.meta")
 
 Units = dict[str, float]
 #: Turns a completed response (decoded body or final ``response`` object) into ``(units, usd)``.
-Meter = Callable[[Mapping[str, Any]], tuple[Units, float]]
+#: ``usd`` is ``None`` when the response carries no usage: billing is unknown, so the estimate is kept.
+Meter = Callable[[Mapping[str, Any]], tuple[Units, float | None]]
+
+#: Parameters that are no-ops or 400s on Responses (PRE-A §3.6); the client refuses to send them.
+FORBIDDEN_PARAMS = frozenset(
+    {
+        "temperature",
+        "top_p",
+        "stop",
+        "n",
+        "logprobs",
+        "logit_bias",
+        "response_format",
+        "truncation",
+        "previous_response_id",
+    }
+)
+#: A 5xx that arrives after this long was being processed, so it may have been billed (PRE-A §10.2).
+SLOW_FAILURE_S = 30.0
 Lane = Literal["sam", "responses", "other"]
 
 _EMPTY: Mapping[str, Any] = {}
@@ -66,6 +84,8 @@ class CallResult:
     request_id: str | None
     attempts: int
     usd: float
+    #: An earlier attempt failed after the server may have processed it (e.g. an upload that timed out).
+    maybe_orphaned: bool = False
 
 
 @dataclass(frozen=True)
@@ -77,6 +97,16 @@ class StreamResult:
     usd: float
 
 
+class _SentFlag:
+    """Set by an attempt right before it sends its request."""
+
+    def __init__(self) -> None:
+        self.sent = False
+
+    def mark(self) -> None:
+        self.sent = True
+
+
 @dataclass
 class _Attempt:
     """What one attempt produced. ``error`` set with ``billed`` means: account, then raise it."""
@@ -85,7 +115,7 @@ class _Attempt:
     headers: Mapping[str, str] = field(default_factory=dict[str, str])
     request_id: str | None = None
     units: Units = field(default_factory=dict[str, float])
-    usd: float = 0.0
+    usd: float | None = 0.0
     error: MetaError | None = None
 
 
@@ -114,6 +144,32 @@ def _request_id(headers: Mapping[str, str], body: Any) -> str | None:
         if isinstance(rid, str):
             return rid
     return headers.get("x-request-id")
+
+
+def _status_failure(
+    status: int, body: Any, headers: Mapping[str, str], rid: str | None, elapsed: float
+) -> _AttemptFailed:
+    """An HTTP error status. A 504, or any 5xx after :data:`SLOW_FAILURE_S`, may have been processed."""
+    accepted = status == 504 or (status >= 500 and elapsed > SLOW_FAILURE_S)
+    return _AttemptFailed(
+        classify(status, body, request_id=rid),
+        accepted=accepted,
+        retry_after=parse_retry_after(headers.get("retry-after")),
+    )
+
+
+def guard_body(body: Mapping[str, Any]) -> None:
+    """AGENTS rule 6 at the transport: Standard models only, ``store`` never true, no ignored params."""
+    model = body.get("model")
+    if not isinstance(model, str) or not model:
+        raise ValueError("request body has no model")
+    if model.endswith("-contributor"):
+        raise ValueError(f"{model!r} is a Contributor-mode model; Safe Cut uses Standard mode only")
+    if body.get("store", False) is not False:
+        raise ValueError("store must be false (AGENTS rule 6)")
+    sent_forbidden = FORBIDDEN_PARAMS & set(body)
+    if sent_forbidden:
+        raise ValueError(f"parameters ignored or rejected by the Responses API: {sorted(sent_forbidden)}")
 
 
 def _transport_failure(exc: httpx.TransportError) -> _AttemptFailed:
@@ -146,6 +202,8 @@ class MetaClient:
         base_url: str | None = None,
         api_key: str | None = None,
     ) -> None:
+        if (job_id is None) != (caller.code_kind == "system"):
+            raise ValueError("job_id is None exactly for system callers (healthz, the startup probe)")
         self.settings = settings
         self.job_id = job_id
         self.caller = caller
@@ -159,7 +217,14 @@ class MetaClient:
         self.base_url = (base_url or settings.meta_base_url).rstrip("/")
         self._key = api_key if api_key is not None else settings.api_key()
         self.breaker = breaker or CircuitBreaker(clock=clock)
+        # Process-wide bound: pass one shared semaphore to every client in a process (WP5 does).
         self._inflight = inflight or asyncio.Semaphore(config.PROCESS_INFLIGHT)
+        # Per-job bounds (PRE-A §10.1): one client serves one job.
+        self._lanes: dict[Lane, asyncio.Semaphore] = {
+            "sam": asyncio.Semaphore(config.JOB_SAM_INFLIGHT),
+            "responses": asyncio.Semaphore(config.JOB_RESPONSES_INFLIGHT),
+            "other": asyncio.Semaphore(config.PROCESS_INFLIGHT),
+        }
         self._sleep = sleep
         self._jitter = jitter
         self._clock = clock
@@ -237,9 +302,17 @@ class MetaClient:
 
     # -- the attempt loop ---------------------------------------------------
 
-    async def _run(self, spec: CallSpec, attempt_fn: Callable[[], Awaitable[_Attempt]]) -> tuple[_Attempt, int]:
+    async def _run(
+        self, spec: CallSpec, attempt_fn: Callable[[Callable[[], None]], Awaitable[_Attempt]]
+    ) -> tuple[_Attempt, int, bool]:
+        """Run attempts until one succeeds or the policy says stop. Returns ``(outcome, attempts, orphaned)``.
+
+        ``attempt_fn`` calls its argument right before it sends the request, so a cancellation that lands
+        before anything was sent releases the reservation instead of charging it.
+        """
         self.breaker.before_call()
         attempt = 0
+        maybe_processed = False
         while True:
             attempt += 1
             call_id = f"{self.job_id or 'system'}:{spec.stage}:{uuid.uuid4().hex}"
@@ -249,60 +322,67 @@ class MetaClient:
                 self._log_budget_stop(spec, exc)
                 self.breaker.abandon_trial()
                 raise
-            wait = self._throttle_until - self._clock()
-            if wait > 0:
-                await self._sleep(wait)
+            sent = _SentFlag()
             try:
-                async with self._inflight:
-                    outcome = await attempt_fn()
+                wait = self._throttle_until - self._clock()
+                if wait > 0:
+                    await self._sleep(wait)
+                async with self._lanes[spec.lane], self._inflight:
+                    outcome = await attempt_fn(sent.mark)
             except _AttemptFailed as failed:
-                if failed.accepted:
-                    self.ledger.settle(call_id, spec.estimate_usd)
-                    self._log_cost(
-                        spec,
-                        attempt=attempt,
-                        units=spec.estimate_units,
-                        usd=spec.estimate_usd,
-                        estimated=True,
-                        rid=None,
-                    )
-                else:
-                    self.ledger.release(call_id)
-                    self._log_cost(
-                        spec, attempt=attempt, units={}, usd=0.0, estimated=False, rid=failed.error.request_id
-                    )
-                error = failed.error
-                if error.retryable and spec.policy.allows(attempt, error.status):
-                    try:
-                        delay = backoff_seconds(attempt, failed.retry_after, self._jitter())
-                    except RetryAfterTooLong as too_long:
-                        self.breaker.record_failure()
-                        raise too_long from error
-                    log.info("retrying", extra={"stage": spec.stage, "attempt": attempt, "delay_s": delay})
-                    await self._sleep(delay)
-                    continue
-                if error.retryable:
-                    self.breaker.record_failure()
-                else:
-                    # The server answered (a 4xx, a refusal): it's up, whatever this request's fault.
-                    self.breaker.record_success()
-                raise error from None
+                self._account(spec, call_id, attempt, charged=failed.accepted, rid=failed.error.request_id)
+                maybe_processed = maybe_processed or failed.accepted
+                delay = self._retry_delay(spec, attempt, failed, maybe_processed)
+                log.info("retrying", extra={"stage": spec.stage, "attempt": attempt, "delay_s": delay})
+                await self._sleep(delay)
+                continue
             except BaseException:
-                # Cancellation or a bug mid-attempt: billing is unknown, so keep the estimate.
+                # Cancellation or a bug mid-attempt: once the request was sent, billing is unknown.
                 self.breaker.abandon_trial()
-                self.ledger.settle(call_id, spec.estimate_usd)
-                self._log_cost(
-                    spec, attempt=attempt, units=spec.estimate_units, usd=spec.estimate_usd, estimated=True, rid=None
-                )
+                self._account(spec, call_id, attempt, charged=sent.sent, rid=None)
                 raise
-            self.ledger.settle(call_id, outcome.usd)
-            self._log_cost(
-                spec, attempt=attempt, units=outcome.units, usd=outcome.usd, estimated=False, rid=outcome.request_id
-            )
+            if outcome.usd is None:
+                # Completed, but without usage: we can't measure it, so the reserved estimate stands.
+                self._account(spec, call_id, attempt, charged=True, rid=outcome.request_id)
+            else:
+                self.ledger.settle(call_id, outcome.usd)
+                self._log_cost(
+                    spec, attempt=attempt, units=outcome.units, usd=outcome.usd, estimated=False, rid=outcome.request_id
+                )
             self.breaker.record_success()
             if outcome.error is not None:
+                outcome.error.maybe_processed = True
                 raise outcome.error
-            return outcome, attempt
+            return outcome, attempt, maybe_processed
+
+    def _retry_delay(self, spec: CallSpec, attempt: int, failed: _AttemptFailed, maybe_processed: bool) -> float:
+        """The wait before the next attempt, or raise the final typed error (updating the breaker)."""
+        error = failed.error
+        error.maybe_processed = maybe_processed
+        if error.retryable and spec.policy.allows(attempt, error.status):
+            try:
+                return backoff_seconds(attempt, failed.retry_after, self._jitter())
+            except RetryAfterTooLong as too_long:
+                self.breaker.record_failure()
+                too_long.maybe_processed = maybe_processed
+                raise too_long from error
+        if error.retryable:
+            self.breaker.record_failure()
+        else:
+            # The server answered (a 4xx, a refusal): it's up, whatever this request's fault.
+            self.breaker.record_success()
+        raise error from None
+
+    def _account(self, spec: CallSpec, call_id: str, attempt: int, *, charged: bool, rid: str | None) -> None:
+        """Charged: keep the estimate as an ``estimated`` line. Not charged: release it at ``usd 0``."""
+        if charged:
+            self.ledger.settle(call_id, spec.estimate_usd)
+            self._log_cost(
+                spec, attempt=attempt, units=spec.estimate_units, usd=spec.estimate_usd, estimated=True, rid=rid
+            )
+        else:
+            self.ledger.release(call_id)
+            self._log_cost(spec, attempt=attempt, units={}, usd=0.0, estimated=False, rid=rid)
 
     # -- plain requests -----------------------------------------------------
 
@@ -319,30 +399,35 @@ class MetaClient:
         params: Mapping[str, str] | None = None,
     ) -> CallResult:
         """One non-streamed call with retries. The response body must be JSON (or empty on DELETE)."""
+        payload: Any = json_body
+        model: Any = cast(Mapping[str, Any], json_body).get("model") if isinstance(json_body, Mapping) else None
+        if model is not None and isinstance(model, str) and model.endswith("-contributor"):
+            raise ValueError(f"{model!r} is a Contributor-mode model; Safe Cut uses Standard mode only")
 
-        async def attempt() -> _Attempt:
+        async def attempt(mark_sent: Callable[[], None]) -> _Attempt:
             # ``files`` is a factory so every attempt sends a fresh body (open file handles are single-use).
+            started = self._clock()
             try:
-                resp = await self._http.request(
-                    method,
-                    self.url(path),
-                    headers=self._headers(),
-                    json=json_body,
-                    files=files() if files is not None else None,
-                    data=data,
-                    params=params,
-                    timeout=spec.timeout,
-                )
+                async with asyncio.timeout(spec.total_timeout_s):
+                    mark_sent()
+                    resp = await self._http.request(
+                        method,
+                        self.url(path),
+                        headers=self._headers(),
+                        json=payload,
+                        files=files() if files is not None else None,
+                        data=data,
+                        params=params,
+                        timeout=spec.timeout,
+                    )
             except httpx.TransportError as exc:
                 raise _transport_failure(exc) from exc
+            except TimeoutError as exc:
+                raise _AttemptFailed(MetaUnavailable("request exceeded its total time limit"), accepted=True) from exc
             body = _decode(resp.content)
             rid = _request_id(resp.headers, body)
             if resp.status_code >= 400:
-                raise _AttemptFailed(
-                    classify(resp.status_code, body, request_id=rid),
-                    accepted=False,
-                    retry_after=parse_retry_after(resp.headers.get("retry-after")),
-                )
+                raise _status_failure(resp.status_code, body, resp.headers, rid, self._clock() - started)
             if body is None and resp.content.strip():
                 raise _AttemptFailed(
                     MetaUnavailable("response body is not JSON", status=resp.status_code), accepted=True
@@ -351,8 +436,9 @@ class MetaClient:
             units, usd = meter(cast(Mapping[str, Any], body) if isinstance(body, dict) else _EMPTY)
             return _Attempt(value=body, headers=dict(resp.headers), request_id=rid, units=units, usd=usd)
 
-        outcome, attempts = await self._run(spec, attempt)
-        return CallResult(outcome.value, outcome.headers, outcome.request_id, attempts, outcome.usd)
+        outcome, attempts, orphaned = await self._run(spec, attempt)
+        usd = spec.estimate_usd if outcome.usd is None else outcome.usd
+        return CallResult(outcome.value, outcome.headers, outcome.request_id, attempts, usd, orphaned)
 
     # -- streamed Responses -------------------------------------------------
 
@@ -362,21 +448,25 @@ class MetaClient:
         A stream that ends without a terminal event is ``MetaIncomplete(eof=True)`` (retryable). A server
         ``incomplete`` status or a refusal is accounted at its actual usage and raised without retry.
         """
+        guard_body(body)
         payload = dict(body) | {"stream": True}
 
-        async def attempt() -> _Attempt:
+        async def attempt(mark_sent: Callable[[], None]) -> _Attempt:
             events: list[dict[str, Any]] = []
+            started = self._clock()
             try:
+                mark_sent()
                 async with self._http.stream(
                     "POST", self.url("responses"), headers=self._headers(), json=payload, timeout=spec.timeout
                 ) as resp:
                     if resp.status_code >= 400:
-                        raw = await resp.aread()
-                        parsed = _decode(raw)
-                        raise _AttemptFailed(
-                            classify(resp.status_code, parsed, request_id=resp.headers.get("x-request-id")),
-                            accepted=False,
-                            retry_after=parse_retry_after(resp.headers.get("retry-after")),
+                        parsed = _decode(await resp.aread())
+                        raise _status_failure(
+                            resp.status_code,
+                            parsed,
+                            resp.headers,
+                            resp.headers.get("x-request-id"),
+                            self._clock() - started,
                         )
                     self._note_rate_headers(resp.headers)
                     async with asyncio.timeout(spec.total_timeout_s):
@@ -396,11 +486,12 @@ class MetaClient:
                 raise _AttemptFailed(MetaUnavailable(f"malformed stream: {exc}"), accepted=True) from exc
             raise _AttemptFailed(MetaIncomplete("stream ended without a terminal event", eof=True), accepted=True)
 
-        outcome, attempts = await self._run(spec, attempt)
+        outcome, attempts, _ = await self._run(spec, attempt)
         events = cast(list[dict[str, Any]], outcome.value)
         final = next((e["response"] for e in reversed(events) if isinstance(e.get("response"), dict)), None)
         response = cast(dict[str, Any], final) if final is not None else {}
-        return StreamResult(events, response, outcome.request_id, attempts, outcome.usd)
+        usd = spec.estimate_usd if outcome.usd is None else outcome.usd
+        return StreamResult(events, response, outcome.request_id, attempts, usd)
 
     @staticmethod
     def _terminal(event: Mapping[str, Any], meter: Meter) -> _Attempt | None:

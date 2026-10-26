@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import IO, Any, cast
@@ -14,7 +15,7 @@ import httpx
 from safecut import config
 from safecut.contracts import FileEntry, FilesIndex, dump, load, now_utc
 from safecut.meta.client import CallSpec, MetaClient, Units
-from safecut.meta.errors import MetaConfigError, MetaError, MetaFileGone, MetaUnavailable
+from safecut.meta.errors import MetaConfigError, MetaError, MetaFileGone
 from safecut.meta.retry import RetryPolicy
 
 INDEX_NAME = "files.json"
@@ -42,11 +43,23 @@ def _spec(stage: str, timeout_s: float) -> CallSpec:
         estimate_units={},
         policy=RetryPolicy.for_files(),
         timeout=httpx.Timeout(timeout_s, connect=config.CONNECT_TIMEOUT_S),
+        total_timeout_s=timeout_s,
     )
 
 
 def upload_timeout(size_bytes: int) -> float:
     return config.FILES_UPLOAD_BASE_S + (size_bytes / 1_000_000) * config.FILES_UPLOAD_PER_MB_S
+
+
+@dataclass(frozen=True)
+class _Upload:
+    """What identifies one upload's copies in the team-wide file listing."""
+
+    name: str
+    digest: str
+    remote_name: str
+    size: int
+    started: datetime
 
 
 class FileStore:
@@ -94,6 +107,7 @@ class FileStore:
                 handles.append(handle)
                 return {"file": (remote_name, handle, mime)}
 
+            recover = _Upload(name=name, digest=digest, remote_name=remote_name, size=size, started=started)
             try:
                 result = await self.client.request(
                     "POST",
@@ -107,43 +121,43 @@ class FileStore:
                         "expires_after[seconds]": str(config.FILES_EXPIRES_AFTER_S),
                     },
                 )
-            except MetaUnavailable:
-                await self._recover_orphans(
-                    entries, name=name, digest=digest, remote_name=remote_name, size=size, started=started
-                )
+                file_id = _file_id(result.body)
+            except MetaError as exc:
+                # Only when some attempt may have reached the server (not a breaker or budget refusal).
+                if exc.maybe_processed or isinstance(exc, MetaConfigError):
+                    await self._recover_orphans(entries, recover)
                 raise
             finally:
                 for handle in handles:
                     handle.close()
-            file_id = _file_id(result.body)
             entries.append(FileEntry(name=name, sha256=digest, file_id=file_id, created_at=now_utc()))
             self._save(entries)
-            if result.attempts > 1:
+            if result.maybe_orphaned:
                 # An earlier attempt may have reached the server before it failed: clean up its copy.
                 with contextlib.suppress(MetaError):
-                    await self._recover_orphans(
-                        entries,
-                        name=name,
-                        digest=digest,
-                        remote_name=remote_name,
-                        size=size,
-                        started=started,
-                        keep=file_id,
-                    )
+                    await self._recover_orphans(entries, recover)
             return file_id
 
-    async def _recover_orphans(
-        self,
-        entries: list[FileEntry],
-        *,
-        name: str,
-        digest: str,
-        remote_name: str,
-        size: int,
-        started: datetime,
-        keep: str | None = None,
-    ) -> None:
-        """An upload failed after it may have reached the server: find and delete what it left behind."""
+    async def mark_gone(self, file_id: str) -> None:
+        """Meta answered ``file_not_found`` for ``file_id``: record it deleted so the next upload re-sends."""
+        async with self._lock:
+            entries = list(self.index().root)
+            for index, entry in enumerate(entries):
+                if entry.file_id == file_id and entry.deleted_at is None:
+                    entries[index] = entry.model_copy(update={"deleted_at": now_utc()})
+            self._save(entries)
+
+    async def reupload(self, path: str | Path, name: str, *, gone: str, mime: str = "video/mp4") -> str:
+        """The ``MetaFileGone`` recovery (PRE-A §10.4): forget ``gone`` and upload ``path`` again."""
+        await self.mark_gone(gone)
+        return await self.upload(path, name, mime=mime)
+
+    async def _recover_orphans(self, entries: list[FileEntry], up: _Upload) -> None:
+        """An upload may have reached the server without being recorded: find and delete what it left.
+
+        Copies already recorded in ``files.json`` are never touched, so a live upload is never deleted.
+        """
+        known = {e.file_id for e in entries if e.file_id}
         try:
             listing = await self.client.request(
                 "GET",
@@ -153,14 +167,16 @@ class FileStore:
                 params={"purpose": "user_data", "limit": "10000", "order": "desc"},
             )
             found = [
-                f for f in _matching_uploads(listing.body, remote_name, size, started.timestamp() - 60) if f != keep
+                f
+                for f in _matching_uploads(listing.body, up.remote_name, up.size, up.started.timestamp() - 60)
+                if f not in known
             ]
         except MetaError:
-            entries.append(FileEntry(name=name, sha256=digest, file_id=None, created_at=now_utc(), orphan=True))
+            entries.append(FileEntry(name=up.name, sha256=up.digest, file_id=None, created_at=now_utc(), orphan=True))
             self._save(entries)
             return
         for file_id in found:
-            entries.append(FileEntry(name=name, sha256=digest, file_id=file_id, created_at=now_utc()))
+            entries.append(FileEntry(name=up.name, sha256=up.digest, file_id=file_id, created_at=now_utc()))
         self._save(entries)
         for entry in [e for e in entries if e.file_id in found]:
             await self._delete_entry(entries, entry)
