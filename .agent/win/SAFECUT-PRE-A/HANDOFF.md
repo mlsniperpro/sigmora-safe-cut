@@ -1,6 +1,6 @@
 # HANDOFF: SAFECUT-PRE-A (docs-only research package)
 
-**Released** by session_015NHPSLCF7hCdxi6Q9v8srB at 2026-10-26 18:52 UTC (owner WIND DOWN; usage window ending; the owner resumes this session after the reset, or a fresh session claims LEASE).
+**Held by** session_015NHPSLCF7hCdxi6Q9v8srB (wind-down of 18:52 UTC cancelled by the owner; resumed).
 
 ## Goal, deadline, PR
 - **Branch** `pre-a-research` · **PR #1** (the only PRE-A PR; never open another) · **Brief** `docs/work-packages/PRE-A.md` · **Rules** `AGENTS.md`: docs only, **no code, config or scaffolding before 2026-10-26 16:00 UTC**; stop the win loop by then at the latest.
@@ -14,7 +14,7 @@
 - Last pushes: `7ca667d` (audit #35 fixes), `b6fa465` (concurrency row). The PR #1 body still shows an older push; refresh it at the end (step 5).
 
 ## In flight
-- **Audit #49 is partly done:** 49A (9→7 findings) and 49C (5) are fixed, logged in WIN-CHECKLIST §6 and pushed (`1dab180`, `26319e9`). **49B (brief/specs/live) was stopped unfinished at the wind-down: no findings collected.** Re-run 49B (or a full #50) first.
+- **Audit #49 is partly done:** 49A (9→7 findings) and 49C (5) are fixed, logged in WIN-CHECKLIST §6 and pushed (`1dab180`, `26319e9`). 49B was stopped unfinished at the cancelled wind-down; **full audit #50 launched on resume** replaces it (collect, verify, fix, push, then #51).
 - Audits #42–#49 were all full three-lens passes and none was clean (each found 15–22 items, all verified and fixed or filed). The open-weight second opinion (§3.8, Baseten) generated most recent findings; it is now off by default for every code kind until the cast's Baseten addendum.
 - PR #1 body (15:50 UTC) and the status comment (15:57 UTC) predate audits #42–#49 and the official guide; refresh both at the end.
 - PR #2 (`origin/pre-b-product`) last reconciled @ `73a6157`; its open items are the API-NOTES §12 lines marked **open**/**partly done**.
