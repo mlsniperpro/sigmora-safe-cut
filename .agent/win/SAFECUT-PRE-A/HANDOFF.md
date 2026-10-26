@@ -1,6 +1,6 @@
 # HANDOFF: SAFECUT-PRE-A (docs-only research package)
 
-**Held by** session_015NHPSLCF7hCdxi6Q9v8srB (wind-down of 18:52 UTC cancelled by the owner; resumed).
+**Released** by session_015NHPSLCF7hCdxi6Q9v8srB at 2026-10-26 18:57 UTC (owner FINISH AND WIND DOWN; weekly usage nearly spent; a successor may be on another account).
 
 ## Goal, deadline, PR
 - **Branch** `pre-a-research` · **PR #1** (the only PRE-A PR; never open another) · **Brief** `docs/work-packages/PRE-A.md` · **Rules** `AGENTS.md`: docs only, **no code, config or scaffolding before 2026-10-26 16:00 UTC**; stop the win loop by then at the latest.
@@ -13,14 +13,14 @@
 - Audits #1–#35 logged in WIN-CHECKLIST §6 (end of file), plus a WP0 builder walk-through (#34) and a full live-docs sweep (every `dev.meta.ai/docs` page; applied). Each audit = three fresh Sonnet/high agents (A internal, B brief + repo specs + live docs, C vs PR #2 with a [P] status table). **Clean count: 0.** Findings are now mostly edge-case specifications, each verified before fixing.
 - Last pushes: `7ca667d` (audit #35 fixes), `b6fa465` (concurrency row). The PR #1 body still shows an older push; refresh it at the end (step 5).
 
-## In flight
-- **Audit #49 is partly done:** 49A (9→7 findings) and 49C (5) are fixed, logged in WIN-CHECKLIST §6 and pushed (`1dab180`, `26319e9`). 49B was stopped unfinished at the cancelled wind-down; **full audit #50 launched on resume** replaces it (collect, verify, fix, push, then #51).
-- Audits #42–#49 were all full three-lens passes and none was clean (each found 15–22 items, all verified and fixed or filed). The open-weight second opinion (§3.8, Baseten) generated most recent findings; it is now off by default for every code kind until the cast's Baseten addendum.
-- PR #1 body (15:50 UTC) and the status comment (15:57 UTC) predate audits #42–#49 and the official guide; refresh both at the end.
+## In flight / unfinished (nothing half-done in the tree)
+- **Audit #50** (full, three lenses) was launched and **stopped unfinished** at the wind-down; no findings collected. Audit **49B** was also stopped unfinished earlier. All other audit findings (#36–#49 A/C) are fixed or filed and logged in `docs/WIN-CHECKLIST-PRE-A.md` §6. Nothing was reverted.
+- **Win-gate** (`bash .agent/win-gate.sh SAFECUT-PRE-A`, the script copied unchanged from `origin/main` onto this branch on 2026-10-26) last line: **`GATE: FAIL (5): missing WIN-CHECKLIST.md …`**. Its 5 failures: (1) it looks for `WIN-CHECKLIST.md` or `.agent/win/SAFECUT-PRE-A/WIN-CHECKLIST.md`, while PRE-A's checklist is `docs/WIN-CHECKLIST-PRE-A.md` (fix: add `CHECKLIST=docs/WIN-CHECKLIST-PRE-A.md` and `BLOCKED=docs/BLOCKED-PRE-A.md` to `.agent/win/SAFECUT-PRE-A/gate.conf`); (2) no `reaudit.md` (needs `AUDITED_COMMIT`, `OPEN_CRITICAL`, `OPEN_HIGH`, `CLEAN_AUDITS_IN_A_ROW`; honestly CLEAN_AUDITS_IN_A_ROW is **0**: audits #42–#49 each found 15–22 items); (3) no `break-it.md`; (4) no `checks.sh` (PRE-A is docs-only: the checks are the grep/ledger/non-md commands under Commands); (5) the gate file itself was uncommitted at run time (committed in this push). Passed: base, branch pushed, no background processes, no shortcuts, no secrets.
+- PR #1 body and status comment updated at this wind-down with the gate line.
 - PR #2 (`origin/pre-b-product`) last reconciled @ `73a6157`; its open items are the API-NOTES §12 lines marked **open**/**partly done**.
 
 ## Next steps (in order)
-0. Claim LEASE (`holder=<session> status=active`). Run full audit #50 on HEAD: three parallel Agent subagents, model `sonnet`, effort `high` (A internal + arithmetic by script; B brief/AGENTS/WP files/OFFICIAL-GUIDE/live pages; C vs `origin/pre-b-product`), read-only, "report ONLY builder-impacting defects … else NO NEW FINDINGS". Verify every finding (live page, grep, script) before fixing; fix, log in WIN-CHECKLIST §6, gate, push; repeat until two consecutive full audits find nothing new. Then refresh the PR #1 body and post the final docs status comment (no docs change after it). Re-arm a send_later check-in.
+0. Claim LEASE (`holder=<session> status=active`). Add `gate.conf`, `checks.sh` (docs gates), `reaudit.md` and `break-it.md` for this docs package so the win-gate can judge it. Run full audit #50 (three Agent subagents, model `sonnet`, effort `high`; A internal + arithmetic, B brief/WP files/OFFICIAL-GUIDE/live pages, C vs `origin/pre-b-product`); verify every finding before fixing; fix, log in WIN-CHECKLIST §6, push; repeat until two consecutive full audits find nothing new; then refresh PR #1 and post the final status comment.
 0. Claim LEASE. Run full audit #47 on HEAD: three parallel Agent subagents with model `sonnet`, effort `high` (A internal + arithmetic by script, B brief/AGENTS/WP files/OFFICIAL-GUIDE/live pages, C vs `origin/pre-b-product`), read-only, "report ONLY builder-impacting defects … else NO NEW FINDINGS". Verify each finding (live page, grep, script) before fixing; fix, log in WIN-CHECKLIST §6, gate, push; repeat until two consecutive full audits find nothing new. Then refresh the PR #1 body (latest sha, audits, PR #2 status, evidence output) and post the final docs status comment on PR #1 (no docs change after it).
 1. Lease is claimed (`status=active`); keep it so until a WIND DOWN.
 2. Run the next audit on HEAD: three parallel fresh agents (model sonnet, effort high), read-only, "report ONLY builder-impacting defects … if nothing, say exactly NO NEW FINDINGS", pointing them at the newest edits.
