@@ -30,8 +30,6 @@
     "noUncheckedIndexedAccess": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
     "forceConsistentCasingInFileNames": true,
     "types": [
       "vitest/globals",

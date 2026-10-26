@@ -270,10 +270,22 @@ export class MockBackend implements Transport {
     if (existing) return existing.deleted ? null : existing;
     if (!(id in MOCK_LOADERS)) return null;
     const data = (await this.fixture(id as MockName)) as JobResponse & { status?: unknown };
-    if (typeof data !== "object" || data === null || typeof data.status !== "string" || !("deletes_at" in data) || "receipt_html_url" in data) return null;
-    const job: MockJob = { data: this.withSampleMedia(jobResponseSchema.parse(data)), code: null, timeline: null, edits: new Map(), deleted: false };
+    if (typeof data !== "object" || data === null || typeof data.status !== "string" || !("deletes_at" in data)) return null;
+    if ("receipt_html_url" in data) return this.adopt(id, await this.doneJobFor(id, data as unknown as { audit: unknown }));
+    return this.adopt(id, jobResponseSchema.parse(data));
+  }
+
+  private adopt(id: string, data: JobResponse): MockJob {
+    const job: MockJob = { data: this.withSampleMedia(data), code: null, timeline: null, edits: new Map(), deleted: false };
     this.jobs.set(id, job);
     return job;
+  }
+
+  /** A `result-*` fixture is a result response; the job behind it is the hero, done, with that audit. */
+  private async doneJobFor(id: string, result: { audit: unknown }): Promise<JobResponse> {
+    const hero = jobResponseSchema.parse(await this.fixture("job-review-hero1"));
+    const audit = jobResponseSchema.shape.audit.parse(result.audit);
+    return { ...hero, job_id: id, status: "done", stage: "done", has_render: true, audit, result: { video_url: this.mediaUrls(id).video_url } };
   }
 
   private mediaUrls(id: string) {

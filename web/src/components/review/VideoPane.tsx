@@ -1,0 +1,190 @@
+"use client";
+/**
+ * The review player (UI-SPEC §3.6): the raw prepared clip with the redaction
+ * preview drawn on a canvas, frame-accurate via requestVideoFrameCallback.
+ */
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { drawOverlay, overlayOps, type OverlayInput } from "@/lib/overlay";
+import { frameAt, frameStart } from "@/lib/time";
+
+export interface VideoPaneHandle {
+  seekToFrame: (frame: number) => void;
+  togglePlay: () => void;
+}
+
+export interface VideoPaneProps {
+  src: string | undefined;
+  captionsUrl: string | null;
+  fps: number;
+  frames: number;
+  width: number;
+  height: number;
+  overlay: Omit<OverlayInput, "frame" | "mode" | "width" | "height">;
+  timeline: ReadonlyArray<{ id: string; first: number; last: number; covered: boolean }>;
+  selected: string | null;
+}
+
+const noSubscribe = () => () => undefined;
+
+export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function VideoPane(props, ref) {
+  const { src, captionsUrl, fps, frames, width, height, timeline, selected } = props;
+  const video = useRef<HTMLVideoElement>(null);
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const [mode, setMode] = useState<"safecut" | "raw">("safecut");
+  const rvfc = useSyncExternalStore(
+    noSubscribe,
+    () => "requestVideoFrameCallback" in HTMLVideoElement.prototype,
+    () => true,
+  );
+  const [failed, setFailed] = useState(false);
+  const latest = useRef({ props, mode });
+  useLayoutEffect(() => {
+    latest.current = { props, mode };
+  });
+  const frameRef = useRef(0);
+
+  const draw = useCallback((mediaTime: number) => {
+    const c = canvas.current;
+    const v = video.current;
+    if (!c || !v) return;
+    const ctx = c.getContext("2d");
+    if (!ctx) return;
+    const { props: p, mode: m } = latest.current;
+    const frame = frameAt(mediaTime, p.fps, p.frames);
+    frameRef.current = frame;
+    const ops = overlayOps({ ...p.overlay, frame, mode: m, width: p.width, height: p.height });
+    drawOverlay(ctx, v.readyState >= 2 ? v : null, ops, c.width / p.width);
+  }, []);
+
+  // Keep the canvas the size of the displayed video, in device pixels.
+  useEffect(() => {
+    const c = canvas.current;
+    if (!c) return;
+    const resize = () => {
+      const rect = c.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      c.width = Math.max(1, Math.round(rect.width * dpr));
+      c.height = Math.max(1, Math.round(rect.height * dpr));
+      draw(video.current?.currentTime ?? 0);
+    };
+    const ro = new ResizeObserver(resize);
+    ro.observe(c);
+    resize();
+    return () => ro.disconnect();
+  }, [draw]);
+
+  // Redraw on every presented frame; fall back to rAF on browsers without rVFC, and say so.
+  useEffect(() => {
+    const v = video.current;
+    if (!v) return;
+    let handle = 0;
+    let stopped = false;
+    if ("requestVideoFrameCallback" in HTMLVideoElement.prototype) {
+      const loop: VideoFrameRequestCallback = (_now, meta) => {
+        if (stopped) return;
+        draw(meta.mediaTime);
+        handle = v.requestVideoFrameCallback(loop);
+      };
+      handle = v.requestVideoFrameCallback(loop);
+      return () => {
+        stopped = true;
+        v.cancelVideoFrameCallback(handle);
+      };
+    }
+    const tick = () => {
+      if (stopped) return;
+      draw(v.currentTime);
+      handle = requestAnimationFrame(tick);
+    };
+    handle = requestAnimationFrame(tick);
+    return () => {
+      stopped = true;
+      cancelAnimationFrame(handle);
+    };
+  }, [draw, src]);
+
+  // Redraw when edits, selection or the toggle change while paused.
+  useEffect(() => {
+    draw(video.current?.currentTime ?? 0);
+  }, [draw, props.overlay, mode, selected]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      seekToFrame(frame: number) {
+        const v = video.current;
+        if (!v) return;
+        v.pause();
+        // Aim at the middle of the frame so the quarter-frame switch point lands on it.
+        v.currentTime = frameStart(frame, fps) + 0.5 / fps;
+        draw(v.currentTime);
+      },
+      togglePlay() {
+        const v = video.current;
+        if (!v) return;
+        if (v.paused) void v.play().catch(() => undefined);
+        else v.pause();
+      },
+    }),
+    [draw, fps],
+  );
+
+  return (
+    <div>
+      <div className="relative w-full overflow-hidden rounded-xl bg-black" style={{ aspectRatio: `${width} / ${height}` }}>
+        {failed ? (
+          <p className="flex h-full items-center justify-center p-4 text-sm text-white/80">The video didn&apos;t load. The decisions below still work.</p>
+        ) : (
+          <video
+            ref={video}
+            className="absolute inset-0 h-full w-full"
+            src={src}
+            controls
+            playsInline
+            preload="auto"
+            onError={() => setFailed(true)}
+            aria-label="Your clip, with the Safe Cut preview drawn over it"
+          >
+            {captionsUrl && <track kind="captions" src={captionsUrl} srcLang="en" label="English" default />}
+          </video>
+        )}
+        <canvas ref={canvas} aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full" />
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+        <div role="radiogroup" aria-label="Preview" className="inline-flex rounded-lg border border-border bg-surface-2 p-0.5">
+          {(["raw", "safecut"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              role="radio"
+              aria-checked={mode === m}
+              tabIndex={mode === m ? 0 : -1}
+              className={`min-h-9 rounded-md px-3 font-medium ${mode === m ? "bg-surface shadow-sm" : "text-muted"}`}
+              onClick={() => setMode(m)}
+              onKeyDown={(e) => {
+                if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) {
+                  e.preventDefault();
+                  setMode(m === "raw" ? "safecut" : "raw");
+                }
+              }}
+            >
+              {m === "raw" ? "Raw" : "■ Safe Cut"}
+            </button>
+          ))}
+        </div>
+        <p className="text-muted">Preview. The final render covers the same areas.</p>
+        {!rvfc && <p className="text-muted">Preview may lag by a frame in this browser. The final render isn&apos;t affected.</p>}
+      </div>
+      <div aria-hidden="true" className="relative mt-2 flex flex-col gap-0.5">
+        {timeline.slice(0, 60).map((t) => (
+          <div key={t.id} className="relative h-1.5 rounded bg-surface-2">
+            <div
+              className={`absolute h-full rounded ${t.id === selected ? "bg-accent" : t.covered ? "bg-hidden-fg/40" : "bg-kept-fg/40"}`}
+              style={{ left: `${(t.first / frames) * 100}%`, width: `${Math.max(0.5, ((t.last - t.first + 1) / frames) * 100)}%` }}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+});
