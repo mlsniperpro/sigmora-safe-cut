@@ -637,6 +637,10 @@ Every finding from every round, with its fix. "Round" names the review that foun
 - [x] **#596 (win audit 48)**: (audit A; PRE-A open) `/try` never said frames don't go to Baseten for non-consented codes. Fix: Data bullet 4's "otherwise" row.
 - [x] **#597 (win audit 48)**: (audit A; PRE-A open) No request told WP8 to write the README's event boundary, auditor names and scope note. Fix: WP8 request in HANDOFF and the PR body.
 - [x] **#598 (win audit 48)**: (audit A) The PR #2 body and HANDOFF line 3 were stale (counts, 22 requests, word counts, PRE-A sha). Fix: body refreshed from the draft; HANDOFF corrected. Also "Safe Cut deletes everything" on the expired page → "from its servers".
+- [x] **#599 (win audit 48)**: (audit C; PRE-A §3.8) The Muse Spark Open scope note said "recorded hero runs only", but it also runs on owner-code and hero/dev eval jobs after the addendum. Fix: "consented hero and dev footage, where `audit.open_weight.status` is `ok`" in all four places.
+- [x] **#600 (win audit 48)**: (audit C; OFFICIAL-GUIDE) The guide's building period starts Oct 27 while our boundary is Oct 26 16:00 UTC, and WP0/WP6 committed product code on Oct 26. Fix: RULES-CHECKLIST §0 row and a BLOCKED step to ask in #office-hours by Nov 3; default keeps kickoff and lists the Oct 26 commits in the README.
+- [x] **#601 (win audit 48)**: (audit C) RULES-CHECKLIST §1 said "docs only before kickoff", against §0 and PRE-A's since-removed calculation script. Fix: §0's wording plus the README disclosure.
+- [x] **#602 (win audit 48)**: (audit C) BLOCKED's default pilot credit omitted the 1–2-pilot anonymous override. Fix: added, with telling the pilot why.
 
 ## 4. Which builder reads what
 
