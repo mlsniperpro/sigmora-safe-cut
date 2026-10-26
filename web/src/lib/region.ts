@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 /**
  * Meta's Geographic Use Policy §3 restricted territories (PRE-A API-NOTES §7, read
  * 2026-10-26). Config, not copy: the pages link the policy instead of listing it.
@@ -15,13 +17,20 @@ export const DEFAULT_TERRITORIES: Territories = {
   regions: { UA: ["43", "40", "14", "09"] },
 };
 
+const code = z.string().trim().min(1).toUpperCase();
+const territoriesSchema = z.object({ countries: z.array(code), regions: z.record(code, z.array(code)) });
+
 export function loadTerritories(raw: string | undefined): Territories {
   if (!raw?.trim()) return DEFAULT_TERRITORIES;
-  const parsed = JSON.parse(raw) as Partial<Territories>;
-  if (!Array.isArray(parsed.countries) || typeof parsed.regions !== "object" || parsed.regions === null) {
-    throw new Error("SAFECUT_BLOCKED_TERRITORIES must be {countries: string[], regions: {CC: string[]}}");
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    json = undefined;
   }
-  return { countries: parsed.countries.map((c) => c.toUpperCase()), regions: parsed.regions };
+  const parsed = territoriesSchema.safeParse(json);
+  if (!parsed.success) throw new Error("SAFECUT_BLOCKED_TERRITORIES must be {countries: string[], regions: {CC: string[]}}");
+  return parsed.data;
 }
 
 /**
@@ -33,6 +42,7 @@ export function isRestricted(country: string | null | undefined, region: string 
   if (!cc) return false;
   if (t.countries.includes(cc)) return true;
   // The header carries only the region part, but accept a full "UA-43" too.
-  const part = region?.trim().toUpperCase().replace(new RegExp(`^${cc}-`), "");
+  const full = region?.trim().toUpperCase();
+  const part = full?.startsWith(`${cc}-`) ? full.slice(cc.length + 1) : full;
   return !!part && (t.regions[cc] ?? []).includes(part);
 }

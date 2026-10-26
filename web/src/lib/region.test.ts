@@ -16,6 +16,8 @@ describe("region check (UI-SPEC §7, PRE-A §7)", () => {
     ["US", "CA", false],
     [null, null, false],
     ["", "", false],
+    ["(", "(-1", false],
+    ["UA", "UA-43", true],
   ] as const)("%s/%s → %s", (country, region, blocked) => {
     expect(isRestricted(country, region)).toBe(blocked);
   });
@@ -32,5 +34,8 @@ describe("region check (UI-SPEC §7, PRE-A §7)", () => {
   it("reads an override and rejects a malformed one", () => {
     expect(isRestricted("KE", null, loadTerritories('{"countries":["ke"],"regions":{}}'))).toBe(true);
     expect(() => loadTerritories('{"countries":"RU"}')).toThrow();
+    expect(() => loadTerritories('{"countries":[1],"regions":{}}')).toThrow();
+    expect(() => loadTerritories("not json")).toThrow(/SAFECUT_BLOCKED_TERRITORIES/);
+    expect(isRestricted("ua", "x", loadTerritories('{"countries":[],"regions":{"ua":["x"]}}'))).toBe(true);
   });
 });
