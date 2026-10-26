@@ -42,7 +42,7 @@ Every stage reads and writes plain JSON in `jobs/<job_id>/`. That lets each WP d
 ```json
 {"job_id": "j_01", "source": "SC-A-01.mp4", "source_sha256": "…",
  "prepared": "prepared.mp4", "fps": 30, "width": 1280, "height": 720, "frames": 900,
- "times": [0.0, 0.0333], "audio": true, "created_at": "2026-10-27T10:00:00Z"}
+ "times": [0.0, 0.0333], "audio": true, "created_at": "2026-10-27T10:00:00Z", "consented": false}
 ```
 
 ### 3.2 `tracks.json` (track)
@@ -115,7 +115,8 @@ Children are `locked: true` and `hide`; the creator can't un-hide them (DESIGN �
 {"frames_scanned": 900, "egoblur": {"model": "egoblur-gen2", "faces": 0, "plates": 0},
  "leaks": [{"frame": 401, "box": [x1, y1, x2, y2], "kind": "face", "detector": "egoblur|redteam", "patched_item": "i_9"}],
  "redteam": [{"frame": 450, "finding": "none"}], "unresolved": 0, "passes": 2,
- "sample_step": 30, "spots": [], "blocked_reason": null, "audit_budget_cause": null}
+ "sample_step": 30, "spots": [], "blocked_reason": null, "audit_budget_cause": null,
+ "open_weight": {"model": null, "status": "off", "frames": 0, "findings": 0}, "redteam_open": []}
 ```
 Publishing is allowed only when `unresolved == 0`.
 
@@ -130,7 +131,7 @@ Publishing is allowed only when `unresolved == 0`.
 ```
 
 ### 3.10 `cost.jsonl`
-One line per API attempt: `{"ts", "job_id", "stage", "model", "attempt", "units", "usd", "estimated", "request_id", "cap", "code_kind", "code_id"}`. `estimated: true` marks an attempt whose billing is unknown (accepted, then lost); reported figures sum only `estimated: false` lines. A call whose worst-case estimate doesn't fit a cap is never sent and writes one `budget:<stage>` line naming the `cap`. `job_id` is null only on `system` lines (`/healthz`, the startup probe).
+One line per API attempt: `{"ts", "provider", "job_id", "stage", "model", "attempt", "units", "usd", "estimated", "request_id", "cap", "code_kind", "code_id"}`. `estimated: true` marks an attempt whose billing is unknown (accepted, then lost); reported figures sum only `estimated: false` lines. A call whose worst-case estimate doesn't fit a cap is never sent and writes one `budget:<stage>` line naming the `cap`. `job_id` is null only on `system` lines (`/healthz`, the startup probe).
 
 ### 3.11 `files.json`
 A JSON array, one entry per upload: `[{"name": "sam_proxy.mp4", "sha256": "…", "file_id": "file-…", "purpose": "user_data", "created_at": "…Z", "deleted_at": null, "orphan": false}]`. Written before the file is used; `deleted_at` is set when `DELETE /v1/files/{id}` succeeds (or answers `file_not_found`). An upload whose ID never arrived is `file_id: null, orphan: true`, and `files_deleted: true` needs every entry deleted and no orphan.
@@ -151,7 +152,7 @@ A JSON array, one entry per upload: `[{"name": "sam_proxy.mp4", "sha256": "…",
 | `SAFECUT_SAM_FPS` | `8` | SAM proxy frame rate (1–10) | PRE-A §5b |
 | `SAFECUT_SPEECH_FALLBACK_MODEL` / `_EFFORT` | `muse-spark-1.2` / `omit` | speech fallback through the video soundtrack | PRE-A §3.4 |
 | `SAFECUT_ROLE_EFFORT`, `SAFECUT_SCENE_EFFORT`, `SAFECUT_REDTEAM_MODEL`, `SAFECUT_REDTEAM_EFFORT` | `medium`, `medium`, `muse-spark-1.3`, `medium` | efforts per pass | every effort is validated; `none` is refused (Meta returns 400) |
-| `SAFECUT_OPEN_MODEL`, `SAFECUT_OPEN_BASE_URL` | `meta-models/muse-spark-open-1026`, `https://inference.baseten.co/v1` | Muse Spark Open (open weights) on Baseten | the official guide's hackathon ID; key in `BASETEN_API_KEY` |
+| `SAFECUT_OPEN_WEIGHT_AUDIT`, `_MODEL`, `_BASE_URL`, `_EFFORT`, `_JOB_USD_CAP`, `_PRICE`, `_GRID_OK`, `_CODE_KINDS` | `off`, `meta-models/muse-spark-open-1026`, `https://inference.baseten.co/v1`, `medium`, `0.50`, none, `false`, `[]` | the open-weight second opinion in the audit (Muse Spark Open on Baseten, PRE-A §3.8) | Baseten credits, outside the $150; `provider: "baseten"` cost lines; key in `BASETEN_API_KEY` |
 | `MODEL_API_KEY` | none | Meta Model API key | secret; never logged |
 
 The full list (access codes, code windows, pilot and recording caps, R2 storage, EgoBlur, the test line) is in `safecut/config.py` and `.env.example`; PRE-A §12 explains each.

@@ -150,7 +150,7 @@ class FileStore:
         except MetaError as exc:
             # Only when some attempt may have reached the server (not a breaker or budget refusal).
             if exc.maybe_processed or isinstance(exc, MetaConfigError):
-                await self._recover_orphans(up)
+                await self._recover_or_record(up)
             raise
         except BaseException:
             # Cancelled (or worse) mid-upload: we can't list now, so record that a copy may exist.
@@ -163,9 +163,18 @@ class FileStore:
         await self._record(FileEntry(name=up.name, sha256=up.digest, file_id=file_id, created_at=now_utc()))
         if result.maybe_orphaned:
             # An earlier attempt may have reached the server before it failed: clean up its copy.
-            with contextlib.suppress(MetaError):
-                await self._recover_orphans(up)
+            await self._recover_or_record(up)
         return file_id
+
+    async def _recover_or_record(self, up: _Upload) -> None:
+        """Recover orphans; if that is itself cancelled, still record that a copy may exist."""
+        try:
+            await self._recover_orphans(up)
+        except MetaError:
+            pass  # any copy found is already in files.json (undeleted), so the sweeper retries it
+        except BaseException:
+            await asyncio.shield(self._record_orphan(up))
+            raise
 
     async def _record_orphan(self, up: _Upload) -> None:
         await self._record(FileEntry(name=up.name, sha256=up.digest, file_id=None, created_at=now_utc(), orphan=True))

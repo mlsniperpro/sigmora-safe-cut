@@ -37,7 +37,9 @@ FallbackEffort = Literal["minimal", "low", "medium", "high", "omit"]
 CodeKind = Literal["pilot", "recording", "judge", "public", "service", "owner", "eval", "system"]
 AccessCodeKind = Literal["judge", "public", "pilot", "recording", "owner"]
 WindowKind = Literal["judge", "public", "service", "recording", "pilot", "owner"]
-CapKind = Literal["job", "test_line", "code", "pilot_pool", "daily"]
+CapKind = Literal["job", "test_line", "code", "pilot_pool", "daily", "baseten_job"]
+Provider = Literal["meta", "baseten"]
+OpenWeightEffort = Literal["low", "medium", "high", "xhigh", "omit"]
 
 # Meta's documented Voice Transcribe languages (speech-to-text page, read 2026-10-25).
 ASR_LANGUAGES: frozenset[str] = frozenset(
@@ -75,7 +77,7 @@ def ensure_standard_model(model_id: str) -> str:
     cleaned = model_id.strip()
     if not cleaned:
         raise ValueError("model ID is empty")
-    if cleaned.endswith("-contributor"):
+    if cleaned.lower().endswith("-contributor"):
         raise ValueError(f"{cleaned!r} is a Contributor-mode model; Safe Cut uses Standard mode only")
     return cleaned
 
@@ -104,8 +106,6 @@ TOKEN_PRICES: Mapping[str, TokenPrice] = {
     "muse-spark-1.2": TokenPrice(input=1.25, cached=0.15, output=4.25),
     "muse-spark-1.1": TokenPrice(input=1.25, cached=0.15, output=4.25),
     "muse-wonder-1.0": TokenPrice(input=4.00, cached=0.20, output=20.00),
-    # Baseten Model API, read from baseten.co/library/muse-spark-open on 2026-10-26.
-    "meta-models/muse-spark-open-1026": TokenPrice(input=1.25, cached=0.15, output=4.25),
 }
 SAM_USD_PER_FRAME = 0.20 / 1000
 SAM_USD_PER_IMAGE = 2.50 / 1000
@@ -187,12 +187,21 @@ DATA_PURGE_HOURS = 24
 # ---------------------------------------------------------------------------
 
 
+class OpenWeightPrice(BaseModel):
+    """USD per 1M tokens on Baseten, set from probe h (``SAFECUT_OPEN_WEIGHT_PRICE={"in": …, "out": …}``)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False, populate_by_name=True)
+
+    input: float = Field(alias="in", gt=0)
+    output: float = Field(alias="out", gt=0)
+
+
 class AccessCode(BaseModel):
     """One ``SAFECUT_ACCESS_CODES`` entry (PRE-A §12, PR #2 UI-SPEC request 20)."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    code: str = Field(min_length=4)
+    code: SecretStr = Field(min_length=4)
     kind: AccessCodeKind
     cap_usd: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     valid_from: AwareDatetime | None = None
@@ -210,7 +219,7 @@ class AccessCode(BaseModel):
 class ServiceKey(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    key: SecretStr
+    key: SecretStr = Field(min_length=16)
     name: str = Field(min_length=1)
 
 
@@ -244,11 +253,16 @@ _ENV_PREFIX = "SAFECUT_"
 #: Where each base URL may point (AGENTS rule 7: calls go direct, never through a proxy).
 ALLOWED_HOSTS: Mapping[str, frozenset[str]] = {
     "meta_base_url": frozenset({"api.meta.ai"}),
-    "open_base_url": frozenset({"inference.baseten.co"}),
+    "open_weight_base_url": frozenset({"inference.baseten.co"}),
 }
 #: Secrets keep the names their providers document, without the SAFECUT_ prefix.
 _SECRET_ENV: Mapping[str, str] = {"model_api_key": "MODEL_API_KEY", "baseten_api_key": "BASETEN_API_KEY"}
-_JSON_FIELDS = frozenset({"access_codes", "code_windows", "asr_language_bias", "service_keys"})
+_JSON_FIELDS = frozenset(
+    {"access_codes", "code_windows", "asr_language_bias", "service_keys", "open_weight_price", "open_weight_code_kinds"}
+)
+_BOOL_FIELDS = frozenset({"replay", "sam_send_store", "open_weight_grid_ok"})
+_TRUE = frozenset({"1", "true", "yes", "on"})
+_FALSE = frozenset({"0", "false", "no", "off"})
 
 
 class Settings(BaseModel):
@@ -272,10 +286,17 @@ class Settings(BaseModel):
     speech_fallback_effort: FallbackEffort = "omit"
     asr_language_bias: tuple[str, ...] = ("English",)
 
-    # Open-weight Muse Spark Open on Baseten (OpenAI-compatible Chat Completions). The hackathon ID is
+    # Open-weight second opinion: Muse Spark Open on Baseten (PRE-A §3.8). The hackathon ID is
     # ``meta-models/muse-spark-open-1026`` (official guide), not the docs' ``meta-models/muse-spark-open``.
-    open_model: ModelId = "meta-models/muse-spark-open-1026"
-    open_base_url: str = "https://inference.baseten.co/v1"
+    # Off until probe h passes; Baseten credits are separate from the $150 Meta ledger.
+    open_weight_audit: Literal["on", "off"] = "off"
+    open_weight_model: ModelId = "meta-models/muse-spark-open-1026"
+    open_weight_base_url: str = "https://inference.baseten.co/v1"
+    open_weight_effort: OpenWeightEffort = "medium"
+    open_weight_job_usd_cap: float = Field(default=0.50, ge=0)
+    open_weight_price: OpenWeightPrice | None = None  # set from probe h; with none, calls are refused
+    open_weight_grid_ok: bool = False
+    open_weight_code_kinds: tuple[Literal["owner", "recording"], ...] = ()
     baseten_api_key: SecretStr | None = None
 
     # Endpoint and key.
@@ -313,7 +334,7 @@ class Settings(BaseModel):
     r2_secret_access_key: SecretStr | None = None
     r2_bucket: str | None = None
 
-    @field_validator("meta_base_url", "open_base_url")
+    @field_validator("meta_base_url", "open_weight_base_url")
     @classmethod
     def _trusted_base(cls, value: str, info: ValidationInfo) -> str:
         return trusted_base_url(value, ALLOWED_HOSTS[info.field_name or ""])
@@ -342,7 +363,6 @@ class Settings(BaseModel):
             self.escalate_model,
             self.redteam_model,
             self.speech_fallback_model,
-            self.open_model,
         }
         unpriced = sorted(m for m in token_models if m not in TOKEN_PRICES)
         if unpriced:
@@ -353,9 +373,10 @@ class Settings(BaseModel):
     def _code_caps(self) -> Settings:
         seen: set[str] = set()
         for entry in self.access_codes:
-            if entry.code in seen:
+            code = entry.code.get_secret_value()
+            if code in seen:
                 raise ValueError("SAFECUT_ACCESS_CODES has a duplicate code")
-            seen.add(entry.code)
+            seen.add(code)
             limit = {"pilot": self.pilot_code_usd, "owner": 6.00, "recording": self.recording_code_usd}.get(entry.kind)
             if limit is not None and entry.cap_usd is not None and entry.cap_usd > limit:
                 raise ValueError(f"access code of kind {entry.kind!r} has cap_usd above {limit:.2f}")
@@ -371,6 +392,10 @@ class Settings(BaseModel):
         if self.model_api_key is None or not self.model_api_key.get_secret_value():
             raise ConfigError("MODEL_API_KEY is not set")
         return self.model_api_key.get_secret_value()
+
+    def speech_fallback_pair(self) -> tuple[str, str]:
+        """The speech fallback's (model, effort): probed at startup, but its failure never stops the start."""
+        return (self.speech_fallback_model, self.speech_fallback_effort)
 
     def open_api_key(self) -> str:
         """The Baseten key for the open-weight model. Never log the return value."""
@@ -407,10 +432,12 @@ def _parse_env_value(name: str, raw: str) -> Any:
                 raise ConfigError("SAFECUT_CODE_WINDOWS must map a code kind to [from, until] (ISO UTC)") from exc
             return {kind: CodeWindow(start=start, until=until) for kind, (start, until) in pairs.items()}
         return parsed
-    if name == "replay":
-        return raw.strip().lower() in ("1", "true", "yes", "on")
-    if name == "sam_send_store":
-        return raw.strip().lower() not in ("0", "false", "no", "off")
+    if name in _BOOL_FIELDS:
+        word = raw.strip().lower()
+        if word not in _TRUE | _FALSE:
+            # A typo must never silently turn replay off (= live spend) or store on.
+            raise ConfigError(f"{_ENV_PREFIX}{name.upper()} must be one of 1/0, true/false, yes/no, on/off")
+        return word in _TRUE
     return raw
 
 

@@ -55,11 +55,11 @@ ignore = ["PLR0913", "PLR2004", "TRY003", "N818", "PLR0911", "RUF001", "RUF002",
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "PLR2004", "S105", "S106", "ASYNC240"]
-"scripts/**" = ["T201"]
+"scripts/**" = ["T201", "ASYNC240"]  # one-shot CLI probes write small files
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers"
+addopts = "-ra --strict-markers -m 'not live'"  # live tests: uv run pytest -m live (needs MODEL_API_KEY)
 asyncio_mode = "auto"
 markers = ["live: calls the real Meta Model API (needs MODEL_API_KEY; spends credits)"]
 

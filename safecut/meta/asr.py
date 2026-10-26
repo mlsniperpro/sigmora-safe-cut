@@ -62,6 +62,7 @@ def request_part(
     """The JSON ``request`` part. Mode is checked here: Meta silently ignores an unknown mode."""
     if mode not in _MODES:
         raise ValueError(f"unknown ASR mode {mode!r}; Meta would ignore it silently")
+    config.ensure_standard_model(model)
     part: dict[str, Any] = {"mode": mode, "model": model, "audioEncoding": "WAV", "keywords": list(keywords)}
     if language_bias:
         part["languageBias"] = list(language_bias)

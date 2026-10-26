@@ -29,7 +29,7 @@ from pydantic import (
     model_validator,
 )
 
-from safecut.config import CapKind, CodeKind
+from safecut.config import CapKind, CodeKind, Provider
 
 # ---------------------------------------------------------------------------
 # Shared field types
@@ -101,6 +101,9 @@ class Job(Contract):
     times: list[float]
     audio: bool
     created_at: UtcDatetime
+    #: Gates the open-weight second opinion (PRE-A §3.8): true only for owner/recording codes (WP5) or the
+    #: hero/dev eval splits; missing means false (fail closed).
+    consented: bool = False
 
     @model_validator(mode="after")
     def _times(self) -> Job:
@@ -462,7 +465,7 @@ class Leak(Contract):
     frame: Frame
     box: Box
     kind: LeakKind
-    detector: Literal["egoblur", "redteam"]
+    detector: Literal["egoblur", "redteam", "redteam_open"]
     patched_item: str | None
     flag: Literal["redaction_too_weak"] | None = None
     through_item: str | None = None
@@ -493,6 +496,15 @@ class RedteamHit(Contract):
     excluded_by: str | None = None
 
 
+class OpenWeightSummary(Contract):
+    """The open-weight second opinion (PRE-A §3.8): it can only add leaks and never blocks the job."""
+
+    model: str | None = None
+    status: Literal["ok", "failed", "off"] = "off"
+    frames: NonNegativeInt = 0
+    findings: NonNegativeInt = 0
+
+
 class Spot(Contract):
     spot_id: str = Field(pattern=r"^s[1-9][0-9]*$")
     first: Frame
@@ -512,6 +524,8 @@ class Audit(Contract):
     spots: list[Spot] = Field(default_factory=list[Spot])
     blocked_reason: BlockedReason | None
     audit_budget_cause: Literal["job_cap", "daily_cap", "code_cap", "pilot_pool_cap"] | None = None
+    open_weight: OpenWeightSummary = Field(default_factory=OpenWeightSummary)
+    redteam_open: list[RedteamNone | RedteamHit] = Field(default_factory=list[RedteamNone | RedteamHit])
 
     @model_validator(mode="after")
     def _gate(self) -> Audit:
@@ -616,6 +630,8 @@ def receipt_hash(body: ReceiptBody) -> str:
 
 class CostLine(Contract):
     ts: UtcDatetime
+    #: Every Meta cap sums only ``meta`` lines; Baseten credits are a separate pot (PRE-A §3.8).
+    provider: Provider
     job_id: str | None
     stage: str = Field(min_length=1)
     model: str | None
@@ -748,11 +764,14 @@ def read_cost_lines(path: str | Path) -> Iterator[CostLine]:
                 raise ContractError(f"{path.name} line {number}: {_summarise(exc)}") from exc
 
 
-def measured_usd(lines: Iterator[CostLine] | list[CostLine]) -> tuple[float, float]:
-    """``(measured, possibly_billed)``: reported figures sum only ``estimated: false`` lines (AGENTS rule 9)."""
+def measured_usd(lines: Iterator[CostLine] | list[CostLine], *, provider: Provider = "meta") -> tuple[float, float]:
+    """``(measured, possibly_billed)`` for one provider: reported figures sum only ``estimated: false`` lines
+    (AGENTS rule 9), and Meta and Baseten spend are always reported apart (PRE-A §3.8)."""
     measured = 0.0
     estimated = 0.0
     for line in lines:
+        if line.provider != provider:
+            continue
         if line.estimated:
             estimated += line.usd
         else:

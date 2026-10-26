@@ -379,6 +379,7 @@ def _cost(**overrides: Any) -> c.CostLine:
         "estimated": False,
         "request_id": "resp_1",
         "code_kind": "eval",
+        "provider": "meta",
         "code_id": None,
     }
     return c.CostLine.model_validate(base | overrides)

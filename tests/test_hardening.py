@@ -15,7 +15,8 @@ import respx
 from pydantic import SecretStr
 
 from safecut.config import ConfigError, Settings, load_settings
-from safecut.meta import sam
+from safecut.contracts import read_cost_lines
+from safecut.meta import asr, sam
 from safecut.meta.budget import Caller, LocalLedger
 from safecut.meta.client import CallSpec, MetaClient, guard_body
 from safecut.meta.errors import MetaConfigError, MetaRefusal, MetaUnavailable, classify
@@ -182,12 +183,14 @@ def test_client_refuses_untrusted_base_urls(settings: Settings, ledger: LocalLed
         MetaClient(settings, job_id="j", caller=Caller.local(), ledger=ledger, cost_path="/dev/null", base_url=url)
 
 
-async def test_client_ignores_proxy_env(
-    settings: Settings, ledger: LocalLedger, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+async def test_client_uses_the_operators_tls_and_proxy_settings(
+    settings: Settings, ledger: LocalLedger, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:9")
+    # Decided (audit #3): httpx's default trust_env keeps the operator's CA bundle and egress proxy, which
+    # cloud sandboxes need; the key still only goes to the pinned provider host.
     client = MetaClient(settings, job_id="j", caller=Caller.local(), ledger=ledger, cost_path=tmp_path / "c.jsonl")
-    assert client._http._trust_env is False  # pyright: ignore[reportPrivateUsage] -- the setting under test
+    assert client._http._trust_env is True  # pyright: ignore[reportPrivateUsage] -- the setting under test
+    assert client.base_url == "https://api.meta.ai/v1"
     await client.aclose()
 
 
@@ -341,3 +344,134 @@ async def test_role_call_probe(tmp_path: Path) -> None:
 def test_cli_checks_the_keyframes_dir(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert probes.main(["f", f"--keyframes={tmp_path}"]) == 2
     assert "role_calls.json" in capsys.readouterr().err
+
+
+# --- audit #3 ---------------------------------------------------------------------------------
+
+
+class _BrokenLedger(LocalLedger):
+    def __init__(self, *, fail: str) -> None:
+        super().__init__()
+        self.fail = fail
+
+    def reserve(self, call_id: str, job_id: str | None, usd: float, limits: Any) -> None:
+        if self.fail == "reserve":
+            raise RuntimeError("ledger down")
+        super().reserve(call_id, job_id, usd, limits)
+
+    def settle(self, call_id: str, usd: float) -> None:
+        if self.fail == "settle":
+            raise RuntimeError("ledger down")
+        super().settle(call_id, usd)
+
+
+async def test_ledger_faults_are_typed_and_never_lose_a_call(
+    settings: Settings, tmp_path: Path, mock_api: respx.MockRouter
+) -> None:
+    route = mock_api.post("/thing").mock(return_value=httpx.Response(200, json={"id": "r1"}))
+    broken = MetaClient(
+        settings,
+        job_id="j",
+        caller=Caller.local(),
+        ledger=_BrokenLedger(fail="reserve"),
+        cost_path=tmp_path / "a.jsonl",
+    )
+    with pytest.raises(MetaUnavailable, match="ledger"):
+        await broken.request("POST", "thing", _spec(), meter=_meter)
+    assert route.call_count == 0
+    await broken.aclose()
+    flaky = MetaClient(
+        settings, job_id="j", caller=Caller.local(), ledger=_BrokenLedger(fail="settle"), cost_path=tmp_path / "b.jsonl"
+    )
+    result = await flaky.request("POST", "thing", _spec(), meter=_meter)
+    assert result.body == {"id": "r1"}
+    (line,) = list(read_cost_lines(tmp_path / "b.jsonl"))
+    assert (line.usd, line.estimated, line.request_id) == (0.002, False, "r1")
+    await flaky.aclose()
+
+
+async def test_504s_open_the_breaker(make_harness: Callable[..., Harness], mock_api: respx.MockRouter) -> None:
+    h = make_harness()
+    route = mock_api.post("/thing").mock(return_value=httpx.Response(504))
+    for _ in range(5):
+        with pytest.raises(MetaUnavailable):
+            await h.client.request("POST", "thing", _spec(), meter=_meter)
+    assert route.call_count == 5
+    assert h.client.breaker.state == "open"
+
+
+async def test_redirects_are_never_success(make_harness: Callable[..., Harness], mock_api: respx.MockRouter) -> None:
+    h = make_harness()
+    mock_api.delete("/files/file-1").mock(return_value=httpx.Response(307, headers={"location": "https://x"}))
+    with pytest.raises(MetaConfigError, match="redirect"):
+        await h.client.request("DELETE", "files/file-1", _spec(estimate_usd=0.0), meter=_meter)
+
+
+async def test_cancel_during_orphan_recovery_still_records(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter, two_clips: tuple[Path, Path], tmp_path: Path
+) -> None:
+    h = make_harness()
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    async def hang(_: httpx.Request) -> httpx.Response:
+        await asyncio.Event().wait()
+        return httpx.Response(200)
+
+    h.client._sleep = no_sleep  # pyright: ignore[reportPrivateUsage] -- skip backoff
+    mock_api.post("/files").mock(side_effect=httpx.ReadTimeout("slow"))
+    mock_api.get("/files").mock(side_effect=hang)
+    store = FileStore(h.client, tmp_path / "job")
+    task = asyncio.create_task(store.upload(two_clips[0], "sam_proxy.mp4"))
+    await asyncio.sleep(0.1)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert [e.orphan for e in store.index().root] == [True]
+    assert not store.index().all_deleted
+
+
+async def test_probe_h_runs_without_the_meta_key(tmp_path: Path) -> None:
+    cfg = Settings(baseten_api_key=SecretStr("bt"))
+    with respx.mock(assert_all_called=False) as router:
+        router.post("https://inference.baseten.co/v1/chat/completions").mock(return_value=httpx.Response(401))
+        results = await probes.run(["h"], settings=cfg, out_root=tmp_path, ledger=LocalLedger())
+    assert "error" not in results["h"]
+    assert "MetaAuthError" in results["h"]["four_frames"]["error"]
+    no_key = await probes.run(["h"], settings=Settings(), out_root=tmp_path / "x", ledger=LocalLedger())
+    assert "BASETEN_API_KEY" in no_key["h"]["error"]
+
+
+def test_config_hygiene() -> None:
+    s = load_settings({"SAFECUT_ACCESS_CODES": '[{"code": "judge-secret-7", "kind": "judge"}]'})
+    assert "judge-secret-7" not in repr(s)
+    assert "judge-secret-7" not in s.model_dump_json()
+    for bad in ('[{"key": "", "name": "sigmora"}]', '[{"key": "short", "name": "sigmora"}]'):
+        with pytest.raises(ConfigError):
+            load_settings({"SAFECUT_SERVICE_KEYS": bad})
+    with pytest.raises(ConfigError, match="REPLAY"):
+        load_settings({"SAFECUT_REPLAY": "ture"})
+    with pytest.raises(ConfigError, match="Contributor"):
+        load_settings({"SAFECUT_SAM_MODEL": "sam-3.1-Contributor"})
+    assert load_settings({}).speech_fallback_pair() == ("muse-spark-1.2", "omit")
+
+
+def test_asr_request_refuses_contributor_models() -> None:
+    with pytest.raises(ValueError, match="Contributor"):
+        asr.request_part("muse-voice-transcribe-1.0-contributor", mode="DIARIZATION", language_bias=[])
+
+
+def test_probe_h_grid_mapping() -> None:
+    _, box = probes.synthetic_frame(2, name=True)
+    assert box is not None
+    x1, y1, x2, y2 = box
+    grid = (
+        round(x1 * 1000 / 1280),
+        round((y1 + 40) * 1000 / 760),
+        round(x2 * 1000 / 1280),
+        round((y2 + 40) * 1000 / 760),
+    )
+    mapped = probes.grid_box_to_frame(grid)
+    assert all(abs(a - b) <= 2 for a, b in zip(mapped, box, strict=True))
+    assert probes.grid_box_to_frame((1001, 1001, -5, -5)) == (0, 0, 1280, 720)

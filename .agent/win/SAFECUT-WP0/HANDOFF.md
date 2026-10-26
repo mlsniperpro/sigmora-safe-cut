@@ -12,7 +12,7 @@
 - **Meta client** (`safecut/meta/`):
   - `client` is the single attempt loop: retries, breaker, cost lines, caps and the AGENTS rule 6 guard;
   - `errors`, `retry`, `budget` (a SQLite reservation ledger), `cost`, `files`, `responses`, `asr`, `sam`, `status`;
-  - `openweight` runs Muse Spark Open on Baseten as `meta-models/muse-spark-open-1026`.
+  - `safecut/open_weight.py` (outside `meta/`, PRE-A §3.8) runs the open-weight second opinion: Muse Spark Open on Baseten, streamed chat, `provider: "baseten"`, its own cap.
   - Tests: `tests/test_meta_client.py`, `tests/test_meta_endpoints.py`, `tests/test_fuzz.py`, `tests/test_chaos.py`.
 - **Probes a–h:** `scripts/probes/probes.py` (`--clip=` runs probes b and d on a hero clip) and `scripts/probes/trim.py`. The replay e2e test is `tests/test_probes_replay.py`.
 - **Fixtures:**
@@ -26,8 +26,8 @@
 - **Last fully green head:** 00e3b4c (233 passed, ruff and pyright clean). A fresh clone of b7fe6c9 was green in 41 s.
 
 ## In flight (exact state)
-- Resumed 2026-10-26 ~18:00 UTC by the same session (LEASE active). The suite is green: 265 passed, ruff and pyright clean. All audit #2 and code-review findings are fixed and tested (tests/test_hardening.py; listed in reaudit.md).
-- Next: audit #3 and audit #4 (two clean in a row), the soak at the final head, break-it.md, gate, PR status.
+- 2026-10-26 ~19:00 UTC: audit #3 found 2 high, 4 medium and 6 low; all are fixed and tested (tests/test_hardening.py "audit #3", tests/test_open_weight.py), including PRE-A's new §3.8/§12 open-weight rows. 280 passed, ruff and pyright clean.
+- Next: push; the soak and audit #4 at that head; then audit #5 (two clean in a row); break-it.md; gate; PR status.
 
 ## Next steps, in order
 1. Make the suite green (above); run `bash .agent/win/SAFECUT-WP0/checks.sh`.

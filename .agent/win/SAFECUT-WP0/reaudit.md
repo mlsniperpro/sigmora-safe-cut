@@ -38,3 +38,17 @@ I reproduced or confirmed every finding against the code and PRE-A §10. All are
 
 ## Code-review skill (medium) on origin/main...HEAD: 10 findings, all verified and fixed
 cancelled or malformed-id upload (orphan entry, FILE_ID_PATTERN), streamed refusal billed at usage (test_streamed_refusal_is_billed_at_usage), non-transport httpx errors typed (test_non_transport_httpx_errors_are_typed), the count call off the breaker (test_best_effort_calls_ignore_the_breaker), dotted config params (test_dotted_params_are_config_errors), probe runner robustness, a late failure admitting a second trial (test_a_late_failure_does_not_admit_a_second_trial), WAV cleanup, the Files lock held across uploads (per-name locks; test_concurrent_uploads_are_all_recorded), one shared ensure_standard_model.
+
+## Audit 3 (independent Sonnet reviewer at 2d81848): 0 critical, 2 high, 4 medium, 6 low. NOT CLEAN; all verified and handled
+- H1 `trust_env=False` dropped the sandbox CA bundle and proxy, so no live call could connect here → reverted to httpx's default (a decision: operator infrastructure, not the geo-workaround AGENTS rule 7 bans; the key still only goes to the pinned host) (test_client_uses_the_operators_tls_and_proxy_settings)
+- H2 PRE-A §3.8/§12 open-weight rows (added to PR #1 today) missing → implemented: safecut/open_weight.py, `provider`, `baseten_job`, `consented`, `open_weight`, `redteam_open`, `redteam_open` detector, the SAFECUT_OPEN_WEIGHT_* config (tests/test_open_weight.py)
+- M3 ledger faults untyped → `_ledger` (to_thread + 10 s timeout → MetaUnavailable, no request sent); settle/release after a call log first and never lose the result (test_ledger_faults_are_typed_and_never_lose_a_call)
+- M4 a 504 never opened the breaker → MetaUnavailable counts as a failure (test_504s_open_the_breaker)
+- M5 cancel during orphan recovery → `_recover_or_record` shields an orphan entry (test_cancel_during_orphan_recovery_still_records)
+- M6 probe h against §3.8 → rewritten: streamed, no response_format, max_tokens 16k, 4 frames, grid check, omit comparison (test_all_probes_replay, test_probe_h_grid_mapping)
+- L7 probe h needed the Meta key → `_run_h` builds only the Baseten client (test_probe_h_runs_without_the_meta_key)
+- L8 plain `uv run pytest` ran live tests → `-m 'not live'` in addopts
+- L9 CUDA torch in the audit group → not a defect: PRE-A §12's documented deviation (EgoBlur 2.0.1 pins torch==2.9.1; the CPU index can't use the Modal GPU)
+- L10 config hygiene → codes are SecretStr, service keys ≥ 16 chars, strict booleans, case-insensitive Contributor check, ASR request guard (test_config_hygiene, test_asr_request_refuses_contributor_models)
+- L11 3xx treated as success → MetaConfigError (test_redirects_are_never_success)
+- L12 the speech-fallback pair was missing from the startup probe set → `Settings.speech_fallback_pair()` (non-fatal by spec)

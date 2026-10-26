@@ -26,7 +26,7 @@ Legend: `- [x]` done with evidence · `- [P]` parked on an owner input (BLOCKED.
 - [x] New work only: every WP0 file is created on branch wp0-foundation after 2026-10-26 16:00 UTC (first commit 895500e at 16:1x UTC); the README's "built during the event" boundary is WP8's
 - [P] Stage 1 pass/fail needs real Meta Model API use: the client is built and tested, live calls wait on MODEL_API_KEY (BLOCKED.md)
 - [P] Public repo at submission (BLOCKED.md; owner approves)
-- [x] Open-weight bonus path: SAFECUT_OPEN_MODEL=meta-models/muse-spark-open-1026 on Baseten Chat Completions, priced from the Baseten page, probe h. Evidence: safecut/meta/openweight.py, tests in test_meta_endpoints.py; the live run waits on BASETEN_API_KEY
+- [x] Open-weight bonus path per PRE-A §3.8: safecut/open_weight.py (streamed Baseten chat, provider: "baseten", its own baseten_job cap, refused without a price, consent and code-kind gating), and probe h (4 synthetic frames, the AMINA K. grid check, medium vs omit). Evidence: tests/test_open_weight.py, tests/test_probes_replay.py; the live run waits on BASETEN_API_KEY (BLOCKED.md)
 - [-] 3-minute video and live product: WP8 and WP5/WP6 own them (DEMO.md plans 2:50, under the limit)
 - [-] Best Agentic Use-Case: the closed loop (SAM IDs → Muse rulings → new SAM prompts) is WP2's; WP0 supplies the client it runs on
 
@@ -35,7 +35,11 @@ Legend: `- [x]` done with evidence · `- [P]` parked on an owner input (BLOCKED.
 - [x] Meta tooling 25%: Standard mode only, store:false on Responses and SAM, uploads deleted with files.json proof, every model ID from env, SAM parsed by Meta's own meta-sam-parser. Evidence: tests/test_meta_endpoints.py::test_sam_stream_feeds_the_official_parser
 - [x] Production 'holds up': timeouts, bounded retries, breaker, caps, no secrets in logs or errors. Evidence: test_key_is_sent_and_never_logged, test_errors_never_echo_values
 
+- [x] PRE-A §12 contract rows (job.consented, audit.open_weight, audit.redteam_open, leak detector redteam_open, cost.jsonl provider, cap baseten_job, the SAFECUT_OPEN_WEIGHT_* env vars). Evidence: safecut/contracts.py, safecut/config.py, tests/test_open_weight.py
+
 ## Quality bar
+- [x] Live smoke tests ready for the key: `uv run pytest -m live` (status, the model list, one metered Spark call ≤ $0.003). Evidence: tests/test_live.py, deselected from the default run
+- [x] Probe f role calls (Spark vs Wonder at max on consented SoM keyframes) built; the footage is listed in BLOCKED.md. Evidence: tests/test_hardening.py::test_role_call_probe
 - [x] State-of-the-art note in the PR (httpx, pydantic v2, meta-sam-parser, backoff, RFC 9110) with links. Evidence: PR #3 "State of the art"
-- [ ] Self-review section in the PR; code-review skill run on the diff
-- [ ] Fresh-clone README run recorded in break-it.md
+- [x] Self-review section in the PR; code-review skill (medium) run on origin/main...HEAD: 10 findings, all verified and fixed. Evidence: PR #3 "Self-review", reaudit.md, tests/test_hardening.py
+- [x] Fresh-clone run recorded in break-it.md: a clone of da8c047, uv sync --locked, ruff, pyright, pytest pinned to 2 CPUs → 265 passed, 66 s from clone to green

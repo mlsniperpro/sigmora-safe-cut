@@ -51,6 +51,21 @@ def _responses(request: httpx.Request) -> httpx.Response:
     return stream_response(completed(text_response(json.dumps(answer), usage=usage)))
 
 
+def _baseten(request: httpx.Request) -> httpx.Response:
+    body = json.loads(request.content)
+    images = sum(1 for part in body["messages"][0]["content"] if part.get("type") == "image_url")
+    # A text box near the true "AMINA K." box (frame 420,~314 → 707,~378; sent image is 1280x760 with a 40 px bar).
+    findings = [{"frame": 2, "kind": "text", "text": "AMINA K.", "box": [327, 462, 556, 550], "confidence": "high"}]
+    answer = json.dumps({"findings": findings if images else []})
+    chunks = [
+        {"id": "c", "choices": [{"delta": {"content": answer}}]},
+        {"id": "c", "choices": [{"delta": {}, "finish_reason": "stop"}]},
+        {"id": "c", "choices": [], "usage": {"prompt_tokens": 1600 * images + 300, "completion_tokens": 900}},
+    ]
+    content = "".join(f"data: {json.dumps(c)}\n\n" for c in chunks) + "data: [DONE]\n\n"
+    return httpx.Response(200, content=content.encode())
+
+
 @pytest.fixture
 def api(tmp_path: Path) -> Iterator[respx.MockRouter]:
     uploads = iter(range(1, 100))
@@ -74,15 +89,7 @@ def api(tmp_path: Path) -> Iterator[respx.MockRouter]:
         router.post(f"{BASE}/asr/transcribe").mock(
             return_value=httpx.Response(200, json={"transcript": "", "audioDurationMs": 3000, "turns": []})
         )
-        router.post("https://inference.baseten.co/v1/chat/completions").mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "choices": [{"message": {"content": '{"x": 731, "y": 331}'}, "finish_reason": "stop"}],
-                    "usage": {"prompt_tokens": 1600, "completion_tokens": 40},
-                },
-            )
-        )
+        router.post("https://inference.baseten.co/v1/chat/completions").mock(side_effect=_baseten)
         yield router
 
 
@@ -107,7 +114,10 @@ async def test_all_probes_replay(api: respx.MockRouter, tmp_path: Path) -> None:
     }
     assert results["g"]["error_px"] < 5
     assert results["h"]["model"] == "meta-models/muse-spark-open-1026"
-    assert all(r["uploads_deleted"] is True for r in results.values())
+    assert results["h"]["grid_ok"] is True
+    assert results["h"]["price_source"] == "baseten.co library page"
+    assert "reasoning_effort" not in str(results["h"]["omit_effort"])
+    assert all(r["uploads_deleted"] is True for name, r in results.items() if name != "h")
     for name in "abcdefgh":
         assert json.loads((out / name / "summary.json").read_text()) == results[name]
     lines = list(read_cost_lines(out / "cost.jsonl"))

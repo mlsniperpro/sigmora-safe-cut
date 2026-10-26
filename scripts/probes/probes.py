@@ -35,8 +35,9 @@ from meta_sam_parser import (
 )
 from pydantic import BaseModel
 
-from safecut.config import Settings, load_settings
-from safecut.meta import asr, openweight, responses, sam
+from safecut import open_weight
+from safecut.config import OpenWeightPrice, Settings, load_settings
+from safecut.meta import asr, responses, sam
 from safecut.meta.budget import Caller, CapLimit, LocalLedger
 from safecut.meta.client import CallSpec, MetaClient
 from safecut.meta.errors import MetaError
@@ -488,24 +489,129 @@ async def probe_g(p: Probe) -> Summary:
     return _point_summary(answer.model_dump(), result.usd, time.monotonic() - started)
 
 
-async def probe_h(p: Probe, open_meta: MetaClient) -> Summary:
-    image = dot_image()
-    messages = [
-        {
-            "role": "user",
-            "content": [{"type": "text", "text": POINT_QUESTION}, {"type": "image_url", "image_url": {"url": image}}],
-        }
-    ]
-    body = openweight.chat_body(
-        p.settings.open_model, messages, schema=POINT_SCHEMA, schema_name="point", max_tokens=4000
-    )
+# -- h: the open-weight second opinion (PRE-A §3.8) ------------------------------------------
+
+#: Baseten's published Muse Spark Open price (baseten.co/library/muse-spark-open, read 2026-10-26), used
+#: only to reserve probe h's own calls when SAFECUT_OPEN_WEIGHT_PRICE isn't set yet; probe h records it.
+BASETEN_PUBLISHED_PRICE = OpenWeightPrice.model_validate({"in": 1.25, "out": 4.25})
+NAME_TEXT = "AMINA K."
+REDTEAM_OPEN_PROMPT = (
+    "You check video frames before publication. Each image has a black bar on top with a frame number; ignore "
+    "it. List everything that could identify a real person: faces, people, readable personal text (names, "
+    "addresses, emails), number plates, screens. Answer with JSON only, no prose: "
+    '{"findings": [{"frame": <int>, "kind": "face"|"person"|"text"|"plate"|"screen"|"other", '
+    '"text": <string or null>, "box": [x1, y1, x2, y2], "confidence": "low"|"medium"|"high"}]}. '
+    "Boxes use a 0-1000 grid over the whole image you received: (0, 0) top-left, (1000, 1000) bottom-right."
+)
+
+
+class _OpenFinding(BaseModel):
+    frame: int | None = None
+    kind: str
+    text: str | None = None
+    box: tuple[int, int, int, int]
+    confidence: str | None = None
+
+
+class _OpenAnswer(BaseModel):
+    findings: list[_OpenFinding]
+
+
+def synthetic_frame(index: int, *, name: bool) -> tuple[str, tuple[int, int, int, int] | None]:
+    """A 1280x760 JPEG (bar + frame). With ``name``, "AMINA K." is drawn; returns its half-open frame box."""
+    img = np.full((IMG_H + BAR_H, IMG_W, 3), 96 + 20 * index, dtype=np.uint8)
+    img[:BAR_H] = 0
+    cv2.putText(img, f"F {index * 30:06d}", (8, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
+    cv2.rectangle(img, (100 + 40 * index, 500), (260 + 40 * index, 640), (40, 160, 40), thickness=-1)
+    box: tuple[int, int, int, int] | None = None
+    if name:
+        font, scale, thick = cv2.FONT_HERSHEY_SIMPLEX, 2.0, 4
+        (w, h), base = cv2.getTextSize(NAME_TEXT, font, scale, thick)
+        x, y = 420, 360  # baseline origin in frame pixels
+        cv2.putText(img, NAME_TEXT, (x, y + BAR_H), font, scale, (255, 255, 255), thick, cv2.LINE_AA)
+        box = (x, y - h, x + w, y + base)
+    ok, jpeg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 90])
+    if not ok:
+        raise RuntimeError("JPEG encoding failed")
+    return "data:image/jpeg;base64," + base64.b64encode(jpeg.tobytes()).decode(), box
+
+
+def grid_box_to_frame(box: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+    """PRE-A §5 for boxes: clamp, normalise corners, map to sent-image pixels, drop the bar, clamp to the frame."""
+    vx1, vy1, vx2, vy2 = (min(max(v, 0), 1000) for v in box)
+    vx1, vx2 = sorted((vx1, vx2))
+    vy1, vy2 = sorted((vy1, vy2))
+
+    def half_up(z: float) -> int:
+        return math.floor(z + 0.5)
+
+    x1, x2 = half_up(vx1 * IMG_W / 1000), half_up(vx2 * IMG_W / 1000)
+    y1 = half_up(vy1 * (IMG_H + BAR_H) / 1000) - BAR_H
+    y2 = half_up(vy2 * (IMG_H + BAR_H) / 1000) - BAR_H
+    return (min(max(x1, 0), IMG_W), min(max(y1, 0), IMG_H), min(max(x2, 0), IMG_W), min(max(y2, 0), IMG_H))
+
+
+def _frames_message(images: list[str]) -> list[dict[str, Any]]:
+    content: list[dict[str, Any]] = [{"type": "text", "text": REDTEAM_OPEN_PROMPT}]
+    content += [{"type": "image_url", "image_url": {"url": url}} for url in images]
+    return [{"role": "user", "content": content}]
+
+
+async def _open_call(
+    settings: Settings, client: MetaClient, images: list[str], *, effort: str, price: OpenWeightPrice
+) -> Summary:
+    body = open_weight.chat_body(settings, _frames_message(images), effort=effort)
     started = time.monotonic()
-    result = await openweight.create_chat(open_meta, body, stage="probe_h", image_count=1)
-    p.save("open-point.response.json", result.body)
-    answer = _Point.model_validate_json(openweight.chat_text(result.body))
-    return _point_summary(answer.model_dump(), result.usd, time.monotonic() - started) | {
-        "model": p.settings.open_model
+    try:
+        result = await open_weight.create(client, body, stage="probe_h", price=price, images=len(images))
+    except MetaError as exc:
+        return {"effort": effort, "error": f"{type(exc).__name__}: {exc}"}
+    answer = cast(Mapping[str, Any], result.body)
+    usage = open_weight.chat_units(answer.get("usage")) or {}
+    row: Summary = {
+        "effort": effort,
+        "latency_s": round(time.monotonic() - started, 2),
+        "finish_reason": answer.get("finish_reason"),
+        "reasoning_tokens": usage.get("reasoning"),
+        "output_tokens": usage.get("output"),
+        "usd": result.usd,
     }
+    try:
+        row["findings"] = [f.model_dump(mode="json") for f in open_weight.parse_json(_OpenAnswer, answer).findings]
+    except MetaError as exc:
+        row["invalid"] = str(exc)
+    return row
+
+
+async def probe_h(settings: Settings, client: MetaClient, out: Path) -> Summary:
+    """PRE-A §3.8 probe h: 4 synthetic frames, then the "AMINA K." grid check (IoU ≥ 0.3 in 2 of 3 tries) at
+    ``SAFECUT_OPEN_WEIGHT_EFFORT``, then one ``omit`` (xhigh) call to compare latency and reasoning tokens."""
+    price = settings.open_weight_price or BASETEN_PUBLISHED_PRICE
+    four = [synthetic_frame(i, name=i == 2)[0] for i in range(4)]
+    name_image, true_box = synthetic_frame(2, name=True)
+    if true_box is None:
+        raise RuntimeError("the name frame has no text box")
+    first = await _open_call(settings, client, four, effort=settings.open_weight_effort, price=price)
+    tries: list[Summary] = []
+    for _ in range(3):
+        row = await _open_call(settings, client, [name_image], effort=settings.open_weight_effort, price=price)
+        boxes = [f["box"] for f in row.get("findings", []) if f.get("kind") == "text"]
+        best = max((_iou(list(grid_box_to_frame(tuple(b))), list(true_box)) for b in boxes), default=0.0)
+        tries.append(row | {"best_iou": round(best, 3), "hit": best >= 0.3})
+    omit = await _open_call(settings, client, [name_image], effort="omit", price=price)
+    summary: Summary = {
+        "model": settings.open_weight_model,
+        "price_per_m": {"in": price.input, "out": price.output},
+        "price_source": "SAFECUT_OPEN_WEIGHT_PRICE" if settings.open_weight_price else "baseten.co library page",
+        "four_frames": first,
+        "grid_tries": tries,
+        "grid_ok": sum(1 for t in tries if t["hit"]) >= 2,
+        "omit_effort": omit,
+        "true_box": list(true_box),
+    }
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "open-weight.summary.json").write_text(json.dumps(summary, indent=1) + "\n")
+    return summary
 
 
 # -- runner -------------------------------------------------------------------------
@@ -542,6 +648,9 @@ async def run(
     for name in names:
         job_id = f"probe_{name}"
         out = out_root / name
+        if name == "h":
+            results[name] = await _run_h(settings, job_id=job_id, out=out, ledger=ledger, cost_path=cost_path)
+            continue
         meta = MetaClient(settings, job_id=job_id, caller=caller, ledger=ledger, cost_path=cost_path, http=http)
         files = FileStore(meta, out / "job")
         probe_clip = clip if name in ("b", "d") else CLIP
@@ -549,16 +658,7 @@ async def run(
             name=name, out=out, settings=settings, meta=meta, files=files, clip=probe_clip, keyframes=keyframes
         )
         try:
-            if name == "h":
-                open_meta = openweight.open_client(
-                    settings, job_id=job_id, caller=caller, ledger=ledger, cost_path=cost_path
-                )
-                try:
-                    results[name] = await probe_h(probe, open_meta)
-                finally:
-                    await open_meta.aclose()
-            else:
-                results[name] = await PROBES[name](probe)
+            results[name] = await PROBES[name](probe)
         except Exception as exc:
             results[name] = {"error": f"{type(exc).__name__}: {exc}"}
         finally:
@@ -569,6 +669,26 @@ async def run(
             await meta.aclose()
         probe.save("summary.json", results[name])
     return results
+
+
+async def _run_h(settings: Settings, *, job_id: str, out: Path, ledger: LocalLedger, cost_path: Path) -> Summary:
+    """Probe h needs only BASETEN_API_KEY (no Meta key) and writes provider: "baseten" cost lines."""
+    try:
+        client = open_weight.open_weight_client(
+            settings, job_id=job_id, caller=Caller(code_kind="owner"), ledger=ledger, cost_path=cost_path
+        )
+    except Exception as exc:
+        result: Summary = {"error": f"{type(exc).__name__}: {exc}"}
+    else:
+        try:
+            result = await probe_h(settings, client, out)
+        except Exception as exc:
+            result = {"error": f"{type(exc).__name__}: {exc}"}
+        finally:
+            await client.aclose()
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "summary.json").write_text(json.dumps(result, indent=1, ensure_ascii=False) + "\n")
+    return result
 
 
 def main(argv: list[str]) -> int:

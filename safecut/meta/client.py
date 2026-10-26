@@ -8,6 +8,7 @@ accepted then lost → kept as an ``estimated`` charge; completed → the actual
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import random
 import time
@@ -21,11 +22,12 @@ import httpx
 import orjson
 
 from safecut import __version__, config
-from safecut.config import Settings
+from safecut.config import Provider, Settings
 from safecut.contracts import CostLine, append_cost_line, now_utc
-from safecut.meta.budget import Caller, Ledger, job_limit
+from safecut.meta.budget import Caller, CapLimit, Ledger, job_limit
 from safecut.meta.errors import (
     BudgetExceeded,
+    MetaConfigError,
     MetaError,
     MetaIncomplete,
     MetaRefusal,
@@ -100,6 +102,37 @@ class StreamResult:
     request_id: str | None
     attempts: int
     usd: float
+
+
+class _ChatAccumulator:
+    """Assembles a streamed Chat Completions answer from its chunks."""
+
+    def __init__(self) -> None:
+        self.parts: list[str] = []
+        self.finish: str | None = None
+        self.usage: Any = None
+        self.rid: str | None = None
+        self.seen = False
+
+    def add(self, chunk: Mapping[str, Any]) -> None:
+        self.seen = True
+        if self.rid is None and isinstance(chunk.get("id"), str):
+            self.rid = cast(str, chunk["id"])
+        self.usage = chunk.get("usage") or self.usage
+        for choice in cast(list[Any], chunk.get("choices") or []):
+            if not isinstance(choice, Mapping):
+                continue
+            choice_map = cast(Mapping[str, Any], choice)
+            delta = choice_map.get("delta")
+            if isinstance(delta, Mapping):
+                content = cast(Mapping[str, Any], delta).get("content")
+                if isinstance(content, str):
+                    self.parts.append(content)
+            if isinstance(choice_map.get("finish_reason"), str):
+                self.finish = cast(str, choice_map["finish_reason"])
+
+    def answer(self) -> dict[str, Any]:
+        return {"id": self.rid, "text": "".join(self.parts), "finish_reason": self.finish, "usage": self.usage}
 
 
 class _SentFlag:
@@ -207,20 +240,23 @@ class MetaClient:
         clock: Callable[[], float] = time.monotonic,
         base_url: str | None = None,
         api_key: str | None = None,
+        provider: Provider = "meta",
     ) -> None:
         if (job_id is None) != (caller.code_kind == "system"):
             raise ValueError("job_id is None exactly for system callers (healthz, the startup probe)")
         self.settings = settings
+        self.provider: Provider = provider
         self.job_id = job_id
         self.caller = caller
         self.ledger = ledger
         self.cost_path = Path(cost_path)
         self._owns_http = http is None
-        # trust_env=False: no HTTPS_PROXY or netrc from the environment ever sees the key (AGENTS rule 7).
+        # httpx's default trust_env: the operator's CA bundle and egress proxy apply (cloud sandboxes need
+        # both). That is infrastructure the operator configures, not the geo-workaround AGENTS rule 7 bans;
+        # the key can only go to the pinned provider host (trusted_base_url below).
         self._http = http or httpx.AsyncClient(
             limits=httpx.Limits(max_connections=config.MAX_CONNECTIONS),
             timeout=httpx.Timeout(60.0, connect=config.CONNECT_TIMEOUT_S),
-            trust_env=False,
         )
         allowed = frozenset(host for hosts in config.ALLOWED_HOSTS.values() for host in hosts)
         self.base_url = config.trusted_base_url(base_url or settings.meta_base_url, allowed)
@@ -262,6 +298,7 @@ class MetaClient:
     ) -> None:
         line = CostLine(
             ts=now_utc(),
+            provider=self.provider,
             job_id=self.job_id,
             stage=spec.stage,
             model=spec.model,
@@ -278,6 +315,7 @@ class MetaClient:
     def _log_budget_stop(self, spec: CallSpec, exc: BudgetExceeded) -> None:
         line = CostLine(
             ts=now_utc(),
+            provider=self.provider,
             job_id=self.job_id,
             stage=f"budget:{spec.stage}",
             model=spec.model,
@@ -303,11 +341,26 @@ class MetaClient:
                 self._throttle_until = self._clock() + config.THROTTLE_DELAY_S
                 log.warning("throttled", extra={"kind": kind, "remaining": remaining, "limit": limit})
 
-    def _limits(self) -> list[Any]:
+    def _limits(self) -> list[CapLimit]:
+        if self.provider == "baseten":
+            # Baseten credits are a separate pot: only its own per-job cap applies, never the Meta caps.
+            key = f"baseten_job:{self.job_id or 'system'}"
+            return [CapLimit("baseten_job", key, self.settings.open_weight_job_usd_cap)]
         limits = list(self.caller.limits)
         if self.job_id is not None:
             limits.insert(0, job_limit(self.settings, self.job_id))
         return limits
+
+    async def _ledger(self, fn: Callable[[], None]) -> None:
+        """A ledger call, bounded and typed: a fault or a 10 s stall is ``MetaUnavailable`` (PRE-A §10.2)."""
+        try:
+            await asyncio.wait_for(asyncio.to_thread(fn), timeout=config.BUDGET_RESERVE_TIMEOUT_S)
+        except (BudgetExceeded, KeyError, ValueError):
+            raise
+        except TimeoutError as exc:
+            raise MetaUnavailable("the budget ledger did not answer in time; no request was sent") from exc
+        except Exception as exc:
+            raise MetaUnavailable(f"the budget ledger failed: {type(exc).__name__}") from exc
 
     # -- the attempt loop ---------------------------------------------------
 
@@ -343,7 +396,9 @@ class MetaClient:
             attempt += 1
             call_id = f"{self.job_id or 'system'}:{spec.stage}:{uuid.uuid4().hex}"
             try:
-                self.ledger.reserve(call_id, self.job_id, spec.estimate_usd, self._limits())
+                await self._ledger(
+                    functools.partial(self.ledger.reserve, call_id, self.job_id, spec.estimate_usd, self._limits())
+                )
             except BudgetExceeded as exc:
                 self._log_budget_stop(spec, exc)
                 raise
@@ -378,10 +433,21 @@ class MetaClient:
             # Completed, but without usage: we can't measure it, so the reserved estimate stands.
             self._account(spec, call_id, attempt, charged=True, rid=outcome.request_id)
             return
-        self.ledger.settle(call_id, outcome.usd)
+        # cost.jsonl first: it's the record of truth, so a ledger fault can't lose a billed call.
         self._log_cost(
             spec, attempt=attempt, units=outcome.units, usd=outcome.usd, estimated=False, rid=outcome.request_id
         )
+        self._ledger_after(lambda: self.ledger.settle(call_id, cast(float, outcome.usd)))
+
+    def _ledger_after(self, fn: Callable[[], None]) -> None:
+        """Settle or release after a call: a ledger fault is logged loudly, never allowed to lose the result.
+
+        The open reservation then expires after 2.5 h and is kept as an estimated charge (fail closed).
+        """
+        try:
+            fn()
+        except Exception:
+            log.exception("budget ledger settle/release failed; the reservation will expire as a charge")
 
     def _retry_delay(
         self,
@@ -404,7 +470,8 @@ class MetaClient:
                     breaker.record_failure(trial)
                 too_long.maybe_processed = maybe_processed
                 raise too_long from error
-        if breaker and error.retryable:
+        if breaker and (error.retryable or isinstance(error, MetaUnavailable)):
+            # A 504 is not retried, but it is still an outage signal (PRE-A §10.2).
             breaker.record_failure(trial)
         elif breaker:
             # The server answered (a 4xx, a refusal): it's up, whatever this request's fault.
@@ -414,13 +481,13 @@ class MetaClient:
     def _account(self, spec: CallSpec, call_id: str, attempt: int, *, charged: bool, rid: str | None) -> None:
         """Charged: keep the estimate as an ``estimated`` line. Not charged: release it at ``usd 0``."""
         if charged:
-            self.ledger.settle(call_id, spec.estimate_usd)
             self._log_cost(
                 spec, attempt=attempt, units=spec.estimate_units, usd=spec.estimate_usd, estimated=True, rid=rid
             )
+            self._ledger_after(lambda: self.ledger.settle(call_id, spec.estimate_usd))
         else:
-            self.ledger.release(call_id)
             self._log_cost(spec, attempt=attempt, units={}, usd=0.0, estimated=False, rid=rid)
+            self._ledger_after(lambda: self.ledger.release(call_id))
 
     # -- plain requests -----------------------------------------------------
 
@@ -467,6 +534,12 @@ class MetaClient:
                 raise _AttemptFailed(MetaUnavailable("request exceeded its total time limit"), accepted=True) from exc
             body = _decode(resp.content)
             rid = _request_id(resp.headers, body)
+            if 300 <= resp.status_code < 400:
+                # Redirects are never followed and never success: the path or host is wrong.
+                raise _AttemptFailed(
+                    MetaConfigError(f"unexpected redirect (HTTP {resp.status_code})", status=resp.status_code),
+                    accepted=False,
+                )
             if resp.status_code >= 400:
                 raise _status_failure(resp.status_code, body, resp.headers, rid, self._clock() - started)
             if body is None and resp.content.strip():
@@ -544,6 +617,57 @@ class MetaClient:
         response = cast(dict[str, Any], final) if final is not None else {}
         usd = spec.estimate_usd if outcome.usd is None else outcome.usd
         return StreamResult(events, response, outcome.request_id, attempts, usd)
+
+    async def stream_chat(self, spec: CallSpec, body: Mapping[str, Any], *, meter: Meter) -> CallResult:
+        """``POST /chat/completions`` streamed (Baseten's OpenAI-compatible API), with retries.
+
+        Returns the assembled answer as ``{"id", "text", "finish_reason", "usage"}``. A stream that ends with
+        no ``finish_reason`` is ``MetaIncomplete(eof=True)``; usage comes from the final usage chunk.
+        """
+        model = body.get("model")
+        if not isinstance(model, str) or not model:
+            raise ValueError("request body has no model")
+        config.ensure_standard_model(model)
+        payload = dict(body) | {"stream": True, "stream_options": {"include_usage": True}}
+
+        async def attempt(mark_sent: Callable[[], None]) -> _Attempt:
+            started = self._clock()
+            acc = _ChatAccumulator()
+            try:
+                mark_sent()
+                async with self._http.stream(
+                    "POST", self.url("chat/completions"), headers=self._headers(), json=payload, timeout=spec.timeout
+                ) as resp:
+                    if resp.status_code >= 300:
+                        parsed = _decode(await resp.aread())
+                        rid_header = resp.headers.get("x-request-id")
+                        raise _status_failure(
+                            resp.status_code, parsed, resp.headers, rid_header, self._clock() - started
+                        )
+                    async with asyncio.timeout(spec.total_timeout_s):
+                        async for chunk in aiter_sse(resp.aiter_lines()):
+                            acc.add(chunk)
+            except httpx.TransportError as exc:
+                failure = _transport_failure(exc)
+                failure.accepted = failure.accepted or acc.seen
+                raise failure from exc
+            except httpx.HTTPError as exc:
+                raise _AttemptFailed(MetaUnavailable(f"HTTP error: {type(exc).__name__}"), accepted=True) from exc
+            except TimeoutError as exc:
+                raise _AttemptFailed(MetaUnavailable("stream exceeded its total time limit"), accepted=True) from exc
+            except SSEDecodeError as exc:
+                raise _AttemptFailed(MetaUnavailable(f"malformed stream: {exc}"), accepted=True) from exc
+            if acc.finish is None:
+                raise _AttemptFailed(
+                    MetaIncomplete("chat stream ended without a finish_reason", eof=True), accepted=True
+                )
+            answer = acc.answer()
+            units, usd = meter(answer)
+            return _Attempt(value=answer, request_id=acc.rid, units=units, usd=usd)
+
+        outcome, attempts, orphaned = await self._run(spec, attempt)
+        usd = spec.estimate_usd if outcome.usd is None else outcome.usd
+        return CallResult(outcome.value, outcome.headers, outcome.request_id, attempts, usd, orphaned)
 
     @staticmethod
     def _terminal(event: Mapping[str, Any], meter: Meter) -> _Attempt | None:

@@ -16,12 +16,12 @@ import respx
 from hypothesis import given
 from hypothesis import strategies as st
 from meta_sam_parser import SegmentationBoxRecord, parse_responses_stream, video_segmentation_format
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel
 
-from safecut.config import ConfigError, Settings
+from safecut.config import Settings
 from safecut.contracts import FilesIndex, load
-from safecut.meta import asr, openweight, responses, sam
-from safecut.meta.budget import Caller, job_limit
+from safecut.meta import asr, responses, sam
+from safecut.meta.budget import job_limit
 from safecut.meta.client import FORBIDDEN_PARAMS
 from safecut.meta.errors import MetaConfigError, MetaIncomplete, MetaRefusal, MetaUnavailable
 from safecut.meta.files import FileStore, sha256_file
@@ -467,52 +467,6 @@ async def test_fetch_status() -> None:
 
 def test_sse_helper_matches_stream_format() -> None:
     assert list(iter_sse(sse({"type": "x", "a": 1}).decode().split("\n"))) == [{"type": "x", "a": 1}]
-
-
-# --- open weights on Baseten ------------------------------------------------------
-
-
-async def test_open_weight_chat_uses_baseten_and_meters(settings: Settings, ledger: Any, tmp_path: Path) -> None:
-    cfg = settings.model_copy(update={"baseten_api_key": SecretStr("bt-test-key")})
-    client = openweight.open_client(
-        cfg, job_id="j_open", caller=Caller.local("eval"), ledger=ledger, cost_path=tmp_path / "cost.jsonl"
-    )
-    reply = {
-        "id": "chatcmpl-1",
-        "choices": [{"message": {"role": "assistant", "content": '{"x": 1}'}, "finish_reason": "stop"}],
-        "usage": {"prompt_tokens": 1000, "completion_tokens": 100, "prompt_tokens_details": {"cached_tokens": 200}},
-    }
-    with respx.mock(base_url="https://inference.baseten.co/v1") as router:
-        route = router.post("/chat/completions").mock(return_value=httpx.Response(200, json=reply))
-        body = openweight.chat_body(cfg.open_model, [{"role": "user", "content": "hi"}], schema={"type": "object"})
-        result = await openweight.create_chat(client, body, stage="probe_h")
-    await client.aclose()
-    sent = json.loads(route.calls[0].request.content)
-    assert sent["model"] == "meta-models/muse-spark-open-1026"
-    assert sent["response_format"]["json_schema"]["strict"] is True
-    assert route.calls[0].request.headers["authorization"] == "Bearer bt-test-key"
-    assert openweight.chat_text(result.body) == '{"x": 1}'
-    assert result.usd == pytest.approx((800 * 1.25 + 200 * 0.15 + 100 * 4.25) / 1e6)
-
-
-@pytest.mark.parametrize(
-    ("body", "error"),
-    [
-        ({"choices": []}, MetaIncomplete),
-        ({"choices": [{"message": {"refusal": "no"}}]}, MetaRefusal),
-        ({"choices": [{"message": {"content": "x"}, "finish_reason": "length"}]}, MetaIncomplete),
-        ({"choices": [{"message": {"content": None}}]}, MetaIncomplete),
-        ("nope", MetaIncomplete),
-    ],
-)
-def test_chat_text_fails_closed(body: Any, error: type[Exception]) -> None:
-    with pytest.raises(error):
-        openweight.chat_text(body)
-
-
-def test_open_key_is_required(settings: Settings) -> None:
-    with pytest.raises(ConfigError, match="BASETEN_API_KEY"):
-        settings.open_api_key()
 
 
 async def test_retried_upload_deletes_the_copy_an_earlier_attempt_left(

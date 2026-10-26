@@ -30,6 +30,13 @@ This file extends PRE-A's `docs/API-NOTES.md` (PR #1, not merged yet). It become
 
 Modelled worst case ≤ $1.47 (the reservations; real usage is lower), well under the $6 WP0 budget. Hero runs (real faces and speech: `--clip=` for b and d, plus `--keyframes=<dir>` for probe f's role calls, Spark 1.3 vs Wonder 1.0 at `max` on consented Set-of-Mark keyframes listed in `role_calls.json`) add about $1.20 for b and d and a worst-case reservation of $3.46 for 5 role calls on both models ($1.03 Spark, $2.43 Wonder; real usage is lower, and the $6 probe cap still applies), and wait on the consented hero footage (BLOCKED.md).
 
+## 13.2b Open-weight path (PRE-A §3.8, implemented)
+`safecut/open_weight.py`, outside `safecut/meta/` because Baseten isn't the Meta Model API:
+- **Request:** streamed Chat Completions to `https://inference.baseten.co/v1`. No `response_format` (Muse Spark Open doesn't support structured output), so the answer is validated client-side, and invalid JSON is a failed second opinion with no re-ask. `reasoning_effort` comes from `SAFECUT_OPEN_WEIGHT_EFFORT` (`omit` sends none). `max_tokens` is 16,000, ≤ 50 images per call, with a 300 s idle timeout.
+- **Spend:** cost lines carry `provider: "baseten"` and reserve only against `SAFECUT_OPEN_WEIGHT_JOB_USD_CAP` (`cap: "baseten_job"`), never the Meta caps. With no `SAFECUT_OPEN_WEIGHT_PRICE` the call is refused. Baseten failures never trip the breaker that guards the Meta calls.
+- **Probe h:** needs only `BASETEN_API_KEY`. It sends one request on 4 synthetic frames, then 3 tries of the "AMINA K." grid check (passes at IoU ≥ 0.3 in 2 of 3), then one `omit` call to compare latency and reasoning tokens. Its reservations use Baseten's published price ($1.25 / $4.25 per M) until `SAFECUT_OPEN_WEIGHT_PRICE` is set, and the summary records which price was used. Worst-case reservation: $0.076 for the 4-frame call plus 4 × $0.071 = $0.36, under the $0.50 per-job cap.
+- **Gating:** `open_weight.enabled_for` requires `SAFECUT_OPEN_WEIGHT_AUDIT=on`, `job.consented`, and a code kind in `SAFECUT_OPEN_WEIGHT_CODE_KINDS` (only `owner`/`recording` are accepted).
+
 ## 13.3 Recommendations (provisional: from prices and PRE-A's research, not yet from probes)
 
 | Setting | Default in `config.py` | Why, with numbers | What would change it |
