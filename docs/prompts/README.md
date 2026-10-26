@@ -32,4 +32,4 @@ These Meta pages also apply:
 - Prompt caching: <https://dev.meta.ai/docs/prompt-caching>
 - Cookbook `01_api_fundamentals` (structured output, vision, caching): <https://github.com/meta-models/meta-model-cookbook/tree/main/01_api_fundamentals> (read 2026-10-24, commit `0a99b98`)
 
-Guidance taken from the cookbook: images go only in **user** messages (system → 400); lock shapes with `enum`; keep the stable prefix byte-identical; and match the effort level to task difficulty.
+Guidance taken from the cookbook: images go only in **user** messages (on other roles they're silently ignored, so the client asserts it; API-NOTES §10.6); lock shapes with `enum`; keep the stable prefix byte-identical; and match the effort level to task difficulty.

@@ -9,7 +9,7 @@
 
 ## Done (evidence)
 - Deliverables: `docs/API-NOTES.md` (§1–§12; §9.2 the $150 ledger; §12 = **one list** of contract rows, a config/env table, "Deliberate differences from the WP files", and "Requests to PRE-B"), `docs/prompts/*.md` (6 specs + `TEST-VECTORS.md`), `docs/research/*.md`, `docs/BLOCKED-PRE-A.md`, `docs/WIN-CHECKLIST-PRE-A.md` (criteria map, §4 PRE-A↔PRE-B facts, §5/§6 full audit trail).
-- Ledger **$147.00 planned, $3.00 headroom** (pre-window `/healthz` budget line $0.80, plan $0.47; PR #2 @ `43e250f` carries the matching "recording code at most $15.00"): `awk` line in `.agent/win/SAFECUT-PRE-A/calc/ledger.md` (mirrors API-NOTES §9.2). Per clip: $1.12 / 30 s at 8 fps; $2.02–2.09 / 60 s ($2.26–2.34 no cache, A10).
+- Ledger **$147.00 planned, $3.00 headroom** (pre-window `/healthz` budget line $0.80, plan $0.41; PR #2 @ `43e250f` carries the matching "recording code at most $15.00"): `awk` line in `.agent/win/SAFECUT-PRE-A/calc/ledger.md` (mirrors API-NOTES §9.2). Per clip: $1.12 / 30 s at 8 fps; $2.02–2.09 / 60 s ($2.26–2.34 no cache, A10).
 - Audits #1–#35 logged in WIN-CHECKLIST §6 (end of file), plus a WP0 builder walk-through (#34) and a full live-docs sweep (every `dev.meta.ai/docs` page; applied). Each audit = three fresh Sonnet/high agents (A internal, B brief + repo specs + live docs, C vs PR #2 with a [P] status table). **Clean count: 0.** Findings are now mostly edge-case specifications, each verified before fixing.
 - Last pushes: `7ca667d` (audit #35 fixes), `b6fa465` (concurrency row). The PR #1 body still shows an older push; refresh it at the end (step 5).
 

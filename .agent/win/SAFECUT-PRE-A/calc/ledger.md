@@ -10,6 +10,6 @@
 | recording code (PR #2) | 12.00 |
 | pilots cap (PR #2) | 20.00 |
 | public 6 days x 3 | 18.00 |
-| healthz Oct 29 - Nov 4 budget line, rate-bounded (plan 7 x 720 x 0.000093 = 0.47) | 0.80 |
+| healthz Oct 29 - Nov 4 budget line, rate-bounded (plan 7 x 288 x 0.000206 = 0.41) | 0.80 |
 
 Check: `awk -F'|' '/^\| / && $3 ~ /[0-9]/{s+=$3} END{printf "TOTAL %.2f headroom %.2f\n", s, 150-s}' .agent/win/SAFECUT-PRE-A/calc/ledger.md`
