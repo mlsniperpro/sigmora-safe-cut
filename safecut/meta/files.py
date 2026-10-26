@@ -118,10 +118,30 @@ class FileStore:
             file_id = _file_id(result.body)
             entries.append(FileEntry(name=name, sha256=digest, file_id=file_id, created_at=now_utc()))
             self._save(entries)
+            if result.attempts > 1:
+                # An earlier attempt may have reached the server before it failed: clean up its copy.
+                with contextlib.suppress(MetaError):
+                    await self._recover_orphans(
+                        entries,
+                        name=name,
+                        digest=digest,
+                        remote_name=remote_name,
+                        size=size,
+                        started=started,
+                        keep=file_id,
+                    )
             return file_id
 
     async def _recover_orphans(
-        self, entries: list[FileEntry], *, name: str, digest: str, remote_name: str, size: int, started: datetime
+        self,
+        entries: list[FileEntry],
+        *,
+        name: str,
+        digest: str,
+        remote_name: str,
+        size: int,
+        started: datetime,
+        keep: str | None = None,
     ) -> None:
         """An upload failed after it may have reached the server: find and delete what it left behind."""
         try:
@@ -132,7 +152,9 @@ class FileStore:
                 meter=_no_cost,
                 params={"purpose": "user_data", "limit": "10000", "order": "desc"},
             )
-            found = _matching_uploads(listing.body, remote_name, size, started.timestamp() - 60)
+            found = [
+                f for f in _matching_uploads(listing.body, remote_name, size, started.timestamp() - 60) if f != keep
+            ]
         except MetaError:
             entries.append(FileEntry(name=name, sha256=digest, file_id=None, created_at=now_utc(), orphan=True))
             self._save(entries)

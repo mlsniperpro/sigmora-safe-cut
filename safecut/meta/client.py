@@ -247,6 +247,7 @@ class MetaClient:
                 self.ledger.reserve(call_id, self.job_id, spec.estimate_usd, self._limits())
             except BudgetExceeded as exc:
                 self._log_budget_stop(spec, exc)
+                self.breaker.abandon_trial()
                 raise
             wait = self._throttle_until - self._clock()
             if wait > 0:
@@ -282,9 +283,13 @@ class MetaClient:
                     continue
                 if error.retryable:
                     self.breaker.record_failure()
+                else:
+                    # The server answered (a 4xx, a refusal): it's up, whatever this request's fault.
+                    self.breaker.record_success()
                 raise error from None
             except BaseException:
                 # Cancellation or a bug mid-attempt: billing is unknown, so keep the estimate.
+                self.breaker.abandon_trial()
                 self.ledger.settle(call_id, spec.estimate_usd)
                 self._log_cost(
                     spec, attempt=attempt, units=spec.estimate_units, usd=spec.estimate_usd, estimated=True, rid=None

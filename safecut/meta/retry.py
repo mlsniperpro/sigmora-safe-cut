@@ -123,6 +123,10 @@ class CircuitBreaker:
         self._opened_at = None
         self._trial_in_flight = False
 
+    def abandon_trial(self) -> None:
+        """The trial call ended without telling us anything (budget stop, cancellation): allow another."""
+        self._trial_in_flight = False
+
     def record_failure(self) -> None:
         now = self.clock()
         if self.state == "half_open":

@@ -613,3 +613,40 @@ async def test_system_caller_logs_null_job(
     (line,) = h.costs()
     assert line.job_id is None
     assert line.code_kind == "system"
+
+
+async def test_half_open_trial_that_gets_a_4xx_closes_the_breaker(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter
+) -> None:
+    now = [0.0]
+    h = make_harness()
+    h.client.breaker = CircuitBreaker(clock=lambda: now[0])
+    route = mock_api.post("/thing").mock(return_value=_err(503))
+    for _ in range(5):
+        with pytest.raises(MetaUnavailable):
+            await h.client.request("POST", "thing", _spec(attempts=1), meter=_meter)
+    now[0] = 61.0
+    route.mock(return_value=_err(400))
+    with pytest.raises(MetaBadRequest):
+        await h.client.request("POST", "thing", _spec(), meter=_meter)
+    assert h.client.breaker.state == "closed"
+    route.mock(return_value=httpx.Response(200, json={}))
+    await h.client.request("POST", "thing", _spec(), meter=_meter)
+
+
+async def test_half_open_trial_stopped_by_budget_frees_the_trial(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter
+) -> None:
+    now = [0.0]
+    h = make_harness()
+    h.client.breaker = CircuitBreaker(clock=lambda: now[0])
+    route = mock_api.post("/thing").mock(return_value=_err(503))
+    for _ in range(5):
+        with pytest.raises(MetaUnavailable):
+            await h.client.request("POST", "thing", _spec(attempts=1), meter=_meter)
+    now[0] = 61.0
+    with pytest.raises(BudgetExceeded):
+        await h.client.request("POST", "thing", _spec(estimate=99.0), meter=_meter)
+    route.mock(return_value=httpx.Response(200, json={}))
+    await h.client.request("POST", "thing", _spec(), meter=_meter)
+    assert h.client.breaker.state == "closed"

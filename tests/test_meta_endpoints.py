@@ -511,3 +511,27 @@ def test_chat_text_fails_closed(body: Any, error: type[Exception]) -> None:
 def test_open_key_is_required(settings: Settings) -> None:
     with pytest.raises(ConfigError, match="BASETEN_API_KEY"):
         settings.open_api_key()
+
+
+async def test_retried_upload_deletes_the_copy_an_earlier_attempt_left(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter, clip: Path, tmp_path: Path
+) -> None:
+    h = make_harness()
+    size = len(clip.read_bytes())
+    mock_api.post("/files").mock(side_effect=[httpx.ReadTimeout("slow"), httpx.Response(200, json={"id": "file-2"})])
+    listing = {
+        "data": [
+            {"id": "file-1", "filename": "j_test-sam_proxy.mp4", "bytes": size, "created_at": time.time()},
+            {"id": "file-2", "filename": "j_test-sam_proxy.mp4", "bytes": size, "created_at": time.time()},
+        ]
+    }
+    mock_api.get("/files").mock(return_value=httpx.Response(200, json=listing))
+    stale = mock_api.delete("/files/file-1").mock(return_value=httpx.Response(200, json={"deleted": True}))
+    kept = mock_api.delete("/files/file-2").mock(return_value=httpx.Response(200, json={"deleted": True}))
+    store = FileStore(h.client, tmp_path / "job")
+    assert await store.upload(clip, "sam_proxy.mp4") == "file-2"
+    assert stale.call_count == 1
+    assert kept.call_count == 0
+    live = store.index().live("sam_proxy.mp4")
+    assert live is not None
+    assert live.file_id == "file-2"
