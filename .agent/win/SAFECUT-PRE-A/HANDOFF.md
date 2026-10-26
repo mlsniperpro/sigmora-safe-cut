@@ -1,6 +1,6 @@
 # HANDOFF: SAFECUT-PRE-A (docs-only research package)
 
-**Released** by session_015NHPSLCF7hCdxi6Q9v8srB at 2026-10-26 17:10 UTC (owner WIND DOWN; this account ends). A successor on another account claims LEASE (`holder=<session> status=active`).
+**Held by** session_015NHPSLCF7hCdxi6Q9v8srB (resumed on the owner's RESUME, 2026-10-26).
 
 ## Goal, deadline, PR
 - **Branch** `pre-a-research` · **PR #1** (the only PRE-A PR; never open another) · **Brief** `docs/work-packages/PRE-A.md` · **Rules** `AGENTS.md`: docs only, **no code, config or scaffolding before 2026-10-26 16:00 UTC**; stop the win loop by then at the latest.
@@ -14,7 +14,7 @@
 - Last pushes: `7ca667d` (audit #35 fixes), `b6fa465` (concurrency row). The PR #1 body still shows an older push; refresh it at the end (step 5).
 
 ## In flight
-- **Full audit #47 was started on `dbbb669` and stopped unfinished at the wind-down: no findings collected.** Re-run it as the first step.
+- **Full audit #47 re-launched 18:02 UTC on `de22f10`** (A, B, C; sonnet/high) after the RESUME; collect, verify, fix, push, then #48.
 - Everything else is pushed: audits #36–#46 applied and logged in WIN-CHECKLIST §6 (#42–#46 were full three-lens passes with 21, 22, 21, 18, 21 findings; none clean). Official guide committed verbatim (`docs/OFFICIAL-GUIDE.md`, authoritative) and reconciled (WIN-CHECKLIST §7; API-NOTES §3.8 open-weight second opinion on Baseten, §9.2 window vs schedule).
 - The PR #1 body (refreshed 15:50 UTC) and the 15:57 UTC status comment predate audits #42–#46 and the guide; refresh both at the end.
 
