@@ -1,4 +1,4 @@
-The PRE-B work package: docs only, before kickoff (`date -u` when this session took over: Sun Oct 25 08:09 UTC 2026; kickoff is Oct 26 16:00 UTC). Every file is Markdown in the paths PRE-B owns, plus `docs/BLOCKED-PRE-B.md`, `docs/WIN-CHECKLIST-PRE-B.md` and `docs/HANDOFF-PRE-B.md`. No code, config or scaffolding. Branch `pre-b-product`, as the WP names. **Budget used: $0**, with no API calls.
+The PRE-B work package: docs only (started before kickoff, Oct 26 16:00 UTC, and kept docs-only after it; git history dates every change). Every file is Markdown in the paths PRE-B owns, plus `docs/BLOCKED-PRE-B.md`, `docs/WIN-CHECKLIST-PRE-B.md` and `docs/HANDOFF-PRE-B.md`. No code, config or scaffolding. Branch `pre-b-product`, as the WP names. **Budget used: $0**, with no API calls.
 
 `.agent/win/SAFECUT-PRE-B/LEASE` is session hand-off state that the owner's PICK UP instruction requires (PRE-A keeps the same kind of file). It's not a deliverable: **remove `.agent/` before this PR merges.**
 
@@ -13,8 +13,9 @@ The PRE-B work package: docs only, before kickoff (`date -u` when this session t
 | `docs/UI-SPEC.md` | Every WP6 screen with desktop/mobile wireframes, the full copy deck, the two refusal patterns (§2.6.1), states, the review bar (§3.5), keyboard and WCAG 2.2 behaviour, the field map to ARCHITECTURE §3, fixtures, the reducer, and **23 requests to other WPs** |
 | `docs/STORYBOARD.md` | 20 shots timed to 2:50, placeholders that each trace to a committed `metrics.json`, the Nov 3 screen recordings and their $12 recording-code budget, pre-export checks |
 | `docs/PILOTS.md` | Target profiles, outreach drafts (DM 106 words, email 113, placeholders as one word), consent and data note, the timed protocol, the $6-per-code / $20 caps, how results are reported (anonymous-only credits with ≤ 2 pilots) |
-| `docs/RULES-CHECKLIST.md` | Rule areas with an action for every answer, plus cut plans down to 2:00 |
+| `docs/RULES-CHECKLIST.md` | §0: the official guide's answers applied (theme, anti-projects, new-work boundary, repo, video, bonuses incl. PRE-A's open-weight audit second opinion); the other rule areas with an action for every answer, plus cut plans down to 2:00 |
 | `docs/BLOCKED-PRE-B.md` | Only what the owner must physically do, each with a default, a date, and the exact secret entries (codes without dates: each kind's window applies) |
+| `docs/OFFICIAL-GUIDE.md` | The owner's verbatim capture of the official participant guide (2026-10-26 16:25Z), reconciled in RULES-CHECKLIST §0 |
 | `docs/WIN-CHECKLIST-PRE-B.md` | Every judging criterion, deliverable and audit finding (#1–#598) mapped to evidence; 0 unchecked lines |
 
 ## State of the art: the core choices and why
@@ -79,10 +80,10 @@ Checked against `origin/pre-a-research` @ `715b977`. PRE-A changed in parallel d
 - **WP2:** Set-of-Mark labels from track IDs; `matches_participant`, `suggested_role`, `escalation_evidence`/`escalation_frames`; `roles.missed[].track_ids`; `transcript.source_kind`; transcript times on the prepared clock.
 - **WP3:** `reason` ≤ 90 chars, lowercase-first; edits `keep`, `hide`, `merge`, `remove_person`, `cover_spot`, `undo`; `removed_by_creator`; kinds per UI-SPEC §0.
 - **WP4/WP5:** `blocked_reason` + `audit_budget_cause`; `POST /v1/jobs/{id}/audit` with the auto-patch loop and receipt; `leaks[].unresolved`, `sample_step`, `spots[]`.
-- **WP5:** the UI-SPEC §8 fields; `422 job_cap` and `429` caller caps on `POST /start`, the $1.12 floor on `POST /v1/jobs`, `503 auditor_unavailable`; `POST /v1/codes/check` (request 21); `SAFECUT_ACCESS_CODES` with `kind` (incl. `owner`), `cap_usd`, optional narrowing `valid_from`/`valid_until`, PRE-A's per-kind windows checked on every paid request, `code_valid_until` on every job; pilot, recording and owner caps; `GET /v1/demo/{hero_id}`; `deletes_at`; daily reset at 00:00 UTC.
+- **WP5:** the UI-SPEC §8 fields incl. the export command for the Nov 3 hero handover (request 23) and `open_weight` on `POST /v1/codes/check`; `422 job_cap` and `429` caller caps on `POST /start`, the $1.12 floor on `POST /v1/jobs`, `503 auditor_unavailable`; `POST /v1/codes/check` (request 21); `SAFECUT_ACCESS_CODES` with `kind` (incl. `owner`), `cap_usd`, optional narrowing `valid_from`/`valid_until`, PRE-A's per-kind windows checked on every paid request, `code_valid_until` on every job; pilot, recording and owner caps; `GET /v1/demo/{hero_id}`; `deletes_at`; daily reset at 00:00 UTC.
 - **WP0 and WP7:** the 12/3 split, test mean ≤ 30 s, within their own WP caps and PRE-A §9.2's lines (the $20 pilot cap covers pilot codes only); WP7: the validator incl. LBL035 and A2 files, percent + κ + 2×2 + B-added counts, the `creator-time-<date>` and `pilots-<date>` results directories.
 - **WP8:** form fields from RULES-CHECKLIST; STORYBOARD placeholders only from committed `metrics.json`.
-- **WP7 (also):** `n_clips`, `n_public`, `n_staged` in the test run's `metrics.json` (UI-SPEC request 22); `eval/results/pilots-<date>/quotes.json` (permitted quotes and credits only).
+- **WP7 (also):** `n_clips`, `n_public`, `n_staged`, `runs_per_clip_min`/`max` in the test run's `metrics.json` (UI-SPEC request 22), `n_unsupported_language` in the pilots' one; `eval/results/pilots-<date>/quotes.json` (permitted quotes and credits only).
 - **EVAL.md's owner:** §1's split sizes → 12 test / 3 dev for this event; §2 "Creator time" → 2 clips (H1A, H1B) for this event, measured as summed parts (stage timings plus a stopwatch-timed review) rather than wall-clock.
 - **SHOTLIST.md's owner:** line 15 → "they live only in `~/SafeCutEval/` on the owner's machines, never in a bucket".
 - **DEMO.md's owner:** beat 5 "clear" → Needs you then kept clear; beat 7 drop the literature "ceiling line".
