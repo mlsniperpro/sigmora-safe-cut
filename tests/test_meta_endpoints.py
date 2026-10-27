@@ -255,9 +255,14 @@ async def test_upload_timeout_finds_and_deletes_the_orphan(
     with pytest.raises(MetaUnavailable):
         await store.upload(clip, "sam_proxy.mp4")
     assert deleted.call_count == 1
-    (entry,) = store.index().root
-    assert entry.file_id == "file-9"
-    assert entry.deleted_at is not None
+    copy, orphan = store.index().root
+    assert copy.file_id == "file-9"
+    assert copy.deleted_at is not None
+    # A copy may still land after that listing (audit #15): the orphan keeps files_deleted false until
+    # delete_all lists again at the segment's end and finds nothing new.
+    assert orphan.orphan
+    assert not store.index().all_deleted
+    assert await store.delete_all() is True
 
 
 async def test_upload_timeout_without_listing_records_an_orphan(
@@ -544,7 +549,8 @@ async def test_upload_without_an_id_recovers_the_copy(
     with pytest.raises(MetaConfigError):
         await store.upload(clip, "sam_proxy.mp4")
     assert deleted.call_count == 1
-    assert store.index().all_deleted
+    assert not store.index().all_deleted  # the orphan entry waits for the end-of-segment listing
+    assert await store.delete_all() is True
 
 
 async def test_breaker_refusal_records_no_orphan(

@@ -18,7 +18,7 @@ import httpx
 from safecut import config
 from safecut.contracts import FILE_ID_PATTERN, FileEntry, FilesIndex, dump, load, now_utc
 from safecut.meta.client import CallSpec, MetaClient, Units, outlive_cancel
-from safecut.meta.errors import MetaConfigError, MetaError, MetaFileGone
+from safecut.meta.errors import BreakerOpen, MetaConfigError, MetaError, MetaFileGone
 from safecut.meta.retry import RetryPolicy
 
 INDEX_NAME = "files.json"
@@ -148,10 +148,13 @@ class FileStore:
                 },
             )
             file_id = _file_id(result.body)
-        except MetaError as exc:
-            # Only when some attempt may have reached the server (not a breaker or budget refusal).
-            if exc.maybe_processed or isinstance(exc, MetaConfigError):
-                await self._recover_or_record(up)
+        except BreakerOpen:
+            raise  # refused before anything was sent
+        except MetaError:
+            # Any other failure may have left a copy, even a fast 5xx (the server stored the file, then failed)
+            # or a timeout whose copy lands after our listing: recover what's there now, and leave an orphan so
+            # delete_all lists again at the segment's end.
+            await self._recover_or_record(up)
             raise
         except BaseException:
             # Cancelled (or worse) mid-upload: we can't list now, so record that a copy may exist.
@@ -161,14 +164,15 @@ class FileStore:
         finally:
             for handle in handles:
                 handle.close()
+        earlier_failed = result.attempts > 1 or result.maybe_orphaned
         try:
             await _finish(self._keep(file_id, up))
         except asyncio.CancelledError:
-            if result.maybe_orphaned:
+            if earlier_failed:
                 await asyncio.shield(self._record_orphan(up))
             raise
-        if result.maybe_orphaned:
-            # An earlier attempt may have reached the server before it failed: clean up its copy.
+        if earlier_failed:
+            # An earlier attempt may have left a copy before it failed: clean it up (and re-list at the end).
             await self._recover_or_record(up)
         return file_id
 
@@ -190,14 +194,15 @@ class FileStore:
             raise
 
     async def _recover_or_record(self, up: _Upload) -> None:
-        """Recover orphans; if that is itself cancelled, still record that a copy may exist."""
+        """Recover the copies a failed attempt left, then always record an orphan: a copy that lands after this
+        listing is still found when ``delete_all`` reconciles orphans at the segment's end (files_deleted
+        stays false until then)."""
         try:
             await self._recover_orphans(up)
         except MetaError:
             pass  # any copy found is already in files.json (undeleted), so the sweeper retries it
-        except BaseException:
+        finally:
             await asyncio.shield(self._record_orphan(up))
-            raise
 
     async def _record_orphan(self, up: _Upload) -> None:
         await self._record(FileEntry(name=up.name, sha256=up.digest, file_id=None, created_at=now_utc(), orphan=True))
@@ -225,8 +230,7 @@ class FileStore:
                 params={"purpose": "user_data", "limit": "10000", "order": "desc"},
             )
         except MetaError:
-            await self._record_orphan(up)
-            return
+            return  # the caller records the orphan either way
         known = {e.file_id for e in self.index().root if e.file_id}
         found = [
             f

@@ -30,7 +30,7 @@ def _client() -> MetaClient:
 
 
 async def test_status_is_reachable() -> None:
-    async with httpx.AsyncClient(trust_env=False) as http:
+    async with httpx.AsyncClient() as http:  # the operator proxy and CA bundle apply, as in the client
         status = await fetch_status(http, load_settings().meta_base_url)
     assert status.is_alive
 

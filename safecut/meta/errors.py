@@ -60,6 +60,10 @@ class MetaUnavailable(MetaError):
     default_retryable = True
 
 
+class BreakerOpen(MetaUnavailable):
+    """The circuit breaker refused the call: nothing was sent."""
+
+
 class MetaRefusal(MetaError):
     """The model refused (a refusal part or event)."""
 

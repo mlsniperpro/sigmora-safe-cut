@@ -54,8 +54,9 @@ async def test_a_failed_orphan_delete_never_leaves_a_later_copy_unrecorded(
     with pytest.raises(MetaUnavailable):
         await store.upload(clip, "sam_proxy.mp4")
     assert ten.call_count == 1  # the loop carried on past file-9's failure
-    recorded = {e.file_id: e.deleted_at is not None for e in store.index().root}
+    recorded = {e.file_id: e.deleted_at is not None for e in store.index().root if e.file_id}
     assert recorded == {"file-9": False, "file-10": True}
+    assert sum(e.orphan for e in store.index().root) == 1  # re-listed at the segment's end
     assert not store.index().all_deleted  # file-9 is still live and recorded: no false files_deleted
 
 

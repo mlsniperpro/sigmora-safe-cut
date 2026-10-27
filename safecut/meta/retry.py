@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 
 from safecut import config
-from safecut.meta.errors import MetaUnavailable
+from safecut.meta.errors import BreakerOpen, MetaUnavailable
 
 
 @dataclass(frozen=True)
@@ -117,7 +117,7 @@ class CircuitBreaker:
         """
         state = self.state
         if state == "open" or (state == "half_open" and self._trial_in_flight):
-            raise MetaUnavailable("circuit breaker open: Meta calls are failing, try again shortly")
+            raise BreakerOpen("circuit breaker open: Meta calls are failing, try again shortly")
         if state == "half_open":
             self._trial_in_flight = True
             return True
