@@ -18,7 +18,7 @@ import math
 import subprocess
 import sys
 import time
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -208,16 +208,26 @@ async def probe_b(p: Probe) -> Summary:
         "concepts": {},
     }
     log = sam.ResponseLog(p.out / "job")
+    try:
+        await _probe_b_calls(p, file_id, frames, concepts=concepts, log=log, out=out)
+    finally:
+        # Every noted response is deleted, whatever failed above (PRE-A §10.4).
+        if p.settings.delete_sam_responses:
+            out["responses_delete_requested"] = await log.delete_pending(p.meta)
+            out["response_ids_refused"] = len(log.refused)
+    return out
+
+
+async def _probe_b_calls(
+    p: Probe, file_id: str, frames: int, *, concepts: Sequence[str], log: sam.ResponseLog, out: Summary
+) -> None:
     for concept in concepts:
         try:
             out["concepts"][concept] = await _sam_once(p, file_id, concept, frames, log)
         except MetaError as exc:
             out["concepts"][concept] = {"error": f"{type(exc).__name__}: {exc}"}
-    if p.settings.delete_sam_responses:
-        out["responses_delete_requested"] = await log.delete_pending(p.meta)
-        out["response_ids_refused"] = len(log.refused)
     if not p.synthetic:
-        return out
+        return
     # PRE-A §12: if SAM rejects store, SAM runs without it and each response is deleted after parsing.
     # Record whether that delete works for SAM ids, and the id format the log accepts.
     out["delete_without_store"] = await _sam_delete_check(p, file_id, frames)
@@ -232,7 +242,6 @@ async def probe_b(p: Probe) -> Summary:
         }
     except MetaError as exc:
         out["input_video_fps_8"] = {"accepted": False, "error": f"{type(exc).__name__}: {exc}"}
-    return out
 
 
 async def _sam_delete_check(p: Probe, file_id: str, frames: int) -> Summary:
@@ -242,6 +251,7 @@ async def _sam_delete_check(p: Probe, file_id: str, frames: int) -> Summary:
         settings, job_id=p.meta.job_id, caller=p.meta.caller, ledger=p.meta.ledger, cost_path=p.meta.cost_path
     )
     log = sam.ResponseLog(p.out / "job-nostore")
+    first: int | None = None
     try:
         body = sam.video_body(settings, file_id=file_id, text="red square")
         await sam.segment_video(client, body, sam_frames=frames, stage="probe_b", responses=log)
@@ -251,6 +261,8 @@ async def _sam_delete_check(p: Probe, file_id: str, frames: int) -> Summary:
     except MetaError as exc:
         return {"error": f"{type(exc).__name__}: {exc}"}
     finally:
+        if first is None:  # the call failed after response.created: its response still gets deleted
+            await log.delete_pending(client)
         await client.aclose()
     return {
         "response_ids": ids,
@@ -652,7 +664,7 @@ async def probe_h(settings: Settings, client: MetaClient, out: Path) -> Summary:
         row = await _open_call(
             settings, client, [(60, name_image)], effort=settings.open_weight_effort, price=price, raw=raw
         )
-        boxes = [f["box"] for f in row.get("findings", []) if f.get("kind") == "text" and len(f["box"]) == 4]
+        boxes = [f["box"] for f in row.get("findings", []) if f.get("kind") == "text" and f.get("box")]
         best = max((_iou(list(grid_box_to_frame(tuple(b))), list(true_box)) for b in boxes), default=0.0)
         tries.append(row | {"best_iou": round(best, 3), "hit": best >= 0.3})
     omit = await _open_call(settings, client, [(60, name_image)], effort="omit", price=price, raw=raw)

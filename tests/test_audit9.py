@@ -126,17 +126,21 @@ async def test_the_settle_runs_even_when_cancelled_while_queued(make_harness: Ca
 
 async def test_probe_b_runs_without_store_and_deletes(settings: Settings, tmp_path: Path) -> None:
     cfg = settings.model_copy(update={"sam_send_store": False})
+    replay.SAM_CREATED.clear()
+    deleted: list[str] = []
     with respx.mock(assert_all_called=False) as router:
-        _replay_routes(router)
+        _replay_routes(router, deleted)
         results = await probes.run(["b"], settings=cfg, out_root=tmp_path, ledger=LocalLedger())
     b = results["b"]
     assert "error" not in b, b
     assert b["store_false_sent"] is False
-    assert b["responses_delete_requested"] >= 1
     assert b["response_ids_refused"] == 0
+    # Every SAM response created is deleted (the store-less check deletes its one twice, on purpose).
+    assert set(deleted) == set(replay.SAM_CREATED)
+    assert len(replay.SAM_CREATED) >= 6  # 4 concepts, the store-less check, the fps hint
 
 
-def _replay_routes(router: respx.MockRouter) -> None:
+def _replay_routes(router: respx.MockRouter, deleted: list[str]) -> None:
     uploads = iter(range(1, 100))
     router.post(f"{replay.BASE}/files").mock(
         side_effect=lambda _: httpx.Response(200, json={"id": f"file-{next(uploads)}"})
@@ -144,6 +148,9 @@ def _replay_routes(router: respx.MockRouter) -> None:
     router.delete(url__regex=rf"{replay.BASE}/files/file-\d+").mock(return_value=httpx.Response(200, json={}))
     router.get(f"{replay.BASE}/files").mock(return_value=httpx.Response(200, json={"data": []}))
     router.post(f"{replay.BASE}/responses").mock(side_effect=replay._responses)  # pyright: ignore[reportPrivateUsage] -- reuse the replay SAM answers
-    router.delete(url__regex=rf"{replay.BASE}/responses/[A-Za-z0-9_-]+").mock(
-        return_value=httpx.Response(200, json={"deleted": True})
-    )
+
+    def delete(request: httpx.Request) -> httpx.Response:
+        deleted.append(request.url.path.rsplit("/", 1)[-1])
+        return httpx.Response(200, json={"deleted": True})
+
+    router.delete(url__regex=rf"{replay.BASE}/responses/[A-Za-z0-9_-]+").mock(side_effect=delete)

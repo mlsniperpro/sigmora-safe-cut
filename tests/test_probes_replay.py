@@ -24,12 +24,19 @@ from tests.conftest import BASE, completed, stream_response, text_response
 SAM_LINE = "<10f>0<|box;x1=30;y1=60;x2=70;y2=100;w=320;h=180;c=0.9|><|mask;x=0;y=0;data=5,5,!!!!!(QO(0lu8?|>\n"
 
 
+#: Every SAM response ID the replay server created, in order (unique per call, so deletes can be matched).
+SAM_CREATED: list[str] = []
+
+
 def _sam_stream() -> httpx.Response:
     lane = {"item_id": "msg_1", "output_index": 0, "content_index": 0}
+    rid = f"resp_sam_{len(SAM_CREATED) + 1}"
+    SAM_CREATED.append(rid)
     return stream_response(
+        {"type": "response.created", "response": {"id": rid, "status": "in_progress"}},
         {"type": "response.output_text.delta", "delta": SAM_LINE, **lane},
         {"type": "response.content_part.done", **lane, "part": {"type": "output_text", "text": SAM_LINE}},
-        completed({"id": "resp_sam", "status": "completed", "usage": {"video_frames_processed": 90}}),
+        completed({"id": rid, "status": "completed", "usage": {"video_frames_processed": 90}}),
     )
 
 

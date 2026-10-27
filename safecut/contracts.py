@@ -578,10 +578,12 @@ class Audit(Contract):
 
     @model_validator(mode="after")
     def _gate(self) -> Audit:
-        if self.open_weight.status != "ok" and (
+        # A failed opinion keeps the finished batches' entries and leaks (redteam.md); only one that never ran
+        # ("off") has none.
+        if self.open_weight.status == "off" and (
             self.redteam_open or any(leak.detector == "redteam_open" for leak in self.leaks)
         ):
-            raise ValueError("redteam_open entries and leaks need a successful open-weight opinion")
+            raise ValueError("redteam_open entries and leaks need an open-weight opinion that ran")
         if (self.blocked_reason is not None) != (self.unresolved > 0):
             raise ValueError("blocked_reason is set exactly when unresolved > 0 (the one publish gate)")
         if (self.audit_budget_cause is not None) != (self.blocked_reason == "over_budget"):

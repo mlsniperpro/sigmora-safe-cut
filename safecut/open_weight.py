@@ -15,10 +15,10 @@ import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Annotated, Any, Literal, cast
 
 import httpx
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, BeforeValidator, ValidationError
 
 from safecut import config
 from safecut.config import ConfigError, OpenWeightPrice, Settings
@@ -228,11 +228,22 @@ REDTEAM_USER = (
 )
 
 
+def _grid_box(value: object) -> tuple[int, int, int, int] | None:
+    """redteam.md "Validation": a box that isn't 4 integers keeps its finding, as ``None`` = the whole frame
+    (fail closed), instead of failing the batch and losing every other finding in it."""
+    if isinstance(value, list | tuple):
+        items = list(cast(Sequence[Any], value))
+        if len(items) == 4 and all(isinstance(v, int) and not isinstance(v, bool) for v in items):
+            return (items[0], items[1], items[2], items[3])
+    return None
+
+
 class RedteamFinding(BaseModel):
     kind: Literal["face", "person", "text", "plate", "screen", "misaligned_redaction", "other"]
     detail: str
-    text: str | None
-    box: list[int]
+    text: str | None = None
+    #: On the 0-1000 grid of the sent image; ``None`` means the whole frame (the model's box was malformed).
+    box: Annotated[tuple[int, int, int, int] | None, BeforeValidator(_grid_box)]
     confidence: Literal["low", "medium", "high"]
 
 
