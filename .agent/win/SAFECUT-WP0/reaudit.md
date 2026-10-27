@@ -254,3 +254,13 @@ Tests are in tests/test_audit24.py unless named.
 It also reproduced audit #23 M2 at 8797774 and confirmed the fix at 958f992. Its 2,800-scenario cancel enumeration and its check of the #23 rules found no false refusal.
 - L1 Files cost lines logged `units: {}`. PRE-A §10.5 says `{"bytes": n}`. Fixed: the upload's spec and meter carry its bytes, at $0 (tests/test_audit24.py::test_an_upload_cost_line_records_its_bytes)
 - L2 `safecut/meta/sam.py` sits in WP1's owned paths ("stream parser"). Handled as AGENTS rule 2 says: PR #3's "Requests for other WPs" and HANDOFF now ask WP1 to extend `sam.py` (`ResponseLog`, `video_body`, `segment_video` with response deletion), never replace it
+
+## Audit 26 (independent Sonnet reviewer at b99e529): 0 critical, 0 high, 1 medium, 4 low. NOT CLEAN; all verified and fixed
+Tests are in tests/test_audit24.py (the audit #26 section) unless named.
+- M1 probe d's "raw" ASR fixture was the parsed model re-serialised, which dropped every field the parser ignores, and probe d exists to learn the real shape. Fixed: `asr.transcribe_raw` returns the body as sent and `asr.parse_response` parses it; `transcribe` is unchanged for WP2. Probe d saves the raw body (test_probe_d_saves_the_asr_body_as_sent). Probe h's `baseten.answers.json` holds the assembled streamed answers; the docs now say so rather than "raw"
+- L2 the `unresolved` lower bound was a max, not a sum. PRE-A §12: each unresolved leak and each unscanned frame count 1. Fixed (test_unresolved_counts_leaks_and_unscanned_frames_together)
+- L3 `tests/test_audit16.py`'s `# noqa: F811` had no reason, which the gate scan counts as unjustified. A reason is added; the same pattern in the new test has one
+- L4 fixtures/README.md said the Muse fixtures have no live twin, but trim.py writes `muse/live-scene.events.json`. The README now lists it, notes that no test reads it yet, and says probe d's file is the raw body
+- L5 the 21,600 s `expires_after` (WP0.md says 3,600) is now recorded as a deviation in API-NOTES §13.4, citing PRE-A §10.4. Also: the CI-duration wording ("within a few seconds") and `open_weight.py` in ARCHITECTURE §2's layout
+
+## Audit 27 (at b99e529): stopped by the API session limit before reporting. Not counted

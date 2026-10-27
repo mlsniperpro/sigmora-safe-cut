@@ -518,11 +518,14 @@ async def probe_d(p: Probe) -> Summary:
     await asyncio.to_thread(_extract_wav, p.clip, wav)
     started = time.monotonic()
     try:
-        raw = await asr.transcribe(p.meta, wav, model=p.settings.asr_model, language_bias=p.settings.asr_language_bias)
+        body = await asr.transcribe_raw(
+            p.meta, wav, model=p.settings.asr_model, language_bias=p.settings.asr_language_bias
+        )
     finally:
         wav.unlink(missing_ok=True)  # never leave a (possibly hero) voice track on disk
     latency = time.monotonic() - started
-    p.save("asr.response.json", raw.model_dump(by_alias=True))
+    p.save("asr.response.json", dict(body))  # as Meta sent it: probe d exists to learn the real shape
+    raw = asr.parse_response(body)
     transcript = asr.to_transcript(raw, source_model=p.settings.asr_model)
     return {
         "latency_s": round(latency, 2),

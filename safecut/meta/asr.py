@@ -99,6 +99,20 @@ async def transcribe(
     stage: str = "speech",
 ) -> AsrResponse:
     """One-shot transcription of a mono 16-bit WAV (≤ 10 min, ≤ 32 MB)."""
+    body = await transcribe_raw(client, wav_path, model=model, language_bias=language_bias, mode=mode, stage=stage)
+    return parse_response(body)
+
+
+async def transcribe_raw(
+    client: MetaClient,
+    wav_path: str | Path,
+    *,
+    model: str,
+    language_bias: Sequence[str],
+    mode: Mode = "DIARIZATION",
+    stage: str = "speech",
+) -> Mapping[str, Any]:
+    """:func:`transcribe`'s call, returning the response body as Meta sent it (probe d records it raw)."""
     path = Path(wav_path)
     size, seconds = await asyncio.to_thread(_audio_facts, path)
     if size > MAX_ASR_BYTES or seconds > MAX_ASR_SECONDS:
@@ -125,8 +139,13 @@ async def transcribe(
     finally:
         for handle in handles:
             handle.close()
+    return result.body
+
+
+def parse_response(body: Mapping[str, Any]) -> AsrResponse:
+    """The documented fields of a Voice Transcribe body; unknown fields are ignored, never an error."""
     try:
-        return AsrResponse.model_validate(result.body)
+        return AsrResponse.model_validate(body)
     except ValidationError as exc:
         raise MetaIncomplete(
             f"ASR response does not match the documented shape: {exc.error_count()} error(s)", eof=False

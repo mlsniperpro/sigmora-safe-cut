@@ -1027,10 +1027,13 @@ def _check_audit(audit: Audit, job: Job) -> None:
     # EgoBlur scans every output frame; a frame no pass ran on counts in `unresolved` (PRE-A §12, vector L10).
     if audit.frames_scanned > job.frames:
         raise ContractError(f"audit.json: frames_scanned {audit.frames_scanned} > the job's {job.frames} frames")
-    if audit.unresolved < job.frames - audit.frames_scanned:
+    unscanned = job.frames - audit.frames_scanned
+    open_leaks = sum(leak.unresolved for leak in audit.leaks)
+    if audit.unresolved < open_leaks + unscanned:
+        # The counts add (PRE-A §12): each unresolved leak counts 1, and so does each frame no pass ran on.
         raise ContractError(
-            f"audit.json: {job.frames - audit.frames_scanned} frames weren't scanned, but unresolved is"
-            f" {audit.unresolved}"
+            f"audit.json: {unscanned} frames weren't scanned and {open_leaks} leaks are unresolved, but unresolved"
+            f" is {audit.unresolved}"
         )
     if audit.unresolved == 0 and audit.passes == 0:
         raise ContractError("audit.json: a publishable audit ran no red-team pass")

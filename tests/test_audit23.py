@@ -63,7 +63,10 @@ def test_a_matching_overlapping_exclusion_validates(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("change", "message"),
     [
-        ({"frames_scanned": 0, "passes": 0, "leaks": [], "redteam": []}, "12 frames weren't scanned"),
+        (
+            {"frames_scanned": 0, "passes": 0, "leaks": [], "redteam": []},
+            "12 frames weren't scanned and 0 leaks",
+        ),
         ({"frames_scanned": 99999}, "frames_scanned 99999 > the job's 12 frames"),
         ({"passes": 0}, "a publishable audit ran no red-team pass"),
     ],

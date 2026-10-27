@@ -103,7 +103,7 @@ async def test_a_parser_error_on_one_concept_keeps_the_others(tmp_path: Path, mo
     assert "delete_without_store" in results["b"]  # the later paid checks still ran
 
 
-async def test_probe_a_survives_a_status_outage(api: respx.MockRouter, tmp_path: Path) -> None:  # noqa: F811
+async def test_probe_a_survives_a_status_outage(api: respx.MockRouter, tmp_path: Path) -> None:  # noqa: F811 -- pytest injects the imported fixture by name
     api.get(f"{BASE}/status").mock(return_value=httpx.Response(503))
     results = await probes.run(
         ["a"], settings=Settings(model_api_key=SecretStr("k")), out_root=tmp_path, ledger=LocalLedger()

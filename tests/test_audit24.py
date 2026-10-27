@@ -12,10 +12,15 @@ from typing import Any
 import httpx
 import pytest
 import respx
+from pydantic import SecretStr
 
 from safecut import contracts as c
+from safecut.config import Settings
+from safecut.meta.budget import LocalLedger
 from safecut.meta.files import FileStore
-from tests.conftest import Harness
+from scripts.probes import probes
+from tests.conftest import BASE, Harness
+from tests.test_probes_replay import api  # noqa: F401 -- the replay server fixture, reused
 
 EXAMPLE = Path(__file__).resolve().parent.parent / "fixtures" / "contracts" / "j_example"
 
@@ -75,3 +80,30 @@ async def test_an_upload_cost_line_records_its_bytes(
     await FileStore(h.client, tmp_path / "job").upload(clip, "sam_proxy.mp4")
     [line] = [line for line in h.costs() if line.stage == "files"]
     assert (line.units, line.usd) == ({"bytes": 300.0}, 0.0)
+
+
+# --- audit #26 ----------------------------------------------------------------------------------------------
+
+
+def test_unresolved_counts_leaks_and_unscanned_frames_together(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+
+    def change(d: Any) -> None:
+        d["leaks"][0] |= {"patched_item": None, "unresolved": True}
+        d.update({"frames_scanned": 6, "unresolved": 6, "blocked_reason": "audit_failed"})
+
+    _edit(job_dir, "audit.json", change)
+    with pytest.raises(c.ContractError, match="6 frames weren't scanned and 1 leaks are unresolved"):
+        c.validate_job_dir(job_dir)
+    _edit(job_dir, "audit.json", lambda d: d.update({"unresolved": 7}))
+    assert "audit.json" in c.validate_job_dir(job_dir)
+
+
+async def test_probe_d_saves_the_asr_body_as_sent(api: respx.MockRouter, tmp_path: Path) -> None:  # noqa: F811 -- pytest injects the imported fixture by name
+    sent = {"transcript": "", "audioDurationMs": 3000, "turns": [], "language": "en", "requestId": "r-1"}
+    api.post(f"{BASE}/asr/transcribe").mock(return_value=httpx.Response(200, json=sent))
+    results = await probes.run(
+        ["d"], settings=Settings(model_api_key=SecretStr("k")), out_root=tmp_path, ledger=LocalLedger()
+    )
+    assert results["d"]["audio_duration_ms"] == 3000
+    assert json.loads((tmp_path / "d" / "asr.response.json").read_text()) == sent
