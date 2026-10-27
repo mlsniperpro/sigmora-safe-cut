@@ -2,7 +2,8 @@
 
 ## Goal, deadline, PR
 - Build WP6 (`docs/work-packages/WP6.md`) to winning quality. Spec detail lives in PRE-B's `docs/UI-SPEC.md` (on `origin/pre-b-product` until it merges: `git show origin/pre-b-product:docs/UI-SPEC.md`). Official rules: `docs/OFFICIAL-GUIDE.md`.
-- Internal deadline 2026-11-04T18:00Z; official deadline 2026-11-05 02:00 UTC.
+- Internal deadline 2026-11-04T18:00Z; official Devpost deadline 2026-11-05 02:00 UTC.
+- **Owner milestone: the owner submits on Tue 2026-11-03, so the web app and its part of the submission must be final and pushed by 2026-11-03T12:00Z.**
 - Branch `wp6-web`; its one PR is #4 (wp6-web → main).
 - Done = `bash .agent/win-gate.sh SAFECUT-WP6` prints `GATE: PASS` on the pushed HEAD.
 
@@ -51,7 +52,7 @@
 - Run: `pnpm dev` runs in mock mode. Try `/jobs/job-review-sample`, `/try` (any code; see MOCK_CODES for scripted refusals), and `/jobs/<fixture>`.
 - Regenerate: `node scripts/gen-mocks.mjs` and `node scripts/gen-sample.mjs` (needs ffmpeg).
 - Gate: `bash .agent/win-gate.sh SAFECUT-WP6` from the repo root.
-- Subagents: every Agent/Task launch sets model "sonnet" and effort "high" (auditors, reviewers, fixers, researchers, soak/log watchers). Integration, self-review, deciding which findings are real, and the gate stay in the main session; verify any subagent finding before fixing it, never drop one unchecked.
+- Subagents: every subagent you launch must set model "sonnet" and effort "high" (auditors, reviewers, fixers, researchers, soak/log watchers). Keep integration, self-review, judging findings and the gate in this session. Integration, self-review, deciding which findings are real, and the gate stay in the main session; verify any subagent finding before fixing it, never drop one unchecked.
 - Pushing: push when a substantial task is complete and green (audit findings fixed and tested, a feature slice working, a soak/break-it pass recorded, the gate run). No timer. Squashed, meaningful commits only (no empty/format-only/wip). Exactly one PR.
 - Never idle and never end a turn to wait: while a subagent, audit, soak or build runs, work on the next item and collect results when they arrive. Only two reasons to stop: the API usage limit, or the /goal being met.
 
