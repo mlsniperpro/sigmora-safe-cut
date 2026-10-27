@@ -113,7 +113,8 @@ def test_a_partly_overlapping_track_item_validates_as_through_item(tmp_path: Pat
 
 def test_a_kept_item_present_on_the_frame_excludes_a_hit(tmp_path: Path) -> None:
     job_dir = _example(tmp_path)
-    _edit_audit(job_dir, lambda d: d["redteam"].append(HIT | {"frame": 9, "excluded_by": "i_1"}))
+    hit = HIT | {"frame": 9, "kind": "face", "box": [620, 110, 700, 200], "excluded_by": "i_1"}  # face:1's box
+    _edit_audit(job_dir, lambda d: d["redteam"].append(hit))
     assert "audit.json" in c.validate_job_dir(job_dir)
 
 

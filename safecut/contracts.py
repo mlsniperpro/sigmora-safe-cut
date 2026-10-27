@@ -1024,6 +1024,16 @@ def _check_decisions(decisions: Decisions, job: Job, tracks: Tracks | None) -> N
 
 
 def _check_audit(audit: Audit, job: Job) -> None:
+    # EgoBlur scans every output frame; a frame no pass ran on counts in `unresolved` (PRE-A §12, vector L10).
+    if audit.frames_scanned > job.frames:
+        raise ContractError(f"audit.json: frames_scanned {audit.frames_scanned} > the job's {job.frames} frames")
+    if audit.unresolved < job.frames - audit.frames_scanned:
+        raise ContractError(
+            f"audit.json: {job.frames - audit.frames_scanned} frames weren't scanned, but unresolved is"
+            f" {audit.unresolved}"
+        )
+    if audit.unresolved == 0 and audit.passes == 0:
+        raise ContractError("audit.json: a publishable audit ran no red-team pass")
     for spot in audit.spots:
         where = f"audit.json spot {spot.spot_id}"
         _check_frame(spot.first, job, where)
@@ -1268,6 +1278,35 @@ def _check_patches(audit: Audit, decisions: Decisions, tracks: Tracks | None, pl
                 raise ContractError(
                     f"audit.json {name} at frame {entry.frame}: excluded_by {item.item_id}, absent on that frame"
                 )
+            if tracks is not None:
+                _check_exclusion(entry, item, tracks, f"audit.json {name} at frame {entry.frame}")
+
+
+def _excludes(kind: LeakKind, concept: str) -> bool:
+    """redteam.md "Leak decision": a finding's kind matches only its own track concept (no looser mapping)."""
+    match kind:
+        case "face" | "person":
+            return concept == kind
+        case "text" | "screen":
+            return concept not in {"face", "person"}
+        case "plate":
+            return concept == "license plate"
+        case _:
+            return False  # misaligned_redaction and other are never excluded
+
+
+def _check_exclusion(hit: RedteamHit, item: DecisionItem, tracks: Tracks, where: str) -> None:
+    """A kept item excludes a hit only through one of its tracks on that frame whose concept matches the hit's
+    kind and whose box overlaps the hit's (IoU > 0.3 needs a positive overlap; the visible region is inside
+    the track's box, so the IoU itself is WP4's to compute)."""
+    present = [t for t in tracks.tracks if t.track_id in item.track_ids and t.first <= hit.frame <= t.last]
+    matching = [t for t in present if _excludes(hit.kind, t.concept)]
+    if not matching:
+        concepts = sorted({t.concept for t in present})
+        raise ContractError(f"{where}: a {hit.kind} finding can't be excluded by {item.item_id} ({concepts})")
+    boxed = [t.boxes[hit.frame] for t in matching if hit.frame in t.boxes]
+    if boxed and not any(boxes_overlap(box, hit.box) for box in boxed):
+        raise ContractError(f"{where}: excluded_by {item.item_id}, whose box there doesn't overlap the finding")
 
 
 def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:

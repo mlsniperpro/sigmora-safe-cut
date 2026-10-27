@@ -8,7 +8,7 @@
 *.mkv
 *.webm
 !fixtures/hero/**/*.mp4
-jobs/
+/jobs/
 data/raw/
 data/private/
 eval/private/

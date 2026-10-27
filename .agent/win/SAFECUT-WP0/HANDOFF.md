@@ -24,17 +24,15 @@
   - `docs/ARCHITECTURE.md` §3/§4, synced with the contracts and config;
   - `docs/OFFICIAL-GUIDE.md`.
 - **Gate files** in `.agent/win/SAFECUT-WP0/`: `checks.sh`, `WIN-CHECKLIST.md`, `BLOCKED.md`, `reaudit.md`, `break-it.md`.
-- **Last fully green head:** the head of this push (372 passed, ruff and pyright clean).
+- **Last fully green head:** the head of this push (502 passed, ruff and pyright clean).
 
-## State at WIND DOWN (session_01FE6cwwWXD1E2eCpwUV9ftx, ~03:40 UTC 2026-10-27)
-- **Head:** green and pushed. Audits #6–#11 are all fixed with tests: 432 passed, ruff and pyright strict clean. Every finding is verified, and each one is in reaudit.md with its test.
-- **Last gate** (at 2012ed0): `GATE: FAIL (3): only 0 clean full audit(s) in a row; two consecutive audits must find nothing new`. The other two failures were the stale reaudit and break-it headers, both updated since (AUDITED_COMMIT 5c72c49, TESTED_COMMIT 2012ed0).
-- **Audit #12** (run in parallel with #11 at 5c72c49) was stopped at the wind-down with no report.
-- **Unfinished:** the soak has never completed at a current head. break-it.md says exactly what ran where.
-- **Trend:** each audit round finds fewer and lower issues: #6 had 1 high; #7–#8 1 medium; #9–#10 4 medium (mostly the new §12 rows and docs); #11 1 medium. The code areas they hit are the newest fixes, so audit those hardest.
+## State (session_01FE6cwwWXD1E2eCpwUV9ftx, ~19:45 UTC 2026-10-27)
+- **Head:** green and pushed. Audits #1–#23 are all fixed with tests: 502 passed, ruff and pyright strict clean. Every finding is verified, and each one is in reaudit.md with its test.
+- **In flight:** audits #24 and #25 at 8797774 (the head before the audit #23 fixes), and a soak at 8797774. Neither counts for the gate: the final head needs its own clean pair, soak and fresh clone.
+- **Trend:** recent rounds find 0 high and 1–2 medium, all in the newest publish-gate rules of `safecut/contracts.py` (region, exclusion and frame accounting). Audit those hardest, and check that no rule refuses valid PRE-A writer output.
 
 ## Next steps, in order
-1. Claim the lease, then run `bash .agent/win/SAFECUT-WP0/checks.sh`; expect 491 passed.
+1. Claim the lease, then run `bash .agent/win/SAFECUT-WP0/checks.sh`; expect 502 passed.
 2. Run two fresh full audits in parallel with Sonnet subagents (effort high, read-only). Give them PRE-A from `git show origin/pre-a-research:docs/API-NOTES.md`, plus `docs/prompts/redteam.md` from the same branch.
    - Verify every finding before fixing it, and record it in reaudit.md.
    - When both audits come back clean at the same head, set `AUDITED_COMMIT` to that head and `CLEAN_AUDITS_IN_A_ROW: 2`.
@@ -49,7 +47,7 @@
    - put the `fixtures/probes/cost.jsonl` total (≤ $6) in the PR.
 
 ## Open findings
-None open. Every finding from audits #1–#11 and the code review is fixed with a named test, or is a recorded decision (reaudit.md).
+None open. Every finding from audits #1–#23 and the code review is fixed with a named test, or is a recorded decision (reaudit.md).
 
 ## Key decisions (the full list is in PR #3)
 - Built to PRE-A's spec (PR #1, unmerged); prices re-read live on 2026-10-26.
