@@ -30,7 +30,11 @@ EXAMPLE = Path(__file__).resolve().parent.parent / "fixtures" / "contracts" / "j
 
 
 def _audit() -> dict[str, Any]:
-    return json.loads((EXAMPLE / "audit.json").read_text())
+    """The example audit without its red-team hit, so a test can swap the leaks freely (audit #18 ties a
+    non-excluded hit to a leak on its frame)."""
+    audit = json.loads((EXAMPLE / "audit.json").read_text())
+    audit["redteam"] = [r for r in audit["redteam"] if r["finding"] == "none"]
+    return audit
 
 
 def _leak(**fields: Any) -> dict[str, Any]:
@@ -73,6 +77,7 @@ def test_a_patch_must_hide_the_leak_frame(tmp_path: Path, item: str, message: st
     audit = json.loads((job_dir / "audit.json").read_text())
     frame = 1 if item == "p_1" else audit["leaks"][0]["frame"]
     audit["leaks"][0].update({"patched_item": item, "frame": frame})
+    audit["redteam"] = [r for r in audit["redteam"] if r["finding"] == "none"]
     (job_dir / "audit.json").write_text(json.dumps(audit))
     with pytest.raises(c.ContractError, match=message):
         c.validate_job_dir(job_dir)

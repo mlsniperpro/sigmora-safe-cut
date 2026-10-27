@@ -31,6 +31,7 @@ def test_a_through_item_needs_a_flag() -> None:
     with pytest.raises(ValidationError, match="through_item is set exactly on a flagged leak"):
         c.Leak.model_validate(leak | {"through_item": "i_3"})
     audit = json.loads((EXAMPLE / "audit.json").read_text())
+    audit["redteam"] = [r for r in audit["redteam"] if r["finding"] == "none"]  # its hit needs its own leak
     with pytest.raises(ValidationError):
         c.Audit.model_validate(audit | {"leaks": [leak | {"through_item": "i_3"}]})
     flagged = leak | {"through_item": "i_3", "flag": "redaction_too_weak"}

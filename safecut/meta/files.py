@@ -167,7 +167,8 @@ class FileStore:
         earlier_failed = result.attempts > 1 or result.maybe_orphaned
         try:
             await _finish(self._keep(file_id, up))
-        except asyncio.CancelledError:
+        except BaseException:
+            # The record failed or was cancelled: an earlier attempt's copy is still unaccounted for.
             if earlier_failed:
                 await asyncio.shield(self._record_orphan(up))
             raise
@@ -268,31 +269,40 @@ class FileStore:
         mark the orphan resolved (``deleted_at`` set), so a cancelled upload doesn't block ``files_deleted``.
 
         Each name is reconciled under its upload lock, so an upload in flight is never mistaken for an orphan.
-        A failed listing or delete leaves the orphan open (the sweeper or the 6 h expiry covers it) and raises.
+        A failed listing or delete leaves that name's orphan open (the sweeper or the 6 h expiry covers it); the
+        other names are still reconciled, and the first failure is raised after them.
         """
-        names = sorted({e.name for e in self.index().root if e.orphan and e.deleted_at is None})
-        for name in names:
-            async with self._name_locks.setdefault(name, asyncio.Lock()):
-                orphans = [e for e in self.index().root if e.name == name and e.orphan and e.deleted_at is None]
-                if not orphans:
-                    continue
-                listing = await self.client.request(
-                    "GET",
-                    "files",
-                    _spec("files:cleanup", config.FILES_DELETE_TIMEOUT_S),
-                    meter=_no_cost,
-                    params={"purpose": "user_data", "limit": "10000", "order": "desc"},
-                )
-                not_before = min(e.created_at for e in orphans).timestamp() - config.FILES_EXPIRES_AFTER_S
-                known = {e.file_id for e in self.index().root if e.file_id}
-                remote = f"{self.job_id}-{name}"
-                found = [f for f in _matching_uploads(listing.body, remote, None, not_before) if f not in known]
-                sha = orphans[0].sha256
-                copies = [FileEntry(name=name, sha256=sha, file_id=f, created_at=now_utc()) for f in found]
-                if copies:
-                    await self._change(lambda entries, copies=copies: entries.extend(copies))
-                await self._delete_each(found)  # a failure raises here: the orphan stays open for the sweeper
-                await self._change(functools.partial(_resolve_orphans, name))
+        first_error: MetaError | None = None
+        for name in sorted({e.name for e in self.index().root if e.orphan and e.deleted_at is None}):
+            try:
+                await self._reconcile_name(name)
+            except MetaError as exc:
+                first_error = first_error or exc
+        if first_error is not None:
+            raise first_error
+
+    async def _reconcile_name(self, name: str) -> None:
+        async with self._name_locks.setdefault(name, asyncio.Lock()):
+            orphans = [e for e in self.index().root if e.name == name and e.orphan and e.deleted_at is None]
+            if not orphans:
+                return
+            listing = await self.client.request(
+                "GET",
+                "files",
+                _spec("files:cleanup", config.FILES_DELETE_TIMEOUT_S),
+                meter=_no_cost,
+                params={"purpose": "user_data", "limit": "10000", "order": "desc"},
+            )
+            not_before = min(e.created_at for e in orphans).timestamp() - config.FILES_EXPIRES_AFTER_S
+            known = {e.file_id for e in self.index().root if e.file_id}
+            remote = f"{self.job_id}-{name}"
+            found = [f for f in _matching_uploads(listing.body, remote, None, not_before) if f not in known]
+            sha = orphans[0].sha256
+            copies = [FileEntry(name=name, sha256=sha, file_id=f, created_at=now_utc()) for f in found]
+            if copies:
+                await self._change(lambda entries: entries.extend(copies))
+            await self._delete_each(found)  # a failure raises here: the orphan stays open for the sweeper
+            await self._change(functools.partial(_resolve_orphans, name))
 
     async def delete_all(self) -> bool:
         """Delete every live upload of this job and resolve its orphans. Returns ``FilesIndex.all_deleted``

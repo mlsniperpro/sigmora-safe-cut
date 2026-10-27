@@ -189,3 +189,13 @@ Both auditors also ran their own concurrent stress harnesses (150 and 300 seeds:
 - A17-L4 "about $0.05 measured" for probe h was modelled, not measured. Reworded in API-NOTES and BLOCKED.md: ≈ $0.06 modelled, unmeasured
 - A16-L3 WP0's "CI green on the PR" was unmet without a line saying so. Added as `- [P]` in the checklist; BLOCKED.md already lists the runner block
 - A17-L5 the first-commit time is corrected to 16:20:07 UTC. The status files (break-it, the reaudit header, the PR body) are rewritten at the final head
+
+## Audit 18 (independent Sonnet reviewer at ee0fc9a): 0 critical, 0 high, 2 medium, 4 low. NOT CLEAN; all verified and handled
+Tests are in tests/test_audit18.py unless named.
+- M1 `reconcile_orphans` stopped at the first name whose listing or delete failed, stranding later names' copies (unrecorded, so the sweeper couldn't find them either). Fixed: each name is reconciled on its own, and the first failure is raised after all of them (test_one_names_failed_reconcile_never_strands_the_next)
+- M2 the publish gate let a red-team hit vanish: a `redteam` hit with no `excluded_by` and no leak on its frame validated as publishable (redteam.md: every hit is a leak unless the kept-clear rule excluded it). Fixed: `Audit` requires a leak on each non-excluded `redteam` hit's frame; `redteam_open` stays advisory until the grid check (test_a_red_team_hit_needs_a_leak_or_an_exclusion; tests that swap the example's leaks now drop its hit)
+- L3 when an upload succeeded after a failed attempt but its record failed (not a cancel), the earlier copy went unrecorded. Fixed: any failure of `_keep` after an earlier failed attempt records an orphan (test_an_earlier_copy_survives_a_failed_record)
+- L4 `_video_question` crashed on a non-object JSON answer or a non-integer frame, losing the probe's other paid results. Fixed: `_json_object` and a tolerant `frame_error` keep the row (test_a_non_object_answer_keeps_probe_c_running)
+- L5 probe c's `accepted: false` also covered misconfiguration (`MetaConfigError`). Now only a `MetaBadRequest` about the clip is "refused"; everything else is `null`
+- L6 spots: `first` wasn't bounds-checked, `first <= last` and boxes inside `first..last` weren't required, and `covered_by` was existence-only. Fixed in `Spot` and `_check_patches` (test_a_spot_is_consistent ×2, test_a_spot_cover_must_hide_its_frames)
+- Docs: ARCHITECTURE §3 "Types and rules" now states the audit rules (patch or unresolved, flag and through_item, spans, red-team hits, open-weight counts, spots), so they no longer live only in Python (AGENTS rule 3)

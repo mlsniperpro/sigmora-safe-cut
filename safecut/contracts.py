@@ -561,6 +561,15 @@ class Spot(Contract):
     boxes: dict[Frame, Box] = Field(min_length=1)
     covered_by: str | None = None
 
+    @model_validator(mode="after")
+    def _span(self) -> Spot:
+        if self.first > self.last:
+            raise ValueError(f"spot {self.spot_id}: first {self.first} is after last {self.last}")
+        outside = sorted(f for f in self.boxes if not self.first <= f <= self.last)
+        if outside:
+            raise ValueError(f"spot {self.spot_id}: boxes on frames {outside[:5]} outside {self.first}-{self.last}")
+        return self
+
 
 class Audit(Contract):
     frames_scanned: NonNegativeInt
@@ -584,6 +593,12 @@ class Audit(Contract):
             self.redteam_open or any(leak.detector == "redteam_open" for leak in self.leaks)
         ):
             raise ValueError("redteam_open entries and leaks need an open-weight opinion that ran")
+        leak_frames = {leak.frame for leak in self.leaks}
+        for hit in self.redteam:
+            # redteam.md: every red-team hit is a leak unless the kept-clear rule excluded it (excluded_by).
+            # `redteam_open` stays advisory until the grid check passes, so only `redteam` is held to this.
+            if isinstance(hit, RedteamHit) and hit.excluded_by is None and hit.frame not in leak_frames:
+                raise ValueError(f"red-team hit at frame {hit.frame} is neither excluded nor a leak")
         open_leaks = sum(leak.unresolved for leak in self.leaks)
         if self.unresolved < open_leaks:
             # PRE-A §12: each unresolved leak counts 1 in `unresolved`, the one publish gate.
@@ -1005,6 +1020,7 @@ def _check_decisions(decisions: Decisions, job: Job, tracks: Tracks | None) -> N
 def _check_audit(audit: Audit, job: Job) -> None:
     for spot in audit.spots:
         where = f"audit.json spot {spot.spot_id}"
+        _check_frame(spot.first, job, where)
         _check_frame(spot.last, job, where)
         for frame, box in spot.boxes.items():
             _check_frame(frame, job, where)
@@ -1189,6 +1205,18 @@ def _check_patches(audit: Audit, decisions: Decisions, tracks: Tracks | None) ->
                 raise ContractError(
                     f"audit.json leak at frame {leak.frame}: its {role} {item.item_id} spans {span[0]}-{span[1]}"
                 )
+    for spot in audit.spots:
+        item = by_id.get(spot.covered_by or "")
+        if item is None:
+            continue
+        if item.decision == "keep":
+            raise ContractError(f"audit.json spot {spot.spot_id}: covered by {item.item_id}, a kept item")
+        span = _item_span(item, spans)
+        if span is not None and not (span[0] <= spot.first and spot.last <= span[1]):
+            raise ContractError(
+                f"audit.json spot {spot.spot_id} ({spot.first}-{spot.last}): its cover {item.item_id}"
+                f" spans {span[0]}-{span[1]}"
+            )
 
 
 def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:

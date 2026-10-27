@@ -41,7 +41,7 @@ from safecut.config import OpenWeightPrice, Settings, load_settings
 from safecut.meta import asr, responses, sam
 from safecut.meta.budget import Caller, CapLimit, LocalLedger
 from safecut.meta.client import CallSpec, MetaClient
-from safecut.meta.errors import MetaBadRequest, MetaConfigError, MetaError
+from safecut.meta.errors import MetaBadRequest, MetaError
 from safecut.meta.files import FileStore
 from safecut.meta.retry import RetryPolicy
 from safecut.meta.status import fetch_status
@@ -82,6 +82,14 @@ def _usage(response: Mapping[str, Any]) -> Mapping[str, Any]:
     """The response's ``usage`` object, or empty when it's missing or null."""
     usage = response.get("usage")
     return cast(Mapping[str, Any], usage) if isinstance(usage, Mapping) else {}
+
+
+def _json_object(text: str) -> dict[str, Any]:
+    """Parse a model's JSON answer; anything but an object (a list, a bare string) is a TypeError."""
+    value: Any = json.loads(text)
+    if not isinstance(value, dict):
+        raise TypeError(f"the answer is a {type(value).__name__}, not an object")
+    return cast(dict[str, Any], value)
 
 
 def truth() -> Mapping[str, Any]:
@@ -328,8 +336,8 @@ async def _video_question(p: Probe, *, model: str, effort: str, stage: str, file
     latency = time.monotonic() - started
     p.save(f"{stage}-{model}-{effort}.response.json", result.response)
     try:
-        answer = json.loads(responses.output_text(result.response))
-    except (MetaError, json.JSONDecodeError) as exc:
+        answer = _json_object(responses.output_text(result.response))
+    except (MetaError, json.JSONDecodeError, TypeError) as exc:
         return {"model": model, "effort": effort, "error": f"{type(exc).__name__}: {exc}", "usd": result.usd}
     usage = _usage(result.response)
     truth_frame = _frame_when_red_crosses_centre()
@@ -343,7 +351,8 @@ async def _video_question(p: Probe, *, model: str, effort: str, stage: str, file
         "output_tokens": usage.get("output_tokens"),
         "answer": answer,
         "truth": {"frame_red_centre_crosses_middle": truth_frame, "beep_frames": truth()["beep_frames"]},
-        "frame_error": None if got is None else abs(int(got) - truth_frame),
+        # A non-integer answer ("n/a", 64.5) is a wrong answer, not a crash that loses the paid result.
+        "frame_error": abs(got - truth_frame) if isinstance(got, int) and not isinstance(got, bool) else None,
     }
 
 
@@ -378,9 +387,11 @@ async def _length_check(p: Probe, seconds: int) -> Summary:
             file_id = await p.files.upload(clip, f"long_{seconds}s.mp4")
         body = responses.build_body(p.settings.scene_model, _user_video(question, file_id), effort="low")
         result = await responses.create(p.meta, body, stage="probe_c", effort="low", video_seconds=float(seconds))
-    except (MetaBadRequest, MetaConfigError) as exc:  # Meta refused this clip: a measured answer
+    except MetaBadRequest as exc:  # Meta refused this clip: a measured answer
         return {"accepted": False, "error": f"{type(exc).__name__}: {exc}"}
-    except (MetaError, OSError, subprocess.CalledProcessError) as exc:  # budget, outage, local: not measured
+    # Budget, outage, a misconfiguration (MetaConfigError: wrong model, path or param) or a local failure: not
+    # a statement about the clip's length, so not measured.
+    except (MetaError, OSError, subprocess.CalledProcessError) as exc:
         return {"accepted": None, "error": f"{type(exc).__name__}: {exc}"}
     usage = _usage(result.response)
     return {"accepted": True, "input_tokens": usage.get("input_tokens"), "usd": result.usd}
