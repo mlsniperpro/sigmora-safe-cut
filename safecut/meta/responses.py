@@ -205,4 +205,6 @@ async def create_json[M: BaseModel](
             return model_type.model_validate_json(output_text(result.response)), result
         except ValidationError as exc:
             last_error = exc
-    raise InvalidOutputError(f"{stage}: output failed validation twice: {last_error}")
+    # Only the count: a ValidationError's text quotes the model's output, which may hold private text.
+    count = last_error.error_count() if isinstance(last_error, ValidationError) else 0
+    raise InvalidOutputError(f"{stage}: output failed validation twice ({count} error(s))")

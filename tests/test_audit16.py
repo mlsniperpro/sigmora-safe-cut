@@ -39,14 +39,17 @@ def _with_leak(tmp_path: Path, **leak: Any) -> Path:
 @pytest.mark.parametrize(
     ("leak", "message"),
     [
-        ({"patched_item": "i_3"}, "its patch i_3 spans 1-5"),  # a track-span item that doesn't cover frame 10
+        (
+            {"patched_item": "i_3"},
+            r"patch: i_3 doesn't hide frames \[10\]",
+        ),  # a track-span item that doesn't cover frame 10
         (
             {"patched_item": "p_1", "flag": "redaction_too_weak", "through_item": "i_1"},
-            "its through_item i_1 is a kept item",
+            "through_item: i_1 is a kept item",
         ),
         (
             {"patched_item": "p_1", "flag": "redaction_too_weak", "through_item": "i_3"},
-            "its through_item i_3 spans 1-5",
+            r"through_item: i_3 doesn't hide frames \[10\]",
         ),
     ],
 )

@@ -38,10 +38,11 @@ from pydantic import BaseModel
 
 from safecut import open_weight
 from safecut.config import OpenWeightPrice, Settings, load_settings
+from safecut.contracts import read_cost_lines
 from safecut.meta import asr, responses, sam
 from safecut.meta.budget import Caller, CapLimit, LocalLedger
 from safecut.meta.client import CallSpec, MetaClient
-from safecut.meta.errors import MetaBadRequest, MetaError
+from safecut.meta.errors import BudgetExceeded, MetaBadRequest, MetaError
 from safecut.meta.files import FileStore
 from safecut.meta.retry import RetryPolicy
 from safecut.meta.status import fetch_status
@@ -842,6 +843,22 @@ async def _run_h(settings: Settings, *, job_id: str, out: Path, ledger: LocalLed
     return result
 
 
+def seeded_ledger(cost_path: Path) -> LocalLedger:
+    """A fresh ledger whose probe bucket already holds every earlier probe run's Meta spend.
+
+    The committed ``fixtures/probes/cost.jsonl`` is the record that travels between containers (``jobs/`` is
+    git-ignored), so the $6 cap counts all runs, not just this container's. Raises ``BudgetExceeded`` when
+    the earlier spend already exceeds it.
+    """
+    ledger = LocalLedger()
+    lines = list(read_cost_lines(cost_path)) if cost_path.exists() else []
+    spent = sum(line.usd for line in lines if line.provider == "meta")
+    if spent > 0:
+        ledger.reserve("seed:earlier-probe-runs", None, spent, [CapLimit("code", "wp0-probes", PROBE_BUDGET_USD)])
+        ledger.settle("seed:earlier-probe-runs", spent)
+    return ledger
+
+
 def main(argv: list[str]) -> int:
     clips = [a.removeprefix("--clip=") for a in argv if a.startswith("--clip=")]
     frames = [a.removeprefix("--keyframes=") for a in argv if a.startswith("--keyframes=")]
@@ -860,10 +877,13 @@ def main(argv: list[str]) -> int:
         print(f"no role_calls.json in {keyframes}", file=sys.stderr)
         return 2
     settings = load_settings()
-    ledger_path = ROOT / "jobs" / "probes-ledger.sqlite"
-    ledger_path.parent.mkdir(parents=True, exist_ok=True)
     out_root = ROOT / "fixtures" / "probes"
-    ledger = LocalLedger(ledger_path)
+    cost_path = out_root / "cost.jsonl"
+    try:
+        ledger = seeded_ledger(cost_path)
+    except BudgetExceeded as exc:
+        print(f"the $6 probe budget is spent: {exc}", file=sys.stderr)
+        return 2
     results = asyncio.run(
         run(
             names,
@@ -875,7 +895,7 @@ def main(argv: list[str]) -> int:
             hero_root=ROOT / "jobs" / "probes-hero",
             # One spend record for every probe run, hero runs included (cost lines hold no footage): the PR's
             # "total probe spend" is this one file.
-            cost_path=ROOT / "fixtures" / "probes" / "cost.jsonl",
+            cost_path=cost_path,
         )
     )
     print(json.dumps(results, indent=1))

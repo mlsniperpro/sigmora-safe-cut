@@ -1117,21 +1117,16 @@ def _check_receipt_cost(receipt: Receipt, job: Job, cost_path: Path) -> None:
 
 
 def _check_plan_covers(plan: Plan, decisions: Decisions, tracks: Tracks | None, job: Job) -> None:
-    """Every hidden item (``hide``, or ``needs_you``, which renders hidden) has a plan entry on every frame of
-    its span: its tracks' first..last, or an audit patch's own first..last (clamped to the clip)."""
-    spans = {t.track_id: (t.first, t.last) for t in tracks.tracks} if tracks is not None else None
+    """Every hidden item (``hide``, or ``needs_you``, which renders hidden) has a plan entry on every frame its
+    tracks are present (each track's own first..last, so a merged item's gap between tracks needs none), or
+    on an audit patch's own first..last, clamped to the clip. Extend/backfill entries beyond that are fine."""
+    spans = {t.track_id: (t.first, t.last) for t in tracks.tracks} if tracks is not None else {}
     planned = {(frame, e.item_id) for frame, entries in plan.frames.items() for e in entries}
     for item in decisions.items:
         if item.decision not in ("hide", "needs_you"):
             continue
-        if item.first is not None and item.last is not None:
-            first, last = item.first, item.last
-        elif spans is not None and item.track_ids:
-            first = min(spans[t][0] for t in item.track_ids if t in spans)
-            last = max(spans[t][1] for t in item.track_ids if t in spans)
-        else:
-            continue
-        missing = [f for f in range(first, min(last, job.frames - 1) + 1) if (f, item.item_id) not in planned]
+        present = _present_frames(item, spans)
+        missing = [f for f in sorted(present) if f < job.frames and (f, item.item_id) not in planned]
         if missing:
             raise ContractError(f"plan.json: hidden item {item.item_id} has no entry on frames {missing[:10]}")
 
@@ -1144,6 +1139,7 @@ def _check_links(
     audit: Audit | None,
     *,
     tracks: Tracks | None = None,
+    plan: Plan | None = None,
 ) -> None:
     """Indexes and IDs one file takes from another (WP3 indexes ``scene.participants[matches_participant]``)."""
     if scene is not None and roles is not None:
@@ -1178,45 +1174,48 @@ def _check_links(
         for where, ref in refs:
             if ref is not None and ref not in items:
                 raise ContractError(f"audit.json {where}: {ref!r} is not an item in decisions.json")
-        _check_patches(audit, decisions, tracks)
+        _check_patches(audit, decisions, tracks, plan)
 
 
-def _item_span(item: DecisionItem, spans: Mapping[str, tuple[int, int]]) -> tuple[int, int] | None:
-    """An item's frames: an audit patch's own first..last, else its tracks' first..last (None if unknown)."""
+def _present_frames(item: DecisionItem, spans: Mapping[str, tuple[int, int]]) -> set[int]:
+    """Frames an item exists on: an audit patch's own first..last, else each of its tracks' first..last."""
     if item.first is not None and item.last is not None:
-        return item.first, item.last
-    known = [spans[t] for t in item.track_ids if t in spans]
-    return (min(a for a, _ in known), max(b for _, b in known)) if known else None
+        return set(range(item.first, item.last + 1))
+    return {f for t in item.track_ids if t in spans for f in range(spans[t][0], spans[t][1] + 1)}
 
 
-def _check_patches(audit: Audit, decisions: Decisions, tracks: Tracks | None) -> None:
-    """A leak's ``patched_item`` and ``through_item`` are hidden items whose span holds the leak's frame."""
+def _hidden_frames(item: DecisionItem, spans: Mapping[str, tuple[int, int]], plan: Plan | None) -> set[int] | None:
+    """Frames an item hides: where it exists, plus every frame the plan renders it on (the guard's extend and
+    backfill reach past its tracks). ``None`` when neither tracks nor a plan say."""
+    frames = _present_frames(item, spans)
+    if plan is not None:
+        frames |= {f for f, entries in plan.frames.items() if any(e.item_id == item.item_id for e in entries)}
+    return frames or None
+
+
+def _check_patches(audit: Audit, decisions: Decisions, tracks: Tracks | None, plan: Plan | None) -> None:
+    """A leak's ``patched_item`` and ``through_item``, and a spot's ``covered_by``, are hidden items that hide
+    the leak's frame or the spot's frames."""
     by_id = {item.item_id: item for item in decisions.items}
     spans = {t.track_id: (t.first, t.last) for t in tracks.tracks} if tracks is not None else {}
-    for leak in audit.leaks:
-        for role, item_id in (("patch", leak.patched_item), ("through_item", leak.through_item)):
-            item = by_id.get(item_id or "")
-            if item is None:
-                continue
-            if item.decision == "keep":
-                raise ContractError(f"audit.json leak at frame {leak.frame}: its {role} {item.item_id} is a kept item")
-            span = _item_span(item, spans)
-            if span is not None and not span[0] <= leak.frame <= span[1]:
-                raise ContractError(
-                    f"audit.json leak at frame {leak.frame}: its {role} {item.item_id} spans {span[0]}-{span[1]}"
-                )
-    for spot in audit.spots:
-        item = by_id.get(spot.covered_by or "")
+
+    def check(item_id: str | None, frames: range, where: str) -> None:
+        item = by_id.get(item_id or "")
         if item is None:
-            continue
+            return
         if item.decision == "keep":
-            raise ContractError(f"audit.json spot {spot.spot_id}: covered by {item.item_id}, a kept item")
-        span = _item_span(item, spans)
-        if span is not None and not (span[0] <= spot.first and spot.last <= span[1]):
-            raise ContractError(
-                f"audit.json spot {spot.spot_id} ({spot.first}-{spot.last}): its cover {item.item_id}"
-                f" spans {span[0]}-{span[1]}"
-            )
+            raise ContractError(f"audit.json {where}: {item.item_id} is a kept item")
+        hidden = _hidden_frames(item, spans, plan)
+        outside = [f for f in frames if hidden is not None and f not in hidden]
+        if outside:
+            raise ContractError(f"audit.json {where}: {item.item_id} doesn't hide frames {outside[:5]}")
+
+    for leak in audit.leaks:
+        frame = range(leak.frame, leak.frame + 1)
+        check(leak.patched_item, frame, f"leak at frame {leak.frame} patch")
+        check(leak.through_item, frame, f"leak at frame {leak.frame} through_item")
+    for spot in audit.spots:
+        check(spot.covered_by, range(spot.first, spot.last + 1), f"spot {spot.spot_id} cover")
 
 
 def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:
@@ -1268,6 +1267,7 @@ def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:
         decisions,
         audit,
         tracks=tracks,
+        plan=plan if isinstance(plan, Plan) else None,
     )
     if isinstance(receipt, Receipt):
         responses = loaded.get("responses.json")

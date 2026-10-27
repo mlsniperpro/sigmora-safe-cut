@@ -70,7 +70,9 @@ def test_a_receipt_may_record_a_blocked_audit() -> None:
     assert blocked.unresolved == 2
 
 
-@pytest.mark.parametrize(("item", "message"), [("i_1", "a kept item"), ("p_1", "spans 2-11")])
+@pytest.mark.parametrize(
+    ("item", "message"), [("i_1", "i_1 is a kept item"), ("p_1", r"p_1 doesn't hide frames \[1\]")]
+)
 def test_a_patch_must_hide_the_leak_frame(tmp_path: Path, item: str, message: str) -> None:
     job_dir = tmp_path / "j_example"
     shutil.copytree(EXAMPLE, job_dir)

@@ -113,7 +113,7 @@ def test_a_spot_cover_must_hide_its_frames(tmp_path: Path) -> None:
     audit = json.loads((job_dir / "audit.json").read_text())
     audit["spots"] = [{"spot_id": "s1", "first": 2, "last": 3, "boxes": {"2": [1, 1, 9, 9]}, "covered_by": "i_1"}]
     (job_dir / "audit.json").write_text(json.dumps(audit))
-    with pytest.raises(c.ContractError, match="covered by i_1, a kept item"):
+    with pytest.raises(c.ContractError, match="spot s1 cover: i_1 is a kept item"):
         c.validate_job_dir(job_dir)
 
 

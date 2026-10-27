@@ -376,7 +376,11 @@ class MetaClient:
             code_kind=self.caller.code_kind,
             code_id=self.caller.code_id,
         )
-        append_cost_line(line, self.cost_path)
+        try:
+            append_cost_line(line, self.cost_path)
+        except OSError:
+            # The stop itself stands: the caller still gets its BudgetExceeded, never a raw OSError.
+            log.exception("cost.jsonl write failed for a budget stop", extra={"stage": spec.stage})
 
     def _note_rate_headers(self, headers: Mapping[str, str]) -> None:
         for kind in ("requests", "tokens"):
