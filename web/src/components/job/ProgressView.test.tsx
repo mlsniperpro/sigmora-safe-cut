@@ -21,6 +21,19 @@ describe("Copy link (UI-SPEC §2.5)", () => {
     await user.click(screen.getByRole("button", { name: "Copy link" }));
     expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/jobs/job-1`);
     expect(await screen.findByRole("button", { name: "Copied" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Link copied.");
+    // The label resets, so a second copy also confirms.
+    await screen.findByRole("button", { name: "Copy link" }, { timeout: 3_000 });
+  });
+
+  it("the review link can wrap on a narrow screen", () => {
+    setup();
+    expect(screen.getByText(`${window.location.origin}/jobs/job-1`)).toHaveClass("break-all");
+  });
+
+  it("in mock mode, says the review link only works in this browser", () => {
+    setup();
+    expect(screen.getByText(/in this preview it only works in this browser/)).toBeInTheDocument();
   });
 
   it.each([

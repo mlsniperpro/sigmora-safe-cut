@@ -150,6 +150,8 @@ export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function Vi
             controls
             playsInline
             preload="auto"
+            // A source that loads re-arms the one refresh, for when its signed URL expires later.
+            onLoadedMetadata={() => setRefreshedFor(null)}
             onError={() => {
               if (onMediaError && src && refreshedFor === null) {
                 setRefreshedFor(src);

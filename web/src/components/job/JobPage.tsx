@@ -82,6 +82,7 @@ export function JobPage() {
             etaS={j.eta_s ?? null}
             busy={j.status === "retry_later"}
             onDeleted={markDeleted}
+            headingLevel={1}
           />
         </section>
       );

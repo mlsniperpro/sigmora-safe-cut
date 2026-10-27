@@ -102,9 +102,10 @@ export function ConfirmDialog({
 export function MessagePage({ message, actions }: { message: string; actions: Array<{ label: string; href?: string; onClick?: () => void }> }) {
   return (
     <section className="mx-auto max-w-2xl px-4 py-16">
-      <p role="status" className="text-xl font-medium">
-        {message}
-      </p>
+      {/* The message is the page's heading; the wrapper announces it. */}
+      <div role="status">
+        <h1 className="text-xl font-medium">{message}</h1>
+      </div>
       <div className="mt-6 flex flex-wrap gap-3">
         {actions.map((a) =>
           a.href ? (

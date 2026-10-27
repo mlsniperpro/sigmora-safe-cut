@@ -8,6 +8,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
 import { getClient } from "@/lib/client";
+import { URL_REFRESH_MS } from "@/lib/polling";
 import type { ResultResponse } from "@/lib/contracts";
 import { COPY, auditSummary, formatLocal } from "@/lib/copy";
 import { SITE, fromSigmora, keptQuery } from "@/lib/site";
@@ -20,8 +21,6 @@ import { FailedJob } from "./FailedJob";
 import { JobSkeleton, loadMessage } from "./JobPage";
 
 const RECEIPT_TIMEOUT_MS = 15_000;
-/** Presigned GETs live 15 min (§10.7): the download and receipt links are refreshed before then. */
-export const LINK_REFRESH_MS = 10 * 60_000;
 
 /** `video` and `receipt` are the URLs the player and the iframe use: a link refresh leaves them alone. */
 type ResultLoad = { kind: "idle" } | { kind: "ready"; result: ResultResponse; video: string; receipt: string } | { kind: "error"; error: unknown };
@@ -56,6 +55,14 @@ export function ResultPage() {
   const receiptRetried = useRef(false);
   const receiptLoadedRef = useRef(false);
   const videoRetried = useRef(false);
+  /** Bumped by "Try again" on a result error: a fresh fetch with its one-time retries restored. */
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    videoRetried.current = false;
+    receiptRetried.current = false;
+    receiptLoadedRef.current = false;
+    keepMedia.current = false;
+  }, [attempt]);
   const latest = result.kind === "ready" ? result.result : null;
   // An iframe fires no error event for HTTP failures, so a receipt that hasn't loaded in time counts
   // as failed (§5.4), after one refetch in case its signed URL had expired (§10.7).
@@ -77,7 +84,7 @@ export function ResultPage() {
     const t = setTimeout(() => {
       keepMedia.current = true;
       setLinkRefreshes((n) => n + 1);
-    }, LINK_REFRESH_MS);
+    }, URL_REFRESH_MS);
     return () => clearTimeout(t);
   }, [latest]);
   const [published, setPublished] = useState(false);
@@ -114,7 +121,17 @@ export function ResultPage() {
         setResult((prev) => (keep && prev.kind === "ready" ? prev : { kind: "error", error }));
       });
     return () => controller.abort();
-  }, [id, status, mediaRefreshes, linkRefreshes]);
+  }, [id, status, mediaRefreshes, linkRefreshes, attempt]);
+
+  /** "Try again" on a result error: start over with fresh URLs and fresh retries. */
+  const retryResult = () => {
+    setMediaFailed(false);
+    setReceiptFailed(false);
+    setReceiptLoaded(false);
+    setResult({ kind: "idle" });
+    setAttempt((n) => n + 1);
+    resume();
+  };
 
   if (load.kind === "loading" || redirect) return <JobSkeleton />;
   if (load.kind !== "ready") return loadMessage(load.kind, resume);
@@ -134,11 +151,11 @@ export function ResultPage() {
   if (j.status !== "done") return loadMessage("unexpected", resume);
   if (result.kind === "error") {
     const e = result.error instanceof ApiError ? result.error : null;
-    return loadMessage(e?.status === 404 ? (e.code === "expired" ? "expired" : "not_found") : e?.kind === "network" || e?.kind === "timeout" ? "unreachable" : "unexpected", resume);
+    return loadMessage(e?.status === 404 ? (e.code === "expired" ? "expired" : "not_found") : e?.kind === "network" || e?.kind === "timeout" ? "unreachable" : "unexpected", retryResult);
   }
   if (result.kind !== "ready") return <JobSkeleton />;
 
-  if (mediaFailed) return loadMessage("unexpected", resume);
+  if (mediaFailed) return loadMessage("unexpected", retryResult);
   const r = result.result;
   const summary = auditSummary(r.audit, j.job?.frames ?? r.frames);
   const doDelete = async () => {
@@ -163,6 +180,10 @@ export function ResultPage() {
             playsInline
             preload="metadata"
             aria-label="Your clip after Safe Cut"
+            // A source that loads re-arms the one refresh, for when its signed URL expires later.
+            onLoadedMetadata={() => {
+              videoRetried.current = false;
+            }}
             onError={() => {
               if (videoRetried.current) {
                 setMediaFailed(true);
@@ -195,7 +216,8 @@ export function ResultPage() {
             </button>
             {detailOpen && <p className="mt-1 text-sm">{summary.detail}</p>}
           </div>
-          <a href={r.video_url} download className={btn.primary}>
+          {/* Browsers ignore `download` on another origin's URL: a new tab beats leaving this page. */}
+          <a href={r.video_url} download target="_blank" rel="noopener noreferrer" className={btn.primary}>
             Download video
           </a>
           {!summary.publishable && <p className="text-sm text-muted">This version has {summary.unfixedSpots} unfixed {summary.unfixedSpots === 1 ? "spot" : "spots"}.</p>}
@@ -233,7 +255,7 @@ export function ResultPage() {
       <div className="mt-10">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <h2 className="text-xl font-semibold">Privacy receipt</h2>
-          <a href={r.receipt_json_url} download className={btn.secondary}>
+          <a href={r.receipt_json_url} download target="_blank" rel="noopener noreferrer" className={btn.secondary}>
             Download receipt (JSON)
           </a>
         </div>

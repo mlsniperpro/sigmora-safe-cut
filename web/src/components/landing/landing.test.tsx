@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import kappaUndefined from "../../../mocks/results-kappa-undefined.json";
 import noEgoblur from "../../../mocks/results-no-egoblur.json";
@@ -34,6 +34,14 @@ describe("results table (UI-SPEC §1.3)", () => {
     expect(screen.getByText(/They agreed on 90\.0% of 10 decisions \(both said hide: 4 · only the first said hide: 1 · only the second said hide: 0 · both said keep: 5\); κ = 0\.80\./)).toBeInTheDocument();
   });
 
+  it("adds the open-weight clause to the footnote only once the second opinion runs on the hero", () => {
+    const note = /Muse Spark Open's second opinion ran only on consented hero and dev footage; the test-split numbers were measured without it\./;
+    const { rerender } = render(<ResultsTable results={resultsTableSchema.parse(twoLabellers)} />);
+    expect(screen.queryByText(note)).toBeNull();
+    rerender(<ResultsTable results={resultsTableSchema.parse(twoLabellers)} heroOpenWeight />);
+    expect(screen.getByText(note)).toBeInTheDocument();
+  });
+
   it("says when κ can't be computed instead of printing null", () => {
     render(<ResultsTable results={resultsTableSchema.parse(kappaUndefined)} />);
     expect(screen.getByText(/κ can't be computed: both labellers made the same call on every item\./)).toBeInTheDocument();
@@ -61,5 +69,28 @@ describe("hero and steps (UI-SPEC §1)", () => {
     expect(await screen.findByText(/Before anything is published, Meta's EgoBlur checks the final render/)).toBeInTheDocument();
     expect(screen.getByText("Muse Spark decides who")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Try it with an access code" })).toHaveAttribute("href", "/try");
+  });
+
+  it("refetches the demo on a video error, re-arms after a load, and keeps the poster under the failure message (§1.4)", async () => {
+    const backend = new MockBackend({ latencyMs: 0 });
+    setClientForTests(new SafeCutClient({ transport: backend }));
+    render(
+      <ModeProvider>
+        <HeroAndSteps />
+      </ModeProvider>,
+    );
+    const demoGets = () => backend.log.filter((l) => l.path.startsWith("/v1/demo/")).length;
+    const player = () => screen.getByLabelText("The demo clip after Safe Cut");
+    await screen.findByLabelText("The demo clip after Safe Cut");
+    const poster = player().getAttribute("poster");
+    expect(poster).toBeTruthy();
+    fireEvent.error(player());
+    await waitFor(() => expect(demoGets()).toBe(2));
+    fireEvent.loadedMetadata(await screen.findByLabelText("The demo clip after Safe Cut"));
+    fireEvent.error(player());
+    await waitFor(() => expect(demoGets()).toBe(3));
+    fireEvent.error(await screen.findByLabelText("The demo clip after Safe Cut"));
+    expect(await screen.findByText("The demo video didn't load. You can still try Safe Cut with an access code.")).toBeInTheDocument();
+    expect(document.querySelector("figure img")).toHaveAttribute("src", poster);
   });
 });

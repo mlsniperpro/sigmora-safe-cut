@@ -6,6 +6,9 @@ function sigmoraOrigin(): string {
 }
 
 const dev = process.env.NODE_ENV !== "production";
+// `pnpm dev` against a WP5 API running locally: the API itself on plain-http localhost (its
+// signed media URLs are https either way, which `mediaUrl` requires).
+const localApi = dev ? " http://localhost:* http://127.0.0.1:*" : "";
 
 // Static pages can't carry per-request nonces, so inline scripts are allowed (the Next.js
 // guidance for statically rendered apps); everything else is locked to known origins.
@@ -17,7 +20,7 @@ const csp = [
   "img-src 'self' data: blob: https:",
   "media-src 'self' blob: https:",
   // The API and its presigned upload host; both are https.
-  "connect-src 'self' https:",
+  `connect-src 'self' https:${localApi}`,
   "frame-src 'self' https:",
   `frame-ancestors 'self' ${sigmoraOrigin()}`,
   "base-uri 'self'",

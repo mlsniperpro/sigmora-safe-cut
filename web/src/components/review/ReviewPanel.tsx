@@ -485,6 +485,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
 
   return (
     <div className="mx-auto max-w-6xl px-4 pt-6 pb-48 lg:pb-32">
+      <h1 className="sr-only">Review what Safe Cut hides</h1>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="font-medium">
           {job.job?.source_name ?? "Your clip"}
@@ -699,7 +700,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
             ["Tab", "Move through every button"],
             ["↑ / ↓", "Same button on the previous / next chip"],
             ["← / →", "First chip of the neighbouring column"],
-            ["Enter", "Open Why? on a focused chip"],
+            ["Enter", "Select the focused chip (seek, pause and outline it)"],
             ["H", "Hide the focused item"],
             ["C", "Keep the focused item clear"],
             ["Z, Ctrl+Z or ⌘Z", "Undo the last edit"],
@@ -798,7 +799,7 @@ function BottomBar({
     </button>
   );
   const downloadLink = download ? (
-    <a href={download} download className={btn.secondary}>
+    <a href={download} download target="_blank" rel="noopener noreferrer" className={btn.secondary}>
       Download this version
     </a>
   ) : null;

@@ -30,6 +30,12 @@ function pct(v: number | null, better: "higher" | "lower"): string {
   return `${(tenths / 10).toFixed(1)}%`;
 }
 
+/**
+ * §1.3: the second opinion never runs on the test split, which the footnote says once it runs on
+ * the hero. The spec's "where `audit.open_weight.status` is `ok`" is the condition, not copy.
+ */
+const OPEN_WEIGHT_NOTE = "Muse Spark Open's second opinion ran only on consented hero and dev footage; the test-split numbers were measured without it.";
+
 function footnote(r: Results): string {
   const head = `${r.n_clips} test clips (${r.n_public} filmed in public, ${r.n_staged} staged with consenting actors), labelled by`;
   const runCount = r.runs_per_clip_min === r.runs_per_clip_max ? `${r.runs_per_clip_min} run${r.runs_per_clip_min === 1 ? "" : "s"}` : `${r.runs_per_clip_min}–${r.runs_per_clip_max} runs`;
@@ -42,7 +48,7 @@ function footnote(r: Results): string {
   return `${head} two people. ${agreed}; κ = ${r.kappa.toFixed(2)}. ${runs}`;
 }
 
-export function ResultsTable({ results }: { results: Results | null }) {
+export function ResultsTable({ results, heroOpenWeight = false }: { results: Results | null; heroOpenWeight?: boolean }) {
   if (!results) {
     return <p className="text-muted">Numbers appear here after our frozen test runs. We publish them whether they&apos;re good or not.</p>;
   }
@@ -89,7 +95,8 @@ export function ResultsTable({ results }: { results: Results | null }) {
         </table>
       </div>
       <p className="mt-3 text-sm text-muted">
-        {footnote(results)}{" "}
+        {footnote(results)}
+        {heroOpenWeight && ` ${OPEN_WEIGHT_NOTE}`}{" "}
         <a href={results.run_url ?? SITE.evalUrl} className="underline underline-offset-2" rel="noopener noreferrer" target="_blank">
           How we measured ↗
         </a>

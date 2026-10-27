@@ -71,9 +71,9 @@ export function FailedJob({ jobId, job, onResume, onDeleted }: { jobId: string; 
   const waiting = (retryAt !== null && (now === 0 || now < retryAt)) || (blockedUntil !== null && (now === 0 || now < blockedUntil));
   return (
     <section className="mx-auto max-w-2xl px-4 py-16">
-      <p role="alert" className="text-xl font-medium">
-        {view.message}
-      </p>
+      <div role="alert">
+        <h1 className="text-xl font-medium">{view.message}</h1>
+      </div>
       <div className="mt-6 flex flex-wrap items-center gap-3">
         {view.actions.includes("try_again") && (
           <button type="button" className={btn.primary} disabled={busy || blocked || waiting} onClick={() => void retry()}>
@@ -94,7 +94,7 @@ export function FailedJob({ jobId, job, onResume, onDeleted }: { jobId: string; 
           </Link>
         )}
         {job.has_render && job.result?.video_url && (
-          <a href={job.result.video_url} download className={btn.secondary}>
+          <a href={job.result.video_url} download target="_blank" rel="noopener noreferrer" className={btn.secondary}>
             Download this version
           </a>
         )}

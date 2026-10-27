@@ -8,9 +8,18 @@
 - Done = `bash .agent/win-gate.sh SAFECUT-WP6` prints `GATE: PASS` on the pushed HEAD.
 
 ## Current state (2026-10-27, session_01PMv2tTJFHGsGC5rcjHFfL1 holds the lease)
-- Audit round 3 (on 6d860ad) found 0 critical, 0 high, 1 medium and 10 low. All are fixed and tested in the round-3 fix commit, except #4 (does not reproduce; pinned by a test) and #11 (owner env, BLOCKED.md). The table is in reaudit.md.
-- On the round-3 fix commit: lint 0 warnings, typecheck, 760 vitest tests (22 files), build, e2e 71/71 (`checks.sh` exit 0).
-- The gate still needs two clean full audits in a row on the current code, then a fresh `break-it.md` (fresh clone + FUZZ_RUNS=100000 soak).
+- Audit round 3 (on 6d860ad): 1 medium and 10 low, fixed in 153fac4.
+- Audit round 4 (on 153fac4): 1 high, 4 medium and 13 low, fixed in the round-4 commit. Highlights:
+  - Mock /try jobs persist in localStorage until `deletes_at`.
+  - Timed-out `/start` resumes polling.
+  - Result-page "Try again" works.
+  - Open-weight copy in §5.3 and the results footnote.
+  - Paused job pages quietly refresh their signed URLs.
+  - One h1 per page.
+- The full table is in reaudit.md, with each finding mapped in WIN-CHECKLIST.md.
+- On the round-4 commit: lint 0, typecheck, 779 vitest tests (23 files), build, e2e 71/71, `checks.sh` exit 0. Screenshots refreshed from that e2e run.
+- FUZZ_RUNS=100000 passed on 153fac4 (300,000 sequences, 412 s). Round 4 didn't touch the reducer, only the mock's storage and `deletes_at`.
+- CLEAN_AUDITS_IN_A_ROW is 0. Two clean full audits are still needed, then a fresh break-it.md.
 
 ## Next steps, in order
 1. Run full audit round 4 on HEAD. If it finds anything, fix it and reset CLEAN_AUDITS_IN_A_ROW to 0. Repeat until two consecutive audits find nothing. Then set AUDITED_COMMIT to the last code commit and CLEAN_AUDITS_IN_A_ROW to 2.

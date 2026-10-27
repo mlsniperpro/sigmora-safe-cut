@@ -5,7 +5,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { isMockMode } from "@/lib/api";
-import { getClient } from "@/lib/client";
+import { SAMPLE_MEDIA_BASE, getClient } from "@/lib/client";
 import type { DemoResponse } from "@/lib/contracts";
 import { SITE } from "@/lib/site";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
@@ -23,6 +23,8 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["au
   const reduced = useReducedMotion();
   const video = useRef<HTMLVideoElement>(null);
   const resumeAt = useRef<number | null>(null);
+  /** One refetch per failure; a source that loads re-arms it, for a page left open past the URLs' 15 min. */
+  const retried = useRef(false);
   // The sample hero in mock mode isn't a real run, so it doesn't claim demo mode.
   useReportMode(isMockMode() ? null : demo?.mode);
 
@@ -49,6 +51,9 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["au
 
   const src = demo ? (version === "raw" ? demo.job.prepared_url : demo.video_url) : undefined;
   const mock = isMockMode();
+  // §1.4: the poster shows while loading and stays under the message if the video fails. Before
+  // the first answer only mock mode knows it (the sample's); live mode shows the dark frame.
+  const poster = demo?.poster_url ?? (mock ? `${SAMPLE_MEDIA_BASE}/poster.jpg` : null);
 
   return (
     <figure className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow)]">
@@ -67,6 +72,7 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["au
             autoPlay={!reduced}
             preload="metadata"
             onLoadedMetadata={(e) => {
+              retried.current = false;
               if (resumeAt.current !== null) {
                 e.currentTarget.currentTime = resumeAt.current;
                 resumeAt.current = null;
@@ -74,15 +80,23 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["au
               }
             }}
             onError={() => {
-              if (refreshes === 0) setRefreshes(1);
-              else setFailed(true);
+              if (retried.current) {
+                setFailed(true);
+                return;
+              }
+              retried.current = true;
+              setRefreshes((n) => n + 1);
             }}
             aria-label={version === "raw" ? "Raw footage of the demo clip" : "The demo clip after Safe Cut"}
           >
             {demo.captions_url && <track kind="captions" src={demo.captions_url} srcLang="en" label="English" default />}
           </video>
         ) : (
-          <div className="flex h-full items-center justify-center text-sm text-white/80">{failed ? null : "Loading the demo…"}</div>
+          <div className="relative flex h-full items-center justify-center text-sm text-white/80">
+            {/* eslint-disable-next-line @next/next/no-img-element -- a signed poster URL, like the video's own poster attribute */}
+            {poster && <img src={poster} alt="" className="absolute inset-0 h-full w-full object-cover" />}
+            {!failed && <span className="relative rounded bg-black/60 px-2 py-1">Loading the demo…</span>}
+          </div>
         )}
         {reduced && demo && !failed && (
           <button

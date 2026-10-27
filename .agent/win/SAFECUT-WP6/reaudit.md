@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 6d860ad
+AUDITED_COMMIT: 153fac4
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -80,3 +80,28 @@ Fresh-clone README run also found: `pnpm typecheck` failed before any build (Nex
 | 9 | low | Mock mode contradicted itself: "nothing leaves your browser" next to "It's sent to Meta"; the replay banner claimed a real run on a synthetic fixture | fixed: in mock mode the data bullets open with "In this preview nothing is uploaded … On the live service:", and the demo banner adds that its saved results are sample data (the §6 banner itself stays previewable); tests |
 | 10 | low | README: "Cache Components" (it's off), missing /privacy, /unavailable, proxy; no Node/pnpm versions; no Playwright browser install | fixed |
 | 11 | low | Privacy contact falls back to GitHub issues when `NEXT_PUBLIC_PRIVACY_CONTACT` is unset | owner input: already in BLOCKED.md (deploy env) |
+
+## Round 4 (audited 153fac4 by a Sonnet reviewer; each finding traced here; fixes in the next commit)
+
+0 critical, 1 high, 4 medium, 13 low. The round-3 changes held: no refetch loop, stale-ref or retry leak.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | high | Mock mode kept /try jobs only in memory: F5 or the copied review link gave "We couldn't find that clip" while the page said "You can leave this page" | fixed: `/try` jobs (data, edits, timeline) are stored in localStorage until their `deletes_at` (unreadable or full storage is ignored); fixture jobs still reset on reload; the review-link line says the preview link only works in this browser. `mock-backend.test.ts` ×4, ProgressView test |
+| 2 | med | Result page "Try again" after a failed result load or two video errors did nothing | fixed: it refetches the result and restores the one-time retries; ResultPage tests ×2 |
+| 3 | med | /try progress froze with no message once polling failed for good | fixed: the poller hands over to `/jobs/{id}`, whose §7 page offers Try again; TryFlow test |
+| 4 | med | A timed-out `POST /start` dropped the job; §10.3 says polling resumes | fixed: the message shows, Start stays enabled, and a GET follows the job into progress if the server took it; a 409 on a re-pressed Start follows it as running; TryFlow tests ×2 |
+| 5 | med | Open-weight (Baseten) line missing from the §5.3 audit detail and the results footnote; round 2 #11's rejection was wrong | fixed: `openWeightSentence` feeds step 3 and the §5.3 detail; the footnote adds the test-split clause once the hero's audit says the second opinion ran (`ResultsSection`). The spec's "where `audit.open_weight.status` is `ok`" is the condition, not copy. copy + landing tests |
+| 6 | low | Signed-URL refresh was one-shot for the page's life (result video, review video, hero) | fixed: a source that loads re-arms its refresh; ResultPage, JobPage and landing tests |
+| 7 | low | Mock jobs showed a fixed past `deletes_at` | fixed: now + 24 h for /try and fixture jobs and result fixtures; test |
+| 8 | low | The ⋯ trigger couldn't close its own menu | fixed (blur to the trigger no longer closes first); test |
+| 9 | low | Shortcut help said Enter opens Why? | fixed: "Select the focused chip (seek, pause and outline it)" (§3.8) |
+| 10 | low | A keyframe refresh whose GET overlapped an edit was dropped | fixed: a GET discarded for a newer patch still hands over its signed URLs (`withFreshUrls`); test |
+| 11 | low | "Download this version" (review bar, failed job) went stale; cross-origin `download` navigates away | fixed: a paused or stopped job page refetches quietly every 10 min (and on return to a tab after that long; a failed quiet refresh keeps the page); download links open a new tab; useJob test |
+| 12 | low | No `<h1>` on job pages | fixed: review (visually hidden), progress, failed and message pages; tests assert exactly one per state |
+| 13 | low | Copy-link outcome not reliably announced; "Copied" never reset | fixed: always-mounted status region, label resets after 2 s; test |
+| 14 | low | Review URL couldn't wrap on narrow screens | fixed (`break-all`); test |
+| 15 | low | Hero loading/failed states had no poster (§1.4) | fixed: poster while loading (mock knows it up front) and under the failure message; test |
+| 16 | low | CSP blocked a plain-http local API in dev | fixed for `connect-src` only (dev builds); the README never claimed localhost, and media URLs must be https by schema anyway |
+| 17 | low | Root README says "design docs only"; screenshots predate round 3 copy | screenshots refreshed from this commit's e2e run; the root README is outside WP6's paths: listed under "Requests for other WPs" in the PR |
+| 18 | low | Mock mode ignores the picked clip without saying so | fixed: the data bullet says the clip isn't analysed and a built-in sample scene is reviewed; test |

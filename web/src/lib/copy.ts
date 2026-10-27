@@ -130,7 +130,8 @@ export function auditSummary(audit: Audit, frames: number, budgetLine?: string |
     who === "yunet"
       ? "Muse Spark looked at sampled frames for number plates and anything else it could read or recognise."
       : "Muse Spark looked at sampled frames and tried to read or recognise anything.";
-  const detail = `${detector} It's meant to scan all of them; any frame it couldn't check counts as not checked, and publishing stays off until it is. ${muse} Anything they found that wasn't kept clear on purpose was covered where possible, and the clip was rendered again; anything that couldn't be covered stops publishing.`;
+  const second = openWeightSentence(audit.open_weight);
+  const detail = `${detector} It's meant to scan all of them; any frame it couldn't check counts as not checked, and publishing stays off until it is. ${muse}${second ? ` ${second}` : ""} Anything they found that wasn't kept clear on purpose was covered where possible, and the clip was rendered again; anything that couldn't be covered stops publishing.`;
   const base = { detail, uncheckedFrames, unfixedSpots, leaksFixed };
   switch (audit.blocked_reason) {
     case "unresolved_leaks":
@@ -183,6 +184,13 @@ export function openWeightName(model: string): string | null {
   return model.startsWith("meta-models/muse-spark-open") ? "Muse Spark Open" : null;
 }
 
+/** The open-weight second opinion's line (§1.3 copy notes), only when it ran (`status: "ok"`). */
+export function openWeightSentence(openWeight: { model: string; status: string } | null | undefined): string | null {
+  if (openWeight?.status !== "ok") return null;
+  const name = openWeightName(openWeight.model);
+  return `${name ? `${name}, an open-weight model running on Baseten, gives` : "An open-weight model running on Baseten gives"} a second opinion and can only add covers.`;
+}
+
 /** Landing step 3 copy, by the auditor-name rule (§1.3), plus the open-weight line when it ran. */
 export function auditStepBody(model: string | null, openWeight?: { model: string; status: string } | null): string {
   const detector =
@@ -190,9 +198,8 @@ export function auditStepBody(model: string | null, openWeight?: { model: string
       ? "a face detector (YuNet) checks the final render for faces; number plates are checked by Muse Spark only"
       : "Meta's EgoBlur checks the final render for faces and number plates";
   const base = `Before anything is published, ${detector}, and a second Muse Spark pass tries to read or recognise anything left. Any leak it can fix is covered and recorded on your privacy receipt; anything it can't fix stops publishing.`;
-  if (openWeight?.status !== "ok") return base;
-  const name = openWeightName(openWeight.model);
-  return `${base} ${name ? `${name}, an open-weight model running on Baseten, gives` : "An open-weight model running on Baseten gives"} a second opinion and can only add covers.`;
+  const second = openWeightSentence(openWeight);
+  return second ? `${base} ${second}` : base;
 }
 
 // ------------------------------------------------------------------ errors on actions (§2.6, §2.6.1, §10.3)

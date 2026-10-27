@@ -65,3 +65,25 @@ Rounds 1–2 (38 findings) are tabled with their fixes in `reaudit.md`. Round 3:
 - [x] R3-9 (low) mock mode no longer contradicts itself: `mode.test.tsx`, TryFlow test
 - [x] R3-10 (low) README facts (Cache Components off, routes, Node/pnpm, Playwright browser)
 - [P] R3-11 (low) privacy contact email for `/privacy`: owner sets `NEXT_PUBLIC_PRIVACY_CONTACT` at deploy (BLOCKED.md)
+
+Round 4 (fixes in the round-4 commit; details in `reaudit.md`):
+
+- [x] R4-1 (high) mock /try jobs survive a reload and the copied link (localStorage until `deletes_at`): `mock-backend.test.ts`
+- [x] R4-2 (med) result-page Try again works: ResultPage tests
+- [x] R4-3 (med) /try hands a failed poll to the job page: TryFlow test
+- [x] R4-4 (med) timed-out start resumes polling (§10.3): TryFlow tests
+- [x] R4-5 (med) open-weight line in the §5.3 detail and the results footnote: copy + landing tests
+- [x] R4-6 (low) media refresh re-arms after a successful load: ResultPage/JobPage/landing tests
+- [x] R4-7 (low) mock `deletes_at` is now + 24 h: `mock-backend.test.ts`
+- [x] R4-8 (low) ⋯ trigger closes its menu: JobPage test
+- [x] R4-9 (low) Enter help text matches §3.8
+- [x] R4-10 (low) discarded GETs still hand over fresh URLs: `withFreshUrls` test
+- [x] R4-11 (low) paused job pages refresh signed URLs; downloads open a new tab: useJob test
+- [x] R4-12 (low) one `<h1>` on every job state: JobPage tests
+- [x] R4-13 (low) copy result announced, label resets: ProgressView test
+- [x] R4-14 (low) review URL wraps: ProgressView test
+- [x] R4-15 (low) hero poster while loading and on failure: landing test
+- [x] R4-16 (low) dev CSP allows a local API (`connect-src` only)
+- [x] R4-17 (low) screenshots refreshed; root README change requested from its owner WP in the PR
+- [x] R4-18 (low) mock mode says the picked clip isn't analysed: TryFlow test
+

@@ -72,6 +72,23 @@ export interface MockBackendOptions {
   now?: () => number;
   /** Media the simulated jobs point at (served from `public/`). */
   sample?: { job: MockName; mediaBase: string } | null;
+  /**
+   * Where jobs made through `/try` are kept, so a reload or the copied review link still finds
+   * them, like the real API's 24 hours. Fixture jobs are never stored: they reset on reload.
+   */
+  storage?: Pick<Storage, "getItem" | "setItem"> | null;
+}
+
+const STORAGE_KEY = "safecut.mock-jobs";
+const DAY_MS = 24 * 60 * 60 * 1000;
+const isCreated = (id: string) => /^j_mock\d+$/.test(id);
+
+interface StoredJob {
+  data: JobResponse;
+  code: string | null;
+  timeline: MockJob["timeline"];
+  edits: Array<[string, History]>;
+  deleted: boolean;
 }
 
 export class MockBackend implements Transport {
@@ -82,6 +99,7 @@ export class MockBackend implements Transport {
   private readonly stepMs: number;
   private readonly now: () => number;
   private readonly sample: { job: MockName; mediaBase: string } | null;
+  private readonly storage: Pick<Storage, "getItem" | "setItem"> | null;
   private nextId = 1;
   /** Every request seen, for tests. */
   readonly log: Array<{ method: string; path: string; body: unknown }> = [];
@@ -91,6 +109,46 @@ export class MockBackend implements Transport {
     this.stepMs = options.stepMs ?? 1_200;
     this.now = options.now ?? (() => Date.now());
     this.sample = options.sample ?? null;
+    this.storage = options.storage ?? null;
+    for (const [id, stored] of Object.entries(this.readStored())) {
+      this.jobs.set(id, { ...stored, edits: new Map(stored.edits) });
+      this.codes.set(id, stored.code ?? "");
+      this.nextId = Math.max(this.nextId, Number(id.slice("j_mock".length)) + 1);
+    }
+  }
+
+  /** Stored `/try` jobs that haven't passed their `deletes_at`; unreadable storage counts as empty. */
+  private readStored(): Record<string, StoredJob> {
+    try {
+      const raw = this.storage?.getItem(STORAGE_KEY);
+      const parsed: unknown = raw ? JSON.parse(raw) : null;
+      if (typeof parsed !== "object" || parsed === null) return {};
+      return Object.fromEntries(
+        Object.entries(parsed as Record<string, StoredJob>).filter(
+          ([id, j]) => isCreated(id) && typeof j?.data?.deletes_at === "string" && Date.parse(j.data.deletes_at) > this.now() && Array.isArray(j.edits),
+        ),
+      );
+    } catch {
+      return {};
+    }
+  }
+
+  private save(): void {
+    if (!this.storage) return;
+    const stored: Record<string, StoredJob> = {};
+    for (const [id, j] of this.jobs) {
+      if (isCreated(id)) stored[id] = { data: j.data, code: j.code, timeline: j.timeline, edits: [...j.edits], deleted: j.deleted };
+    }
+    try {
+      this.storage.setItem(STORAGE_KEY, JSON.stringify(stored));
+    } catch {
+      // Storage full or blocked (a private window): the job still works in this tab.
+    }
+  }
+
+  /** The real API deletes everything 24 hours after the job was made (§5.4). */
+  private deletesAt(): string {
+    return new Date(this.now() + DAY_MS).toISOString();
   }
 
   /** The next `times` requests whose `METHOD path` matches answer with this fixture. */
@@ -108,7 +166,9 @@ export class MockBackend implements Transport {
       if (hit.times <= 0) this.injected.splice(this.injected.indexOf(hit), 1);
       return this.envelope(hit.fixture);
     }
-    return this.route(init);
+    const response = await this.route(init);
+    this.save();
+    return response;
   }
 
   upload(url: string, _file: Blob, _contentType: string, onProgress: (fraction: number) => void, signal: AbortSignal): Promise<void> {
@@ -122,6 +182,7 @@ export class MockBackend implements Transport {
           clearInterval(timer);
           const job = this.jobs.get(jobId);
           if (job) job.data = { ...job.data, status: "created" };
+          this.save();
           resolve();
         }
       }, Math.max(1, this.latencyMs));
@@ -182,6 +243,7 @@ export class MockBackend implements Transport {
       ...base,
       job_id: id,
       mode: "live",
+      deletes_at: this.deletesAt(),
       status: "created",
       stage: null,
       has_render: false,
@@ -214,7 +276,7 @@ export class MockBackend implements Transport {
   private async getResult(id: string): Promise<RawResponse> {
     if (id.startsWith("result-") && id in MOCK_LOADERS) {
       const data = (await this.fixture(id as MockName)) as Record<string, unknown>;
-      if ("receipt_html_url" in data) return respond(200, data);
+      if ("receipt_html_url" in data) return respond(200, { ...data, deletes_at: this.deletesAt() });
     }
     const job = await this.load(id);
     if (!job) return notFound();
@@ -277,7 +339,7 @@ export class MockBackend implements Transport {
   }
 
   private adopt(id: string, data: JobResponse): MockJob {
-    const job: MockJob = { data: this.withSampleMedia(data), code: null, timeline: null, edits: new Map(), deleted: false };
+    const job: MockJob = { data: { ...this.withSampleMedia(data), deletes_at: this.deletesAt() }, code: null, timeline: null, edits: new Map(), deleted: false };
     this.jobs.set(id, job);
     return job;
   }
@@ -323,6 +385,7 @@ export class MockBackend implements Transport {
       job.data = { ...job.data, status: "done", stage: "done", progress: 1, eta_s: null, has_render: true, result: { video_url: urls.video_url } };
       void this.cleanAudit(job).then((audit) => {
         job.data = { ...job.data, audit };
+        this.save();
       });
     }
   }

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SafeCutClient } from "@/lib/api";
 import { setClientForTests } from "@/lib/client";
 import { MockBackend } from "@/lib/mock-backend";
+import { COPY } from "@/lib/copy";
 import { TryFlow } from "./TryFlow";
 
 const push = vi.hoisted(() => vi.fn());
@@ -60,7 +61,7 @@ describe("/try", () => {
   it("in mock mode, says nothing is uploaded before describing the live service", () => {
     setup();
     const bullets = within(screen.getByRole("heading", { name: "What happens to your clip" }).parentElement as HTMLElement).getAllByRole("listitem");
-    expect(bullets[0]).toHaveTextContent("In this preview nothing is uploaded: your clip stays in your browser. On the live service:");
+    expect(bullets[0]).toHaveTextContent("In this preview nothing is uploaded and your clip isn't analysed: you'll review a built-in sample scene. On the live service:");
     expect(bullets[1]).toHaveTextContent(/^It's sent to Meta's Model API/);
   });
 
@@ -133,6 +134,60 @@ describe("/try", () => {
     await waitFor(() => expect(backend.log.some((l) => l.path.endsWith("/start"))).toBe(true));
     expect(backend.log.find((l) => l.path === "/v1/jobs")?.body).toMatchObject({ code: "judge", content_type: "video/mp4", file_name: "street.mp4" });
     now = 1_000_000;
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/jobs/j_mock1"), { timeout: 5_000 });
+  });
+
+  /** Makes `METHOD path` requests fail as network errors, after the server handled them or before. */
+  function dropResponses(match: RegExp, { handled, times = 1 }: { handled: boolean; times?: number }) {
+    const original = backend.request.bind(backend);
+    let left = times;
+    vi.spyOn(backend, "request").mockImplementation(async (init) => {
+      if (left > 0 && match.test(`${init.method} ${init.path}`)) {
+        left -= 1;
+        if (handled) await original(init);
+        throw new TypeError("Failed to fetch");
+      }
+      return original(init);
+    });
+  }
+
+  async function pickAndStart(user: ReturnType<typeof setup>) {
+    await enterCode(user, "judge");
+    await screen.findByRole("button", { name: "Choose a file" });
+    await user.upload(fileInput(), clip());
+    await screen.findByText(/street\.mp4/);
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(screen.getByRole("button", { name: "Start" }));
+  }
+
+  it("a start the server took but whose answer was lost: shows the message, then follows the job (§10.3)", async () => {
+    const user = setup();
+    dropResponses(/^POST .*\/start$/, { handled: true });
+    await pickAndStart(user);
+    expect(await screen.findByText(COPY.unreachable)).toBeInTheDocument();
+    expect(await screen.findByText("Working on your clip")).toBeInTheDocument();
+    now = 1_000_000;
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/jobs/j_mock1"), { timeout: 5_000 });
+  });
+
+  it("a start that never reached the server: the message stays and Start sends it again", async () => {
+    const user = setup();
+    dropResponses(/^POST .*\/start$/, { handled: false });
+    await pickAndStart(user);
+    expect(await screen.findByText(COPY.unreachable)).toBeInTheDocument();
+    await waitFor(() => expect(backend.log.some((l) => l.method === "GET" && l.path === "/v1/jobs/j_mock1")).toBe(true));
+    expect(screen.queryByText("Working on your clip")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Start" }));
+    expect(await screen.findByText("Working on your clip")).toBeInTheDocument();
+    expect(backend.log.filter((l) => l.method === "POST" && l.path === "/v1/jobs")).toHaveLength(1);
+  });
+
+  it("when polling fails for good, moves to the job page, which offers Try again", async () => {
+    const user = setup();
+    await pickAndStart(user);
+    expect(await screen.findByText("Working on your clip")).toBeInTheDocument();
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    dropResponses(/^GET \/v1\/jobs\/j_mock1$/, { handled: false, times: 100 });
     await waitFor(() => expect(push).toHaveBeenCalledWith("/jobs/j_mock1"), { timeout: 5_000 });
   });
 

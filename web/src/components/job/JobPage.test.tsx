@@ -2,7 +2,7 @@
  * Integration tests: the job page against the mock backend through the real
  * client, reducer and components (UI-SPEC §3, §4, §10.4, §10.5).
  */
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SafeCutClient } from "@/lib/api";
@@ -278,6 +278,39 @@ describe("review panel", () => {
     expect(gets()).toBe(before + 1);
   });
 
+  it("the review video refetches the job on an error, and again after a refreshed source played", async () => {
+    setup("job-review-hero1");
+    await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
+    const gets = () => backend.log.filter((l) => l.method === "GET" && l.path === "/v1/jobs/job-review-hero1").length;
+    const player = () => screen.getByLabelText("Your clip, with the Safe Cut preview drawn over it");
+    const before = gets();
+    fireEvent.error(player());
+    await waitFor(() => expect(gets()).toBe(before + 1));
+    fireEvent.loadedMetadata(player());
+    fireEvent.error(player());
+    await waitFor(() => expect(gets()).toBe(before + 2));
+    // Without a load in between, a second error is final.
+    fireEvent.error(player());
+    expect(await screen.findByText("The video didn't load. The decisions below still work.")).toBeInTheDocument();
+  });
+
+  it("the ⋯ button closes its own menu", async () => {
+    const user = setup("job-review-hero1");
+    await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
+    const trigger = screen.getAllByRole("button", { name: /^More actions for / })[0]!;
+    await user.click(trigger);
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    await user.click(trigger);
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("each job page has exactly one h1", async () => {
+    setup("job-review-hero1");
+    await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+  });
+
   it("shows the demo-mode banner for a replayed job", async () => {
     setup("job-replay");
     expect(await screen.findByText(/You're seeing saved results from a real run/)).toBeInTheDocument();
@@ -295,6 +328,7 @@ describe("job states", () => {
   ])("%s", async (id, text) => {
     setup(id);
     expect(await screen.findByText(text)).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
 
   it("shows the stage list while processing", async () => {

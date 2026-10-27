@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { HeroAndSteps } from "@/components/landing/HeroAndSteps";
-import { ResultsTable } from "@/components/landing/ResultsTable";
+import { ResultsSection } from "@/components/landing/ResultsSection";
 import { RESULTS } from "@/data/results";
 import { SITE } from "@/lib/site";
 
@@ -43,7 +43,7 @@ export default function Home() {
           Results on our labelled test set
         </h2>
         <div className="mt-6">
-          <ResultsTable results={RESULTS} />
+          <ResultsSection results={RESULTS} />
         </div>
       </section>
 

@@ -134,7 +134,8 @@ function OverflowMenu({ chip, onRemove, onJump }: { chip: ChipModel; onRemove: (
             }
           }}
           onBlur={(e) => {
-            if (!menu.current?.contains(e.relatedTarget as Node)) setOpen(false);
+            // Focus moving to the trigger is its click, which toggles the menu shut itself.
+            if (!menu.current?.contains(e.relatedTarget as Node) && e.relatedTarget !== button.current) setOpen(false);
           }}
         >
           {items.map((item) => (

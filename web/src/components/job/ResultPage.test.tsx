@@ -5,7 +5,8 @@ import { SafeCutClient, type RawResponse, type Transport } from "@/lib/api";
 import { setClientForTests } from "@/lib/client";
 import { MockBackend } from "@/lib/mock-backend";
 import { ModeProvider } from "../mode";
-import { LINK_REFRESH_MS, ResultPage } from "./ResultPage";
+import { URL_REFRESH_MS } from "@/lib/polling";
+import { ResultPage } from "./ResultPage";
 
 const nav = vi.hoisted(() => ({ id: "result-clean", search: "", replace: vi.fn() }));
 vi.mock("next/navigation", () => ({
@@ -135,7 +136,7 @@ describe("signed URLs expire (UI-SPEC §10.7)", () => {
     expect(screen.getByText("No leaks found.")).toBeInTheDocument();
     fireEvent.load(receipt());
     expect(screen.getByRole("link", { name: "Download video" }).getAttribute("href")).toMatch(/v=1$/);
-    await advance(LINK_REFRESH_MS);
+    await advance(URL_REFRESH_MS);
     expect(fetches).toBe(2);
     expect(screen.getByRole("link", { name: "Download video" }).getAttribute("href")).toMatch(/v=2$/);
     expect(screen.getByRole("link", { name: "Download receipt (JSON)" }).getAttribute("href")).toMatch(/v=2$/);
@@ -152,7 +153,7 @@ describe("signed URLs expire (UI-SPEC §10.7)", () => {
     expect(screen.getByText("No leaks found.")).toBeInTheDocument();
     fireEvent.load(receipt());
     backend.inject(/\/result$/, "error-500");
-    await advance(LINK_REFRESH_MS);
+    await advance(URL_REFRESH_MS);
     expect(screen.getByText("No leaks found.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Download video" }).getAttribute("href")).toMatch(/v=1$/);
   });
@@ -164,6 +165,39 @@ describe("signed URLs expire (UI-SPEC §10.7)", () => {
     await waitFor(() => expect(video().getAttribute("src")).toMatch(/v=2$/));
     fireEvent.error(video());
     expect(await screen.findByText("Something went wrong on our side. Nothing has been published.")).toBeInTheDocument();
+  });
+
+  it("a refreshed video that played re-arms its refresh, so a later expiry refreshes again", async () => {
+    setupSigned("result-clean");
+    expect(await screen.findByText("No leaks found.")).toBeInTheDocument();
+    fireEvent.error(video());
+    await waitFor(() => expect(video().getAttribute("src")).toMatch(/v=2$/));
+    fireEvent.loadedMetadata(video());
+    fireEvent.error(video());
+    await waitFor(() => expect(video().getAttribute("src")).toMatch(/v=3$/));
+    expect(screen.getByText("No leaks found.")).toBeInTheDocument();
+  });
+
+  it("Try again after a failed result load fetches the result again", async () => {
+    setupSigned("result-clean");
+    backend.inject(/\/result$/, "error-500");
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("No leaks found.")).toBeInTheDocument();
+  });
+
+  it("Try again after the video failed twice starts over with a fresh URL and a fresh retry", async () => {
+    setupSigned("result-clean");
+    expect(await screen.findByText("No leaks found.")).toBeInTheDocument();
+    fireEvent.error(video());
+    await waitFor(() => expect(video().getAttribute("src")).toMatch(/v=2$/));
+    fireEvent.error(video());
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(video().getAttribute("src")).toMatch(/v=3$/));
+    // Its one retry is back: another error refetches instead of failing at once.
+    fireEvent.error(video());
+    await waitFor(() => expect(video().getAttribute("src")).toMatch(/v=4$/));
   });
 
   it("a receipt that doesn't load refetches once, then offers the JSON", async () => {

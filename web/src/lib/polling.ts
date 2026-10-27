@@ -9,6 +9,8 @@ export const SLOW_MS = 5_000;
 export const FAST_WINDOW_MS = 60_000;
 export const BUSY_MS = 30_000;
 export const RATE_LIMIT_DEFAULT_MS = 60_000;
+/** Signed media URLs live 15 min (§10.7): a page that isn't polling refetches before they expire. */
+export const URL_REFRESH_MS = 10 * 60_000;
 
 export function nextPollDelay(status: JobStatus, msSincePageView: number, retryAt: string | null | undefined, now: number): number | null {
   switch (status) {

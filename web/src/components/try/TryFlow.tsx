@@ -83,6 +83,8 @@ export function TryFlow() {
   const uploadAbort = useRef<AbortController | null>(null);
   const deletedByUser = useRef(false);
   const [started, setStarted] = useState(false);
+  /** `POST /start` timed out or the network failed: the server may have taken it, so poll (§10.3). */
+  const [startUnsure, setStartUnsure] = useState(false);
   const section = useRef<HTMLElement>(null);
   const previousStep = useRef<Step>("code");
   // Move focus with the step, so it never falls to <body> when the focused button unmounts (§2.8).
@@ -218,6 +220,7 @@ export function TryFlow() {
     }
     setRightsError(null);
     setRefusal(null);
+    setStartUnsure(false);
     setBusy(true);
     const client = getClient();
     let id = jobId;
@@ -245,7 +248,15 @@ export function TryFlow() {
       if (deletedByUser.current) return;
       setStep("progress");
       setUploadPercent(100);
-      await client.startJob(id);
+      try {
+        await client.startJob(id);
+      } catch (error) {
+        const e = error instanceof ApiError ? error : null;
+        if (e?.kind === "network" || e?.kind === "timeout") setStartUnsure(true);
+        // A 409 other than an unfinished upload means it's already running (a re-pressed Start
+        // after a timeout, §10.3): follow it like an accepted start.
+        if (!(e?.status === 409 && e.code !== "upload_incomplete")) throw error;
+      }
       if (deletedByUser.current) return;
       // Poll only once the job has really started: before that the server says "created",
       // which stops polling (§10.4).
@@ -488,6 +499,21 @@ export function TryFlow() {
         </div>
       )}
 
+      {/* A start the server may have taken anyway: the next GET says so (§10.3). */}
+      {step === "file" && startUnsure && jobId && (
+        <JobPoller
+          jobId={jobId}
+          onJob={(j) => {
+            if (j.status === "created") return;
+            setStartUnsure(false);
+            setRefusal(null);
+            setStep("progress");
+            setUploadPercent(100);
+            setStarted(true);
+          }}
+        />
+      )}
+
       {step === "progress" && jobId && <Progress jobId={jobId} started={started} fileName={file?.name ?? ""} duration={duration} uploadPercent={uploadPercent} onDeleted={() => {
             deletedByUser.current = true;
             uploadAbort.current?.abort();
@@ -503,7 +529,7 @@ function DataBullets() {
     <div className="mt-10 rounded-xl border border-border bg-surface p-5">
       <h2 className="font-semibold">What happens to your clip</h2>
       <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted">
-        {mock && <li>In this preview nothing is uploaded: your clip stays in your browser. On the live service:</li>}
+        {mock && <li>In this preview nothing is uploaded and your clip isn&apos;t analysed: you&apos;ll review a built-in sample scene. On the live service:</li>}
         <li>It&apos;s sent to Meta&apos;s Model API using Standard model IDs only, never a Contributor model ID. Meta says it doesn&apos;t use content from its Standard services to train its models.</li>
         <li>Your clip, the result and the receipt are deleted from Safe Cut&apos;s servers after 24 hours, or sooner if you choose.</li>
         <li>Up to 60 seconds and 150 MB. MP4 or MOV.</li>
@@ -513,13 +539,28 @@ function DataBullets() {
 }
 
 /** Polls the job once the upload is done and hands each response up; renders nothing. */
-function JobPoller({ jobId, onJob }: { jobId: string; onJob: (job: JobResponse) => void }) {
-  const { load } = useJob(jobId, { pollCreated: true });
+function JobPoller({
+  jobId,
+  onJob,
+  onFailed,
+  pollCreated = false,
+}: {
+  jobId: string;
+  onJob: (job: JobResponse) => void;
+  /** Polling stopped on an error (§10.3: retries spent, or a second 5xx in a row). */
+  onFailed?: () => void;
+  pollCreated?: boolean;
+}) {
+  const { load } = useJob(jobId, { pollCreated });
   const job = load.kind === "ready" ? load.job : null;
+  const failed = load.kind !== "ready" && load.kind !== "loading" && load.kind !== "deleted";
   useReportMode(job?.mode);
   useEffect(() => {
     if (job) onJob(job);
   }, [job, onJob]);
+  useEffect(() => {
+    if (failed) onFailed?.();
+  }, [failed, onFailed]);
   return null;
 }
 
@@ -549,10 +590,12 @@ function Progress({
     },
     [jobId, onNavigate],
   );
+  // The job page shows the §7 message with [Try again], and keeps the review link.
+  const onFailed = useCallback(() => onNavigate(`/jobs/${encodeURIComponent(jobId)}`), [jobId, onNavigate]);
   const stage = uploading ? "uploading" : started && job?.stage && job.stage !== "review" ? job.stage : "queued";
   return (
     <>
-      {started && <JobPoller jobId={jobId} onJob={onJob} />}
+      {started && <JobPoller jobId={jobId} onJob={onJob} onFailed={onFailed} pollCreated />}
       <ProgressView
         fileName={fileName}
         duration={duration}
