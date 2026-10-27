@@ -164,3 +164,11 @@ Tests are in tests/test_audit13.py unless named.
   - the modelled worst case is ≤ $2.29
 - L8 probe spend split across two cost files. Fixed: every probe run, hero runs included, writes to `fixtures/probes/cost.jsonl`
 - Caution taken: ed2ddae's `ReceiptAudit` rule (a receipt only for a publishable audit) contradicted PRE-A §10.3 (the receipt stage runs after [Run the audit again] on a blocked audit too). Reverted, with a test that a receipt may carry a blocked audit (test_a_receipt_may_record_a_blocked_audit); publishing stays gated on `unresolved == 0`
+
+## Audit 14 (independent Sonnet reviewer at a77fb92): 0 critical, 0 high, 2 medium, 3 low. NOT CLEAN; all verified and handled
+The auditor also ran a 600-seed concurrent stress harness (2–12 streams, random outcomes, double cancels): ledger == Σ cost.jsonl every time, no open reservations. Tests are in tests/test_audit14.py unless named.
+- M1 `Audit._gate` accepted a leak with a `through_item` but no `flag` (neither patched, flagged nor unresolved), because ed2ddae tested `through_item` where it meant `flag`. Fixed: the gate tests `flag`, and `Leak` requires `through_item` exactly when flagged (test_a_through_item_needs_a_flag)
+- M2 a failure in probe c's new max-length check (a 413 on the 180 s upload, an ffmpeg error) replaced the whole probe c result, including the paid frame answer. Fixed: the clip build, upload and call are one try returning `{"accepted": false, "error"}`, and a null `usage` is handled (test_a_failed_long_clip_keeps_probe_c_frame_answer)
+- L3 a multipart factory that failed (a missing file) was charged as a sent request. Fixed: the body is built before `mark_sent` (test_a_failing_multipart_factory_is_never_charged)
+- L4 the audit #12 M2 test had gone vacuous: uploads are free calls since audit #13 and never reserve. Rewritten on a paid call: attempt 1 times out after sending, attempt 2's reserve fails, and the error is `maybe_processed` (test_a_ledger_fault_after_an_accepted_attempt_keeps_maybe_processed)
+- L5 stale status: the checklist line for audits #11–#12 now notes the reverted receipt rule; the PR body, break-it and the reaudit header are rewritten at the final head before the gate

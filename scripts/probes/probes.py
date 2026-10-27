@@ -356,17 +356,19 @@ def make_long_clip(path: Path, seconds: int) -> None:
 
 async def _length_check(p: Probe, seconds: int) -> Summary:
     """Does the scene model take a ``seconds``-long video, and how many input tokens does it bill?"""
-    with tempfile.TemporaryDirectory() as tmp:
-        clip = Path(tmp) / f"long_{seconds}s.mp4"
-        await asyncio.to_thread(make_long_clip, clip, seconds)
-        file_id = await p.files.upload(clip, f"long_{seconds}s.mp4")
+    # Any refusal (a 413 on the upload, a 400 on the call) or a local failure is this check's result; it never
+    # costs probe c the frame-number answer it already paid for.
     question = "How many seconds long is this video, roughly? Answer with one number."
-    body = responses.build_body(p.settings.scene_model, _user_video(question, file_id), effort="low")
     try:
+        with tempfile.TemporaryDirectory() as tmp:
+            clip = Path(tmp) / f"long_{seconds}s.mp4"
+            await asyncio.to_thread(make_long_clip, clip, seconds)
+            file_id = await p.files.upload(clip, f"long_{seconds}s.mp4")
+        body = responses.build_body(p.settings.scene_model, _user_video(question, file_id), effort="low")
         result = await responses.create(p.meta, body, stage="probe_c", effort="low", video_seconds=float(seconds))
-    except MetaError as exc:
+    except (MetaError, OSError, subprocess.CalledProcessError) as exc:
         return {"accepted": False, "error": f"{type(exc).__name__}: {exc}"}
-    usage = result.response.get("usage", {})
+    usage = cast(Mapping[str, Any], result.response.get("usage") or {})
     return {"accepted": True, "input_tokens": usage.get("input_tokens"), "usd": result.usd}
 
 

@@ -629,6 +629,9 @@ class MetaClient:
         async def attempt(mark_sent: Callable[[], None]) -> _Attempt:
             # ``files`` is a factory so every attempt sends a fresh body (open file handles are single-use).
             started = self._clock()
+            # Build the multipart body first: a factory that fails (a missing file) sent nothing, so it must
+            # not be charged as a sent request.
+            body_files = files() if files is not None else None
             try:
                 async with asyncio.timeout(spec.total_timeout_s):
                     mark_sent()
@@ -637,7 +640,7 @@ class MetaClient:
                         self.url(path),
                         headers=self._headers(),
                         json=payload,
-                        files=files() if files is not None else None,
+                        files=body_files,
                         data=data,
                         params=params,
                         timeout=spec.timeout,

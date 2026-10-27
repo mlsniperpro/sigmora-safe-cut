@@ -18,9 +18,9 @@ from safecut import contracts as c
 from safecut import open_weight
 from safecut.config import Settings
 from safecut.meta.budget import Caller, LocalLedger
-from safecut.meta.client import MetaClient
+from safecut.meta.client import CallSpec, MetaClient
 from safecut.meta.errors import MetaUnavailable
-from safecut.meta.files import FileStore
+from safecut.meta.retry import RetryPolicy
 from scripts.probes import probes
 from tests import test_probes_replay as replay
 from tests.conftest import stream_response
@@ -78,9 +78,11 @@ def test_a_patch_must_hide_the_leak_frame(tmp_path: Path, item: str, message: st
         c.validate_job_dir(job_dir)
 
 
-async def test_a_ledger_fault_after_an_accepted_upload_still_finds_the_copy(
+async def test_a_ledger_fault_after_an_accepted_attempt_keeps_maybe_processed(
     settings: Settings, tmp_path: Path, mock_api: respx.MockRouter
 ) -> None:
+    # A paid call (free calls never reserve since audit #13): attempt 1 times out after sending (it may
+    # have been processed), attempt 2's reserve fails; the error must still say "maybe processed".
     class FailsSecondReserve(LocalLedger):
         calls = 0
 
@@ -90,26 +92,25 @@ async def test_a_ledger_fault_after_an_accepted_upload_still_finds_the_copy(
                 raise ValueError("ledger refused")  # → MetaUnavailable, no retry
             super().reserve(call_id, job_id, usd, limits)
 
+    ledger = FailsSecondReserve()
     client = MetaClient(
-        settings,
-        job_id="j_test",
-        caller=Caller.local(),
-        ledger=FailsSecondReserve(),
-        cost_path=tmp_path / "c.jsonl",
-        sleep=_no_sleep,
+        settings, job_id="j", caller=Caller.local(), ledger=ledger, cost_path=tmp_path / "c.jsonl", sleep=_no_sleep
     )
-    clip = tmp_path / "clip.mp4"
-    clip.write_bytes(b"x" * 300)
-    mock_api.post("/files").mock(side_effect=httpx.ReadTimeout("slow"))  # accepted, never answered
-    mock_api.get("/files").mock(return_value=httpx.Response(404))  # no listing either: record an orphan
-    store = FileStore(client, tmp_path / "job")
-    with pytest.raises(MetaUnavailable) as info:
-        await store.upload(clip, "sam_proxy.mp4")
+    route = mock_api.post("/thing").mock(side_effect=httpx.ReadTimeout("slow"))
+    spec = CallSpec(
+        stage="s",
+        model="muse-spark-1.3",
+        estimate_usd=0.05,
+        estimate_units={},
+        policy=RetryPolicy(attempts=4),
+        timeout=httpx.Timeout(5.0),
+        total_timeout_s=10.0,
+    )
+    with pytest.raises(MetaUnavailable, match="ledger") as info:
+        await client.request("POST", "thing", spec, meter=lambda _: ({}, 0.0))
     await client.aclose()
+    assert (route.call_count, ledger.calls) == (1, 2)
     assert info.value.maybe_processed
-    (entry,) = store.index().root
-    assert entry.orphan
-    assert not store.index().all_deleted
 
 
 async def _no_sleep(_: float) -> None:

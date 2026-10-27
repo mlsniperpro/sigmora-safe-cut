@@ -34,7 +34,7 @@
 - **Trend:** each audit round finds fewer and lower issues: #6 had 1 high; #7–#8 1 medium; #9–#10 4 medium (mostly the new §12 rows and docs); #11 1 medium. The code areas they hit are the newest fixes, so audit those hardest.
 
 ## Next steps, in order
-1. Claim the lease, then run `bash .agent/win/SAFECUT-WP0/checks.sh`; expect 446 passed.
+1. Claim the lease, then run `bash .agent/win/SAFECUT-WP0/checks.sh`; expect 449 passed.
 2. Run two fresh full audits in parallel with Sonnet subagents (effort high, read-only). Give them PRE-A from `git show origin/pre-a-research:docs/API-NOTES.md`, plus `docs/prompts/redteam.md` from the same branch.
    - Verify every finding before fixing it, and record it in reaudit.md.
    - When both audits come back clean at the same head, set `AUDITED_COMMIT` to that head and `CLEAN_AUDITS_IN_A_ROW: 2`.

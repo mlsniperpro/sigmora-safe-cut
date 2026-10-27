@@ -513,8 +513,8 @@ class Leak(Contract):
 
     @model_validator(mode="after")
     def _links(self) -> Leak:
-        if self.flag is not None and self.through_item is None:
-            raise ValueError("a flagged leak names the item it reads through (through_item)")
+        if (self.flag is None) != (self.through_item is None):
+            raise ValueError("through_item is set exactly on a flagged leak (the item it reads through)")
         if self.unresolved and self.patched_item is not None:
             raise ValueError("an unresolved leak has no patched_item")
         return self
@@ -589,7 +589,7 @@ class Audit(Contract):
             # PRE-A §12: each unresolved leak counts 1 in `unresolved`, the one publish gate.
             raise ValueError(f"unresolved {self.unresolved} is less than the {open_leaks} unresolved leaks")
         for leak in self.leaks:
-            if leak.patched_item is None and leak.through_item is None and not leak.unresolved:
+            if leak.patched_item is None and leak.flag is None and not leak.unresolved:
                 raise ValueError(
                     f"leak at frame {leak.frame} is neither patched, flagged through an item, nor unresolved"
                 )
