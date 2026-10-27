@@ -35,7 +35,9 @@ async def test_a_copy_left_by_a_fast_5xx_is_deleted(
     mock_api.post("/files").mock(return_value=httpx.Response(503))
     stored = [_copy(f"file-{n}") for n in range(1, 5)]
     mock_api.get("/files").mock(return_value=httpx.Response(200, json={"data": stored}))
-    deletes = mock_api.delete(url__regex=r".*/files/file-\d").mock(return_value=httpx.Response(200, json={}))
+    deletes = mock_api.delete(url__regex=r".*/files/file-\d").mock(
+        return_value=httpx.Response(200, json={"deleted": True})
+    )
     store = FileStore(h.client, tmp_path / "job")
     with pytest.raises(MetaUnavailable):
         await store.upload(clip, "sam_proxy.mp4")
@@ -50,7 +52,7 @@ async def test_a_copy_that_lands_after_the_listing_is_found_at_the_end(
     mock_api.post("/files").mock(side_effect=httpx.ReadTimeout("slow"))
     listings = iter([[], [_copy("file-9")]])  # empty right after the timeout; the copy lands later
     mock_api.get("/files").mock(side_effect=lambda _: httpx.Response(200, json={"data": next(listings)}))
-    late = mock_api.delete("/files/file-9").mock(return_value=httpx.Response(200, json={}))
+    late = mock_api.delete("/files/file-9").mock(return_value=httpx.Response(200, json={"deleted": True}))
     store = FileStore(h.client, tmp_path / "job")
     with pytest.raises(MetaUnavailable):
         await store.upload(clip, "sam_proxy.mp4")

@@ -188,9 +188,7 @@ class FileStore:
             await self._record(FileEntry(name=up.name, sha256=up.digest, file_id=file_id, created_at=now_utc()))
         except Exception:
             try:
-                await self.client.request(
-                    "DELETE", f"files/{file_id}", _spec("files:cleanup", config.FILES_DELETE_TIMEOUT_S), meter=_no_cost
-                )
+                await self._delete_request(file_id)
             except MetaFileGone:
                 pass
             except Exception:
@@ -285,10 +283,18 @@ class FileStore:
     async def _delete(self, file_id: str) -> None:
         # A 404 file_not_found means it's already gone, which is what we wanted.
         with contextlib.suppress(MetaFileGone):
-            await self.client.request(
-                "DELETE", f"files/{file_id}", _spec("files:cleanup", config.FILES_DELETE_TIMEOUT_S), meter=_no_cost
-            )
+            await self._delete_request(file_id)
         await self._mark_deleted(file_id)
+
+    async def _delete_request(self, file_id: str) -> None:
+        """``DELETE /v1/files/{id}``. PRE-A §10.6: success is ``{"id", "deleted": true}``; any other 2xx body
+        raises, so the entry stays undeleted and ``files_deleted`` is never claimed on it."""
+        result = await self.client.request(
+            "DELETE", f"files/{file_id}", _spec("files:cleanup", config.FILES_DELETE_TIMEOUT_S), meter=_no_cost
+        )
+        body: Any = result.body
+        if not isinstance(body, dict) or cast(dict[str, Any], body).get("deleted") is not True:
+            raise MetaConfigError(f"DELETE files/{file_id} answered without deleted: true")
 
     async def reconcile_orphans(self) -> None:
         """Resolve orphan entries: list ``/files``, delete every unrecorded copy of each orphan's name, then
@@ -382,11 +388,13 @@ def _file_id(body: Any) -> str:
 
 
 def _matching_uploads(body: Any, remote_name: str, size: int | None, not_before: float) -> list[str]:
-    if not isinstance(body, dict):
-        return []
-    data = cast(dict[str, Any], body).get("data")
+    """The listed copies of one upload. A listing that can't prove absence (an unknown shape, or a truncated
+    page) raises, so the caller keeps the orphan open and ``files_deleted`` false (PRE-A §10.4)."""
+    data = cast(dict[str, Any], body).get("data") if isinstance(body, dict) else None
     if not isinstance(data, list):
-        return []
+        raise MetaConfigError("the /files listing has no 'data' list; its copies can't be ruled out")
+    if cast(dict[str, Any], body).get("has_more") is True:
+        raise MetaConfigError("the /files listing is truncated (has_more); its copies can't be ruled out")
     found: list[str] = []
     for item in cast(list[Any], data):
         if not isinstance(item, dict):

@@ -44,7 +44,7 @@ async def test_one_names_failed_reconcile_never_strands_the_next(
     listing = [_copy("file-1", "a.mp4"), _copy("file-2", "b.mp4")]
     mock_api.get("/files").mock(return_value=httpx.Response(200, json={"data": listing}))
     mock_api.delete("/files/file-1").mock(return_value=httpx.Response(400, json={"error": {"message": "no"}}))
-    b = mock_api.delete("/files/file-2").mock(return_value=httpx.Response(200, json={}))
+    b = mock_api.delete("/files/file-2").mock(return_value=httpx.Response(200, json={"deleted": True}))
     with pytest.raises(MetaBadRequest):
         await store.delete_all()
     assert b.call_count == 1
@@ -62,7 +62,7 @@ async def test_an_earlier_copy_survives_a_failed_record(
     clip = tmp_path / "clip.mp4"
     clip.write_bytes(b"x" * 300)
     mock_api.post("/files").mock(side_effect=[httpx.Response(503), httpx.Response(200, json={"id": "file-2"})])
-    mock_api.delete("/files/file-2").mock(return_value=httpx.Response(200, json={}))
+    mock_api.delete("/files/file-2").mock(return_value=httpx.Response(200, json={"deleted": True}))
     store = FileStore(h.client, tmp_path / "job")
     real = store._record  # pyright: ignore[reportPrivateUsage] -- fail the success record only
     failed: list[bool] = []

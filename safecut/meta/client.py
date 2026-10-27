@@ -412,8 +412,10 @@ class MetaClient:
         return limits
 
     async def _ledger(self, fn: Callable[[], None], *, attempts: int = 2) -> None:
-        """A ledger call, bounded and typed (PRE-A §10.2). A call that raised is retried once (a cold start);
-        then a fault, or any 10 s stall, is ``MetaUnavailable`` and no request is sent. ``BudgetExceeded`` passes
+        """A ledger call, bounded and typed (PRE-A §10.2). A call that raised or got no answer within 10 s is
+        retried once (a cold start), with the same ``call_id``: every ledger call is idempotent per ``call_id``, so
+        a first attempt that lands late never doubles a reservation. Then the fault or stall is ``MetaUnavailable``
+        and no request is sent. ``BudgetExceeded`` passes
         through; a refusal (``KeyError``/``ValueError``, e.g. a conflicting call_id) is ``MetaUnavailable`` too, so
         callers only ever see ``MetaError``."""
         for attempt in range(1, attempts + 1):
@@ -424,9 +426,9 @@ class MetaClient:
             except (KeyError, ValueError) as exc:
                 raise MetaUnavailable(f"the budget ledger refused the call: {exc}") from exc
             except TimeoutError as exc:
-                # Never retried: the timed-out call may still land, and a second reserve would double it.
-                # It expires after 2.5 h as an estimated charge (fail closed).
-                raise MetaUnavailable("the budget ledger did not answer in time; no request was sent") from exc
+                # A reserve that lands after both attempts expires after 2.5 h as an estimated charge (fail closed).
+                if attempt == attempts:
+                    raise MetaUnavailable("the budget ledger did not answer in time; no request was sent") from exc
             except Exception as exc:
                 if attempt == attempts:
                     raise MetaUnavailable(f"the budget ledger failed: {type(exc).__name__}") from exc

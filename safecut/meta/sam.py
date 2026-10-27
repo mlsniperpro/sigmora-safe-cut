@@ -166,7 +166,12 @@ class ResponseLog:
             if response_id in self._streaming:
                 continue  # another SAM stream of this job is still reading it; its own caller deletes it
             try:
-                await client.request("DELETE", f"responses/{response_id}", delete_spec(), meter=_no_cost)
+                result = await client.request("DELETE", f"responses/{response_id}", delete_spec(), meter=_no_cost)
+                answer: Any = result.body
+                if isinstance(answer, dict) and cast(dict[str, Any], answer).get("deleted") is False:
+                    # PRE-A §10.4 leaves the body unspecified, but an explicit refusal is never a request done.
+                    log.warning("SAM response delete refused", extra={"response_id": response_id})
+                    continue
             except MetaError as exc:
                 if exc.status != 404 or isinstance(exc, MetaConfigError):
                     log.warning("SAM response delete failed", extra={"response_id": response_id, "error": str(exc)})

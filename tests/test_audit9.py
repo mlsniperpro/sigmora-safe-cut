@@ -145,7 +145,9 @@ def _replay_routes(router: respx.MockRouter, deleted: list[str]) -> None:
     router.post(f"{replay.BASE}/files").mock(
         side_effect=lambda _: httpx.Response(200, json={"id": f"file-{next(uploads)}"})
     )
-    router.delete(url__regex=rf"{replay.BASE}/files/file-\d+").mock(return_value=httpx.Response(200, json={}))
+    router.delete(url__regex=rf"{replay.BASE}/files/file-\d+").mock(
+        return_value=httpx.Response(200, json={"deleted": True})
+    )
     router.get(f"{replay.BASE}/files").mock(return_value=httpx.Response(200, json={"data": []}))
     router.post(f"{replay.BASE}/responses").mock(side_effect=replay._responses)  # pyright: ignore[reportPrivateUsage] -- reuse the replay SAM answers
 

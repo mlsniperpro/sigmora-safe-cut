@@ -68,7 +68,9 @@ async def test_a_disk_fault_never_stops_the_delete_sweep(
         for i, n in ((1, "a.mp4"), (2, "b.mp4"))
     ]
     c.dump(c.FilesIndex(entries), store.index_path)
-    deletes = mock_api.delete(url__regex=r".*/files/file-\d").mock(return_value=httpx.Response(200, json={}))
+    deletes = mock_api.delete(url__regex=r".*/files/file-\d").mock(
+        return_value=httpx.Response(200, json={"deleted": True})
+    )
     real = store._mark_deleted  # pyright: ignore[reportPrivateUsage] -- fail the first index write only
     failed: list[str] = []
 

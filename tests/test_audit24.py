@@ -3,23 +3,27 @@ the plan renders, and a Files cost line records its bytes."""
 
 from __future__ import annotations
 
+import asyncio
 import functools
 import json
 import shutil
+import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import pytest
 import respx
 from pydantic import SecretStr
 
+from safecut import config
 from safecut import contracts as c
 from safecut.config import Settings
+from safecut.meta import sam
 from safecut.meta.budget import LocalLedger
 from safecut.meta.client import CallSpec
-from safecut.meta.errors import MetaBadRequest
+from safecut.meta.errors import MetaBadRequest, MetaConfigError
 from safecut.meta.files import FileStore
 from safecut.meta.retry import RetryPolicy
 from scripts.probes import probes
@@ -155,3 +159,89 @@ async def test_r10_reuploads_once_then_fails_closed(
     entries = {e.file_id: e for e in store.index().root}
     assert entries["file-1"].deleted_at is not None  # forgotten, so files.json points at the new copy
     assert entries["file-2"].deleted_at is None
+
+
+# --- audit #29 ----------------------------------------------------------------------------------------------
+
+
+def _orphan_store(h: Harness, tmp_path: Path) -> FileStore:
+    store = FileStore(h.client, tmp_path / "job")
+    orphan = c.FileEntry(name="a.mp4", sha256="a" * 64, file_id=None, created_at=c.now_utc(), orphan=True)
+    c.dump(c.FilesIndex([orphan]), store.index_path)
+    return store
+
+
+@pytest.mark.parametrize(
+    ("listing", "message"),
+    [
+        ({"files": [{"id": "file-777", "filename": "j_test-a.mp4"}]}, "has no 'data' list"),
+        ({"data": [], "has_more": True}, "truncated"),
+    ],
+)
+async def test_a_listing_that_cant_rule_out_copies_keeps_the_orphan_open(
+    make_harness: Callable[..., Harness],
+    mock_api: respx.MockRouter,
+    tmp_path: Path,
+    listing: dict[str, Any],
+    message: str,
+) -> None:
+    h = make_harness()
+    store = _orphan_store(h, tmp_path)
+    mock_api.get("/files").mock(return_value=httpx.Response(200, json=listing))
+    with pytest.raises(MetaConfigError, match=message):
+        await store.delete_all()
+    assert not store.index().all_deleted  # files_deleted stays false (PRE-A §10.4)
+
+
+@pytest.mark.parametrize("body", [{"deleted": False}, {"id": "file-1"}, {}])
+async def test_a_delete_without_deleted_true_leaves_the_entry_undeleted(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter, tmp_path: Path, body: dict[str, Any]
+) -> None:
+    h = make_harness()
+    store = FileStore(h.client, tmp_path / "job")
+    entry = c.FileEntry(name="a.mp4", sha256="a" * 64, file_id="file-1", created_at=c.now_utc())
+    c.dump(c.FilesIndex([entry]), store.index_path)
+    mock_api.delete("/files/file-1").mock(return_value=httpx.Response(200, json=body))
+    with pytest.raises(MetaConfigError, match="without deleted: true"):
+        await store.delete_all()
+    assert not store.index().all_deleted
+
+
+async def test_a_stalled_ledger_call_is_retried_once(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PRE-A §10.2: a reserve with no answer in time is retried once (a cold start), with the same call_id.
+    h = make_harness()
+    monkeypatch.setattr(config, "BUDGET_RESERVE_TIMEOUT_S", 0.2)
+    real = h.client.ledger.reserve
+    calls: list[str] = []
+
+    def reserve(call_id: str, *args: Any) -> None:
+        calls.append(call_id)
+        if len(calls) == 1:
+            time.sleep(0.5)  # the cold start: the first attempt lands late
+        real(call_id, *args)
+
+    monkeypatch.setattr(h.client.ledger, "reserve", reserve)
+    mock_api.post("/thing").mock(return_value=httpx.Response(200, json={"ok": "yes"}))
+    spec = CallSpec(stage="s", model="muse-spark-1.3", estimate_usd=0.01, estimate_units={},
+                    policy=RetryPolicy(attempts=1), timeout=httpx.Timeout(5.0), total_timeout_s=10.0)  # fmt: skip
+    await h.client.request("POST", "thing", spec, meter=lambda _: ({}, 0.002))
+    assert len(calls) == 2
+    assert calls[0] == calls[1]  # one call_id: the late first attempt never doubles it
+    await asyncio.sleep(0.5)  # let the stalled first attempt land
+    [line] = h.costs()
+    assert cast(LocalLedger, h.client.ledger).spent("job:j_test") == pytest.approx(line.usd)
+
+
+async def test_an_explicitly_refused_response_delete_stays_pending(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter, tmp_path: Path
+) -> None:
+    h = make_harness()
+    log = sam.ResponseLog(tmp_path)
+    for response_id in ("resp_1", "resp_2"):
+        log.note(response_id)
+    mock_api.delete("/responses/resp_1").mock(return_value=httpx.Response(200, json={"deleted": False}))
+    mock_api.delete("/responses/resp_2").mock(return_value=httpx.Response(200, json={"id": "resp_2"}))
+    assert await log.delete_pending(h.client) == 1  # the body is unspecified; only an explicit refusal counts
+    assert log.index().pending == ["resp_1"]
