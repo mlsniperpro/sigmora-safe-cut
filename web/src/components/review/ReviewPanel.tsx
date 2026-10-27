@@ -32,6 +32,8 @@ const COLUMNS: ReadonlyArray<{ key: Column; title: string; Icon: typeof HiddenIc
 ];
 const TOAST_MS = 6_000;
 const SHORTCUTS_KEY = "safecut.shortcuts";
+/** At most one job refetch a minute for expired keyframe URLs (§10.7). */
+const KEYFRAME_REFRESH_GAP_MS = 60_000;
 
 const newEditId = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `e_${Date.now()}_${Math.random().toString(16).slice(2)}`);
 
@@ -143,6 +145,8 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
 
   /** The chip an edit moved, so focus follows it to its new column (§3.8). */
   const [edited, setEdited] = useState<string | null>(null);
+  /** A covered spot's optimistic chip, until the server's ack gives it its real ID. */
+  const coverFor = useRef<{ pending: string; spot: string } | null>(null);
   /**
    * Every edit goes through here: it runs the action, then points focus at the chip it moved
    * (and, on mobile, opens the tab that chip landed in), whichever route sent it: a button,
@@ -168,6 +172,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
         break;
       case "COVER_SPOT":
         target = `pending:${action.edit_id}`;
+        coverFor.current = { pending: target, spot: action.spot_id };
         break;
       default:
         break;
@@ -181,6 +186,15 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
     if (column && !desktop) setTab(column);
     focusChip(target);
   };
+  // Signed keyframe URLs expire after 15 min: a failed image refetches the job for fresh ones
+  // (§10.7), at most once a minute however many thumbnails fail together.
+  const keyframesRefreshedAt = useRef(0);
+  const refreshKeyframes = useCallback(() => {
+    const now = Date.now();
+    if (now - keyframesRefreshedAt.current < KEYFRAME_REFRESH_GAP_MS) return;
+    keyframesRefreshedAt.current = now;
+    onResume();
+  }, [onResume]);
   const handlers: ChipHandlers = {
     onSelect: select,
     onWhy: (chip) => openWhy(chip, false),
@@ -201,6 +215,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
       focusChip(chip.id);
     },
     onCover: (chip) => act({ type: "COVER_SPOT", spot_id: chip.id.replace(/^spot:/, ""), edit_id: newEditId() }),
+    onKeyframeError: refreshKeyframes,
   };
 
   // Keep focus on the chip an edit moved, in its new column (§3.8).
@@ -208,6 +223,16 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
   useEffect(() => {
     if (lastToast?.kind === "edit" && edited) focusChip(edited);
   }, [lastToast, edited]);
+  // The ack swaps a covered spot's optimistic chip for the server's item, which remounts it.
+  const coverSpots = state.spots;
+  useEffect(() => {
+    const cover = coverFor.current;
+    if (!cover || cover.pending !== edited) return;
+    const real = coverSpots[cover.spot]?.covered_by;
+    if (!real || real === cover.pending) return;
+    coverFor.current = null;
+    if (document.activeElement === document.body || !document.activeElement) focusChip(real);
+  }, [coverSpots, edited]);
 
   // Focus must never land under the sticky player or the fixed bottom bar (WCAG 2.4.11, §3.8).
   const stickyTop = useRef<HTMLDivElement>(null);
@@ -330,11 +355,12 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
       next?.querySelector<HTMLElement>("[data-chip-id]")?.focus();
       return;
     }
-    if (e.altKey || e.metaKey) return;
     const chipId = article?.getAttribute("data-chip-id") ?? null;
     const key = e.key.toLowerCase();
-    // Ctrl+Z isn't a single-character shortcut, so it works with the switch off; plain Z doesn't.
-    if (key === "z" && ((e.ctrlKey && !e.shiftKey) || (shortcuts && !e.ctrlKey && !e.shiftKey))) {
+    // Ctrl+Z (Cmd+Z on a Mac) isn't a single-character shortcut, so it works with the switch
+    // off; plain Z doesn't.
+    const modZ = (e.ctrlKey || e.metaKey) && !e.altKey;
+    if (key === "z" && !e.shiftKey && (modZ || (shortcuts && !e.ctrlKey && !e.metaKey && !e.altKey))) {
       const top = stateRef.current.undo.at(-1);
       if (top) {
         e.preventDefault();
@@ -342,7 +368,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
       }
       return;
     }
-    if (e.ctrlKey || !shortcuts) return;
+    if (e.altKey || e.metaKey || e.ctrlKey || !shortcuts) return;
     if (key === "h" && chipId) {
       e.preventDefault();
       act({ type: "HIDE", id: chipId, edit_id: newEditId() });
@@ -596,6 +622,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
           setDrawer(null);
           focusChip(returnFocus.current);
         }}
+        onKeyframeError={refreshKeyframes}
       />
 
       <ConfirmDialog
@@ -639,7 +666,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
                       setMergeFor(null);
                     }}
                   >
-                    {chip && <Thumbnail chip={chip} url={chip.thumb ? job.keyframe_urls[String(chip.thumb.frame)] ?? null : null} geometry={job.keyframe_geometry} size={48} />}
+                    {chip && <Thumbnail chip={chip} url={chip.thumb ? job.keyframe_urls[String(chip.thumb.frame)] ?? null : null} geometry={job.keyframe_geometry} size={48} onError={refreshKeyframes} />}
                     <span>
                       Same person as {t.label}
                       {description ? ` (${description})` : ""}
@@ -675,7 +702,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
             ["Enter", "Open Why? on a focused chip"],
             ["H", "Hide the focused item"],
             ["C", "Keep the focused item clear"],
-            ["Z or Ctrl+Z", "Undo the last edit"],
+            ["Z, Ctrl+Z or ⌘Z", "Undo the last edit"],
             ["K", "Play or pause the video"],
             ["?", "Show this list"],
             ["Esc", "Close a menu, dialog or the drawer"],

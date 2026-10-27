@@ -25,11 +25,27 @@ export interface ChipHandlers {
   onRemove: (chip: ChipModel) => void;
   onJump: (chip: ChipModel) => void;
   onCover: (chip: ChipModel) => void;
+  /** A keyframe image failed to load: its signed URL may have expired (§10.7). */
+  onKeyframeError: () => void;
 }
 
 /** A crop around the item at its first evidence frame, covered unless it's kept (§3.3). */
-export function Thumbnail({ chip, url, geometry, size }: { chip: ChipModel; url: string | null; geometry: KeyframeGeometry | undefined; size: number }) {
-  const [failed, setFailed] = useState(false);
+export function Thumbnail({
+  chip,
+  url,
+  geometry,
+  size,
+  onError,
+}: {
+  chip: ChipModel;
+  url: string | null;
+  geometry: KeyframeGeometry | undefined;
+  size: number;
+  onError?: () => void;
+}) {
+  // Keyed by URL: a refetched job's fresh signed URL gets a new try.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const failed = failedUrl !== null && failedUrl === url;
   const Icon = COLUMN_ICON[chip.column];
   const alt = `${chip.label}, ${chip.kindWord}, ${COLUMN_WORD[chip.column].toLowerCase()}`;
   if (!chip.thumb || !url || !geometry || failed) {
@@ -51,7 +67,10 @@ export function Thumbnail({ chip, url, geometry, size }: { chip: ChipModel; url:
         alt={alt}
         loading="lazy"
         decoding="async"
-        onError={() => setFailed(true)}
+        onError={() => {
+          setFailedUrl(url);
+          onError?.();
+        }}
         className="absolute max-w-none"
         style={{ width: geometry.image_width * s, height: geometry.image_height * s, left: -cx1 * s, top: -cy1 * s }}
       />
@@ -182,7 +201,7 @@ export function Chip({
       }}
     >
       <div className="flex gap-3">
-        <Thumbnail chip={chip} url={thumbUrl} geometry={geometry} size={thumbSize} />
+        <Thumbnail chip={chip} url={thumbUrl} geometry={geometry} size={thumbSize} onError={handlers.onKeyframeError} />
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="font-semibold">{chip.label}</span>

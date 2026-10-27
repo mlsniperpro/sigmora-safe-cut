@@ -57,6 +57,13 @@ async function enterCode(user: ReturnType<typeof userEvent.setup>, code: string)
 const fileInput = () => document.querySelector<HTMLInputElement>('input[type="file"]')!;
 
 describe("/try", () => {
+  it("in mock mode, says nothing is uploaded before describing the live service", () => {
+    setup();
+    const bullets = within(screen.getByRole("heading", { name: "What happens to your clip" }).parentElement as HTMLElement).getAllByRole("listitem");
+    expect(bullets[0]).toHaveTextContent("In this preview nothing is uploaded: your clip stays in your browser. On the live service:");
+    expect(bullets[1]).toHaveTextContent(/^It's sent to Meta's Model API/);
+  });
+
   it("asks for a code when it's empty", async () => {
     const user = setup();
     await user.click(screen.getByRole("button", { name: "Continue" }));

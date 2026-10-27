@@ -23,7 +23,7 @@ export default function Home() {
               className="rounded-xl border border-border"
               alt="Blur every face: every face is pixelated, the guest's included, while the number plate and the chat on the shop screen stay readable."
             />
-            <figcaption className="mt-2 text-sm text-muted">Blur every face: your guest is hidden, the number plate isn&apos;t.</figcaption>
+            <figcaption className="mt-2 text-sm text-muted">Blur every face: your guest is hidden, the number plate isn&apos;t. Illustration with drawn shapes, not a measured result.</figcaption>
           </figure>
           <figure>
             <Image
@@ -33,7 +33,7 @@ export default function Home() {
               className="rounded-xl border border-border"
               alt="Safe Cut: the guest stays clear; the passer-by, the child, the number plate, the shop screen and the man watching are covered."
             />
-            <figcaption className="mt-2 text-sm text-muted">Safe Cut: your guest stays clear, the plate and the passer-by are hidden.</figcaption>
+            <figcaption className="mt-2 text-sm text-muted">Safe Cut: your guest stays clear, the plate and the passer-by are hidden. Illustration with drawn shapes, not a measured result.</figcaption>
           </figure>
         </div>
       </section>

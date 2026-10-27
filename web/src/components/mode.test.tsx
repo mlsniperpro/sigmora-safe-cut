@@ -29,3 +29,17 @@ describe("demo mode is per page (UI-SPEC §6)", () => {
     expect(screen.queryByText(/You're seeing saved results from a real run/)).toBeNull();
   });
 });
+
+describe("mock mode (no API configured)", () => {
+  it("says the replayed results are sample data, so the demo banner never claims a real run alone", async () => {
+    nav.path = "/jobs/job-replay";
+    render(
+      <ModeProvider>
+        <Reporter />
+        <ModeBanners />
+      </ModeProvider>,
+    );
+    expect(await screen.findByText(/In this preview the saved results are sample data/)).toBeInTheDocument();
+    expect(screen.getByText(/nothing leaves your browser/)).toBeInTheDocument();
+  });
+});

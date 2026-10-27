@@ -1,11 +1,11 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SafeCutClient } from "@/lib/api";
+import { SafeCutClient, type RawResponse, type Transport } from "@/lib/api";
 import { setClientForTests } from "@/lib/client";
 import { MockBackend } from "@/lib/mock-backend";
 import { ModeProvider } from "../mode";
-import { ResultPage } from "./ResultPage";
+import { LINK_REFRESH_MS, ResultPage } from "./ResultPage";
 
 const nav = vi.hoisted(() => ({ id: "result-clean", search: "", replace: vi.fn() }));
 vi.mock("next/navigation", () => ({
@@ -72,5 +72,111 @@ describe("result and receipt (UI-SPEC §5)", () => {
   it("redirects a job still in review back to the panel", async () => {
     setup("job-review-hero1", "from=sigmora&view=review");
     await waitFor(() => expect(nav.replace).toHaveBeenCalledWith("/jobs/job-review-hero1?from=sigmora"));
+  });
+});
+
+describe("signed URLs expire (UI-SPEC §10.7)", () => {
+  /** Each result fetch signs its URLs afresh (`v=<n>`), as the live API does. */
+  let backend: MockBackend;
+  let fetches = 0;
+  const inflight = new Set<Promise<RawResponse>>();
+  const sign = (url: string) => `${url}${url.includes("?") ? "&" : "?"}v=${fetches}`;
+
+  function setupSigned(id: string) {
+    nav.id = id;
+    nav.search = "";
+    nav.replace.mockReset();
+    fetches = 0;
+    backend = new MockBackend({ latencyMs: 0 });
+    const transport: Transport = {
+      upload: (...args) => backend.upload(...args),
+      request: (init: Parameters<MockBackend["request"]>[0]) => {
+        const p = backend.request(init).then((raw) => {
+          if (init.method !== "GET" || !init.path.endsWith("/result") || raw.status !== 200) return raw;
+          fetches += 1;
+          const body = raw.body as { video_url: string; receipt_html_url: string; receipt_json_url: string };
+          return { ...raw, body: { ...body, video_url: sign(body.video_url), receipt_html_url: sign(body.receipt_html_url), receipt_json_url: sign(body.receipt_json_url) } };
+        });
+        inflight.add(p);
+        void p.finally(() => inflight.delete(p)).catch(() => undefined);
+        return p;
+      },
+    };
+    setClientForTests(new SafeCutClient({ transport, sleep: () => Promise.resolve() }));
+    render(
+      <ModeProvider>
+        <ResultPage />
+      </ModeProvider>,
+    );
+  }
+  // A response can start the next request (job, then result) once act flushes its effects:
+  // repeat until nothing new starts.
+  const settle = async () => {
+    do {
+      await act(async () => {
+        while (inflight.size > 0) await Promise.allSettled([...inflight]);
+        for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve));
+      });
+    } while (inflight.size > 0);
+  };
+  const advance = async (ms: number) => {
+    await act(() => vi.advanceTimersByTimeAsync(ms));
+    await settle();
+  };
+  const video = () => screen.getByLabelText("Your clip after Safe Cut");
+  const receipt = () => screen.getByTitle("Privacy receipt");
+
+  afterEach(() => vi.useRealTimers());
+
+  it("refreshes the download and receipt links before they expire, without reloading the video", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    setupSigned("result-clean");
+    await settle();
+    expect(screen.getByText("No leaks found.")).toBeInTheDocument();
+    fireEvent.load(receipt());
+    expect(screen.getByRole("link", { name: "Download video" }).getAttribute("href")).toMatch(/v=1$/);
+    await advance(LINK_REFRESH_MS);
+    expect(fetches).toBe(2);
+    expect(screen.getByRole("link", { name: "Download video" }).getAttribute("href")).toMatch(/v=2$/);
+    expect(screen.getByRole("link", { name: "Download receipt (JSON)" }).getAttribute("href")).toMatch(/v=2$/);
+    expect(screen.getByRole("link", { name: "Open the receipt in a new tab" }).getAttribute("href")).toMatch(/v=2$/);
+    // What's already playing or showing keeps its URL.
+    expect(video().getAttribute("src")).toMatch(/v=1$/);
+    expect(receipt().getAttribute("src")).toMatch(/v=1$/);
+  });
+
+  it("a failed link refresh keeps the page", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    setupSigned("result-clean");
+    await settle();
+    expect(screen.getByText("No leaks found.")).toBeInTheDocument();
+    fireEvent.load(receipt());
+    backend.inject(/\/result$/, "error-500");
+    await advance(LINK_REFRESH_MS);
+    expect(screen.getByText("No leaks found.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Download video" }).getAttribute("href")).toMatch(/v=1$/);
+  });
+
+  it("a video error refetches once for a fresh URL, then shows the error page", async () => {
+    setupSigned("result-clean");
+    expect(await screen.findByText("No leaks found.")).toBeInTheDocument();
+    fireEvent.error(video());
+    await waitFor(() => expect(video().getAttribute("src")).toMatch(/v=2$/));
+    fireEvent.error(video());
+    expect(await screen.findByText("Something went wrong on our side. Nothing has been published.")).toBeInTheDocument();
+  });
+
+  it("a receipt that doesn't load refetches once, then offers the JSON", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    setupSigned("result-clean");
+    await settle();
+    expect(screen.getByText("No leaks found.")).toBeInTheDocument();
+    await advance(15_000);
+    expect(fetches).toBe(2);
+    expect(receipt().getAttribute("src")).toMatch(/v=2$/);
+    expect(video().getAttribute("src")).toMatch(/v=1$/);
+    await advance(15_000);
+    expect(screen.getByText("The receipt didn't load. You can still download it as JSON.")).toBeInTheDocument();
+    expect(fetches).toBe(2);
   });
 });

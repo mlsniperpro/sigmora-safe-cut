@@ -91,6 +91,19 @@ describe("review panel", () => {
     expect(within(column(/^Kept clear/)).getByRole("article", { name: /^Plate 1,/ })).toBeInTheDocument();
   });
 
+  it("Keep clear on a plate in the Why drawer closes it to the confirm, with focus on Cancel", async () => {
+    const user = setup("job-review-hero1");
+    await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
+    await user.click(screen.getByRole("button", { name: /^Why\? Plate 1/ }));
+    const drawer = await screen.findByRole("dialog", { name: /^Plate 1/ });
+    await user.click(within(drawer).getByRole("button", { name: "Keep clear" }));
+    expect(await screen.findByText("Only keep this clear if nothing on it reveals who someone is.")).toBeInTheDocument();
+    const cancel = within(chip("Plate 1")).getByRole("button", { name: "Cancel" });
+    // Focus moves happen a frame later: let them all land, then check where focus stayed.
+    for (let i = 0; i < 3; i++) await act(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+    expect(cancel).toHaveFocus();
+  });
+
   it("merges a re-entry into the kept guest", async () => {
     const user = setup("job-review-reentry");
     await screen.findByRole("article", { name: /^Face 9,/ });
@@ -178,6 +191,8 @@ describe("review panel", () => {
     expect(await screen.findByText("U1 will be covered.")).toBeInTheDocument();
     expect(await screen.findByText("You changed something after rendering. Render again to update the video and receipt.")).toBeInTheDocument();
     expect(await screen.findByRole("article", { name: /^A1,/ })).toBeInTheDocument();
+    // The ack swaps the optimistic chip for the server's item; focus follows it (§3.8).
+    await waitFor(() => expect(screen.getByRole("article", { name: /^A1,/ })).toHaveFocus());
   });
 
   it("deletes everything after the confirm and ignores late responses", async () => {
@@ -237,6 +252,30 @@ describe("review panel", () => {
     act(() => chip("Face 6").focus());
     await user.keyboard("{Control>}z{/Control}");
     expect(await screen.findByText("Undone.")).toBeInTheDocument();
+  });
+
+  it("Cmd+Z undoes on a Mac", async () => {
+    const user = setup("job-review-hero1");
+    await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
+    await user.click(screen.getByRole("button", { name: "Hide Face 6" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Undo" })).toBeEnabled());
+    act(() => chip("Face 6").focus());
+    await user.keyboard("{Meta>}z{/Meta}");
+    expect(await screen.findByText("Undone.")).toBeInTheDocument();
+  });
+
+  it("refetches the job once for fresh keyframe URLs when thumbnails fail to load", async () => {
+    setup("job-review-hero1");
+    await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
+    const gets = () => backend.log.filter((l) => l.method === "GET" && l.path === "/v1/jobs/job-review-hero1").length;
+    const before = gets();
+    const thumbs = document.querySelectorAll<HTMLImageElement>("article img");
+    expect(thumbs.length).toBeGreaterThan(1);
+    // Several expired thumbnails fail together: one refetch, not one each.
+    act(() => thumbs.forEach((img) => img.dispatchEvent(new Event("error"))));
+    await waitFor(() => expect(gets()).toBe(before + 1));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(gets()).toBe(before + 1);
   });
 
   it("shows the demo-mode banner for a replayed job", async () => {

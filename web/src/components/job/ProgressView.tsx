@@ -3,7 +3,7 @@
  * The pipeline progress view (UI-SPEC §2.3, §2.5): stage rows, the review link
  * and Cancel and delete. Shared by `/try` step C and `/jobs/[id]` while processing.
  */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
 import { getClient } from "@/lib/client";
 import { COPY } from "@/lib/copy";
@@ -39,7 +39,8 @@ export function ProgressView({
   const [seenMissLoop, setSeenMissLoop] = useState(false);
   if (active === "miss_loop" && !seenMissLoop) setSeenMissLoop(true);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"idle" | "copied" | "failed">("idle");
+  const linkRef = useRef<HTMLElement>(null);
   const link = typeof window === "undefined" ? `/jobs/${jobId}` : `${window.location.origin}/jobs/${encodeURIComponent(jobId)}`;
   const doDelete = async () => {
     setConfirm(false);
@@ -71,16 +72,27 @@ export function ProgressView({
       </div>
       <div className="mt-8 flex flex-wrap items-center gap-3 text-sm">
         <span>You can leave this page. Your review link:</span>
-        <code className="rounded bg-surface-2 px-2 py-1">{link}</code>
+        <code ref={linkRef} className="rounded bg-surface-2 px-2 py-1">
+          {link}
+        </code>
         <button
           type="button"
           className={btn.secondary}
           onClick={() => {
-            void navigator.clipboard?.writeText(link).then(() => setCopied(true));
+            // No Clipboard API (an insecure context) or no permission: select the link instead.
+            const failed = () => {
+              setCopied("failed");
+              const el = linkRef.current;
+              const selection = window.getSelection();
+              if (el && selection) selection.selectAllChildren(el);
+            };
+            if (!navigator.clipboard) return failed();
+            navigator.clipboard.writeText(link).then(() => setCopied("copied"), failed);
           }}
         >
-          {copied ? "Copied" : "Copy link"}
+          {copied === "copied" ? "Copied" : "Copy link"}
         </button>
+        {copied === "failed" && <span role="status">Couldn&apos;t copy. The link is selected: copy it from there.</span>}
       </div>
       <div className="mt-4 flex flex-wrap items-center justify-end gap-3">
         {deleteError && (

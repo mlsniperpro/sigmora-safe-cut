@@ -6,7 +6,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { ApiError } from "@/lib/api";
+import { ApiError, isMockMode } from "@/lib/api";
 import type { JobResponse } from "@/lib/contracts";
 import { getClient } from "@/lib/client";
 import { COPY, codeWindowMessage, formatLocal } from "@/lib/copy";
@@ -498,10 +498,12 @@ export function TryFlow() {
 }
 
 function DataBullets() {
+  const mock = isMockMode();
   return (
     <div className="mt-10 rounded-xl border border-border bg-surface p-5">
       <h2 className="font-semibold">What happens to your clip</h2>
       <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted">
+        {mock && <li>In this preview nothing is uploaded: your clip stays in your browser. On the live service:</li>}
         <li>It&apos;s sent to Meta&apos;s Model API using Standard model IDs only, never a Contributor model ID. Meta says it doesn&apos;t use content from its Standard services to train its models.</li>
         <li>Your clip, the result and the receipt are deleted from Safe Cut&apos;s servers after 24 hours, or sooner if you choose.</li>
         <li>Up to 60 seconds and 150 MB. MP4 or MOV.</li>
@@ -512,7 +514,7 @@ function DataBullets() {
 
 /** Polls the job once the upload is done and hands each response up; renders nothing. */
 function JobPoller({ jobId, onJob }: { jobId: string; onJob: (job: JobResponse) => void }) {
-  const { load } = useJob(jobId);
+  const { load } = useJob(jobId, { pollCreated: true });
   const job = load.kind === "ready" ? load.job : null;
   useReportMode(job?.mode);
   useEffect(() => {

@@ -2,9 +2,11 @@
 
 The screens judges and creators see: the landing page with the hero result, `/try` (access code → upload → progress), the review panel at `/jobs/[id]` with the "Why?" drawer, and the result and privacy receipt at `/jobs/[id]/result`. Built from `docs/work-packages/WP6.md` and PRE-B's `docs/UI-SPEC.md`.
 
-Next.js 16 (App Router, Cache Components), React 19, TypeScript strict, Tailwind 4, zod 4. Tests: vitest + Testing Library + fast-check, and a Playwright end-to-end run with axe.
+Next.js 16 (App Router; Cache Components is deliberately off, see `next.config.ts`), React 19, TypeScript strict, Tailwind 4, zod 4. Tests: vitest + Testing Library + fast-check, and a Playwright end-to-end run with axe.
 
 ## Run it
+
+Needs Node 22–24 (`engines`: `>=22 <25`) and pnpm 10.28 (`corepack enable` picks it up from `packageManager`).
 
 ```bash
 cd web
@@ -50,6 +52,8 @@ pnpm build       # production build
 pnpm e2e         # Playwright on the production build in mock mode, with axe (run after build)
 ```
 
+`pnpm e2e` needs a Chromium for Playwright: run `pnpm exec playwright install chromium` once if you don't have one.
+
 `.agent/win/SAFECUT-WP6/checks.sh` runs all of them.
 
 ## Environment variables
@@ -84,7 +88,8 @@ The fixtures follow UI-SPEC §10.1; `mocks/mocks.test.ts` checks every §10.1 in
 ## Layout
 
 ```
-src/app/                 routes: /, /try, /jobs/[id], /jobs/[id]/result, not-found, error
+src/app/                 routes: /, /try, /jobs/[id], /jobs/[id]/result, /privacy, /unavailable, not-found, error
+src/proxy.ts             region check on /try and /jobs/* (src/lib/region.ts)
 src/components/          landing/, try/, job/, review/ (Chip, VideoPane, WhyDrawer, ReviewPanel), shared ui
 src/lib/contracts.ts     zod schemas for every API response
 src/lib/api.ts           typed client: timeouts, GET retries, typed errors

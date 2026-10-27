@@ -52,4 +52,16 @@ Legend: `- [x]` done with evidence · `- [P]` waits on an owner input (BLOCKED.m
 
 ## Audit findings
 
-(none yet)
+Rounds 1–2 (38 findings) are tabled with their fixes in `reaudit.md`. Round 3:
+
+- [x] R3-1 (med) signed URLs refetched for thumbnails, keyframes, download and receipt links (§10.7): `ReviewPanel` refreshKeyframes, `ResultPage` link refresh; JobPage + ResultPage tests
+- [x] R3-2 (low) focus follows a covered spot to the server's item: JobPage "covers an unfixed spot"
+- [x] R3-3 (low) ⌘Z undo on a Mac: JobPage "Cmd+Z undoes on a Mac"
+- [x] R3-4 (low) drawer Keep on an object keeps focus on the confirm's Cancel: did not reproduce; pinned by a JobPage test
+- [x] R3-5 (low) /try keeps polling a just-started `created` job: `useJob.test.tsx`
+- [x] R3-6 (low) one 5xx while polling retries quietly: `useJob.test.tsx`
+- [x] R3-7 (low) Copy link failure says so and selects the link: `ProgressView.test.tsx`
+- [x] R3-8 (low) illustration captions on the drawn-shape stills: `app/page.tsx`
+- [x] R3-9 (low) mock mode no longer contradicts itself: `mode.test.tsx`, TryFlow test
+- [x] R3-10 (low) README facts (Cache Components off, routes, Node/pnpm, Playwright browser)
+- [P] R3-11 (low) privacy contact email for `/privacy`: owner sets `NEXT_PUBLIC_PRIVACY_CONTACT` at deploy (BLOCKED.md)

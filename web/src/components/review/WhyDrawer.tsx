@@ -25,11 +25,13 @@ function Keyframe({
   model,
   frame,
   boxFor,
+  onError,
 }: {
   job: JobResponse;
   model: WhyModel;
   frame: number;
   boxFor: (frame: number) => Box | null;
+  onError?: () => void;
 }) {
   const url = job.keyframe_urls[String(frame)];
   const [loaded, setLoaded] = useState<Loaded>(null);
@@ -67,7 +69,10 @@ function Keyframe({
             alt={alt}
             className="block h-auto w-full"
             onLoad={(e) => setLoaded({ url, width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight })}
-            onError={() => setLoaded({ url, failed: true })}
+            onError={() => {
+              setLoaded({ url, failed: true });
+              onError?.();
+            }}
           />
         )}
         {ring && (
@@ -100,6 +105,7 @@ export function WhyDrawer({
   actions,
   onClose,
   focusLocked,
+  onKeyframeError,
 }: {
   open: boolean;
   job: JobResponse;
@@ -111,6 +117,8 @@ export function WhyDrawer({
   onClose: () => void;
   /** Opened from the "Always hidden" help link: start at the explanation. */
   focusLocked?: boolean;
+  /** The keyframe failed to load: its signed URL may have expired (§10.7). */
+  onKeyframeError?: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -190,7 +198,7 @@ export function WhyDrawer({
                     if (e.key === "ArrowLeft") setIndex(Math.max(0, safeIndex - 1));
                   }}
                 >
-                  <Keyframe job={job} model={model} frame={frame} boxFor={boxFor} />
+                  <Keyframe job={job} model={model} frame={frame} boxFor={boxFor} onError={onKeyframeError} />
                 </div>
               ) : (
                 <p className="rounded-lg bg-surface-2 p-4 text-sm">

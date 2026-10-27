@@ -57,6 +57,7 @@ export function ModeBanners() {
               <PlayCircleIcon size={18} className="mt-0.5 shrink-0" />
               <span>
                 <strong>Demo mode.</strong> You&apos;re seeing saved results from a real run on our consented demo clip. Nothing is sent to Meta right now.
+                {mock && " In this preview the saved results are sample data, so you can see how demo mode is labelled."}
               </span>
             </p>
             <button type="button" className="min-h-8 underline underline-offset-2" aria-expanded={open} onClick={() => setOpen((v) => !v)}>

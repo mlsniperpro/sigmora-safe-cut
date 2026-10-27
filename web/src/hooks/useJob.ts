@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
 import { getClient } from "@/lib/client";
 import type { JobResponse } from "@/lib/contracts";
-import { RATE_LIMIT_DEFAULT_MS, nextPollDelay } from "@/lib/polling";
+import { FAST_MS, RATE_LIMIT_DEFAULT_MS, nextPollDelay } from "@/lib/polling";
 
 export type JobLoad =
   | { kind: "loading" }
@@ -26,7 +26,11 @@ export function classifyLoadError(error: unknown): Exclude<JobLoad["kind"], "loa
   return "unexpected";
 }
 
-export function useJob(jobId: string) {
+/**
+ * `pollCreated`: /try polls only after `POST /start` resolved, so a `created` answer there is a
+ * start the API hasn't reflected yet; it polls like `processing` instead of stopping.
+ */
+export function useJob(jobId: string, { pollCreated = false }: { pollCreated?: boolean } = {}) {
   const [load, setLoad] = useState<JobLoad>({ kind: "loading" });
   const [tick, setTick] = useState(0);
   const viewStart = useRef<number | null>(null);
@@ -36,6 +40,9 @@ export function useJob(jobId: string) {
   const polling = useRef(true);
   /** Bumped by every local patch, so a GET that started before one can't overwrite it. */
   const patches = useRef(0);
+  /** A job is on screen; one 5xx while polling it retries quietly instead of replacing the page. */
+  const shown = useRef(false);
+  const serverRetried = useRef(false);
 
   useEffect(() => {
     if (deleted.current) return;
@@ -49,7 +56,10 @@ export function useJob(jobId: string) {
       .getJob(jobId, controller.signal)
       .then((job) => {
         if (deleted.current || controller.signal.aborted) return;
-        const delay = nextPollDelay(job.status, Date.now() - (viewStart.current ?? Date.now()), job.retry_at, Date.now());
+        const status = pollCreated && job.status === "created" ? "processing" : job.status;
+        const delay = nextPollDelay(status, Date.now() - (viewStart.current ?? Date.now()), job.retry_at, Date.now());
+        shown.current = true;
+        serverRetried.current = false;
         polling.current = delay !== null;
         // A review ack or action ack landed while this GET was in flight: it's newer, keep it.
         if (patches.current === startedAt) setLoad({ kind: "ready", job });
@@ -62,6 +72,11 @@ export function useJob(jobId: string) {
           schedule((error.retryAfterS ?? RATE_LIMIT_DEFAULT_MS / 1000) * 1000);
           return;
         }
+        if (shown.current && !serverRetried.current && error instanceof ApiError && (error.status ?? 0) >= 500) {
+          serverRetried.current = true;
+          schedule(FAST_MS);
+          return;
+        }
         console.error(`job ${jobId}: load failed (${error instanceof ApiError ? (error.status ?? error.kind) : "error"})`);
         setLoad({ kind: classifyLoadError(error) });
       });
@@ -69,7 +84,7 @@ export function useJob(jobId: string) {
       controller.abort();
       if (timer.current) clearTimeout(timer.current);
     };
-  }, [jobId, tick]);
+  }, [jobId, tick, pollCreated]);
 
   useEffect(() => {
     const onVisibility = () => {

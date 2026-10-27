@@ -5,7 +5,7 @@
  */
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
 import { getClient } from "@/lib/client";
 import type { ResultResponse } from "@/lib/contracts";
@@ -20,8 +20,11 @@ import { FailedJob } from "./FailedJob";
 import { JobSkeleton, loadMessage } from "./JobPage";
 
 const RECEIPT_TIMEOUT_MS = 15_000;
+/** Presigned GETs live 15 min (§10.7): the download and receipt links are refreshed before then. */
+export const LINK_REFRESH_MS = 10 * 60_000;
 
-type ResultLoad = { kind: "idle" } | { kind: "ready"; result: ResultResponse } | { kind: "error"; error: unknown };
+/** `video` and `receipt` are the URLs the player and the iframe use: a link refresh leaves them alone. */
+type ResultLoad = { kind: "idle" } | { kind: "ready"; result: ResultResponse; video: string; receipt: string } | { kind: "error"; error: unknown };
 
 /** Tells Sigmora the result is approved: to the opener when there is one, otherwise by returning to Sigmora. */
 export function publishToSigmora(result: Pick<ResultResponse, "job_id" | "video_url" | "receipt_json_url">): void {
@@ -45,15 +48,38 @@ export function ResultPage() {
   /** Signed URLs expire: a media error refetches the result once for fresh ones (§10.7). */
   const [mediaRefreshes, setMediaRefreshes] = useState(0);
   const [mediaFailed, setMediaFailed] = useState(false);
+  /** Refetches for fresh download and receipt links, without reloading what's already playing. */
+  const [linkRefreshes, setLinkRefreshes] = useState(0);
+  const keepMedia = useRef(false);
   const [receiptFailed, setReceiptFailed] = useState(false);
   const [receiptLoaded, setReceiptLoaded] = useState(false);
-  const receiptUrl = result.kind === "ready" ? result.result.receipt_html_url : null;
-  // An iframe fires no error event for HTTP failures, so a receipt that hasn't loaded in time counts as failed (§5.4).
+  const receiptRetried = useRef(false);
+  const receiptLoadedRef = useRef(false);
+  const videoRetried = useRef(false);
+  const latest = result.kind === "ready" ? result.result : null;
+  // An iframe fires no error event for HTTP failures, so a receipt that hasn't loaded in time counts
+  // as failed (§5.4), after one refetch in case its signed URL had expired (§10.7).
   useEffect(() => {
-    if (!receiptUrl || receiptLoaded) return;
-    const t = setTimeout(() => setReceiptFailed(true), RECEIPT_TIMEOUT_MS);
+    if (!latest || receiptLoaded) return;
+    const t = setTimeout(() => {
+      if (receiptRetried.current) {
+        setReceiptFailed(true);
+        return;
+      }
+      receiptRetried.current = true;
+      keepMedia.current = true;
+      setLinkRefreshes((n) => n + 1);
+    }, RECEIPT_TIMEOUT_MS);
     return () => clearTimeout(t);
-  }, [receiptUrl, receiptLoaded]);
+  }, [latest, receiptLoaded]);
+  useEffect(() => {
+    if (!latest) return;
+    const t = setTimeout(() => {
+      keepMedia.current = true;
+      setLinkRefreshes((n) => n + 1);
+    }, LINK_REFRESH_MS);
+    return () => clearTimeout(t);
+  }, [latest]);
   const [published, setPublished] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [confirm, setConfirm] = useState(false);
@@ -70,14 +96,25 @@ export function ResultPage() {
   useEffect(() => {
     if (status !== "done") return;
     const controller = new AbortController();
+    const keep = keepMedia.current;
+    keepMedia.current = false;
     getClient()
       .getResult(id, controller.signal)
-      .then((r) => setResult({ kind: "ready", result: r }))
+      .then((r) => {
+        setResult((prev) =>
+          keep && prev.kind === "ready"
+            ? { kind: "ready", result: r, video: prev.video, receipt: receiptLoadedRef.current ? prev.receipt : r.receipt_html_url }
+            : { kind: "ready", result: r, video: r.video_url, receipt: r.receipt_html_url },
+        );
+      })
       .catch((error: unknown) => {
-        if (!controller.signal.aborted) setResult({ kind: "error", error });
+        if (controller.signal.aborted) return;
+        // A failed link refresh keeps the page; only the receipt it was retrying gives up.
+        if (keep && receiptRetried.current && !receiptLoadedRef.current) setReceiptFailed(true);
+        setResult((prev) => (keep && prev.kind === "ready" ? prev : { kind: "error", error }));
       });
     return () => controller.abort();
-  }, [id, status, mediaRefreshes]);
+  }, [id, status, mediaRefreshes, linkRefreshes]);
 
   if (load.kind === "loading" || redirect) return <JobSkeleton />;
   if (load.kind !== "ready") return loadMessage(load.kind, resume);
@@ -121,14 +158,18 @@ export function ResultPage() {
         <div>
           <video
             className="aspect-video w-full rounded-xl bg-black"
-            src={r.video_url}
+            src={result.video}
             controls
             playsInline
             preload="metadata"
             aria-label="Your clip after Safe Cut"
             onError={() => {
-              if (mediaRefreshes === 0) setMediaRefreshes(1);
-              else setMediaFailed(true);
+              if (videoRetried.current) {
+                setMediaFailed(true);
+                return;
+              }
+              videoRetried.current = true;
+              setMediaRefreshes((n) => n + 1);
             }}
           >
             {r.captions_url && <track kind="captions" src={r.captions_url} srcLang="en" label="English" default />}
@@ -202,11 +243,14 @@ export function ResultPage() {
         ) : (
           <iframe
             title="Privacy receipt"
-            src={r.receipt_html_url}
+            src={result.receipt}
             sandbox=""
             referrerPolicy="no-referrer"
             className="mt-3 h-[28rem] w-full rounded-xl border border-border bg-white"
-            onLoad={() => setReceiptLoaded(true)}
+            onLoad={() => {
+              receiptLoadedRef.current = true;
+              setReceiptLoaded(true);
+            }}
           />
         )}
         <a href={r.receipt_html_url} target="_blank" rel="noopener noreferrer" className={btn.link}>
