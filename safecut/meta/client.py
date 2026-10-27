@@ -237,8 +237,12 @@ def guard_body(body: Mapping[str, Any], *, store_param: bool = True) -> None:
 
 
 def _transport_failure(exc: httpx.TransportError) -> _AttemptFailed:
-    """Connect-phase errors never reached the server; anything later may have been processed."""
-    rejected = isinstance(exc, httpx.ConnectError | httpx.ConnectTimeout | httpx.PoolTimeout)
+    """Errors before any byte reached Meta (connect phase, a proxy refusing CONNECT, a bad URL scheme) are
+    rejected; anything later may have been processed."""
+    rejected = isinstance(
+        exc,
+        httpx.ConnectError | httpx.ConnectTimeout | httpx.PoolTimeout | httpx.ProxyError | httpx.UnsupportedProtocol,
+    )
     kind = "timeout" if isinstance(exc, httpx.TimeoutException) else "connection error"
     return _AttemptFailed(MetaUnavailable(f"{kind}: {type(exc).__name__}"), accepted=not rejected)
 

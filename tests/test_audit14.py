@@ -34,7 +34,11 @@ def test_a_through_item_needs_a_flag() -> None:
     with pytest.raises(ValidationError):
         c.Audit.model_validate(audit | {"leaks": [leak | {"through_item": "i_3"}]})
     flagged = leak | {"through_item": "i_3", "flag": "redaction_too_weak"}
-    assert c.Audit.model_validate(audit | {"leaks": [flagged]}).leaks[0].flag == "redaction_too_weak"
+    # A flag alone fixes nothing (audit #16): the item read through is re-rendered, so it is the patch.
+    with pytest.raises(ValidationError, match="neither patched nor unresolved"):
+        c.Audit.model_validate(audit | {"leaks": [flagged]})
+    patched = flagged | {"patched_item": "i_3"}
+    assert c.Audit.model_validate(audit | {"leaks": [patched]}).leaks[0].flag == "redaction_too_weak"
 
 
 @pytest.mark.usefixtures("api")
@@ -53,7 +57,7 @@ async def test_a_failed_long_clip_keeps_probe_c_frame_answer(tmp_path: Path, mon
     assert "frame_error" in c_out  # the paid frame answer survives
     assert c_out["max_length"]["60s"]["accepted"] is True
     assert c_out["max_length"]["180s"] == {
-        "accepted": False,
+        "accepted": None,  # a local failure: not measured, never "Meta refused 180 s" (audit #16)
         "error": "CalledProcessError: Command '['ffmpeg']' returned non-zero exit status 1.",
     }
 

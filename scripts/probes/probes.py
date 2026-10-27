@@ -41,7 +41,7 @@ from safecut.config import OpenWeightPrice, Settings, load_settings
 from safecut.meta import asr, responses, sam
 from safecut.meta.budget import Caller, CapLimit, LocalLedger
 from safecut.meta.client import CallSpec, MetaClient
-from safecut.meta.errors import MetaError
+from safecut.meta.errors import MetaBadRequest, MetaConfigError, MetaError
 from safecut.meta.files import FileStore
 from safecut.meta.retry import RetryPolicy
 from safecut.meta.status import fetch_status
@@ -76,6 +76,12 @@ class Probe:
     def save(self, filename: str, data: Any) -> None:
         self.out.mkdir(parents=True, exist_ok=True)
         (self.out / filename).write_text(json.dumps(data, indent=1, ensure_ascii=False) + "\n")
+
+
+def _usage(response: Mapping[str, Any]) -> Mapping[str, Any]:
+    """The response's ``usage`` object, or empty when it's missing or null."""
+    usage = response.get("usage")
+    return cast(Mapping[str, Any], usage) if isinstance(usage, Mapping) else {}
 
 
 def truth() -> Mapping[str, Any]:
@@ -115,8 +121,13 @@ def _user_video(text: str, file_id: str) -> list[dict[str, Any]]:
 
 
 async def probe_a(p: Probe) -> Summary:
-    async with httpx.AsyncClient() as http:
-        status = await fetch_status(http, p.settings.meta_base_url)
+    status_error: str | None = None
+    status = None
+    try:
+        async with httpx.AsyncClient() as http:
+            status = await fetch_status(http, p.settings.meta_base_url)
+    except Exception as exc:  # the status page is optional; the key and model list are what probe a checks
+        status_error = f"{type(exc).__name__}: {exc}"
     spec = CallSpec(
         stage="probe_a",
         model=None,
@@ -127,7 +138,7 @@ async def probe_a(p: Probe) -> Summary:
     )
     models = await p.meta.request("GET", "models", spec, meter=lambda _: ({}, 0.0))
     p.save("models.json", models.body)
-    p.save("status.json", status.model_dump())
+    p.save("status.json", status.model_dump() if status is not None else {"error": status_error})
     raw: Any = models.body
     data: Any = cast(Mapping[str, Any], raw).get("data", []) if isinstance(raw, Mapping) else []
     items: list[Any] = cast(list[Any], data) if isinstance(data, list) else []
@@ -140,7 +151,8 @@ async def probe_a(p: Probe) -> Summary:
         p.settings.speech_fallback_model,
     ]
     return {
-        "service_status": status.service_status,
+        "service_status": status.service_status if status is not None else None,
+        "status_error": status_error,
         "model_ids": ids,
         "missing": [m for m in wanted if m not in ids],
         "contributor_ids_listed": [m for m in ids if m.endswith("-contributor")],
@@ -173,7 +185,7 @@ async def _sam_once(p: Probe, file_id: str, concept: str, frames: int, log: sam.
             (m.mask.width, m.mask.height) == (b.right - b.left, b.bottom - b.top)
             for m, b in zip(masks, boxes, strict=False)
         ),
-        "frames_billed": result.response.get("usage", {}).get("video_frames_processed"),
+        "frames_billed": _usage(result.response).get("video_frames_processed"),
         "usd": result.usd,
         "diagnostics": [str(d) for d in final.diagnostics][:10],
     }
@@ -225,7 +237,7 @@ async def _probe_b_calls(
     for concept in concepts:
         try:
             out["concepts"][concept] = await _sam_once(p, file_id, concept, frames, log)
-        except MetaError as exc:
+        except Exception as exc:  # a Meta error or a parser error: this concept's result, not the probe's
             out["concepts"][concept] = {"error": f"{type(exc).__name__}: {exc}"}
     if not p.synthetic:
         return
@@ -239,7 +251,7 @@ async def _probe_b_calls(
         hinted = await sam.segment_video(p.meta, body, sam_frames=frames, stage="probe_b", responses=log)
         out["input_video_fps_8"] = {
             "accepted": True,
-            "frames_billed": hinted.response.get("usage", {}).get("video_frames_processed"),
+            "frames_billed": _usage(hinted.response).get("video_frames_processed"),
         }
     except MetaError as exc:
         out["input_video_fps_8"] = {"accepted": False, "error": f"{type(exc).__name__}: {exc}"}
@@ -319,7 +331,7 @@ async def _video_question(p: Probe, *, model: str, effort: str, stage: str, file
         answer = json.loads(responses.output_text(result.response))
     except (MetaError, json.JSONDecodeError) as exc:
         return {"model": model, "effort": effort, "error": f"{type(exc).__name__}: {exc}", "usd": result.usd}
-    usage = result.response.get("usage", {})
+    usage = _usage(result.response)
     truth_frame = _frame_when_red_crosses_centre()
     got = answer.get("frame_red_centre_crosses_middle")
     return {
@@ -366,9 +378,11 @@ async def _length_check(p: Probe, seconds: int) -> Summary:
             file_id = await p.files.upload(clip, f"long_{seconds}s.mp4")
         body = responses.build_body(p.settings.scene_model, _user_video(question, file_id), effort="low")
         result = await responses.create(p.meta, body, stage="probe_c", effort="low", video_seconds=float(seconds))
-    except (MetaError, OSError, subprocess.CalledProcessError) as exc:
+    except (MetaBadRequest, MetaConfigError) as exc:  # Meta refused this clip: a measured answer
         return {"accepted": False, "error": f"{type(exc).__name__}: {exc}"}
-    usage = cast(Mapping[str, Any], result.response.get("usage") or {})
+    except (MetaError, OSError, subprocess.CalledProcessError) as exc:  # budget, outage, local: not measured
+        return {"accepted": None, "error": f"{type(exc).__name__}: {exc}"}
+    usage = _usage(result.response)
     return {"accepted": True, "input_tokens": usage.get("input_tokens"), "usd": result.usd}
 
 
@@ -391,7 +405,10 @@ async def probe_f(p: Probe) -> Summary:
             p, model=model, effort=effort, stage="probe_f", file_id=file_id
         )
     if p.keyframes is not None:
-        out["role_calls"] = await _role_calls(p, p.keyframes)
+        try:
+            out["role_calls"] = await _role_calls(p, p.keyframes)
+        except (OSError, ValueError) as exc:  # a bad role_calls.json never costs the paid video answers
+            out["role_calls"] = {"error": f"{type(exc).__name__}: {exc}"}
     return out
 
 
@@ -431,7 +448,11 @@ async def _role_calls(p: Probe, keyframes: Path) -> Summary:
     for model in ("muse-spark-1.3", "muse-wonder-1.0"):
         rows: list[Summary] = []
         for call in calls:
-            data = base64.b64encode((keyframes / call.image).read_bytes()).decode()
+            try:
+                data = base64.b64encode((keyframes / call.image).read_bytes()).decode()
+            except OSError as exc:
+                rows.append({"image": call.image, "error": f"{type(exc).__name__}: {exc}"})
+                continue
             prompt = (
                 f"Decide the role of the person marked {call.label} in this frame of a creator's video: participant "
                 "(part of the story), bystander, child, or unsure. Context: " + (call.context or "none")
@@ -745,6 +766,7 @@ async def run(
     clip: Path = CLIP,
     keyframes: Path | None = None,
     cost_path: Path | None = None,
+    hero_root: Path | None = None,
 ) -> dict[str, Summary]:
     """Run the named probes in order; a failing probe is recorded and the rest still run.
 
@@ -756,7 +778,8 @@ async def run(
     results: dict[str, Summary] = {}
     for name in names:
         job_id = f"probe_{name}"
-        out = out_root / name
+        # Only the hero-clip probes (b, d) write to the git-ignored hero folder; the rest stay fixtures.
+        out = (hero_root if hero_root is not None and clip != CLIP and name in ("b", "d") else out_root) / name
         if name == "h":
             # A fresh job per run: the $0.50 baseten_job cap is per run, not accumulated across re-runs.
             run_id = f"probe_h_{time.strftime('%Y%m%dT%H%M%S', time.gmtime())}"
@@ -828,7 +851,7 @@ def main(argv: list[str]) -> int:
     settings = load_settings()
     ledger_path = ROOT / "jobs" / "probes-ledger.sqlite"
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
-    out_root = ROOT / "fixtures" / "probes" if clip == CLIP else ROOT / "jobs" / "probes-hero"
+    out_root = ROOT / "fixtures" / "probes"
     ledger = LocalLedger(ledger_path)
     results = asyncio.run(
         run(
@@ -838,6 +861,7 @@ def main(argv: list[str]) -> int:
             ledger=ledger,
             clip=clip,
             keyframes=keyframes,
+            hero_root=ROOT / "jobs" / "probes-hero",
             # One spend record for every probe run, hero runs included (cost lines hold no footage): the PR's
             # "total probe spend" is this one file.
             cost_path=ROOT / "fixtures" / "probes" / "cost.jsonl",

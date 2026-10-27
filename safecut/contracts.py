@@ -589,10 +589,10 @@ class Audit(Contract):
             # PRE-A §12: each unresolved leak counts 1 in `unresolved`, the one publish gate.
             raise ValueError(f"unresolved {self.unresolved} is less than the {open_leaks} unresolved leaks")
         for leak in self.leaks:
-            if leak.patched_item is None and leak.flag is None and not leak.unresolved:
-                raise ValueError(
-                    f"leak at frame {leak.frame} is neither patched, flagged through an item, nor unresolved"
-                )
+            # A flag says which item a model read through; only a patch (that item re-rendered solid, or an
+            # audit patch) fixes the leak, so a leak with neither a patch nor `unresolved` is refused.
+            if leak.patched_item is None and not leak.unresolved:
+                raise ValueError(f"leak at frame {leak.frame} is neither patched nor unresolved")
         if self.open_weight.status != "off":
             frames = len({entry.frame for entry in self.redteam_open})
             hits = sum(isinstance(entry, RedteamHit) for entry in self.redteam_open)
@@ -1126,6 +1126,8 @@ def _check_links(
     roles: Roles | None,
     decisions: Decisions | None,
     audit: Audit | None,
+    *,
+    tracks: Tracks | None = None,
 ) -> None:
     """Indexes and IDs one file takes from another (WP3 indexes ``scene.participants[matches_participant]``)."""
     if scene is not None and roles is not None:
@@ -1160,22 +1162,33 @@ def _check_links(
         for where, ref in refs:
             if ref is not None and ref not in items:
                 raise ContractError(f"audit.json {where}: {ref!r} is not an item in decisions.json")
-        _check_patches(audit, decisions)
+        _check_patches(audit, decisions, tracks)
 
 
-def _check_patches(audit: Audit, decisions: Decisions) -> None:
-    """A leak's ``patched_item`` hides it: not a kept item, and (for an audit patch) on the leak's frame."""
+def _item_span(item: DecisionItem, spans: Mapping[str, tuple[int, int]]) -> tuple[int, int] | None:
+    """An item's frames: an audit patch's own first..last, else its tracks' first..last (None if unknown)."""
+    if item.first is not None and item.last is not None:
+        return item.first, item.last
+    known = [spans[t] for t in item.track_ids if t in spans]
+    return (min(a for a, _ in known), max(b for _, b in known)) if known else None
+
+
+def _check_patches(audit: Audit, decisions: Decisions, tracks: Tracks | None) -> None:
+    """A leak's ``patched_item`` and ``through_item`` are hidden items whose span holds the leak's frame."""
     by_id = {item.item_id: item for item in decisions.items}
+    spans = {t.track_id: (t.first, t.last) for t in tracks.tracks} if tracks is not None else {}
     for leak in audit.leaks:
-        patch = by_id.get(leak.patched_item or "")
-        if patch is None:
-            continue
-        if patch.decision == "keep":
-            raise ContractError(f"audit.json leak at frame {leak.frame}: patched by {patch.item_id}, a kept item")
-        if patch.first is not None and patch.last is not None and not patch.first <= leak.frame <= patch.last:
-            raise ContractError(
-                f"audit.json leak at frame {leak.frame}: its patch {patch.item_id} spans {patch.first}-{patch.last}"
-            )
+        for role, item_id in (("patch", leak.patched_item), ("through_item", leak.through_item)):
+            item = by_id.get(item_id or "")
+            if item is None:
+                continue
+            if item.decision == "keep":
+                raise ContractError(f"audit.json leak at frame {leak.frame}: its {role} {item.item_id} is a kept item")
+            span = _item_span(item, spans)
+            if span is not None and not span[0] <= leak.frame <= span[1]:
+                raise ContractError(
+                    f"audit.json leak at frame {leak.frame}: its {role} {item.item_id} spans {span[0]}-{span[1]}"
+                )
 
 
 def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:
@@ -1226,6 +1239,7 @@ def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:
         roles if isinstance(roles, Roles) else None,
         decisions,
         audit,
+        tracks=tracks,
     )
     if isinstance(receipt, Receipt):
         responses = loaded.get("responses.json")

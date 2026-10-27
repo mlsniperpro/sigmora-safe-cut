@@ -8,6 +8,7 @@ Legend: `- [x]` done with evidence · `- [P]` parked on an owner input (BLOCKED.
 - [x] contracts.py: a model for every §3 file plus every PRE-A §12 row as of pre-a-research 7f7ab67 (incl. job.open_weight_attempted, receipt.cost_usd_baseten, data_handling.responses_delete_requested, responses.json), load/dump helpers, and `validate_job_dir` cross-checks (ids, frames, boxes, receipt vs decisions/audit/files/responses/cost). Evidence: tests/test_contracts.py, tests/test_audit5.py
 - [x] Round-trip tests for every contract using a coherent example job directory. Evidence: test_example_round_trips × 11 files
 - [x] CI workflow: uv sync, ruff, pyright, pytest -m "not live", web job when web/ exists. Evidence: .github/workflows/ci.yml
+- [P] WP0 "CI green on the PR": every run on PR #3 ends in about 2 s with no runner (runner_id 0, no steps), an account or Actions block rather than a workflow failure; local checks.sh is green. Owner input in BLOCKED.md (make the repo public, or raise the Actions limit)
 - [x] Draft PR opened early. Evidence: PR #3
 - [x] Meta client: client.py (httpx, retries/backoff on 429/5xx, request IDs), files.py, responses.py, asr.py, cost.py, sam.py, status.py; refuses -contributor (config + build_body). Evidence: tests/test_meta_client.py, tests/test_meta_endpoints.py
 - [x] Typed errors, retry policy, circuit breaker and cost reservation per PRE-A §10.2–10.5, tested against vectors C1–C8, R1–R3, R5–R9, R11–R14. Evidence: tests/test_meta_client.py
@@ -23,7 +24,7 @@ Legend: `- [x]` done with evidence · `- [P]` parked on an owner input (BLOCKED.
 - [x] Theme fit: "Build for Your World" (creator privacy on footage the creator films). Not on the anti-project list: Safe Cut is a multi-model video pipeline with a closed SAM ↔ Muse loop and an audit, not a simple image analyzer. Evidence: docs/OFFICIAL-GUIDE.md, MAXXING §0
 - [x] Deadline reconciled: Wed Nov 4 9:00 PM ET = 2026-11-05 02:00 UTC (ET is UTC-5 after Nov 1); the internal deadline stays 2026-11-04T18:00Z
 - [x] Rubric weights match MAXXING §1: Impact 30, Meta tooling 25, Technical depth 20, Demo 25
-- [x] New work only: every WP0 file is created on branch wp0-foundation after 2026-10-26 16:00 UTC (first commit 895500e at 16:1x UTC); the README's "built during the event" boundary is WP8's
+- [x] New work only: every WP0 file is created on branch wp0-foundation after 2026-10-26 16:00 UTC (first commit 895500e at 16:20:07 UTC); the README's "built during the event" boundary is WP8's
 - [P] Stage 1 pass/fail needs real Meta Model API use: the client is built and tested, live calls wait on MODEL_API_KEY (BLOCKED.md)
 - [P] Public repo at submission (BLOCKED.md; owner approves)
 - [x] Open-weight bonus path per PRE-A §3.8: safecut/open_weight.py (streamed Baseten chat, provider: "baseten", its own baseten_job cap, refused without a price, consent and code-kind gating), and probe h (4 synthetic frames, the AMINA K. grid check, medium vs omit). Evidence: tests/test_open_weight.py, tests/test_probes_replay.py; the live run waits on BASETEN_API_KEY (BLOCKED.md)
@@ -38,6 +39,7 @@ Legend: `- [x]` done with evidence · `- [P]` parked on an owner input (BLOCKED.
 - [x] PRE-A §12 contract rows (job.consented, job.open_weight_attempted, audit.open_weight, audit.redteam_open, cost.jsonl provider, cap baseten_job, receipt.cost_usd_baseten, responses.json + data_handling.responses_delete_requested, the SAFECUT_OPEN_WEIGHT_* and SAFECUT_SAM_DELETE_RESPONSES env vars with the SAM response delete step). Evidence: safecut/contracts.py, safecut/config.py, safecut/meta/sam.py, tests/test_open_weight.py, tests/test_audit5.py
 
 - [x] Audit #5 findings (4 medium, 10 low) fixed with tests or recorded decisions. Evidence: reaudit.md, tests/test_audit5.py
+- [x] Audits #16 and #17 findings (2 medium, 7 low): a leak needs a patch, and patches and through_items must be hidden items covering its frame; proxy refusals never billed; probes keep paid results when one part fails; the length check reports "not measured"; hero runs move only b and d. Evidence: reaudit.md, tests/test_audit16.py
 - [x] Audit #15 findings (2 low): every uncertain upload leaves an orphan that delete_all re-lists, and the live status test keeps the operator proxy. Evidence: reaudit.md, tests/test_audit15.py
 - [x] Audit #14 findings (2 medium, 3 low): a through_item needs a flag, probe c's length check isolated, failed multipart factories not charged. Evidence: reaudit.md, tests/test_audit14.py
 - [x] Audit #13 findings (5 medium, 3 low): ledger work survives repeated cancellation, attempts reserve only once they hold a slot, open SAM streams are never deleted, free calls skip the ledger, probe c measures max length, one probe cost file. Evidence: reaudit.md, tests/test_audit13.py
