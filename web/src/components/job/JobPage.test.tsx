@@ -311,6 +311,33 @@ describe("review panel", () => {
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
 
+  it("a refresh for fresh URLs doesn't restart the playing video; a later video error switches to the fresher URL without another fetch", async () => {
+    setup("job-review-hero1");
+    let signed = 0;
+    const original = backend.request.bind(backend);
+    vi.spyOn(backend, "request").mockImplementation(async (init) => {
+      const raw = await original(init);
+      if (init.method !== "GET" || init.path !== "/v1/jobs/job-review-hero1" || raw.status !== 200) return raw;
+      signed += 1;
+      const job = raw.body as { job: { prepared_url: string } };
+      return { ...raw, body: { ...job, job: { ...job.job, prepared_url: `https://media.example/prepared.mp4?sig=${signed}` } } };
+    });
+    await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
+    const gets = () => backend.log.filter((l) => l.method === "GET" && l.path === "/v1/jobs/job-review-hero1").length;
+    const player = () => screen.getByLabelText("Your clip, with the Safe Cut preview drawn over it");
+    const playing = player().getAttribute("src");
+    // A failing thumbnail asks for fresh URLs; the answer re-signs the video too.
+    const before = gets();
+    act(() => document.querySelector<HTMLImageElement>("article img")?.dispatchEvent(new Event("error")));
+    await waitFor(() => expect(gets()).toBe(before + 1));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(player().getAttribute("src")).toBe(playing);
+    fireEvent.error(player());
+    await waitFor(() => expect(player().getAttribute("src")).toMatch(/sig=\d+$/));
+    expect(player().getAttribute("src")).not.toBe(playing);
+    expect(gets()).toBe(before + 1);
+  });
+
   it("shows the demo-mode banner for a replayed job", async () => {
     setup("job-replay");
     expect(await screen.findByText(/You're seeing saved results from a real run/)).toBeInTheDocument();

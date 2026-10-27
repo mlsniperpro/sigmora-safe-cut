@@ -30,6 +30,8 @@ describe("MockBackend storage", () => {
     const job = before.body as { status: string; deletes_at: string; items: Array<{ item_id: string }> };
     expect(job.status).toBe("review");
     expect(job.deletes_at).toBe("2026-11-07T10:00:00.000Z");
+    // The typed code ("any") isn't a scripted one, so it never reaches storage.
+    expect(storage.data.get("safecut.mock-jobs")).not.toContain('"any"');
     const item = job.items[0]?.item_id ?? "";
     await first.request({ method: "POST", path: `/v1/jobs/${id}/review`, body: { edit_id: "e1", type: "hide", item_id: item } });
 

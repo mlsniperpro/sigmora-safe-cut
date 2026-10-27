@@ -41,6 +41,13 @@ export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function Vi
   const [failed, setFailed] = useState(false);
   /** The src we already asked to refresh, so an expired URL gets exactly one retry. */
   const [refreshedFor, setRefreshedFor] = useState<string | null>(null);
+  /**
+   * The src the player is using. A fresher URL in props (a background refresh) doesn't replace it,
+   * because that would reload the video from 0:00; it's taken only when the player has none yet or
+   * after an error.
+   */
+  const [playing, setPlaying] = useState(src);
+  if (src && (!playing || (refreshedFor !== null && src !== refreshedFor && src !== playing))) setPlaying(src);
   const latest = useRef({ props, mode });
   useLayoutEffect(() => {
     latest.current = { props, mode };
@@ -105,7 +112,7 @@ export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function Vi
       stopped = true;
       cancelAnimationFrame(handle);
     };
-  }, [draw, src]);
+  }, [draw, playing]);
 
   // Redraw when edits, selection or the toggle change while paused.
   useEffect(() => {
@@ -146,15 +153,19 @@ export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function Vi
           <video
             ref={video}
             className="absolute inset-0 h-full w-full"
-            src={src}
+            src={playing}
             controls
             playsInline
             preload="auto"
             // A source that loads re-arms the one refresh, for when its signed URL expires later.
             onLoadedMetadata={() => setRefreshedFor(null)}
             onError={() => {
-              if (onMediaError && src && refreshedFor === null) {
-                setRefreshedFor(src);
+              // A background refresh already brought a fresher URL: switch to it first.
+              if (src && playing && src !== playing && refreshedFor === null) {
+                setRefreshedFor(playing);
+                setPlaying(src);
+              } else if (onMediaError && playing && refreshedFor === null) {
+                setRefreshedFor(playing);
                 onMediaError();
               } else {
                 setFailed(true);

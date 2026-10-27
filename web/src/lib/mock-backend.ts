@@ -137,7 +137,9 @@ export class MockBackend implements Transport {
     if (!this.storage) return;
     const stored: Record<string, StoredJob> = {};
     for (const [id, j] of this.jobs) {
-      if (isCreated(id)) stored[id] = { data: j.data, code: j.code, timeline: j.timeline, edits: [...j.edits], deleted: j.deleted };
+      // Only a scripted code is kept: a real code typed into the preview never lands in storage.
+      const code = j.code !== null && j.code in MOCK_CODES ? j.code : null;
+      if (isCreated(id)) stored[id] = { data: j.data, code, timeline: j.timeline, edits: [...j.edits], deleted: j.deleted };
     }
     try {
       this.storage.setItem(STORAGE_KEY, JSON.stringify(stored));

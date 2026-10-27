@@ -16,13 +16,32 @@ const gets = (id: string) => backend.log.filter((l) => l.method === "GET" && l.p
 
 /** Requests still in flight: the mock backend loads fixtures lazily, outside the fake clock. */
 const inflight = new Set<Promise<RawResponse>>();
+/** When on, each job GET signs its media URLs afresh (`sig=<n>`), as the live API does. */
+let signing = false;
+let signed = 0;
+const sign = (url: string) => `${url.split("?")[0]}?sig=${signed}`;
+function signJob(raw: RawResponse): RawResponse {
+  if (raw.status !== 200) return raw;
+  signed += 1;
+  const job = raw.body as JobResponse;
+  return {
+    ...raw,
+    body: {
+      ...job,
+      keyframe_urls: Object.fromEntries(Object.entries(job.keyframe_urls ?? {}).map(([k, v]) => [k, sign(v)])),
+      ...(job.job && { job: { ...job.job, prepared_url: sign(job.job.prepared_url ?? "https://media.example/prepared.mp4") } }),
+    },
+  };
+}
 beforeEach(() => {
+  signing = false;
+  signed = 0;
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
   backend = new MockBackend({ latencyMs: 0, stepMs: 60_000 });
   const transport: Transport = {
     upload: (...args) => backend.upload(...args),
     request: (init: Parameters<MockBackend["request"]>[0]) => {
-      const p = backend.request(init);
+      const p = backend.request(init).then((raw) => (signing && init.method === "GET" && /^\/v1\/jobs\/[^/]+$/.test(init.path) ? signJob(raw) : raw));
       inflight.add(p);
       void p.finally(() => inflight.delete(p)).catch(() => undefined);
       return p;
@@ -130,3 +149,40 @@ describe("withFreshUrls", () => {
     expect(merged.items).toEqual(["mine"]);
   });
 });
+
+describe("signed URLs on screen (UI-SPEC §10.7)", () => {
+  const ready = (load: ReturnType<typeof useJob>["load"]) => (load.kind === "ready" ? load.job : null);
+
+  it("polls keep the URLs on screen, so the video and thumbnails don't reload; refreshUrls takes fresh ones", async () => {
+    signing = true;
+    const { result } = renderHook(() => useJob("job-processing-track"));
+    await settle();
+    expect(ready(result.current.load)?.job?.prepared_url).toMatch(/sig=1$/);
+    await poll();
+    await poll();
+    expect(gets("job-processing-track")).toBe(3);
+    expect(ready(result.current.load)?.job?.prepared_url).toMatch(/sig=1$/);
+    for (const url of Object.values(ready(result.current.load)?.keyframe_urls ?? {})) expect(url).toMatch(/sig=1$/);
+    act(() => result.current.refreshUrls());
+    await settle();
+    expect(ready(result.current.load)?.job?.prepared_url).toMatch(/sig=4$/);
+  });
+
+  it("the quiet refresh brings fresh URLs, and survives the tab being hidden and shown again", async () => {
+    signing = true;
+    const visibility = vi.spyOn(document, "visibilityState", "get");
+    const { result } = renderHook(() => useJob("job-review-hero1"));
+    await settle();
+    visibility.mockReturnValue("hidden");
+    act(() => void document.dispatchEvent(new Event("visibilitychange")));
+    await act(() => vi.advanceTimersByTimeAsync(30_000));
+    visibility.mockReturnValue("visible");
+    act(() => void document.dispatchEvent(new Event("visibilitychange")));
+    await act(() => vi.advanceTimersByTimeAsync(URL_REFRESH_MS - 30_000));
+    await settle();
+    expect(gets("job-review-hero1")).toBe(2);
+    expect(ready(result.current.load)?.job?.prepared_url).toMatch(/sig=2$/);
+    visibility.mockRestore();
+  });
+});
+

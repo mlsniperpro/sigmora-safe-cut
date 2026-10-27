@@ -1,6 +1,6 @@
 # Safe Cut web app (WP6)
 
-The screens judges and creators see: the landing page with the hero result, `/try` (access code → upload → progress), the review panel at `/jobs/[id]` with the "Why?" drawer, and the result and privacy receipt at `/jobs/[id]/result`. Built from `docs/work-packages/WP6.md` and PRE-B's `docs/UI-SPEC.md`.
+The screens judges and creators see: the landing page with the hero result, `/try` (access code → upload → progress), the review panel at `/jobs/[id]` with the "Why?" drawer, and the result and privacy receipt at `/jobs/[id]/result`. Built from `docs/work-packages/WP6.md` and PRE-B's `docs/UI-SPEC.md`, which lands on `main` with PRE-B's PR; until then read it with `git show origin/pre-b-product:docs/UI-SPEC.md`. Code comments cite its sections as §n.
 
 Next.js 16 (App Router; Cache Components is deliberately off, see `next.config.ts`), React 19, TypeScript strict, Tailwind 4, zod 4. Tests: vitest + Testing Library + fast-check, and a Playwright end-to-end run with axe.
 

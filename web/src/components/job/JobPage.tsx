@@ -49,7 +49,7 @@ export function JobPage() {
   const params = useSearchParams();
   const router = useRouter();
   const viewReview = params.get("view") === "review";
-  const { load, resume, patch, markDeleted } = useJob(id);
+  const { load, resume, refreshUrls, patch, markDeleted } = useJob(id);
   const job = load.kind === "ready" ? load.job : null;
   useReportMode(job?.mode);
 
@@ -90,8 +90,8 @@ export function JobPage() {
       return <FailedJob jobId={id} job={j} onResume={resume} onDeleted={markDeleted} />;
     case "done":
       if (toResult) return <JobSkeleton />;
-      return <ReviewPanel jobId={id} job={j} viewReview onPatchJob={patch} onResume={resume} onDeleted={markDeleted} onRenderStarted={() => setRenderedHere(true)} query={keptQuery(params)} />;
+      return <ReviewPanel jobId={id} job={j} viewReview onPatchJob={patch} onResume={resume} onRefreshMedia={refreshUrls} onDeleted={markDeleted} onRenderStarted={() => setRenderedHere(true)} query={keptQuery(params)} />;
     default:
-      return <ReviewPanel jobId={id} job={j} viewReview={viewReview} onPatchJob={patch} onResume={resume} onDeleted={markDeleted} onRenderStarted={() => setRenderedHere(true)} query={keptQuery(params)} />;
+      return <ReviewPanel jobId={id} job={j} viewReview={viewReview} onPatchJob={patch} onResume={resume} onRefreshMedia={refreshUrls} onDeleted={markDeleted} onRenderStarted={() => setRenderedHere(true)} query={keptQuery(params)} />;
   }
 }

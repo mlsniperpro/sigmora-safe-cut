@@ -19,7 +19,10 @@
 - The full table is in reaudit.md, with each finding mapped in WIN-CHECKLIST.md.
 - On the round-4 commit: lint 0, typecheck, 779 vitest tests (23 files), build, e2e 71/71, `checks.sh` exit 0. Screenshots refreshed from that e2e run.
 - FUZZ_RUNS=100000 passed on 153fac4 (300,000 sequences, 412 s). Round 4 didn't touch the reducer, only the mock's storage and `deletes_at`.
-- CLEAN_AUDITS_IN_A_ROW is 0. Two clean full audits are still needed, then a fresh break-it.md.
+- Audit round 5 (on f56577e): 1 medium and 9 low. All fixed in the round-5 commit except #10, which stays as the spec's copy and is a request to Sigmora.
+  - The medium: the review video reloaded on every URL re-sign. Polls now keep the on-screen URLs and the player latches its source.
+- On the round-5 commit: 788 tests (25 files), e2e 71/71, `checks.sh` exit 0.
+- CLEAN_AUDITS_IN_A_ROW is 0. Two clean full audits are still needed, then a fresh break-it.md (fresh clone + FUZZ_RUNS=100000).
 
 ## Next steps, in order
 1. Run full audit round 4 on HEAD. If it finds anything, fix it and reset CLEAN_AUDITS_IN_A_ROW to 0. Repeat until two consecutive audits find nothing. Then set AUDITED_COMMIT to the last code commit and CLEAN_AUDITS_IN_A_ROW to 2.

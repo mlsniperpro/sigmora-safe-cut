@@ -56,6 +56,8 @@ export interface ReviewPanelProps {
   viewReview: boolean;
   onPatchJob: (update: (job: JobResponse) => JobResponse) => void;
   onResume: () => void;
+  /** Refetch the job for fresh signed media URLs (§10.7). */
+  onRefreshMedia: () => void;
   onDeleted: () => void;
   /** Called when this page starts a render or audit, so the page can move on to the result when it's done. */
   onRenderStarted: () => void;
@@ -63,7 +65,7 @@ export interface ReviewPanelProps {
   query: string;
 }
 
-export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDeleted, onRenderStarted, query }: ReviewPanelProps) {
+export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRefreshMedia, onDeleted, onRenderStarted, query }: ReviewPanelProps) {
   const context = useMemo(() => ({ tracks: job.tracks, roles: job.roles }), [job.tracks, job.roles]);
   const [state, setState] = useState<ReviewState>(() => initialState(serverStateOf(job), context));
   const [synced, setSynced] = useState(job);
@@ -193,8 +195,8 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
     const now = Date.now();
     if (now - keyframesRefreshedAt.current < KEYFRAME_REFRESH_GAP_MS) return;
     keyframesRefreshedAt.current = now;
-    onResume();
-  }, [onResume]);
+    onRefreshMedia();
+  }, [onRefreshMedia]);
   const handlers: ChipHandlers = {
     onSelect: select,
     onWhy: (chip) => openWhy(chip, false),
@@ -504,7 +506,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onDe
           ref={video}
           src={job.job?.prepared_url}
           captionsUrl={captionsUrl}
-          onMediaError={onResume}
+          onMediaError={onRefreshMedia}
           fps={fps}
           frames={job.job?.frames ?? 1}
           width={job.job?.width ?? 1280}

@@ -87,3 +87,16 @@ Round 4 (fixes in the round-4 commit; details in `reaudit.md`):
 - [x] R4-17 (low) screenshots refreshed; root README change requested from its owner WP in the PR
 - [x] R4-18 (low) mock mode says the picked clip isn't analysed: TryFlow test
 
+Round 5 (fixes in the round-5 commit; details in `reaudit.md`):
+
+- [x] R5-1 (med) polls keep on-screen signed URLs; the player latches its source: useJob + JobPage tests
+- [x] R5-2 (low) quiet URL refresh survives a hidden tab: useJob test
+- [x] R5-3 (low) captions load under StrictMode: `useCaptions.test.ts`
+- [x] R5-4 (low) no start after a confirmed delete: TryFlow slow-DELETE test
+- [x] R5-5 (low) a past refusal time re-enables Start; no 0 s poll loop: TryFlow test
+- [x] R5-6 (low) mock storage keeps only scripted codes: `mock-backend.test.ts`
+- [x] R5-7 (low) sample receipt copy follows the data-handling copy notes
+- [x] R5-8 (low) h1 on error, 404 and Deleted: `pages.test.tsx`, TryFlow test
+- [x] R5-9 (low) README says where UI-SPEC lives until PRE-B merges
+- [-] R5-10 (low) "Sent to Sigmora" without a delivery receipt: spec copy; a confirmation needs Sigmora's reply (PR "Requests for other WPs")
+

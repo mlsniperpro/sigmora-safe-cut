@@ -26,11 +26,14 @@ export function classifyLoadError(error: unknown): Exclude<JobLoad["kind"], "loa
   return "unexpected";
 }
 
-/** A job with another response's signed media URLs, and nothing else from it. */
+/**
+ * A job with another response's signed media URLs, and nothing else from it. Keyframes missing
+ * from `fresh` keep the URLs `job` has.
+ */
 export function withFreshUrls(job: JobResponse, fresh: JobResponse): JobResponse {
   return {
     ...job,
-    keyframe_urls: fresh.keyframe_urls,
+    keyframe_urls: { ...job.keyframe_urls, ...fresh.keyframe_urls },
     ...(job.job && fresh.job?.prepared_url !== undefined && { job: { ...job.job, prepared_url: fresh.job.prepared_url } }),
     ...(job.result && fresh.result && { result: { ...job.result, video_url: fresh.result.video_url } }),
   };
@@ -56,6 +59,12 @@ export function useJob(jobId: string, { pollCreated = false }: { pollCreated?: b
   /** When the last GET answered, and whether the next one is a quiet signed-URL refresh. */
   const lastFetch = useRef(0);
   const quiet = useRef(false);
+  /**
+   * Whether the next GET's signed URLs replace the ones on screen. Otherwise a poll keeps them,
+   * so a re-signed URL doesn't reload the video, its captions, thumbnails or the drawer's keyframe
+   * every few seconds (§10.7: fresh URLs are fetched when one expires or is about to).
+   */
+  const fresh = useRef(false);
 
   useEffect(() => {
     if (deleted.current) return;
@@ -64,6 +73,8 @@ export function useJob(jobId: string, { pollCreated = false }: { pollCreated?: b
     const startedAt = patches.current;
     const quietGet = quiet.current;
     quiet.current = false;
+    const freshGet = fresh.current;
+    fresh.current = false;
     const schedule = (ms: number) => {
       timer.current = setTimeout(() => setTick((t) => t + 1), ms);
     };
@@ -72,6 +83,7 @@ export function useJob(jobId: string, { pollCreated = false }: { pollCreated?: b
     const scheduleRefresh = () => {
       timer.current = setTimeout(() => {
         quiet.current = true;
+        fresh.current = true;
         setTick((t) => t + 1);
       }, URL_REFRESH_MS);
     };
@@ -86,9 +98,12 @@ export function useJob(jobId: string, { pollCreated = false }: { pollCreated?: b
         lastFetch.current = Date.now();
         polling.current = delay !== null;
         // A review ack or action ack landed while this GET was in flight: it's newer, keep it.
-        if (patches.current === startedAt) setLoad({ kind: "ready", job });
-        // Its signed URLs are still the freshest, though: keep those (a keyframe refresh, §10.7).
-        else setLoad((prev) => (prev.kind === "ready" ? { kind: "ready", job: withFreshUrls(prev.job, job) } : prev));
+        if (patches.current === startedAt) {
+          setLoad((prev) => ({ kind: "ready", job: prev.kind === "ready" && !freshGet ? withFreshUrls(job, prev.job) : job }));
+        } else if (freshGet) {
+          // Its signed URLs are still the freshest, though: keep those (§10.7).
+          setLoad((prev) => (prev.kind === "ready" ? { kind: "ready", job: withFreshUrls(prev.job, job) } : prev));
+        }
         if (document.visibilityState === "visible") {
           if (delay !== null) schedule(delay);
           else scheduleRefresh();
@@ -102,8 +117,9 @@ export function useJob(jobId: string, { pollCreated = false }: { pollCreated?: b
           return;
         }
         if (error instanceof ApiError && error.status === 429) {
-          // Rate limited while polling: silent; wait, then carry on (§10.3).
-          schedule((error.retryAfterS ?? RATE_LIMIT_DEFAULT_MS / 1000) * 1000);
+          // Rate limited while polling: silent; wait, then carry on (§10.3). A `Retry-After: 0`
+          // still waits one fast poll, so it can't turn into a tight loop.
+          schedule(Math.max(FAST_MS, (error.retryAfterS ?? RATE_LIMIT_DEFAULT_MS / 1000) * 1000));
           return;
         }
         if (shown.current && !serverRetried.current && error instanceof ApiError && (error.status ?? 0) >= 500) {
@@ -126,9 +142,14 @@ export function useJob(jobId: string, { pollCreated = false }: { pollCreated?: b
         if (timer.current) clearTimeout(timer.current);
       } else if (polling.current) {
         setTick((t) => t + 1);
-      } else if (shown.current && Date.now() - lastFetch.current >= URL_REFRESH_MS) {
-        quiet.current = true;
-        setTick((t) => t + 1);
+      } else if (shown.current) {
+        // Hiding cleared the URL-refresh timer: re-arm it for whatever is left of the interval.
+        const left = URL_REFRESH_MS - (Date.now() - lastFetch.current);
+        timer.current = setTimeout(() => {
+          quiet.current = true;
+          fresh.current = true;
+          setTick((t) => t + 1);
+        }, Math.max(0, left));
       }
     };
     document.addEventListener("visibilitychange", onVisibility);
@@ -139,6 +160,12 @@ export function useJob(jobId: string, { pollCreated = false }: { pollCreated?: b
   const resume = useCallback(() => {
     viewStart.current = Date.now();
     polling.current = true;
+    setTick((t) => t + 1);
+  }, []);
+
+  /** Refetch for fresh signed URLs: one failed to load (§10.7). */
+  const refreshUrls = useCallback(() => {
+    fresh.current = true;
     setTick((t) => t + 1);
   }, []);
 
@@ -155,5 +182,5 @@ export function useJob(jobId: string, { pollCreated = false }: { pollCreated?: b
     setLoad({ kind: "deleted" });
   }, []);
 
-  return { load, resume, patch, markDeleted };
+  return { load, resume, refreshUrls, patch, markDeleted };
 }

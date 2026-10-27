@@ -10,9 +10,9 @@ export default function ErrorPage({ error, retry }: { error: unknown; retry: () 
   }, [error]);
   return (
     <section className="mx-auto max-w-2xl px-4 py-16">
-      <p role="alert" className="text-xl font-medium">
-        Something went wrong on our side. Nothing has been published.
-      </p>
+      <div role="alert">
+        <h1 className="text-xl font-medium">Something went wrong on our side. Nothing has been published.</h1>
+      </div>
       <div className="mt-6 flex flex-wrap gap-3">
         <button type="button" onClick={() => retry()} className="inline-flex min-h-11 items-center rounded-lg border border-border bg-surface px-3 font-medium">
           Try again

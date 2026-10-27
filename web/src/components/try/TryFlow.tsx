@@ -101,9 +101,8 @@ export function TryFlow() {
   // Re-enable a time-limited Start when its time comes.
   useEffect(() => {
     if (!refusal?.until) return;
-    const wait = refusal.until - Date.now();
-    if (wait <= 0) return;
-    const t = setTimeout(() => setNow(Date.now()), wait);
+    // A time already past (a stale `retry_at`, `Retry-After: 0`) re-enables it at once.
+    const t = setTimeout(() => setNow(Date.now()), Math.max(0, refusal.until - Date.now()));
     return () => clearTimeout(t);
   }, [refusal]);
 
@@ -307,9 +306,11 @@ export function TryFlow() {
   if (step === "deleted") {
     return (
       <section ref={section} className="mx-auto max-w-2xl px-4 py-16">
-        <p role="status" data-step-heading tabIndex={-1} className="text-xl font-medium">
-          {COPY.deleted}
-        </p>
+        <div role="status">
+          <h1 data-step-heading tabIndex={-1} className="text-xl font-medium">
+            {COPY.deleted}
+          </h1>
+        </div>
         <button type="button" className={`${btn.secondary} mt-6`} onClick={startOver}>
           Try another clip
         </button>
@@ -514,11 +515,13 @@ export function TryFlow() {
         />
       )}
 
-      {step === "progress" && jobId && <Progress jobId={jobId} started={started} fileName={file?.name ?? ""} duration={duration} uploadPercent={uploadPercent} onDeleted={() => {
+      {step === "progress" && jobId && <Progress jobId={jobId} started={started} fileName={file?.name ?? ""} duration={duration} uploadPercent={uploadPercent} onDeleting={() => {
+            // From the confirm on, nothing more is sent for this clip: no upload, no start (§2.5).
             deletedByUser.current = true;
             uploadAbort.current?.abort();
-            setStep("deleted");
-          }} onNavigate={(href) => router.push(href)} />}
+          }} onDeleted={() => setStep("deleted")} onNavigate={(href) => {
+            if (!deletedByUser.current) router.push(href);
+          }} />}
     </section>
   );
 }
@@ -570,6 +573,7 @@ function Progress({
   fileName,
   duration,
   uploadPercent,
+  onDeleting,
   onDeleted,
   onNavigate,
 }: {
@@ -578,6 +582,7 @@ function Progress({
   fileName: string;
   duration: number | null;
   uploadPercent: number | null;
+  onDeleting: () => void;
   onDeleted: () => void;
   onNavigate: (href: string) => void;
 }) {
@@ -604,6 +609,7 @@ function Progress({
         jobId={jobId}
         etaS={uploading ? null : (job?.eta_s ?? null)}
         busy={job?.status === "retry_later"}
+        onDeleting={onDeleting}
         onDeleted={onDeleted}
       />
     </>

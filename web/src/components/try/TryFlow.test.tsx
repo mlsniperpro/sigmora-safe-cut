@@ -264,11 +264,45 @@ describe("/try", () => {
     await screen.findByRole("listitem", { current: "step" });
     await user.click(screen.getByRole("button", { name: "Cancel and delete" }));
     await user.click(within(await screen.findByRole("dialog", { name: "Delete this clip?" })).getByRole("button", { name: "Delete" }));
-    expect(await screen.findByText("Deleted from Safe Cut's servers.")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Deleted from Safe Cut's servers." })).toBeInTheDocument();
     await new Promise((r) => setTimeout(r, 600));
     expect(screen.getByText("Deleted from Safe Cut's servers.")).toBeInTheDocument();
     expect(screen.queryByText(/The upload stopped/)).toBeNull();
     expect(backend.log.filter((l) => l.path === "/v1/jobs")).toHaveLength(1);
+    expect(backend.log.some((l) => l.path.endsWith("/start"))).toBe(false);
+  });
+
+  it("a daily-cap refusal whose retry_at has already passed leaves Start enabled", async () => {
+    const user = setup();
+    const original = backend.request.bind(backend);
+    vi.spyOn(backend, "request").mockImplementation(async (init) => {
+      if (init.method === "POST" && init.path.endsWith("/start")) {
+        return { status: 429, headers: { get: () => null }, body: { error: { code: "daily_cap", message: "cap", retry_at: "2020-01-01T00:00:00Z" } } };
+      }
+      return original(init);
+    });
+    await pickAndStart(user);
+    expect(await screen.findByText(COPY.dailyCapTry)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Start" })).toBeEnabled());
+  });
+
+  it("once the delete is confirmed, a slow DELETE doesn't let the finished upload send POST /start", async () => {
+    const user = setup(30);
+    const original = backend.request.bind(backend);
+    vi.spyOn(backend, "request").mockImplementation(async (init) => {
+      if (init.method === "DELETE") await new Promise((r) => setTimeout(r, 600));
+      return original(init);
+    });
+    await enterCode(user, "judge");
+    await screen.findByRole("button", { name: "Choose a file" });
+    await user.upload(fileInput(), clip());
+    await screen.findByText(/street\.mp4/);
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(screen.getByRole("button", { name: "Start" }));
+    await screen.findByRole("listitem", { current: "step" });
+    await user.click(screen.getByRole("button", { name: "Cancel and delete" }));
+    await user.click(within(await screen.findByRole("dialog", { name: "Delete this clip?" })).getByRole("button", { name: "Delete" }));
+    expect(await screen.findByText("Deleted from Safe Cut's servers.")).toBeInTheDocument();
     expect(backend.log.some((l) => l.path.endsWith("/start"))).toBe(false);
   });
 

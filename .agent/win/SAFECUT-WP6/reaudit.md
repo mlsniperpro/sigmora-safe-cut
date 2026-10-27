@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 153fac4
+AUDITED_COMMIT: f56577e
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -105,3 +105,20 @@ Fresh-clone README run also found: `pnpm typecheck` failed before any build (Nex
 | 16 | low | CSP blocked a plain-http local API in dev | fixed for `connect-src` only (dev builds); the README never claimed localhost, and media URLs must be https by schema anyway |
 | 17 | low | Root README says "design docs only"; screenshots predate round 3 copy | screenshots refreshed from this commit's e2e run; the root README is outside WP6's paths: listed under "Requests for other WPs" in the PR |
 | 18 | low | Mock mode ignores the picked clip without saying so | fixed: the data bullet says the clip isn't analysed and a built-in sample scene is reviewed; test |
+
+## Round 5 (audited f56577e by a Sonnet reviewer; axe on 13 routes in light and dark at 320/390/desktop: 0 violations; each finding traced here; fixes in the next commit)
+
+0 critical, 0 high, 1 medium, 9 low.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | med | The review video reloaded from 0:00 whenever a refetch re-signed `prepared_url` (every poll while rendering, any URL refresh); captions, thumbnails and the drawer keyframe churned too | fixed: polls keep the signed URLs on screen; only `refreshUrls` (a media or thumbnail error) and the 10-min quiet refresh take fresh ones. The player latches its source and switches only on an error, using a fresher URL already in hand before asking for one. useJob tests (signed per response), JobPage latch test |
+| 2 | low | After a tab hide/show, the 10-min quiet refresh never ran again | fixed: showing the tab re-arms it for what's left of the interval; test |
+| 3 | low | Captions never loaded under `pnpm dev` (StrictMode revoked the blob URL) | fixed: one blob URL per captions text, kept for the page's life; test |
+| 4 | low | `POST /start` could still go out after Delete was confirmed during the upload (slow DELETE) | fixed: the confirm itself stops the upload and any start or navigation; deterministic test with a slow DELETE |
+| 5 | low | A refusal whose `until` had already passed kept Start disabled for good; `Retry-After: 0` while polling could loop | fixed: a past time re-enables at once; polling waits at least one fast poll; test |
+| 6 | low | Mock mode stored the typed access code in localStorage | fixed: only scripted mock codes are stored; test |
+| 7 | low | Sample receipt said "Standard mode, store: false" and invented model versions | fixed in `receipt.html` and its generator: "requested with Standard model IDs only (never a Contributor model ID)", no versions |
+| 8 | low | No h1 on the error, 404 and /try "Deleted" pages | fixed; tests |
+| 9 | low | README cites `docs/UI-SPEC.md`, which isn't on this branch yet | fixed: README says where to read it until PRE-B merges |
+| 10 | low | "Sent to Sigmora" shows without a delivery confirmation | kept: it's the spec's copy (§5.2), and `postMessage` has no receipt. A confirmation needs Sigmora to reply; listed under "Requests for other WPs" in the PR |
