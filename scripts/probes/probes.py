@@ -17,6 +17,7 @@ import json
 import math
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -334,9 +335,39 @@ async def _video_question(p: Probe, *, model: str, effort: str, stage: str, file
     }
 
 
+#: Clip lengths probe c tries (WP0 "max length"): the 60 s product limit, and 3× it to see where Meta stops.
+LENGTH_PROBE_S = (60, 180)
+
+
 async def probe_c(p: Probe) -> Summary:
     file_id = await p.files.upload(CLIP, "prepared.mp4")
-    return await _video_question(p, model=p.settings.scene_model, effort="medium", stage="probe_c", file_id=file_id)
+    out = await _video_question(p, model=p.settings.scene_model, effort="medium", stage="probe_c", file_id=file_id)
+    out["max_length"] = {f"{s}s": await _length_check(p, s) for s in LENGTH_PROBE_S}
+    return out
+
+
+def make_long_clip(path: Path, seconds: int) -> None:
+    """A small synthetic test pattern of ``seconds`` (320x180, 8 fps, silent): what matters is its length."""
+    argv = [imageio_ffmpeg.get_ffmpeg_exe(), "-v", "error", "-y", "-f", "lavfi", "-i",
+            f"testsrc=size=320x180:rate=8:duration={seconds}", "-c:v", "libx264", "-threads", "1",
+            "-pix_fmt", "yuv420p", str(path)]  # fmt: skip
+    subprocess.run(argv, check=True, capture_output=True)  # noqa: S603 -- fixed argv, bundled ffmpeg
+
+
+async def _length_check(p: Probe, seconds: int) -> Summary:
+    """Does the scene model take a ``seconds``-long video, and how many input tokens does it bill?"""
+    with tempfile.TemporaryDirectory() as tmp:
+        clip = Path(tmp) / f"long_{seconds}s.mp4"
+        await asyncio.to_thread(make_long_clip, clip, seconds)
+        file_id = await p.files.upload(clip, f"long_{seconds}s.mp4")
+    question = "How many seconds long is this video, roughly? Answer with one number."
+    body = responses.build_body(p.settings.scene_model, _user_video(question, file_id), effort="low")
+    try:
+        result = await responses.create(p.meta, body, stage="probe_c", effort="low", video_seconds=float(seconds))
+    except MetaError as exc:
+        return {"accepted": False, "error": f"{type(exc).__name__}: {exc}"}
+    usage = result.response.get("usage", {})
+    return {"accepted": True, "input_tokens": usage.get("input_tokens"), "usd": result.usd}
 
 
 async def probe_e(p: Probe) -> Summary:
@@ -711,6 +742,7 @@ async def run(
     http: httpx.AsyncClient | None = None,
     clip: Path = CLIP,
     keyframes: Path | None = None,
+    cost_path: Path | None = None,
 ) -> dict[str, Summary]:
     """Run the named probes in order; a failing probe is recorded and the rest still run.
 
@@ -718,7 +750,7 @@ async def run(
     the frame-number probes (c, e, f) always use the synthetic clip, whose burned-in counter is the truth.
     """
     caller = Caller(code_kind="owner", code_id=None, limits=(CapLimit("code", "wp0-probes", PROBE_BUDGET_USD),))
-    cost_path = out_root / "cost.jsonl"
+    cost_path = cost_path or out_root / "cost.jsonl"
     results: dict[str, Summary] = {}
     for name in names:
         job_id = f"probe_{name}"
@@ -797,7 +829,17 @@ def main(argv: list[str]) -> int:
     out_root = ROOT / "fixtures" / "probes" if clip == CLIP else ROOT / "jobs" / "probes-hero"
     ledger = LocalLedger(ledger_path)
     results = asyncio.run(
-        run(names, settings=settings, out_root=out_root, ledger=ledger, clip=clip, keyframes=keyframes)
+        run(
+            names,
+            settings=settings,
+            out_root=out_root,
+            ledger=ledger,
+            clip=clip,
+            keyframes=keyframes,
+            # One spend record for every probe run, hero runs included (cost lines hold no footage): the PR's
+            # "total probe spend" is this one file.
+            cost_path=ROOT / "fixtures" / "probes" / "cost.jsonl",
+        )
     )
     print(json.dumps(results, indent=1))
     return 0

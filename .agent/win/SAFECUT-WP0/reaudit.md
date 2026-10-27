@@ -148,3 +148,19 @@ Tests are in tests/test_audit12.py unless named.
 - L4 API-NOTES §13.2b still said one failed batch fails the opinion. Rewritten: the budget is all-or-nothing, failure is per batch, and a malformed or missing box means the whole frame
 - L5 probe b's failure-path deletion had no test. Added: SAM attempts that fail after `response.created` are retried, and every created response, failed or not, is deleted (test_probe_b_deletes_sam_responses_on_failure_paths)
 - Also: `test_settle_runs_off_the_event_loop` flaked under a parallel soak (it asserted ≥ 10 loop ticks in a 0.3 s settle). A blocked loop gives ~0 and a free one ~30, so the bound is now 5. The property still fails a blocking settle; it was made robust, not weakened
+
+## Audit 13 (independent Sonnet reviewer at 2012ed0, parallel to #12): 0 critical, 0 high, 5 medium, 3 low. NOT CLEAN; all verified and handled
+Tests are in tests/test_audit13.py unless named.
+- M1 a second cancellation during cleanup (`await task` inside the CancelledError handler) cancelled the shielded ledger task, stranding a release or a landed reservation, so ledger != Σ cost.jsonl. Fixed: `client.outlive_cancel` waits with `asyncio.wait` through any number of cancellations; used by `_reserve`, `_ledger_after` and `files._finish` (test_a_second_cancel_never_strands_the_release)
+- M2 attempts reserved before taking their lane and process slots, so queued calls held budget and triggered false `BudgetExceeded`. Fixed: an attempt reserves inside `async with lane, inflight`; backoff sleeps happen outside it; a call cancelled while queued now reserves and logs nothing (test_queued_calls_hold_no_budget; test_cancel_before_send_releases_and_after_send_charges updated)
+- M3 `delete_pending` could DELETE a response another SAM stream of the job was still reading. Fixed: `ResponseLog.begin`/`ended` track open streams, and `delete_pending` skips them until their stream ends however it ends (test_an_open_sam_stream_is_never_deleted)
+- M4 maybe_processed lost on a reserve fault: already fixed in ed2ddae (audit #12 M2)
+- M5 free calls (file and response deletes, listings, token counts) went through the ledger, so cleanup failed while it was down. Fixed: a zero estimate never reserves or settles; the usd-0 cost line is still written (test_cleanup_works_while_the_ledger_is_down)
+- L6 a finding with no box failed its batch: already fixed in ed2ddae
+- L7 docs:
+  - probe b's cost is now 6 SAM calls ($0.11);
+  - the breaker sentence says an exhausted 429 counts;
+  - WP0 probe c's "max length" wasn't measured. Fixed: probe c generates 60 s and 180 s test-pattern clips and records acceptance and billed input tokens (test_probe_c_length_clips_have_the_asked_length, test_all_probes_replay);
+  - the modelled worst case is ≤ $2.29
+- L8 probe spend split across two cost files. Fixed: every probe run, hero runs included, writes to `fixtures/probes/cost.jsonl`
+- Caution taken: ed2ddae's `ReceiptAudit` rule (a receipt only for a publishable audit) contradicted PRE-A §10.3 (the receipt stage runs after [Run the audit again] on a blocked audit too). Reverted, with a test that a receipt may carry a blocked audit (test_a_receipt_may_record_a_blocked_audit); publishing stays gated on `unresolved == 0`

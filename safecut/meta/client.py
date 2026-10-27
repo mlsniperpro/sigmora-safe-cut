@@ -201,6 +201,18 @@ def _status_failure(
     )
 
 
+async def outlive_cancel(task: asyncio.Future[Any]) -> None:
+    """Wait for ``task`` to finish without ever cancelling it, however many cancellations arrive meanwhile.
+
+    ``await task`` would pass a second cancellation into the shielded task (a timeout plus a user cancel, a
+    TaskGroup teardown), stranding the ledger or file record it was writing. The caller re-raises its own
+    cancellation afterwards.
+    """
+    while not task.done():
+        with contextlib.suppress(asyncio.CancelledError):
+            await asyncio.wait({task})
+
+
 def _report_response_id(event: Mapping[str, Any], on_response_id: Callable[[str], None]) -> None:
     response = event.get("response")
     if isinstance(response, Mapping):
@@ -413,9 +425,8 @@ class MetaClient:
         try:
             await asyncio.shield(task)
         except asyncio.CancelledError:
-            with contextlib.suppress(Exception):
-                await task
-            if task.done() and not task.cancelled() and task.exception() is None:
+            await outlive_cancel(task)
+            if not task.cancelled() and task.exception() is None:
                 await self._ledger_after(lambda: self.ledger.release(call_id))
             raise
 
@@ -468,43 +479,58 @@ class MetaClient:
         maybe_processed = False
         while True:
             attempt += 1
-            call_id = f"{self.job_id or 'system'}:{spec.stage}:{uuid.uuid4().hex}"
-            try:
-                await self._reserve(call_id, spec.estimate_usd)
-            except MetaError as exc:
-                # An earlier attempt may have been processed (an accepted timeout): the caller must still
-                # learn that, or an upload it never heard about escapes files.json (PRE-A §10.4).
-                exc.maybe_processed = exc.maybe_processed or maybe_processed
-                if isinstance(exc, BudgetExceeded):
-                    self._log_budget_stop(spec, exc)
-                raise
+            wait = self._throttle_until - self._clock()
+            if wait > 0:
+                await self._sleep(wait)
             sent = _SentFlag()
-            try:
-                wait = self._throttle_until - self._clock()
-                if wait > 0:
-                    await self._sleep(wait)
-                async with self._lanes[spec.lane], self._inflight:
+            done: _Attempt | None = None
+            delay = 0.0
+            # Reserve only once this attempt holds its lane and process slots: a call queued behind them
+            # must not hold budget, or concurrent calls trip a cap they would never reach (false stops).
+            async with self._lanes[spec.lane], self._inflight:
+                call_id = await self._reserve_attempt(spec, maybe_processed)
+                try:
                     outcome = await attempt_fn(sent.mark)
-            except _AttemptFailed as failed:
-                await self._account(spec, call_id, attempt, charged=failed.accepted, rid=failed.error.request_id)
-                maybe_processed = maybe_processed or failed.accepted
-                delay = self._retry_delay(spec, attempt, failed, maybe_processed, breaker=breaker, trial=trial)
+                except _AttemptFailed as failed:
+                    await self._account(spec, call_id, attempt, charged=failed.accepted, rid=failed.error.request_id)
+                    maybe_processed = maybe_processed or failed.accepted
+                    delay = self._retry_delay(spec, attempt, failed, maybe_processed, breaker=breaker, trial=trial)
+                except BaseException:
+                    # Cancellation or a bug mid-attempt: once the request was sent, billing is unknown.
+                    await asyncio.shield(self._account(spec, call_id, attempt, charged=sent.sent, rid=None))
+                    raise
+                else:
+                    await self._settle(spec, call_id, attempt, outcome)
+                    done = outcome
+            if done is None:  # a failed attempt the policy retries: back off outside the lane
                 log.info("retrying", extra={"stage": spec.stage, "attempt": attempt, "delay_s": delay})
                 await self._sleep(delay)
                 continue
-            except BaseException:
-                # Cancellation or a bug mid-attempt: once the request was sent, billing is unknown.
-                await asyncio.shield(self._account(spec, call_id, attempt, charged=sent.sent, rid=None))
-                raise
-            await self._settle(spec, call_id, attempt, outcome)
             if breaker:
                 breaker.record_success(trial)
-            if outcome.error is not None:
-                outcome.error.maybe_processed = True
-                raise outcome.error
-            return outcome, attempt, maybe_processed
+            if done.error is not None:
+                done.error.maybe_processed = True
+                raise done.error
+            return done, attempt, maybe_processed
 
-    async def _settle(self, spec: CallSpec, call_id: str, attempt: int, outcome: _Attempt) -> None:
+    async def _reserve_attempt(self, spec: CallSpec, maybe_processed: bool) -> str | None:
+        """Reserve one attempt's estimate; ``None`` for a free call (files, deletes, token counts), which never
+        touches the ledger, so cleanup still works while the ledger is down."""
+        if spec.estimate_usd <= 0:
+            return None
+        call_id = f"{self.job_id or 'system'}:{spec.stage}:{uuid.uuid4().hex}"
+        try:
+            await self._reserve(call_id, spec.estimate_usd)
+        except MetaError as exc:
+            # An earlier attempt may have been processed (an accepted timeout): the caller must still
+            # learn that, or an upload it never heard about escapes files.json (PRE-A §10.4).
+            exc.maybe_processed = exc.maybe_processed or maybe_processed
+            if isinstance(exc, BudgetExceeded):
+                self._log_budget_stop(spec, exc)
+            raise
+        return call_id
+
+    async def _settle(self, spec: CallSpec, call_id: str | None, attempt: int, outcome: _Attempt) -> None:
         if outcome.usd is None:
             # Completed, but without usage: we can't measure it, so the reserved estimate stands.
             await self._account(spec, call_id, attempt, charged=True, rid=outcome.request_id)
@@ -513,7 +539,8 @@ class MetaClient:
         self._log_cost(
             spec, attempt=attempt, units=outcome.units, usd=outcome.usd, estimated=False, rid=outcome.request_id
         )
-        await self._ledger_after(lambda: self.ledger.settle(call_id, cast(float, outcome.usd)))
+        if call_id is not None:
+            await self._ledger_after(lambda: self.ledger.settle(call_id, cast(float, outcome.usd)))
 
     async def _ledger_after(self, fn: Callable[[], None]) -> None:
         """Settle or release after a call: a ledger fault is logged loudly, never allowed to lose the result.
@@ -526,8 +553,7 @@ class MetaClient:
         try:
             await asyncio.shield(task)
         except asyncio.CancelledError:
-            with contextlib.suppress(Exception):
-                await task
+            await outlive_cancel(task)
             raise
 
     async def _ledger_call(self, fn: Callable[[], None]) -> None:
@@ -565,16 +591,20 @@ class MetaClient:
             breaker.record_success(trial)
         raise error from None
 
-    async def _account(self, spec: CallSpec, call_id: str, attempt: int, *, charged: bool, rid: str | None) -> None:
+    async def _account(
+        self, spec: CallSpec, call_id: str | None, attempt: int, *, charged: bool, rid: str | None
+    ) -> None:
         """Charged: keep the estimate as an ``estimated`` line. Not charged: release it at ``usd 0``."""
         if charged:
             self._log_cost(
                 spec, attempt=attempt, units=spec.estimate_units, usd=spec.estimate_usd, estimated=True, rid=rid
             )
-            await self._ledger_after(lambda: self.ledger.settle(call_id, spec.estimate_usd))
+            if call_id is not None:
+                await self._ledger_after(lambda: self.ledger.settle(call_id, spec.estimate_usd))
         else:
             self._log_cost(spec, attempt=attempt, units={}, usd=0.0, estimated=False, rid=rid)
-            await self._ledger_after(lambda: self.ledger.release(call_id))
+            if call_id is not None:
+                await self._ledger_after(lambda: self.ledger.release(call_id))
 
     # -- plain requests -----------------------------------------------------
 

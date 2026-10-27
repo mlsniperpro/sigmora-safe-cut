@@ -736,7 +736,8 @@ async def test_cancel_before_send_releases_and_after_send_charges(
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
-    assert [(line.usd, line.estimated) for line in queued.costs()] == [(0, False)]
+    # Queued behind the process slot it never reserved (audit #13), so there is nothing to release or log.
+    assert queued.costs() == []
     assert ledger.spent("job:j_test") == pytest.approx(0.05)
 
 

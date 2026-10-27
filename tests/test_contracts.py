@@ -553,6 +553,7 @@ def _first_item_geometry(d: Any) -> None:
         (lambda d: d["audit"].update({"leaks_found": 2}), "audit.leaks_found 2 != audit.json 1"),
         (lambda d: d["audit"].update({"frames_scanned": 11}), "audit.frames_scanned"),
         (lambda d: d["audit"].update({"passes": 3}), "audit.passes"),
+        (lambda d: d["audit"].update({"unresolved": 1, "blocked_reason": "audit_failed"}), "audit.unresolved"),
     ],
 )
 def test_receipt_must_agree_with_the_job_files(tmp_path: Path, mutate: Any, message: str) -> None:

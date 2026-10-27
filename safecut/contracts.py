@@ -628,14 +628,9 @@ class ReceiptAudit(Contract):
     leaks_patched: NonNegativeInt
     unresolved: NonNegativeInt
     passes: NonNegativeInt
+    #: PRE-A §10.3: the receipt stage also runs after [Run the audit again] on a blocked audit, so a receipt
+    #: may carry unresolved > 0; publishing stays off through the one gate, unresolved == 0.
     blocked_reason: BlockedReason | None
-
-    @model_validator(mode="after")
-    def _approved(self) -> ReceiptAudit:
-        # A receipt exists only after the creator approved a publishable render (unresolved == 0).
-        if self.unresolved or self.blocked_reason is not None:
-            raise ValueError("a receipt is written only for a publishable audit (unresolved 0, no blocked_reason)")
-        return self
 
 
 class DataHandling(Contract):

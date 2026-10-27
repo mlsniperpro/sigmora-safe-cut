@@ -59,10 +59,11 @@ def test_open_weight_counts_match_its_entries() -> None:
         c.Audit.model_validate(audit)
 
 
-def test_a_receipt_needs_a_publishable_audit() -> None:
+def test_a_receipt_may_record_a_blocked_audit() -> None:
+    # PRE-A §10.3: the receipt stage runs after [Run the audit again] even when the audit stays blocked.
     receipt = json.loads((EXAMPLE / "receipt.json").read_text())
-    with pytest.raises(ValidationError, match="publishable audit"):
-        c.ReceiptAudit.model_validate(receipt["audit"] | {"unresolved": 2, "blocked_reason": "unresolved_leaks"})
+    blocked = c.ReceiptAudit.model_validate(receipt["audit"] | {"unresolved": 2, "blocked_reason": "unresolved_leaks"})
+    assert blocked.unresolved == 2
 
 
 @pytest.mark.parametrize(("item", "message"), [("i_1", "a kept item"), ("p_1", "spans 2-11")])

@@ -103,6 +103,7 @@ class ResponseLog:
         self.path = Path(job_dir) / self.NAME
         self._unsaved: list[str] = []
         self._requested_unrecorded: set[str] = set()  # deletion requested; responses.json couldn't record it
+        self._streaming: set[str] = set()  # IDs whose stream is still open: never deleted mid-stream
         self.refused: list[str] = []
 
     def index(self) -> ResponsesIndex:
@@ -127,6 +128,15 @@ class ResponseLog:
             log.exception("responses.json write failed; the id is kept in memory", extra={"response_id": response_id})
             if response_id not in self._unsaved:
                 self._unsaved.append(response_id)
+
+    def begin(self, response_id: str) -> None:
+        """A stream named its response: note it, and keep it out of :meth:`delete_pending` until it ends."""
+        self.note(response_id)
+        self._streaming.add(response_id)
+
+    def ended(self, response_ids: list[str]) -> None:
+        """Those streams are over (completed, failed or cancelled): their responses may now be deleted."""
+        self._streaming.difference_update(response_ids)
 
     def requested(self) -> int:
         """The receipt's ``responses_delete_requested``: recorded in responses.json, plus any it couldn't hold."""
@@ -153,6 +163,8 @@ class ResponseLog:
         for response_id in [*recorded, *self._unsaved]:
             if response_id in self._requested_unrecorded:
                 continue  # already requested; only the record of it failed
+            if response_id in self._streaming:
+                continue  # another SAM stream of this job is still reading it; its own caller deletes it
             try:
                 await client.request("DELETE", f"responses/{response_id}", delete_spec(), meter=_no_cost)
             except MetaError as exc:
@@ -226,17 +238,33 @@ async def segment_video(
         total_timeout_s=config.SAM_TOTAL_TIMEOUT_S,
         store_param=client.settings.sam_send_store,
     )
-    return await client.stream(spec, body, meter=video_meter, on_response_id=_hook(client, responses))
+    return await _stream(client, spec, body, video_meter, responses)
 
 
-def _hook(client: MetaClient, responses: ResponseLog | None) -> Callable[[str], None] | None:
-    """Where SAM response IDs go when they must be deleted; refuses before spending if there's nowhere."""
+async def _stream(
+    client: MetaClient,
+    spec: CallSpec,
+    body: Mapping[str, Any],
+    meter: Callable[[Mapping[str, Any]], tuple[Units, float | None]],
+    responses: ResponseLog | None,
+) -> StreamResult:
+    """Stream one SAM call; when its responses must be deleted, log each ID as the stream names it and mark
+    the stream ended (so ``delete_pending`` may delete it) however the call ends."""
     if not client.settings.delete_sam_responses:
-        return None
+        return await client.stream(spec, body, meter=meter)
     if responses is None:
         raise ValueError("SAFECUT_SAM_DELETE_RESPONSES is on: pass the job's ResponseLog so the response is deleted")
-    responses.check()
-    return responses.note
+    responses.check()  # refuse before spending if responses.json can't be read
+    seen: list[str] = []
+
+    def begin(response_id: str) -> None:
+        seen.append(response_id)
+        responses.begin(response_id)
+
+    try:
+        return await client.stream(spec, body, meter=meter, on_response_id=begin)
+    finally:
+        responses.ended(seen)
 
 
 async def segment_image(
@@ -253,4 +281,4 @@ async def segment_image(
         total_timeout_s=config.SAM_TOTAL_TIMEOUT_S,
         store_param=client.settings.sam_send_store,
     )
-    return await client.stream(spec, body, meter=image_meter, on_response_id=_hook(client, responses))
+    return await _stream(client, spec, body, image_meter, responses)

@@ -17,7 +17,7 @@ import httpx
 
 from safecut import config
 from safecut.contracts import FILE_ID_PATTERN, FileEntry, FilesIndex, dump, load, now_utc
-from safecut.meta.client import CallSpec, MetaClient, Units
+from safecut.meta.client import CallSpec, MetaClient, Units, outlive_cancel
 from safecut.meta.errors import MetaConfigError, MetaError, MetaFileGone
 from safecut.meta.retry import RetryPolicy
 
@@ -329,8 +329,7 @@ async def _finish(coro: Coroutine[Any, Any, None]) -> None:
     try:
         await asyncio.shield(task)
     except asyncio.CancelledError:
-        with contextlib.suppress(Exception):
-            await task
+        await outlive_cancel(task)
         raise
 
 

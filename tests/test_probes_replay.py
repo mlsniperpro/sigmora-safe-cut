@@ -128,6 +128,8 @@ async def test_all_probes_replay(api: respx.MockRouter, tmp_path: Path) -> None:
     assert check["ids_refused_by_format"] == []
     assert all("MetaBadRequest" in v for v in check["repeat_delete"].values())  # a repeat 404s
     assert results["c"]["frame_error"] == abs(64 - probes._frame_when_red_crosses_centre())
+    assert set(results["c"]["max_length"]) == {"60s", "180s"}
+    assert all(r["accepted"] for r in results["c"]["max_length"].values())
     assert results["d"]["audio_duration_ms"] == 3000
     assert set(results["f"]) - {"uploads_deleted"} == {
         "muse-spark-1.3@max",
