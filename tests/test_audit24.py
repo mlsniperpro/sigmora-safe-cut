@@ -3,6 +3,7 @@ the plan renders, and a Files cost line records its bytes."""
 
 from __future__ import annotations
 
+import functools
 import json
 import shutil
 from collections.abc import Callable
@@ -17,7 +18,10 @@ from pydantic import SecretStr
 from safecut import contracts as c
 from safecut.config import Settings
 from safecut.meta.budget import LocalLedger
+from safecut.meta.client import CallSpec
+from safecut.meta.errors import MetaBadRequest
 from safecut.meta.files import FileStore
+from safecut.meta.retry import RetryPolicy
 from scripts.probes import probes
 from tests.conftest import BASE, Harness
 from tests.test_probes_replay import api  # noqa: F401 -- the replay server fixture, reused
@@ -107,3 +111,47 @@ async def test_probe_d_saves_the_asr_body_as_sent(api: respx.MockRouter, tmp_pat
     )
     assert results["d"]["audio_duration_ms"] == 3000
     assert json.loads((tmp_path / "d" / "asr.response.json").read_text()) == sent
+
+
+# --- audit #28 ----------------------------------------------------------------------------------------------
+
+
+async def _sam_like(client: Any, file_id: str) -> str:
+    result = await client.request(
+        "POST", "thing", _free_spec(), meter=lambda _: ({}, 0.0), json_body={"file_id": file_id}
+    )
+    return str(result.body["ok"])
+
+
+def _free_spec() -> CallSpec:
+    return CallSpec(stage="s", model=None, estimate_usd=0.0, estimate_units={}, policy=RetryPolicy(attempts=1),
+                    timeout=httpx.Timeout(5.0), total_timeout_s=10.0)  # fmt: skip
+
+
+GONE = httpx.Response(404, json={"error": {"message": "gone", "code": "file_not_found", "param": None}})
+
+
+@pytest.mark.parametrize("second", ["ok", "gone"])
+async def test_r10_reuploads_once_then_fails_closed(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter, tmp_path: Path, second: str
+) -> None:
+    h = make_harness()
+    clip = tmp_path / "sam_proxy.mp4"
+    clip.write_bytes(b"x" * 300)
+    store = FileStore(h.client, tmp_path / "job")
+    mock_api.post("/files").mock(
+        side_effect=[httpx.Response(200, json={"id": "file-1"}), httpx.Response(200, json={"id": "file-2"})]
+    )
+    first_id = await store.upload(clip, "sam_proxy.mp4")
+    again = httpx.Response(200, json={"ok": "yes"}) if second == "ok" else GONE
+    thing = mock_api.post("/thing").mock(side_effect=[GONE, again])
+    call = functools.partial(_sam_like, h.client)
+    if second == "ok":
+        assert await store.call_with_reupload(clip, "sam_proxy.mp4", first_id, call) == "yes"
+    else:
+        with pytest.raises(MetaBadRequest, match="file_not_found again after one re-upload"):
+            await store.call_with_reupload(clip, "sam_proxy.mp4", first_id, call)
+    assert [json.loads(r.request.content)["file_id"] for r in thing.calls] == ["file-1", "file-2"]
+    entries = {e.file_id: e for e in store.index().root}
+    assert entries["file-1"].deleted_at is not None  # forgotten, so files.json points at the new copy
+    assert entries["file-2"].deleted_at is None

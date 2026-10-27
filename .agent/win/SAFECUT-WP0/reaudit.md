@@ -264,3 +264,7 @@ Tests are in tests/test_audit24.py (the audit #26 section) unless named.
 - L5 the 21,600 s `expires_after` (WP0.md says 3,600) is now recorded as a deviation in API-NOTES §13.4, citing PRE-A §10.4. Also: the CI-duration wording ("within a few seconds") and `open_weight.py` in ARCHITECTURE §2's layout
 
 ## Audit 27 (at b99e529): stopped by the API session limit before reporting. Not counted
+
+## Audit 28 (independent Sonnet reviewer at 81c73b2): 0 critical, 0 high, 0 medium, 1 low. NOT CLEAN; verified and fixed
+It ran ~14 hand-built valid job directories through `validate_job_dir` (blocked and unscanned audits, cover_spot, flagged and through_item patches, merged EgoBlur patches, edge clamps, exclusions): all accepted, and every wrong-side case refused.
+- L1 PRE-A §10.3 / vector R10 (a `file_not_found` re-uploads once and repeats the call; a second one is `MetaBadRequest`) had only `FileStore.reupload`, with no repeat and no test. Fixed: `FileStore.call_with_reupload(path, name, file_id, call)` does the once-only re-upload and repeat, and raises `MetaBadRequest` on the second `file_not_found`. The checklist's vector list now includes R10 (tests/test_audit24.py::test_r10_reuploads_once_then_fails_closed ×2)

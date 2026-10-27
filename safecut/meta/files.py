@@ -7,7 +7,7 @@ import contextlib
 import functools
 import hashlib
 import re
-from collections.abc import Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -18,7 +18,7 @@ import httpx
 from safecut import config
 from safecut.contracts import FILE_ID_PATTERN, FileEntry, FilesIndex, dump, load, now_utc
 from safecut.meta.client import CallSpec, MetaClient, Units, outlive_cancel
-from safecut.meta.errors import BreakerOpen, MetaConfigError, MetaError, MetaFileGone
+from safecut.meta.errors import BreakerOpen, MetaBadRequest, MetaConfigError, MetaError, MetaFileGone
 from safecut.meta.retry import RetryPolicy
 
 INDEX_NAME = "files.json"
@@ -220,6 +220,28 @@ class FileStore:
         """The ``MetaFileGone`` recovery (PRE-A §10.4): forget ``gone`` and upload ``path`` again."""
         await self.mark_gone(gone)
         return await self.upload(path, name, mime=mime)
+
+    async def call_with_reupload[T](
+        self,
+        path: str | Path,
+        name: str,
+        file_id: str,
+        call: Callable[[str], Awaitable[T]],
+        *,
+        mime: str = "video/mp4",
+    ) -> T:
+        """PRE-A §10.3 / vector R10: ``call(file_id)``; on ``file_not_found`` re-upload ``path`` once and repeat
+        the call with the new id. A second ``file_not_found`` is a ``MetaBadRequest`` (the stage fails closed)."""
+        try:
+            return await call(file_id)
+        except MetaFileGone:
+            new_id = await self.reupload(path, name, gone=file_id, mime=mime)
+        try:
+            return await call(new_id)
+        except MetaFileGone as exc:
+            raise MetaBadRequest(
+                f"{name}: file_not_found again after one re-upload", status=exc.status, request_id=exc.request_id
+            ) from exc
 
     async def _recover_orphans(self, up: _Upload) -> None:
         """An upload may have reached the server without being recorded: find and delete what it left.
