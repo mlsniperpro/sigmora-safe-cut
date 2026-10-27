@@ -1200,14 +1200,10 @@ def _hidden_frames(item: DecisionItem, spans: Mapping[str, tuple[int, int]], pla
     return frames or None
 
 
-def _regions(item: DecisionItem, frame: int, plan: Plan | None) -> list[tuple[int, int, int, int]] | None:
-    """Where an item hides on ``frame``: an audit patch's own box, else its plan entries' boxes on that frame.
-    ``None`` when there's nothing to compare with (a track item and no plan)."""
-    if item.box is not None:
-        return [item.box]
-    if plan is None:
-        return None
-    return [e.box for e in plan.frames.get(frame, []) if e.item_id == item.item_id]
+def _regions(item: DecisionItem, frame: int, plan: Plan | None) -> list[tuple[int, int, int, int]]:
+    """Where an item hides on ``frame``: its planned (padded) boxes there, plus an audit patch's own box."""
+    planned = [e.box for e in plan.frames.get(frame, []) if e.item_id == item.item_id] if plan is not None else []
+    return planned + ([item.box] if item.box is not None else [])
 
 
 def _check_patches(audit: Audit, decisions: Decisions, tracks: Tracks | None, plan: Plan | None) -> None:
@@ -1217,7 +1213,9 @@ def _check_patches(audit: Audit, decisions: Decisions, tracks: Tracks | None, pl
     by_id = {item.item_id: item for item in decisions.items}
     spans = {t.track_id: (t.first, t.last) for t in tracks.tracks} if tracks is not None else {}
 
-    def check(item_id: str | None, boxes: Mapping[int, tuple[int, int, int, int]], where: str) -> None:
+    def check(
+        item_id: str | None, boxes: Mapping[int, tuple[int, int, int, int]], where: str, *, contain: bool
+    ) -> None:
         item = by_id.get(item_id or "")
         if item is None:
             return
@@ -1231,9 +1229,11 @@ def _check_patches(audit: Audit, decisions: Decisions, tracks: Tracks | None, pl
             regions = _regions(item, frame, plan)
             if not regions:
                 continue
+            # An audit patch drawn for this very finding contains it; a flag or a through_item only needs the item's
+            # planned region "on" the finding (any positive-area overlap, PRE-A §12 through_item, redteam.md).
             covered = (
                 any(r[0] <= box[0] and r[1] <= box[1] and box[2] <= r[2] and box[3] <= r[3] for r in regions)
-                if item.box is not None
+                if contain and item.box is not None
                 else any(boxes_overlap(r, box) for r in regions)
             )
             if not covered:
@@ -1242,11 +1242,12 @@ def _check_patches(audit: Audit, decisions: Decisions, tracks: Tracks | None, pl
                 )
 
     for leak in audit.leaks:
-        check(leak.patched_item, {leak.frame: leak.box}, f"leak at frame {leak.frame} patch")
-        check(leak.through_item, {leak.frame: leak.box}, f"leak at frame {leak.frame} through_item")
+        where = f"leak at frame {leak.frame}"
+        check(leak.patched_item, {leak.frame: leak.box}, f"{where} patch", contain=leak.flag is None)
+        check(leak.through_item, {leak.frame: leak.box}, f"{where} through_item", contain=False)
     for spot in audit.spots:
         where = f"spot {spot.spot_id} cover"
-        check(spot.covered_by, spot.boxes, where)  # kept items, and the region on every frame with a box
+        check(spot.covered_by, spot.boxes, where, contain=True)  # cover_spot's patch is the union of the boxes
         cover = by_id.get(spot.covered_by or "")
         hidden = _hidden_frames(cover, spans, plan) if cover is not None else None
         missing = [f for f in range(spot.first, spot.last + 1) if hidden is not None and f not in hidden]

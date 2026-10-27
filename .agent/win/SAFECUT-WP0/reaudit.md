@@ -224,3 +224,12 @@ Tests are in tests/test_audit20.py and tests/test_audit21.py unless named.
 - A21-L4 `SAFECUT_SAM_SEND_STORE=false` with `SAFECUT_SAM_DELETE_RESPONSES=false` silently kept SAM responses stored forever. That combination is now refused at load (test_sam_delete_responses_follows_send_store updated)
 - A21-L5 probe g never exercised clamping. It now also points at a dot in the bottom-right corner and records `edge` (test_probe_g_also_points_at_an_edge)
 - A21-P1 stale status: the reaudit header, break-it and the PR body are rewritten at the final head before the gate. The PR body's `FileStore.live` becomes `FileStore.index().live()`, and the files WP0 adds beyond its list (.gitignore, docs/OFFICIAL-GUIDE.md, scripts/make_synthetic_clips.py, scripts/__init__.py, typings/) are listed there
+
+## Audit 22 (independent Sonnet reviewer at 3bbc186): 0 critical, 0 high, 1 medium, 2 low. NOT CLEAN; all verified and handled
+Tests are in tests/test_audit20.py (the "valid side" section) unless named.
+- M1 the new containment rule refused valid writer output. A flagged leak, or a `through_item`, at the edge of an earlier audit patch is valid: PRE-A §12's `through_item` is the hidden item whose planned region touches the finding (any positive overlap). The rule demanded the leak box sit inside the patch's raw box. Fixed: containment applies only to an unflagged leak's own audit patch, and to a spot's cover (cover_spot's patch is the union of the spot's boxes). Flags and through_items need any overlap with the item's planned (padded) region or its own box (test_a_flagged_leak_on_an_audit_patch_edge_validates ×2)
+- L2 the region rules had no tests for their valid side. Added: a partly overlapping track `through_item`, a kept item present on the frame excluding a hit, and a kept item absent on the frame refused for `redteam` and `redteam_open` (test_a_partly_overlapping_track_item_validates_as_through_item, test_a_kept_item_present_on_the_frame_excludes_a_hit, test_a_kept_item_absent_on_the_frame_cannot_exclude ×2)
+- L3 docs updated:
+  - probe g's two calls (≤ $0.14), the modelled total (≤ $2.36) and the per-clip hero folders, in API-NOTES and the checklist;
+  - ARCHITECTURE §4 and .env.example: the key validation at load and the refused SAM store/delete combination, a deliberate tightening of PRE-A's plain bool;
+  - the ARCHITECTURE §3 rules sentence: containment vs overlap

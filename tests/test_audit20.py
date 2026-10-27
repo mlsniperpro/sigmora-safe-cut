@@ -86,3 +86,46 @@ def test_a_damaged_cost_record_stops_the_probes_cleanly(
     monkeypatch.setattr(probes, "ROOT", root)
     assert probes.main(["a"]) == 2
     assert "is damaged, so the spend so far is unknown" in capsys.readouterr().err
+
+
+# --- audit #22: the valid side of the region rules ---------------------------------------------------------
+
+
+def _flagged(box: list[int], item: str = "p_1") -> dict[str, Any]:
+    return {"frame": 10, "box": box, "kind": "text", "detector": "redteam", "patched_item": item,
+            "flag": "redaction_too_weak", "through_item": item}  # fmt: skip
+
+
+@pytest.mark.parametrize("box", [[250, 250, 300, 300], [196, 196, 199, 210]])
+def test_a_flagged_leak_on_an_audit_patch_edge_validates(tmp_path: Path, box: list[int]) -> None:
+    # PRE-A §12: through_item is the hidden item whose planned region the finding touches (any overlap).
+    job_dir = _example(tmp_path)
+    _edit_audit(job_dir, lambda d: d["leaks"].append(_flagged(box)))
+    assert "audit.json" in c.validate_job_dir(job_dir)
+
+
+def test_a_partly_overlapping_track_item_validates_as_through_item(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    leak = _flagged([150, 350, 220, 420], item="i_2") | {"frame": 9}  # i_2's planned box on 9 is [100, 300, ...]
+    _edit_audit(job_dir, lambda d: d["leaks"].append(leak))
+    assert "audit.json" in c.validate_job_dir(job_dir)
+
+
+def test_a_kept_item_present_on_the_frame_excludes_a_hit(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _edit_audit(job_dir, lambda d: d["redteam"].append(HIT | {"frame": 9, "excluded_by": "i_1"}))
+    assert "audit.json" in c.validate_job_dir(job_dir)
+
+
+@pytest.mark.parametrize("name", ["redteam", "redteam_open"])
+def test_a_kept_item_absent_on_the_frame_cannot_exclude(tmp_path: Path, name: str) -> None:
+    job_dir = _example(tmp_path)
+
+    def add(d: Any) -> None:
+        d.setdefault(name, []).append(HIT | {"frame": 11, "excluded_by": "i_1"})  # face:1 spans 1-9
+        if name == "redteam_open":
+            d["open_weight"] = {"model": "m", "status": "ok", "frames": 1, "findings": 1}
+
+    _edit_audit(job_dir, add)
+    with pytest.raises(c.ContractError, match="excluded_by i_1, absent on that frame"):
+        c.validate_job_dir(job_dir)
