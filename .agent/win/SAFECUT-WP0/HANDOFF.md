@@ -25,24 +25,22 @@
 - **Gate files** in `.agent/win/SAFECUT-WP0/`: `checks.sh`, `WIN-CHECKLIST.md`, `BLOCKED.md`, `reaudit.md`, `break-it.md`.
 - **Last fully green head:** the head of this push (372 passed, ruff and pyright clean).
 
-## Current state (session_01FE6cwwWXD1E2eCpwUV9ftx, resumed 22:26 UTC 2026-10-26)
-- **Head:** green. Audits #6–#11 are all fixed: 432 passed, ruff and pyright strict clean. `CLEAN_AUDITS_IN_A_ROW` is 0.
-- **Audit #6** at 8cc543c: 1 high, 3 medium and 5 low findings, fixed in 2568819.
-- **Audits #7–#8** at 2568819: 1 medium and 8 low findings, fixed in 5bba04c.
-- **Audits #9–#10** at 5bba04c: 4 medium and 10 low findings, fixed in 5c72c49.
-- **Audit #11** at 5c72c49: 1 medium and 3 low findings, fixed in this push. Audit #12 (its parallel twin) was still running at push time.
-- **Re-lock:** the lock now includes the PRE-A §12 pins (egoblur, torchvision, vrs, modal, matplotlib). EgoBlur caps opencv below 5, so the synthetic clips were regenerated (truth unchanged).
-- **Audits run in pairs:** two independent Sonnet audits run in parallel at each head. Both clean at the same head counts as two clean audits in a row.
-- **Next:** two parallel audits, the soak and a fresh clone at this head, then break-it.md, the gate and the PR.
+## State at WIND DOWN (session_01FE6cwwWXD1E2eCpwUV9ftx, ~03:40 UTC 2026-10-27)
+- **Head:** green and pushed. Audits #6–#11 are all fixed with tests: 432 passed, ruff and pyright strict clean. Every finding is verified, and each one is in reaudit.md with its test.
+- **Last gate** (at 2012ed0): `GATE: FAIL (3): only 0 clean full audit(s) in a row; two consecutive audits must find nothing new`. The other two failures were the stale reaudit and break-it headers, both updated since (AUDITED_COMMIT 5c72c49, TESTED_COMMIT 2012ed0).
+- **Audit #12** (run in parallel with #11 at 5c72c49) was stopped at the wind-down with no report.
+- **Unfinished:** the soak has never completed at a current head. break-it.md says exactly what ran where.
+- **Trend:** each audit round finds fewer and lower issues: #6 had 1 high; #7–#8 1 medium; #9–#10 4 medium (mostly the new §12 rows and docs); #11 1 medium. The code areas they hit are the newest fixes, so audit those hardest.
 
 ## Next steps, in order
 1. Claim the lease, then run `bash .agent/win/SAFECUT-WP0/checks.sh`; expect 432 passed.
-2. Run a fresh, full audit with a Sonnet subagent (effort high, read-only; give it PRE-A from `git show origin/pre-a-research:docs/API-NOTES.md`). Focus hardest on the audit #5 code: `files.py` reconcile and `_keep`, `sam.ResponseLog`, the `validate_job_dir` cross-checks, and the ledger's `_same_reservation`. Verify every finding before fixing it, and record it in reaudit.md. Repeat until two audits in a row are clean, then set `AUDITED_COMMIT` to the final head and `CLEAN_AUDITS_IN_A_ROW: 2`.
+2. Run two fresh full audits in parallel with Sonnet subagents (effort high, read-only). Give them PRE-A from `git show origin/pre-a-research:docs/API-NOTES.md`, plus `docs/prompts/redteam.md` from the same branch.
+   - Verify every finding before fixing it, and record it in reaudit.md.
+   - When both audits come back clean at the same head, set `AUDITED_COMMIT` to that head and `CLEAN_AUDITS_IN_A_ROW: 2`.
 3. At the final head:
-   - run the soak in the background (`HYPOTHESIS_PROFILE=soak uv run pytest -m "not live" -q`, its PID in `pids`, about 40+ min);
-   - do a fresh-clone run;
-   - rewrite break-it.md with `TESTED_COMMIT` = the final head;
-   - clear `pids`.
+   - start the soak in the background (`HYPOTHESIS_PROFILE=soak uv run pytest -m "not live" -q -p no:cacheprovider`, PID in `pids`; it takes 40+ min) and let it finish;
+   - do a fresh-clone run and the `taskset -c 0` clip determinism check;
+   - rewrite break-it.md with `TESTED_COMMIT` = the final head, and clear `pids`.
 4. Push, run the gate until it prints `GATE: PASS`, put its last line in PR #3's Status, and post the final status comment.
 5. When `MODEL_API_KEY` arrives:
    - run the probes (`uv run python -m scripts.probes.probes all`, then `uv run python -m scripts.probes.trim`);
@@ -50,7 +48,7 @@
    - put the `fixtures/probes/cost.jsonl` total (≤ $6) in the PR.
 
 ## Open findings
-None open. Every finding from audits #1–#5 and the code review is fixed with a named test, or is a recorded decision (reaudit.md).
+None open. Every finding from audits #1–#11 and the code review is fixed with a named test, or is a recorded decision (reaudit.md).
 
 ## Key decisions (the full list is in PR #3)
 - Built to PRE-A's spec (PR #1, unmerged); prices re-read live on 2026-10-26.
