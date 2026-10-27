@@ -236,13 +236,21 @@ def guard_body(body: Mapping[str, Any], *, store_param: bool = True) -> None:
         raise ValueError(f"parameters ignored or rejected by the Responses API: {sorted(sent_forbidden)}")
 
 
+#: Transport errors raised before any byte reached Meta.
+_NEVER_SENT = (
+    httpx.ConnectError,
+    httpx.ConnectTimeout,
+    httpx.PoolTimeout,
+    httpx.ProxyError,  # the egress proxy refused CONNECT
+    httpx.UnsupportedProtocol,
+    httpx.LocalProtocolError,  # h11 refused to write the request (e.g. a malformed header)
+)
+
+
 def _transport_failure(exc: httpx.TransportError) -> _AttemptFailed:
     """Errors before any byte reached Meta (connect phase, a proxy refusing CONNECT, a bad URL scheme) are
     rejected; anything later may have been processed."""
-    rejected = isinstance(
-        exc,
-        httpx.ConnectError | httpx.ConnectTimeout | httpx.PoolTimeout | httpx.ProxyError | httpx.UnsupportedProtocol,
-    )
+    rejected = isinstance(exc, _NEVER_SENT)
     kind = "timeout" if isinstance(exc, httpx.TimeoutException) else "connection error"
     return _AttemptFailed(MetaUnavailable(f"{kind}: {type(exc).__name__}"), accepted=not rejected)
 
@@ -728,7 +736,7 @@ class MetaClient:
                             if terminal is not None:
                                 terminal.value = events
                                 if refused and terminal.error is None:
-                                    terminal.error = MetaRefusal(f"the model refused: {''.join(refused)[:200]}")
+                                    terminal.error = MetaRefusal.of("".join(refused))
                                 return terminal
             except httpx.TransportError as exc:
                 failure = _transport_failure(exc)
@@ -741,7 +749,7 @@ class MetaClient:
             except SSEDecodeError as exc:
                 raise _AttemptFailed(MetaUnavailable(f"malformed stream: {exc}"), accepted=True) from exc
             if refused:
-                raise _AttemptFailed(MetaRefusal(f"the model refused: {''.join(refused)[:200]}"), accepted=True)
+                raise _AttemptFailed(MetaRefusal.of("".join(refused)), accepted=True)
             raise _AttemptFailed(MetaIncomplete("stream ended without a terminal event", eof=True), accepted=True)
 
         outcome, attempts, _ = await self._run(spec, attempt)
@@ -821,7 +829,7 @@ class MetaClient:
             outcome.error = MetaIncomplete(f"response incomplete: {reason or 'unknown reason'}", eof=False)
         refusal = _find_refusal(response_map)
         if refusal is not None:
-            outcome.error = MetaRefusal(f"the model refused: {refusal[:200]}")
+            outcome.error = MetaRefusal.of(refusal)
         return outcome
 
 

@@ -180,7 +180,7 @@ def output_text(response: Mapping[str, Any]) -> str:
                 continue
             p = cast(Mapping[str, Any], part)
             if p.get("type") == "refusal":
-                raise MetaRefusal(f"the model refused: {str(p.get('refusal') or '')[:200]}")
+                raise MetaRefusal.of(str(p.get("refusal") or ""))
             if p.get("type") == "output_text" and isinstance(p.get("text"), str):
                 texts.append(cast(str, p["text"]))
     if not texts:

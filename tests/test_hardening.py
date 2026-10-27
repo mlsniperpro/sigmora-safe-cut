@@ -115,10 +115,11 @@ async def test_streamed_refusal_is_billed_at_usage(
             completed({"id": "r", "status": "completed", "output": [], "usage": usage}),
         )
     )
-    with pytest.raises(MetaRefusal, match="I can't"):
+    with pytest.raises(MetaRefusal, match=r"refused \(7 characters\)") as refused:
         await h.client.stream(
             _spec(estimate_usd=0.2), {"model": "muse-spark-1.3", "store": False}, meter=meter_for("muse-spark-1.3")
         )
+    assert refused.value.refusal_text == "I can't"  # kept off the message (audit #20)
     (line,) = h.costs()
     assert line.estimated is False
     assert line.usd == pytest.approx((1000 * 1.25 + 12 * 4.25) / 1e6)

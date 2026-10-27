@@ -38,7 +38,7 @@ from pydantic import BaseModel
 
 from safecut import open_weight
 from safecut.config import OpenWeightPrice, Settings, load_settings
-from safecut.contracts import read_cost_lines
+from safecut.contracts import ContractError, read_cost_lines
 from safecut.meta import asr, responses, sam
 from safecut.meta.budget import Caller, CapLimit, LocalLedger
 from safecut.meta.client import CallSpec, MetaClient
@@ -540,14 +540,16 @@ async def probe_d(p: Probe) -> Summary:
 
 IMG_W, IMG_H, BAR_H = 1280, 720, 40
 DOT = (937, 211)  # frame pixels
+#: A dot in the bottom-right corner: an answer at or past the grid's edge exercises PRE-A §5's clamping.
+EDGE_DOT = (1276, 716)
 
 
-def dot_image() -> str:
-    """A 1280x760 image: a 40 px black bar above a grey 1280x720 frame with one red dot at ``DOT``."""
+def dot_image(dot: tuple[int, int] = DOT) -> str:
+    """A 1280x760 image: a 40 px black bar above a grey 1280x720 frame with one red dot at ``dot``."""
     img = np.full((IMG_H + BAR_H, IMG_W, 3), 128, dtype=np.uint8)
     img[:BAR_H] = 0
     cv2.putText(img, "F 000090", (8, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
-    cv2.circle(img, (DOT[0], DOT[1] + BAR_H), 9, (0, 0, 255), thickness=-1)
+    cv2.circle(img, (dot[0], dot[1] + BAR_H), 9, (0, 0, 255), thickness=-1)
     ok, jpeg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 90])
     if not ok:
         raise RuntimeError("JPEG encoding failed")
@@ -578,13 +580,13 @@ def grid_to_frame(vx: int, vy: int) -> tuple[int, int]:
     return x, y
 
 
-def _point_summary(answer: Mapping[str, Any], usd: float, latency: float) -> Summary:
+def _point_summary(answer: Mapping[str, Any], usd: float, latency: float, truth: tuple[int, int] = DOT) -> Summary:
     x, y = grid_to_frame(int(answer["x"]), int(answer["y"]))
     return {
         "answer_grid": dict(answer),
         "mapped_frame_px": [x, y],
-        "truth_frame_px": list(DOT),
-        "error_px": round(math.dist((x, y), DOT), 1),
+        "truth_frame_px": list(truth),
+        "error_px": round(math.dist((x, y), truth), 1),
         "raw_out_of_range": not (0 <= int(answer["x"]) <= 1000 and 0 <= int(answer["y"]) <= 1000),
         "usd": usd,
         "latency_s": round(latency, 2),
@@ -597,20 +599,25 @@ class _Point(BaseModel):
 
 
 async def probe_g(p: Probe) -> Summary:
-    image = dot_image()
-    messages = [
-        {
-            "role": "user",
-            "content": [{"type": "input_text", "text": POINT_QUESTION}, {"type": "input_image", "image_url": image}],
-        }
-    ]
+    """WP0 g: the 0-1000 grid on a mid-frame dot, and the clamping on a dot in the bottom-right corner."""
+    out = await _point_call(p, DOT, "point")
+    try:
+        out["edge"] = await _point_call(p, EDGE_DOT, "point_edge")
+    except MetaError as exc:  # the centre answer is already paid for
+        out["edge"] = {"error": f"{type(exc).__name__}: {exc}"}
+    return out
+
+
+async def _point_call(p: Probe, dot: tuple[int, int], name: str) -> Summary:
+    content = [{"type": "input_text", "text": POINT_QUESTION}, {"type": "input_image", "image_url": dot_image(dot)}]
     body = responses.build_body(
-        p.settings.role_model, messages, effort="medium", schema=POINT_SCHEMA, schema_name="point"
-    )
+        p.settings.role_model, [{"role": "user", "content": content}], effort="medium", schema=POINT_SCHEMA,
+        schema_name="point",
+    )  # fmt: skip
     started = time.monotonic()
     answer, result = await responses.create_json(p.meta, _Point, body, stage="probe_g", effort="medium")
-    p.save("point.response.json", result.response)
-    return _point_summary(answer.model_dump(), result.usd, time.monotonic() - started)
+    p.save(f"{name}.response.json", result.response)
+    return _point_summary(answer.model_dump(), result.usd, time.monotonic() - started, dot)
 
 
 # -- h: the open-weight second opinion (PRE-A §3.8) ------------------------------------------
@@ -791,7 +798,9 @@ async def run(
     for name in names:
         job_id = f"probe_{name}"
         # Only the hero-clip probes (b, d) write to the git-ignored hero folder; the rest stay fixtures.
-        out = (hero_root if hero_root is not None and clip != CLIP and name in ("b", "d") else out_root) / name
+        # Each hero clip gets its own folder, so a second clip never overwrites the first's paid results.
+        hero = hero_root is not None and clip != CLIP and name in ("b", "d")
+        out = (cast(Path, hero_root) / clip.stem if hero else out_root) / name
         if name == "h":
             # A fresh job per run: the $0.50 baseten_job cap is per run, not accumulated across re-runs.
             run_id = f"probe_h_{time.strftime('%Y%m%dT%H%M%S', time.gmtime())}"
@@ -816,7 +825,7 @@ async def run(
         finally:
             try:
                 results.setdefault(name, {})["uploads_deleted"] = await files.delete_all()
-            except MetaError as exc:
+            except (MetaError, OSError, ContractError) as exc:  # the next probes and this summary still run
                 results.setdefault(name, {})["uploads_deleted"] = f"failed: {exc}"
             await meta.aclose()
         probe.save("summary.json", results[name])
@@ -879,10 +888,14 @@ def main(argv: list[str]) -> int:
     settings = load_settings()
     out_root = ROOT / "fixtures" / "probes"
     cost_path = out_root / "cost.jsonl"
+    # The ledger lives in memory, seeded from the committed spend record: run one probe process at a time.
     try:
         ledger = seeded_ledger(cost_path)
     except BudgetExceeded as exc:
         print(f"the $6 probe budget is spent: {exc}", file=sys.stderr)
+        return 2
+    except ContractError as exc:
+        print(f"{cost_path} is damaged, so the spend so far is unknown: {exc}", file=sys.stderr)
         return 2
     results = asyncio.run(
         run(

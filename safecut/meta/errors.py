@@ -65,7 +65,19 @@ class BreakerOpen(MetaUnavailable):
 
 
 class MetaRefusal(MetaError):
-    """The model refused (a refusal part or event)."""
+    """The model refused (a refusal part or event).
+
+    The refusal text may quote what the model saw (private text), so the message carries only its length;
+    the text itself is on :attr:`refusal_text`, which is never logged.
+    """
+
+    refusal_text: str = ""
+
+    @classmethod
+    def of(cls, text: str) -> MetaRefusal:
+        error = cls(f"the model refused ({len(text)} characters)")
+        error.refusal_text = text
+        return error
 
 
 class MetaIncomplete(MetaError):

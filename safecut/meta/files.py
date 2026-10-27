@@ -24,6 +24,9 @@ from safecut.meta.retry import RetryPolicy
 INDEX_NAME = "files.json"
 _CHUNK = 1 << 20
 _FILE_ID = re.compile(FILE_ID_PATTERN)
+#: What one step of a delete sweep may fail with (a Meta error, a disk fault writing files.json, an unreadable
+#: files.json) without stopping the rest of the sweep; the first one is re-raised after it.
+_SWEEP_ERRORS = (MetaError, OSError, ValueError)
 
 
 def sha256_file(path: Path) -> str:
@@ -247,11 +250,11 @@ class FileStore:
 
     async def _delete_each(self, file_ids: list[str]) -> None:
         """Delete every ID, carrying on past failures; the first failure is re-raised after the rest."""
-        first_error: MetaError | None = None
+        first_error: Exception | None = None
         for file_id in file_ids:
             try:
                 await self._delete(file_id)
-            except MetaError as exc:
+            except _SWEEP_ERRORS as exc:
                 first_error = first_error or exc
         if first_error is not None:
             raise first_error
@@ -272,11 +275,11 @@ class FileStore:
         A failed listing or delete leaves that name's orphan open (the sweeper or the 6 h expiry covers it); the
         other names are still reconciled, and the first failure is raised after them.
         """
-        first_error: MetaError | None = None
+        first_error: Exception | None = None
         for name in sorted({e.name for e in self.index().root if e.orphan and e.deleted_at is None}):
             try:
                 await self._reconcile_name(name)
-            except MetaError as exc:
+            except _SWEEP_ERRORS as exc:
                 first_error = first_error or exc
         if first_error is not None:
             raise first_error
@@ -311,15 +314,15 @@ class FileStore:
         A failed delete leaves its entry undeleted (the hourly sweeper retries it) and is re-raised after
         the others were tried, so one failure never strands the rest.
         """
-        first_error: MetaError | None = None
+        first_error: Exception | None = None
         try:
             await self.reconcile_orphans()
-        except MetaError as exc:
+        except _SWEEP_ERRORS as exc:
             first_error = exc
         for entry in [e for e in self.index().root if e.file_id and e.deleted_at is None]:
             try:
                 await self._delete(cast(str, entry.file_id))
-            except MetaError as exc:
+            except _SWEEP_ERRORS as exc:
                 first_error = first_error or exc
         if first_error is not None:
             raise first_error

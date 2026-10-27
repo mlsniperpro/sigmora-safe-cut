@@ -460,7 +460,7 @@ def _edit_receipt(job_dir: Path, fn: Any) -> None:
         ("tracks.json", lambda d: d.update({"crowded_frames": [12]}), "job.frames"),
         ("plan.json", lambda d: d["frames"].update({"40": []}), "job.frames"),
         ("decisions.json", lambda d: d["items"][0].update({"track_ids": ["face:99"]}), "unknown track"),
-        ("audit.json", lambda d: d["leaks"][0].update({"box": [0, 600, 50, 721]}), "exceeds"),
+        ("audit.json", lambda d: d["leaks"][0].update({"box": [200, 200, 260, 721]}), "exceeds"),
         ("transcript.json", lambda d: d.update({"source_kind": None, "source": None}), "source_kind"),
     ],
 )

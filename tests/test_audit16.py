@@ -31,7 +31,8 @@ def _with_leak(tmp_path: Path, **leak: Any) -> Path:
     job_dir = tmp_path / "j_example"
     shutil.copytree(EXAMPLE, job_dir)
     audit = json.loads((job_dir / "audit.json").read_text())
-    audit["leaks"] = [{"frame": 10, "box": [10, 10, 50, 50], "kind": "face", "detector": "redteam"} | leak]
+    audit["leaks"] = [{"frame": 10, "box": [200, 200, 260, 280], "kind": "face", "detector": "redteam"} | leak]
+    audit["redteam"] = [r for r in audit["redteam"] if r["finding"] == "none"]  # its hit would need its own leak
     (job_dir / "audit.json").write_text(json.dumps(audit))
     return job_dir
 
@@ -127,7 +128,7 @@ async def test_a_hero_clip_moves_only_b_and_d(tmp_path: Path) -> None:
         hero_root=hero_root,
     )
     assert (out / "a" / "summary.json").exists()
-    assert (hero_root / "b" / "summary.json").exists()
+    assert (hero_root / "hero" / "b" / "summary.json").exists()  # one folder per hero clip (audit #21)
     assert not (out / "b").exists()
 
 

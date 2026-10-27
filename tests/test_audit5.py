@@ -17,7 +17,7 @@ import respx
 from pydantic import ValidationError
 
 from safecut import contracts as c
-from safecut.config import Settings, load_settings
+from safecut.config import ConfigError, Settings, load_settings
 from safecut.meta import responses, sam
 from safecut.meta.budget import Caller, CapLimit, LocalLedger
 from safecut.meta.client import CallSpec, MetaClient
@@ -282,8 +282,9 @@ async def test_effort_must_match_the_body(make_harness: Callable[..., Harness], 
 def test_sam_delete_responses_follows_send_store() -> None:
     assert load_settings({}).delete_sam_responses is False
     assert load_settings({"SAFECUT_SAM_SEND_STORE": "false"}).delete_sam_responses is True
-    off = load_settings({"SAFECUT_SAM_SEND_STORE": "false", "SAFECUT_SAM_DELETE_RESPONSES": "0"})
-    assert off.delete_sam_responses is False
+    # Storing SAM responses without deleting them is refused (audit #21: AGENTS rule 6).
+    with pytest.raises(ConfigError, match="needs SAM response deletion"):
+        load_settings({"SAFECUT_SAM_SEND_STORE": "false", "SAFECUT_SAM_DELETE_RESPONSES": "0"})
 
 
 async def test_sam_responses_are_logged_and_deleted(

@@ -343,6 +343,27 @@ class Settings(BaseModel):
     def delete_sam_responses(self) -> bool:
         return (not self.sam_send_store) if self.sam_delete_responses is None else self.sam_delete_responses
 
+    @field_validator("model_api_key", "baseten_api_key")
+    @classmethod
+    def _clean_key(cls, value: SecretStr | None) -> SecretStr | None:
+        """A key is sent in an HTTP header: surrounding whitespace (a pasted newline) is stripped, and a key with
+        inner whitespace or non-ASCII characters is refused here, rather than failing every call unsent."""
+        if value is None:
+            return None
+        key = value.get_secret_value().strip()
+        if any(ch.isspace() or not ch.isascii() for ch in key):
+            raise ValueError("the key holds whitespace or non-ASCII characters (never echoed)")
+        return SecretStr(key)
+
+    @model_validator(mode="after")
+    def _sam_responses_handled(self) -> Settings:
+        # AGENTS rule 6: if SAM can't be sent store:false, its stored responses must be deleted.
+        if not self.sam_send_store and self.sam_delete_responses is False:
+            raise ValueError(
+                "SAFECUT_SAM_SEND_STORE=false needs SAM response deletion (leave SAFECUT_SAM_DELETE_RESPONSES unset)"
+            )
+        return self
+
     @field_validator("meta_base_url", "open_weight_base_url")
     @classmethod
     def _trusted_base(cls, value: str, info: ValidationInfo) -> str:

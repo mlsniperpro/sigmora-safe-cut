@@ -593,12 +593,13 @@ class Audit(Contract):
             self.redteam_open or any(leak.detector == "redteam_open" for leak in self.leaks)
         ):
             raise ValueError("redteam_open entries and leaks need an open-weight opinion that ran")
-        leak_frames = {leak.frame for leak in self.leaks}
         for hit in self.redteam:
-            # redteam.md: every red-team hit is a leak unless the kept-clear rule excluded it (excluded_by).
-            # `redteam_open` stays advisory until the grid check passes, so only `redteam` is held to this.
-            if isinstance(hit, RedteamHit) and hit.excluded_by is None and hit.frame not in leak_frames:
-                raise ValueError(f"red-team hit at frame {hit.frame} is neither excluded nor a leak")
+            # redteam.md: every red-team hit is a leak (on its own region, not just its frame) unless the
+            # kept-clear rule excluded it. `redteam_open` stays advisory until the grid check passes.
+            if not isinstance(hit, RedteamHit) or hit.excluded_by is not None:
+                continue
+            if not any(leak.frame == hit.frame and boxes_overlap(leak.box, hit.box) for leak in self.leaks):
+                raise ValueError(f"red-team hit at frame {hit.frame} is neither excluded nor a leak on its box")
         open_leaks = sum(leak.unresolved for leak in self.leaks)
         if self.unresolved < open_leaks:
             # PRE-A §12: each unresolved leak counts 1 in `unresolved`, the one publish gate.
@@ -699,6 +700,11 @@ class Receipt(ReceiptBody):
     def seal(cls, body: ReceiptBody) -> Receipt:
         """Compute the hash for ``body`` and return the sealed receipt."""
         return cls.model_validate({**body.model_dump(mode="json"), "hash": receipt_hash(body)})
+
+
+def boxes_overlap(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> bool:
+    """Half-open boxes share a positive area (redteam.md's "on")."""
+    return min(a[2], b[2]) > max(a[0], b[0]) and min(a[3], b[3]) > max(a[1], b[1])
 
 
 def canonical_json(data: Any) -> str:
@@ -1056,6 +1062,7 @@ def _check_receipt(
         for name, got, want in (
             ("frames_scanned", summary.frames_scanned, audit.frames_scanned),
             ("leaks_found", summary.leaks_found, len(audit.leaks)),
+            ("leaks_patched", summary.leaks_patched, sum(leak.patched_item is not None for leak in audit.leaks)),
             ("unresolved", summary.unresolved, audit.unresolved),
             ("passes", summary.passes, audit.passes),
             ("blocked_reason", summary.blocked_reason, audit.blocked_reason),
@@ -1193,29 +1200,73 @@ def _hidden_frames(item: DecisionItem, spans: Mapping[str, tuple[int, int]], pla
     return frames or None
 
 
+def _regions(item: DecisionItem, frame: int, plan: Plan | None) -> list[tuple[int, int, int, int]] | None:
+    """Where an item hides on ``frame``: an audit patch's own box, else its plan entries' boxes on that frame.
+    ``None`` when there's nothing to compare with (a track item and no plan)."""
+    if item.box is not None:
+        return [item.box]
+    if plan is None:
+        return None
+    return [e.box for e in plan.frames.get(frame, []) if e.item_id == item.item_id]
+
+
 def _check_patches(audit: Audit, decisions: Decisions, tracks: Tracks | None, plan: Plan | None) -> None:
     """A leak's ``patched_item`` and ``through_item``, and a spot's ``covered_by``, are hidden items that hide
-    the leak's frame or the spot's frames."""
+    the leak's (or spot's) frames and region: an audit patch's box contains the leak's box; a track item's
+    planned region on that frame overlaps it. ``excluded_by`` is a kept item present on the hit's frame."""
     by_id = {item.item_id: item for item in decisions.items}
     spans = {t.track_id: (t.first, t.last) for t in tracks.tracks} if tracks is not None else {}
 
-    def check(item_id: str | None, frames: range, where: str) -> None:
+    def check(item_id: str | None, boxes: Mapping[int, tuple[int, int, int, int]], where: str) -> None:
         item = by_id.get(item_id or "")
         if item is None:
             return
         if item.decision == "keep":
             raise ContractError(f"audit.json {where}: {item.item_id} is a kept item")
         hidden = _hidden_frames(item, spans, plan)
-        outside = [f for f in frames if hidden is not None and f not in hidden]
+        outside = [f for f in sorted(boxes) if hidden is not None and f not in hidden]
         if outside:
             raise ContractError(f"audit.json {where}: {item.item_id} doesn't hide frames {outside[:5]}")
+        for frame, box in sorted(boxes.items()):
+            regions = _regions(item, frame, plan)
+            if not regions:
+                continue
+            covered = (
+                any(r[0] <= box[0] and r[1] <= box[1] and box[2] <= r[2] and box[3] <= r[3] for r in regions)
+                if item.box is not None
+                else any(boxes_overlap(r, box) for r in regions)
+            )
+            if not covered:
+                raise ContractError(
+                    f"audit.json {where}: {item.item_id} doesn't cover box {list(box)} on frame {frame}"
+                )
 
     for leak in audit.leaks:
-        frame = range(leak.frame, leak.frame + 1)
-        check(leak.patched_item, frame, f"leak at frame {leak.frame} patch")
-        check(leak.through_item, frame, f"leak at frame {leak.frame} through_item")
+        check(leak.patched_item, {leak.frame: leak.box}, f"leak at frame {leak.frame} patch")
+        check(leak.through_item, {leak.frame: leak.box}, f"leak at frame {leak.frame} through_item")
     for spot in audit.spots:
-        check(spot.covered_by, range(spot.first, spot.last + 1), f"spot {spot.spot_id} cover")
+        where = f"spot {spot.spot_id} cover"
+        check(spot.covered_by, spot.boxes, where)  # kept items, and the region on every frame with a box
+        cover = by_id.get(spot.covered_by or "")
+        hidden = _hidden_frames(cover, spans, plan) if cover is not None else None
+        missing = [f for f in range(spot.first, spot.last + 1) if hidden is not None and f not in hidden]
+        if missing:
+            raise ContractError(f"audit.json {where}: {spot.covered_by} doesn't hide frames {missing[:5]}")
+    for name, entries in (("redteam", audit.redteam), ("redteam_open", audit.redteam_open)):
+        for entry in entries:
+            if not isinstance(entry, RedteamHit) or entry.excluded_by is None:
+                continue
+            item = by_id.get(entry.excluded_by)
+            if item is None:
+                continue  # an unknown id is reported by _check_links
+            if item.decision != "keep":
+                raise ContractError(
+                    f"audit.json {name} at frame {entry.frame}: excluded_by {item.item_id}, which isn't a kept item"
+                )
+            if spans and entry.frame not in _present_frames(item, spans):
+                raise ContractError(
+                    f"audit.json {name} at frame {entry.frame}: excluded_by {item.item_id}, absent on that frame"
+                )
 
 
 def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:
