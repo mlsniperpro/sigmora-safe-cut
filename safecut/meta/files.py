@@ -42,12 +42,12 @@ def _no_cost(_: Any) -> tuple[Units, float]:
     return {}, 0.0
 
 
-def _spec(stage: str, timeout_s: float) -> CallSpec:
+def _spec(stage: str, timeout_s: float, units: Units | None = None) -> CallSpec:
     return CallSpec(
         stage=stage,
         model=None,
         estimate_usd=0.0,
-        estimate_units={},
+        estimate_units=units or {},
         policy=RetryPolicy.for_files(),
         timeout=httpx.Timeout(timeout_s, connect=config.CONNECT_TIMEOUT_S),
         total_timeout_s=timeout_s,
@@ -131,6 +131,7 @@ class FileStore:
 
     async def _send(self, path: Path, up: _Upload, mime: str) -> str:
         handles: list[IO[bytes]] = []
+        units: Units = {"bytes": float(up.size)}  # PRE-A §10.5: a Files line records its bytes, at $0
 
         def body() -> dict[str, Any]:
             handle = path.open("rb")
@@ -141,8 +142,8 @@ class FileStore:
             result = await self.client.request(
                 "POST",
                 "files",
-                _spec("files", upload_timeout(up.size)),
-                meter=_no_cost,
+                _spec("files", upload_timeout(up.size), units),
+                meter=lambda _: (units, 0.0),
                 files=body,
                 data={
                     "purpose": "user_data",

@@ -1211,9 +1211,10 @@ def _hidden_frames(item: DecisionItem, spans: Mapping[str, tuple[int, int]], pla
 
 
 def _regions(item: DecisionItem, frame: int, plan: Plan | None) -> list[tuple[int, int, int, int]]:
-    """Where an item hides on ``frame``: its planned (padded) boxes there, plus an audit patch's own box."""
+    """Where an item hides on ``frame``: what the plan renders there (the guard pads an audit patch's box
+    outward, so a valid plan's box contains it); an audit patch's own box only where no plan says."""
     planned = [e.box for e in plan.frames.get(frame, []) if e.item_id == item.item_id] if plan is not None else []
-    return planned + ([item.box] if item.box is not None else [])
+    return planned or ([item.box] if item.box is not None else [])
 
 
 def _check_patches(audit: Audit, decisions: Decisions, tracks: Tracks | None, plan: Plan | None) -> None:
@@ -1254,6 +1255,13 @@ def _check_patches(audit: Audit, decisions: Decisions, tracks: Tracks | None, pl
     for leak in audit.leaks:
         where = f"leak at frame {leak.frame}"
         check(leak.patched_item, {leak.frame: leak.box}, f"{where} patch", contain=leak.flag is None)
+        patch = by_id.get(leak.patched_item or "")
+        # redteam.md / PRE-A §12: every leak becomes a new audit-patch item; only a flagged leak may instead be
+        # fixed by re-rendering the item it was read through (solid).
+        if patch is not None and patch.origin != "audit_patch" and patch.item_id != leak.through_item:
+            raise ContractError(
+                f"audit.json {where} patch: {patch.item_id} is neither an audit patch nor the flagged through_item"
+            )
         check(leak.through_item, {leak.frame: leak.box}, f"{where} through_item", contain=False)
     for spot in audit.spots:
         where = f"spot {spot.spot_id} cover"

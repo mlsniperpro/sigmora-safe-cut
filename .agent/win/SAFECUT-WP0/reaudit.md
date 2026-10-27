@@ -241,3 +241,16 @@ Tests are in tests/test_audit23.py unless named. It also reported audit #22's M1
 - L3 a late non-trial success closed a half-open breaker, and the trial's later failure then didn't reopen it. Fixed: only the trial's success closes it, as API-NOTES-WP0 says (test_a_late_success_never_closes_a_half_open_breaker)
 - L4 `.gitignore` `jobs/` was unanchored, so `web/src/app/jobs/` would be ignored. Now `/jobs/` (PRE-A §12)
 - L5 HANDOFF's state lines were stale (372/432 passed, audits #6–#11), and BLOCKED.md implied code reads `SAFECUT_CLIPS_URL`. HANDOFF is updated; BLOCKED.md now says the hero clips are a manual download passed with `--clip=<path>`. The reaudit and break-it headers are rewritten at the final head, as planned
+
+## Audit 24 (independent Sonnet reviewer at 8797774): 0 critical, 0 high, 3 medium, 2 low. NOT CLEAN; all verified and handled
+Tests are in tests/test_audit24.py unless named.
+- M1 `excluded_by` accepted any kept item on the frame: the same defect as audit #23 M1, already fixed in 958f992
+- M2 an unflagged leak counted as patched by a track item overlapping it by a sliver (i_3 over 6 px). redteam.md and PRE-A §12: every leak becomes a new `audit_patch` item; only a flagged leak may instead be fixed by re-rendering its `through_item` solid. Fixed: a non-audit-patch `patched_item` must be the leak's `through_item` (test_a_track_item_overlapping_a_sliver_never_patches_an_unflagged_leak, test_a_flagged_leak_may_name_another_item_only_as_its_through_item)
+- M3 containment was judged against the patch's declared `box`, so a plan rendering [0,0,2,2] passed. Fixed: with a plan present, the boxes the plan renders on that frame are the region; the declared box is used only where no plan entry exists. The guard pads outward, so valid output is unaffected (test_containment_uses_the_rendered_box_not_the_declared_one)
+- L4 API-NOTES §13.2b said ≤ 40 open-weight frames fit the $0.50 cap. With the code's own estimate, 46 frames reserve $0.498 and 47 reserve $0.500, which is refused. The docs and the PR now say 46 (computed with `open_weight._spec`)
+- L5 the stale break-it and reaudit headers are rewritten at the final head, as planned
+
+## Audit 25 (independent Sonnet reviewer at 8797774, reviewed through 958f992): 0 critical, 0 high, 0 medium open, 2 low. NOT CLEAN; both verified and fixed
+It also reproduced audit #23 M2 at 8797774 and confirmed the fix at 958f992. Its 2,800-scenario cancel enumeration and its check of the #23 rules found no false refusal.
+- L1 Files cost lines logged `units: {}`. PRE-A §10.5 says `{"bytes": n}`. Fixed: the upload's spec and meter carry its bytes, at $0 (tests/test_audit24.py::test_an_upload_cost_line_records_its_bytes)
+- L2 `safecut/meta/sam.py` sits in WP1's owned paths ("stream parser"). Handled as AGENTS rule 2 says: PR #3's "Requests for other WPs" and HANDOFF now ask WP1 to extend `sam.py` (`ResponseLog`, `video_body`, `segment_video` with response deletion), never replace it
