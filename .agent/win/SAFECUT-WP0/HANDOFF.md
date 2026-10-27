@@ -2,6 +2,7 @@
 
 ## Goal, deadline, PR
 - **Goal:** execute `docs/work-packages/WP0.md` (foundation: scaffold, data contracts, Meta client base, D1 probes, fixtures, API notes), and get `bash .agent/win-gate.sh SAFECUT-WP0` to print `GATE: PASS` on the pushed head. The owner's mandate is to win, not just finish.
+- **Owner milestone (set 2026-10-27):** the owner submits on 2026-11-03, so WP0 must be merge-ready (GATE: PASS, PR #3 out of draft) well before that, aiming for 2026-10-30.
 - **Deadlines:** the internal deadline is 2026-11-04T18:00Z. The official deadline is 2026-11-05 02:00 UTC (Wed Nov 4, 9 PM ET; see `docs/OFFICIAL-GUIDE.md`).
 - **Branch and PR:** `wp0-foundation`, PR #3 (draft). That is the only PR for this work; keep its body's Status / Evidence / Decisions / Self-review sections current.
 
