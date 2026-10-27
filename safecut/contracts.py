@@ -584,6 +584,23 @@ class Audit(Contract):
             self.redteam_open or any(leak.detector == "redteam_open" for leak in self.leaks)
         ):
             raise ValueError("redteam_open entries and leaks need an open-weight opinion that ran")
+        open_leaks = sum(leak.unresolved for leak in self.leaks)
+        if self.unresolved < open_leaks:
+            # PRE-A §12: each unresolved leak counts 1 in `unresolved`, the one publish gate.
+            raise ValueError(f"unresolved {self.unresolved} is less than the {open_leaks} unresolved leaks")
+        for leak in self.leaks:
+            if leak.patched_item is None and leak.through_item is None and not leak.unresolved:
+                raise ValueError(
+                    f"leak at frame {leak.frame} is neither patched, flagged through an item, nor unresolved"
+                )
+        if self.open_weight.status != "off":
+            frames = len({entry.frame for entry in self.redteam_open})
+            hits = sum(isinstance(entry, RedteamHit) for entry in self.redteam_open)
+            if (self.open_weight.frames, self.open_weight.findings) != (frames, hits):
+                raise ValueError(
+                    f"open_weight says {self.open_weight.frames} frames and {self.open_weight.findings} findings;"
+                    f" redteam_open holds {frames} frames and {hits} findings"
+                )
         if (self.blocked_reason is not None) != (self.unresolved > 0):
             raise ValueError("blocked_reason is set exactly when unresolved > 0 (the one publish gate)")
         if (self.audit_budget_cause is not None) != (self.blocked_reason == "over_budget"):
@@ -612,6 +629,13 @@ class ReceiptAudit(Contract):
     unresolved: NonNegativeInt
     passes: NonNegativeInt
     blocked_reason: BlockedReason | None
+
+    @model_validator(mode="after")
+    def _approved(self) -> ReceiptAudit:
+        # A receipt exists only after the creator approved a publishable render (unresolved == 0).
+        if self.unresolved or self.blocked_reason is not None:
+            raise ValueError("a receipt is written only for a publishable audit (unresolved 0, no blocked_reason)")
+        return self
 
 
 class DataHandling(Contract):
@@ -1141,6 +1165,22 @@ def _check_links(
         for where, ref in refs:
             if ref is not None and ref not in items:
                 raise ContractError(f"audit.json {where}: {ref!r} is not an item in decisions.json")
+        _check_patches(audit, decisions)
+
+
+def _check_patches(audit: Audit, decisions: Decisions) -> None:
+    """A leak's ``patched_item`` hides it: not a kept item, and (for an audit patch) on the leak's frame."""
+    by_id = {item.item_id: item for item in decisions.items}
+    for leak in audit.leaks:
+        patch = by_id.get(leak.patched_item or "")
+        if patch is None:
+            continue
+        if patch.decision == "keep":
+            raise ContractError(f"audit.json leak at frame {leak.frame}: patched by {patch.item_id}, a kept item")
+        if patch.first is not None and patch.last is not None and not patch.first <= leak.frame <= patch.last:
+            raise ContractError(
+                f"audit.json leak at frame {leak.frame}: its patch {patch.item_id} spans {patch.first}-{patch.last}"
+            )
 
 
 def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:

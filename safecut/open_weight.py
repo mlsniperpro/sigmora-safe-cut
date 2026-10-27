@@ -243,7 +243,7 @@ class RedteamFinding(BaseModel):
     detail: str
     text: str | None = None
     #: On the 0-1000 grid of the sent image; ``None`` means the whole frame (the model's box was malformed).
-    box: Annotated[tuple[int, int, int, int] | None, BeforeValidator(_grid_box)]
+    box: Annotated[tuple[int, int, int, int] | None, BeforeValidator(_grid_box)] = None
     confidence: Literal["low", "medium", "high"]
 
 

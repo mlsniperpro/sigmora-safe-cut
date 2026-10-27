@@ -521,7 +521,9 @@ async def test_settle_runs_off_the_event_loop(settings: Settings, tmp_path: Path
     await client.request("POST", "thing", _spec(), meter=_meter)
     task.cancel()
     await client.aclose()
-    assert ticks >= 10  # the loop kept running during the 0.3 s settle
+    # A blocked loop ticks ~0 times during the 0.3 s settle; a free one ~30. 5 keeps a loaded CI box (or a
+    # parallel soak) from flaking without letting a blocking settle pass.
+    assert ticks >= 5
 
 
 class _FlakyReserve(LocalLedger):
@@ -582,7 +584,7 @@ def test_open_weight_contract_rules() -> None:
     with pytest.raises(ValidationError, match="open-weight"):
         Audit.model_validate(audit | {"redteam_open": [{"frame": 0, "finding": "none"}]})
     ok = audit | {
-        "open_weight": {"model": "meta-models/muse-spark-open-1026", "status": "ok", "frames": 12, "findings": 0},
+        "open_weight": {"model": "meta-models/muse-spark-open-1026", "status": "ok", "frames": 1, "findings": 0},
         "redteam_open": [{"frame": 0, "finding": "none"}],
     }
     assert Audit.model_validate(ok).open_weight.status == "ok"

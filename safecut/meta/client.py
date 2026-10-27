@@ -471,8 +471,12 @@ class MetaClient:
             call_id = f"{self.job_id or 'system'}:{spec.stage}:{uuid.uuid4().hex}"
             try:
                 await self._reserve(call_id, spec.estimate_usd)
-            except BudgetExceeded as exc:
-                self._log_budget_stop(spec, exc)
+            except MetaError as exc:
+                # An earlier attempt may have been processed (an accepted timeout): the caller must still
+                # learn that, or an upload it never heard about escapes files.json (PRE-A §10.4).
+                exc.maybe_processed = exc.maybe_processed or maybe_processed
+                if isinstance(exc, BudgetExceeded):
+                    self._log_budget_stop(spec, exc)
                 raise
             sent = _SentFlag()
             try:

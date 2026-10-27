@@ -26,7 +26,7 @@ def _audit(status: str, **summary: Any) -> dict[str, Any]:
 
 
 def test_a_failed_opinion_keeps_its_entries() -> None:
-    audit = Audit.model_validate(_audit("failed", frames=8, findings=1))
+    audit = Audit.model_validate(_audit("failed", frames=1, findings=0))
     assert audit.open_weight.status == "failed"
     assert len(audit.redteam_open) == 1
 

@@ -133,3 +133,18 @@ Tests are in tests/test_audit11.py unless named.
 - L2 probe b left SAM responses undeleted: the fps-hint call came after `delete_pending`, and failure paths skipped deletion; the replay mock's constant id hid it. Fixed: probe b deletes in a `finally` after every call, `_sam_delete_check` deletes on its failure path too, and the replay server mints a unique id per call so the test asserts created == deleted (test_probe_b_runs_without_store_and_deletes)
 - L3 a malformed box (a float, 3 numbers, a string) or an omitted `text` failed the whole open-weight batch; redteam.md "Validation" keeps the finding with a whole-frame box. Fixed: `RedteamFinding.box` is a 4-int tuple or `None` (= the whole frame, fail closed), and `text` defaults to null (test_a_malformed_box_is_a_whole_frame_finding ×5)
 - L4 stale wording: the breaker docstring and API-NOTES now say "a success while half-open (the trial's) closes it", matching the code and decision A9-L4; the checklist's package count (now 117, all groups) is updated; break-it is rewritten at the final head before the gate
+
+## Audit 12 (independent Sonnet reviewer at 2012ed0): 0 critical, 0 high, 2 medium, 3 low. NOT CLEAN; all verified and handled
+Tests are in tests/test_audit12.py unless named.
+- M1 the publish gate was fail-open: `unresolved` wasn't tied to the leaks (PRE-A §12 row 643: "each unresolved row counts 1 in `unresolved`"). Verified with the auditor's repros. Fixed:
+  - `Audit` requires `unresolved` ≥ the unresolved leaks;
+  - every leak is patched, flagged through an item, or unresolved;
+  - `open_weight.frames`/`findings` equal the `redteam_open` entries;
+  - `_check_patches` requires a leak's patch to be a non-kept item whose `first..last` (when set) holds the leak's frame;
+  - `ReceiptAudit` requires a publishable audit (unresolved 0, no blocked_reason).
+  (test_an_unresolved_leak_must_be_counted, test_a_leak_is_patched_flagged_or_unresolved, test_open_weight_counts_match_its_entries, test_a_receipt_needs_a_publishable_audit, test_a_patch_must_hide_the_leak_frame ×2)
+- M2 a reserve failure after an accepted attempt lost `maybe_processed`, so `FileStore` neither listed nor recorded an orphan, and `files_deleted` could be claimed over a live upload. Fixed: `_attempts` stamps the attempt history's `maybe_processed` on any MetaError from `_reserve` (test_a_ledger_fault_after_an_accepted_upload_still_finds_the_copy)
+- L3 a finding with no `box` key still failed its batch. Fixed: `box` defaults to `None` (= the whole frame) (test_a_missing_box_is_a_whole_frame_finding)
+- L4 API-NOTES §13.2b still said one failed batch fails the opinion. Rewritten: the budget is all-or-nothing, failure is per batch, and a malformed or missing box means the whole frame
+- L5 probe b's failure-path deletion had no test. Added: SAM attempts that fail after `response.created` are retried, and every created response, failed or not, is deleted (test_probe_b_deletes_sam_responses_on_failure_paths)
+- Also: `test_settle_runs_off_the_event_loop` flaked under a parallel soak (it asserted ≥ 10 loop ticks in a 0.3 s settle). A blocked loop gives ~0 and a free one ~30, so the bound is now 5. The property still fails a blocking settle; it was made robust, not weakened
