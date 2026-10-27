@@ -22,6 +22,12 @@
 - Audit round 5 (on f56577e): 1 medium and 9 low. All fixed in the round-5 commit except #10, which stays as the spec's copy and is a request to Sigmora.
   - The medium: the review video reloaded on every URL re-sign. Polls now keep the on-screen URLs and the player latches its source.
 - On the round-5 commit: 788 tests (25 files), e2e 71/71, `checks.sh` exit 0.
+- Audit round 6 (on f690e1f): 2 medium and 4 low, all fixed in the round-6 commit. Highlights:
+  - A failed delete no longer strands /try.
+  - The footer clears the bottom bar.
+  - Field border contrast, an earlier demo banner, κ rounding.
+  - Mask-shaped covers.
+- On the round-6 commit: 798 tests (26 files), e2e 73/73, `checks.sh` exit 0. Screenshots refreshed.
 - CLEAN_AUDITS_IN_A_ROW is 0. Two clean full audits are still needed, then a fresh break-it.md (fresh clone + FUZZ_RUNS=100000).
 
 ## Next steps, in order
@@ -32,7 +38,7 @@
 
 ## Key decisions (why)
 - Overlay maps frames with `floor(mediaTime*fps+0.25)`, following UI-SPEC §3.6 (which supersedes WP6 step 4's "via job.times"). It uses requestVideoFrameCallback with a labelled rAF fallback.
-- Masks are drawn as their plan box, a superset of the mask, so the preview never under-covers.
+- Solid covers with a frame-sized COCO RLE mask are filled in the mask's shape (§3.6, `lib/rle.ts`). A mask that doesn't decode or fit falls back to the box, so the preview never covers less than the plan.
 - Long chip lists use CSS `content-visibility:auto` rather than JS virtualisation. All 200 chips stay in the DOM, so Tab order holds.
 - Results-table percentages round in the unflattering direction (AGENTS rule 9).
 - In mock mode the sample hero does not trigger the "real run" demo banner (honesty). A separate sample-data note shows instead.

@@ -3,12 +3,13 @@
  * given the plan and the creator's local edits, and how to draw them.
  */
 import type { Box, Plan, Style, Track } from "./contracts";
+import { cachedMaskRuns, type Run } from "./rle";
 
 export const MAX_REGIONS = 200;
 const LOCAL_PAD = 0.15;
 
 export type OverlayOp =
-  | { kind: "cover"; box: Box; style: Style; grid: [number, number, number] | null }
+  | { kind: "cover"; box: Box; style: Style; grid: [number, number, number] | null; mask?: Run[] | null }
   | { kind: "fill"; box: Box }
   | { kind: "outline"; box: Box; label: string; selected: boolean }
   | { kind: "spot"; box: Box; label: string };
@@ -68,7 +69,12 @@ export function overlayOps(input: OverlayInput): OverlayOp[] {
   if (input.mode === "safecut") {
     for (const fill of plan.crowd_fills) if (fill.frames.includes(frame)) ops.push({ kind: "fill", box: fill.box });
     for (const r of plan.frames[String(frame)] ?? []) {
-      if (input.isCovered(r.item_id)) ops.push({ kind: "cover", box: r.box, style: r.style, grid: r.grid ?? null });
+      if (!input.isCovered(r.item_id)) continue;
+      // Solid covers take the mask's shape when there is one (§3.6). A mask that doesn't decode,
+      // or isn't frame-sized, covers its whole box instead: never less than the box promises.
+      const sized = r.mask && r.mask.size[0] === input.height && r.mask.size[1] === input.width;
+      const mask = r.shape === "mask" && r.style !== "pixelate" && sized && r.mask ? cachedMaskRuns(r.mask) : null;
+      ops.push({ kind: "cover", box: r.box, style: r.style, grid: r.grid ?? null, ...(mask && { mask }) });
     }
     for (const u of input.unplanned) {
       for (const box of boxesOn(u.trackIds, tracks, frame)) ops.push({ kind: "cover", box: pad(box, LOCAL_PAD, input.width, input.height), style: "solid", grid: null });
@@ -104,7 +110,11 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, video: CanvasImageSou
   const s = (b: Box): Box => [b[0] * scale, b[1] * scale, b[2] * scale, b[3] * scale];
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   for (const op of ops) {
-    if (op.kind === "fill" || (op.kind === "cover" && (op.style !== "pixelate" || !op.grid || !video))) {
+    if (op.kind === "cover" && op.mask) {
+      ctx.fillStyle = "#18181b";
+      // One rect per vertical run, a pixel wide, slightly overdrawn so scaled runs leave no seams.
+      for (const [x, y, h] of op.mask) ctx.fillRect(x * scale, y * scale, Math.ceil(scale) + 0.5, h * scale + 0.5);
+    } else if (op.kind === "fill" || (op.kind === "cover" && (op.style !== "pixelate" || !op.grid || !video))) {
       const [x1, y1, x2, y2] = s(op.box);
       ctx.fillStyle = "#18181b";
       ctx.fillRect(x1, y1, x2 - x1, y2 - y1);

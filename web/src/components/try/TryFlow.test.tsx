@@ -8,6 +8,7 @@ import { SafeCutClient } from "@/lib/api";
 import { setClientForTests } from "@/lib/client";
 import { MockBackend } from "@/lib/mock-backend";
 import { COPY } from "@/lib/copy";
+import { ModeBanners, ModeProvider } from "../mode";
 import { TryFlow } from "./TryFlow";
 
 const push = vi.hoisted(() => vi.fn());
@@ -284,6 +285,71 @@ describe("/try", () => {
     await pickAndStart(user);
     expect(await screen.findByText(COPY.dailyCapTry)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "Start" })).toBeEnabled());
+  });
+
+  it("a DELETE that fails during the upload leaves the page as it was: the upload finishes and the job starts (§10.3)", async () => {
+    const user = setup(30);
+    backend.inject(/^DELETE /, "error-500-delete");
+    await enterCode(user, "judge");
+    await screen.findByRole("button", { name: "Choose a file" });
+    await user.upload(fileInput(), clip());
+    await screen.findByText(/street\.mp4/);
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(screen.getByRole("button", { name: "Start" }));
+    await screen.findByRole("listitem", { current: "step" });
+    await user.click(screen.getByRole("button", { name: "Cancel and delete" }));
+    await user.click(within(await screen.findByRole("dialog", { name: "Delete this clip?" })).getByRole("button", { name: "Delete" }));
+    expect(await screen.findByText(COPY.unexpected)).toBeInTheDocument();
+    await waitFor(() => expect(backend.log.some((l) => l.path.endsWith("/start"))).toBe(true), { timeout: 3_000 });
+    // The mock answers after its 30 ms latency: let the start land before moving the clock on.
+    await new Promise((r) => setTimeout(r, 100));
+    now = 1_000_000;
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/jobs/j_mock1"), { timeout: 5_000 });
+  }, 15_000);
+
+  it("a DELETE that fails while processing still moves on to the review once the job is ready", async () => {
+    const user = setup();
+    await pickAndStart(user);
+    expect(await screen.findByText("Working on your clip")).toBeInTheDocument();
+    await waitFor(() => expect(backend.log.some((l) => l.path.endsWith("/start"))).toBe(true));
+    const original = backend.request.bind(backend);
+    vi.spyOn(backend, "request").mockImplementation(async (init) => {
+      if (init.method === "DELETE") {
+        await new Promise((r) => setTimeout(r, 300));
+        return { status: 500, headers: { get: () => null }, body: { error: { code: "internal", message: "x" } } };
+      }
+      return original(init);
+    });
+    await user.click(screen.getByRole("button", { name: "Cancel and delete" }));
+    await user.click(within(await screen.findByRole("dialog", { name: "Delete this clip?" })).getByRole("button", { name: "Delete" }));
+    now = 1_000_000;
+    expect(await screen.findByText(COPY.unexpected)).toBeInTheDocument();
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/jobs/j_mock1"), { timeout: 5_000 });
+  });
+
+  it("shows the demo banner from the create response, before polling starts (§6)", async () => {
+    backend = new MockBackend({ latencyMs: 300, stepMs: 1_000, now: () => now });
+    const original = backend.request.bind(backend);
+    vi.spyOn(backend, "request").mockImplementation(async (init) => {
+      const raw = await original(init);
+      return init.method === "POST" && init.path === "/v1/jobs" ? { ...raw, body: { ...(raw.body as object), mode: "replay" } } : raw;
+    });
+    setClientForTests(new SafeCutClient({ transport: backend, sleep: () => Promise.resolve() }));
+    const user = userEvent.setup({ applyAccept: false });
+    render(
+      <ModeProvider>
+        <ModeBanners />
+        <TryFlow />
+      </ModeProvider>,
+    );
+    await enterCode(user, "judge");
+    await screen.findByRole("button", { name: "Choose a file" });
+    await user.upload(fileInput(), clip());
+    await screen.findByText(/street\.mp4/);
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(screen.getByRole("button", { name: "Start" }));
+    expect(await screen.findByText(/You're seeing saved results from a real run/)).toBeInTheDocument();
+    expect(backend.log.some((l) => l.method === "GET")).toBe(false);
   });
 
   it("once the delete is confirmed, a slow DELETE doesn't let the finished upload send POST /start", async () => {

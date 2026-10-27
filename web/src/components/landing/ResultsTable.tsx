@@ -45,7 +45,9 @@ function footnote(r: Results): string {
   if (r.kappa === null || r.kappa === undefined || !Number.isFinite(r.kappa)) {
     return `${head} two people. ${agreed}. κ can't be computed: both labellers made the same call on every item. ${runs}`;
   }
-  return `${head} two people. ${agreed}; κ = ${r.kappa.toFixed(2)}. ${runs}`;
+  // κ is higher-is-better, so it's rounded down too (AGENTS rule 9): 0.816 shows as 0.81.
+  const kappa = (Math.floor(r.kappa * 100 + 1e-9) / 100).toFixed(2);
+  return `${head} two people. ${agreed}; κ = ${kappa}. ${runs}`;
 }
 
 export function ResultsTable({ results, heroOpenWeight = false }: { results: Results | null; heroOpenWeight?: boolean }) {

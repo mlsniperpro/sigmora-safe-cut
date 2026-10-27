@@ -42,6 +42,11 @@ describe("results table (UI-SPEC §1.3)", () => {
     expect(screen.getByText(note)).toBeInTheDocument();
   });
 
+  it("rounds κ down, never up", () => {
+    render(<ResultsTable results={resultsTableSchema.parse({ ...twoLabellers, kappa: 0.816 })} />);
+    expect(screen.getByText(/κ = 0\.81\./)).toBeInTheDocument();
+  });
+
   it("says when κ can't be computed instead of printing null", () => {
     render(<ResultsTable results={resultsTableSchema.parse(kappaUndefined)} />);
     expect(screen.getByText(/κ can't be computed: both labellers made the same call on every item\./)).toBeInTheDocument();

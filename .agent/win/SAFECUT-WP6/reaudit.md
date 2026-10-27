@@ -1,4 +1,4 @@
-AUDITED_COMMIT: f56577e
+AUDITED_COMMIT: f690e1f
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -122,3 +122,16 @@ Fresh-clone README run also found: `pnpm typecheck` failed before any build (Nex
 | 8 | low | No h1 on the error, 404 and /try "Deleted" pages | fixed; tests |
 | 9 | low | README cites `docs/UI-SPEC.md`, which isn't on this branch yet | fixed: README says where to read it until PRE-B merges |
 | 10 | low | "Sent to Sigmora" shows without a delivery confirmation | kept: it's the spec's copy (§5.2), and `postMessage` has no receipt. A confirmation needs Sigmora to reply; listed under "Requests for other WPs" in the PR |
+
+## Round 6 (audited f690e1f by a Sonnet reviewer; each finding traced here; fixes in the next commit)
+
+0 critical, 0 high, 2 medium, 4 low. The round-5 changes held, except #1, which was a regression from round-5 #4.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | med | A DELETE that failed after the confirm stranded /try: navigation was suppressed for good, or the aborted upload froze on "Uploading" (regression from round-5 #4) | fixed: a confirmed delete only pauses things until it answers. Nothing is aborted or blocked for good unless it succeeds. If it fails, the upload carries on, `/start` goes out and a navigation held meanwhile is followed (§10.3 Delete row). TryFlow tests for both cases, which fail on the previous code |
+| 2 | med | The review page's fixed bottom bar covered the footer (Privacy link) at the end of the page (WCAG 2.4.11, §7.1) | fixed: `body` is padded by the measured bar height (`--sticky-bottom`). e2e checks that the Privacy link clears the bar at full scroll on desktop and mobile (gap 32 px) |
+| 3 | low | Access-code input border was about 1.5:1 (WCAG 1.4.11) | fixed: a `--field-border` token at 3.66:1 (light, on white) and 4.9:1 (dark) |
+| 4 | low | The demo banner waited for the first poll instead of the `POST /v1/jobs` answer (§6) | fixed: the create response's `mode` is reported at once; test |
+| 5 | low | κ shown with `toFixed(2)` could round up (AGENTS rule 9) | fixed: rounded down; test |
+| 6 | low | The preview drew every cover as its box, though §3.6 says solid covers take the mask's shape | fixed: COCO RLE decoding (`rle.ts`, cached), solid/person_solid regions with a frame-sized mask fill run by run. A mask that doesn't decode or doesn't fit the frame falls back to the box, so the preview never covers less than the plan. Property test against an independent pycocotools-style encoder (2,000 masks), overlay tests |

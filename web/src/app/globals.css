@@ -8,6 +8,8 @@
   --text: #1c1b19;
   --text-muted: #57534e;
   --border: #d6d3cd;
+  /* A text field's edge is its only affordance: ≥ 3:1 on surface and bg (WCAG 1.4.11). */
+  --field-border: #8a857d;
   --accent: #0f5c57;
   --accent-hover: #0b4743;
   --accent-text: #ffffff;
@@ -34,6 +36,7 @@
     --text: #f5f5f4;
     --text-muted: #b8b3ac;
     --border: #3a3936;
+    --field-border: #8d8982;
     --accent: #5eead4;
     --accent-hover: #99f6e4;
     --accent-text: #0b2a28;
@@ -60,6 +63,7 @@
   --color-text: var(--text);
   --color-muted: var(--text-muted);
   --color-border: var(--border);
+  --color-field: var(--field-border);
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
   --color-accent-text: var(--accent-text);
@@ -88,6 +92,8 @@ body {
   color: var(--text);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  /* Room for the review page's fixed bottom bar, so it never covers the footer (WCAG 2.4.11). */
+  padding-bottom: var(--sticky-bottom, 0px);
 }
 
 /* One visible focus ring everywhere: 2 px, ≥ 3:1 on light and dark surfaces. */

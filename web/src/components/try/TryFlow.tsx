@@ -15,7 +15,7 @@ import { useJob } from "@/hooks/useJob";
 import { SITE } from "@/lib/site";
 import { ProgressView, fmtDuration } from "../job/ProgressView";
 import { btn } from "../ui";
-import { useReportMode } from "../mode";
+import { useMode, useReportMode } from "../mode";
 
 type Step = "code" | "file" | "progress" | "deleted";
 
@@ -56,6 +56,7 @@ function readDuration(file: File): Promise<number | null> {
 
 export function TryFlow() {
   const router = useRouter();
+  const { report: reportMode } = useMode();
   const [step, setStep] = useState<Step>("code");
   const [code, setCode] = useState("");
   const [showCode, setShowCode] = useState(false);
@@ -82,6 +83,13 @@ export function TryFlow() {
   const [uploaded, setUploaded] = useState(false);
   const uploadAbort = useRef<AbortController | null>(null);
   const deletedByUser = useRef(false);
+  /**
+   * A confirmed delete still on its way: whether it worked. Until it answers, nothing new is sent
+   * and the page doesn't move on; if it fails, the page carries on as it was (§10.3 Delete row).
+   */
+  const pendingDelete = useRef<Promise<boolean> | null>(null);
+  /** Where the job moved on to while a delete was pending: followed if the delete fails. */
+  const heldNavigation = useRef<string | null>(null);
   const [started, setStarted] = useState(false);
   /** `POST /start` timed out or the network failed: the server may have taken it, so poll (§10.3). */
   const [startUnsure, setStartUnsure] = useState(false);
@@ -226,6 +234,8 @@ export function TryFlow() {
     try {
       if (!id || !uploaded) {
         const created = await client.createJob({ code, size_bytes: file.size, content_type: contentType, file_name: file.name });
+        // Demo mode shows from the first response that says so, not only once polling starts (§6).
+        reportMode(created.mode);
         id = created.job_id;
         setJobId(id);
         setStep("progress");
@@ -244,6 +254,7 @@ export function TryFlow() {
         }
         setUploaded(true);
       }
+      if (pendingDelete.current) await pendingDelete.current;
       if (deletedByUser.current) return;
       setStep("progress");
       setUploadPercent(100);
@@ -340,7 +351,7 @@ export function TryFlow() {
               id={ids.code}
               name="access-code"
               type="text"
-              className={`min-h-11 w-full max-w-sm rounded-lg border border-border bg-surface px-3 ${showCode ? "" : "masked"}`}
+              className={`min-h-11 w-full max-w-sm rounded-lg border border-field bg-surface px-3 ${showCode ? "" : "masked"}`}
               value={code}
               maxLength={CODE_MAX_LENGTH}
               autoComplete="off"
@@ -515,12 +526,23 @@ export function TryFlow() {
         />
       )}
 
-      {step === "progress" && jobId && <Progress jobId={jobId} started={started} fileName={file?.name ?? ""} duration={duration} uploadPercent={uploadPercent} onDeleting={() => {
-            // From the confirm on, nothing more is sent for this clip: no upload, no start (§2.5).
-            deletedByUser.current = true;
-            uploadAbort.current?.abort();
+      {step === "progress" && jobId && <Progress jobId={jobId} started={started} fileName={file?.name ?? ""} duration={duration} uploadPercent={uploadPercent} onDeleting={(done) => {
+            pendingDelete.current = done;
+            void done.then((ok) => {
+              pendingDelete.current = null;
+              const held = heldNavigation.current;
+              heldNavigation.current = null;
+              if (!ok) {
+                if (held) router.push(held);
+                return;
+              }
+              deletedByUser.current = true;
+              uploadAbort.current?.abort();
+            });
           }} onDeleted={() => setStep("deleted")} onNavigate={(href) => {
-            if (!deletedByUser.current) router.push(href);
+            if (deletedByUser.current) return;
+            if (pendingDelete.current) heldNavigation.current = href;
+            else router.push(href);
           }} />}
     </section>
   );
@@ -582,7 +604,7 @@ function Progress({
   fileName: string;
   duration: number | null;
   uploadPercent: number | null;
-  onDeleting: () => void;
+  onDeleting: (done: Promise<boolean>) => void;
   onDeleted: () => void;
   onNavigate: (href: string) => void;
 }) {

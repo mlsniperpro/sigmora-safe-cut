@@ -241,6 +241,24 @@ try {
     await context.close();
   }
 
+  // The review page's fixed bottom bar never covers the footer, even scrolled to the end (WCAG 2.4.11).
+  for (const [label, viewport] of [["desktop", { width: 1280, height: 900 }], ["mobile", { width: 390, height: 844 }]]) {
+    const context = await browser.newContext({ viewport });
+    const page = await context.newPage();
+    await page.goto(`${BASE}/jobs/job-review-sample`, { waitUntil: "networkidle" });
+    await page.getByText(/hidden · /).waitFor();
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await page.waitForTimeout(200);
+    const gap = await page.evaluate(() => {
+      const privacy = [...document.querySelectorAll("footer a")].find((a) => a.textContent?.trim() === "Privacy");
+      const bar = [...document.querySelectorAll("div")].find((d) => getComputedStyle(d).position === "fixed" && d.textContent?.includes("Approve & render"));
+      if (!privacy || !bar) return null;
+      return Math.round(bar.getBoundingClientRect().top - privacy.getBoundingClientRect().bottom);
+    });
+    check(`${label}: the bottom bar leaves the footer's Privacy link clear at the end of the page`, gap !== null && gap >= 0, gap === null ? "not found" : `gap=${gap}px`);
+    await context.close();
+  }
+
   // Browsers without requestVideoFrameCallback: the rAF fallback still covers, and says it may lag (§3.6).
   {
     const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });

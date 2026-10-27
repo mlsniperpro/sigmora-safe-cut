@@ -486,7 +486,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
   };
 
   return (
-    <div className="mx-auto max-w-6xl px-4 pt-6 pb-48 lg:pb-32">
+    <div className="mx-auto max-w-6xl px-4 pt-6 pb-8">
       <h1 className="sr-only">Review what Safe Cut hides</h1>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="font-medium">

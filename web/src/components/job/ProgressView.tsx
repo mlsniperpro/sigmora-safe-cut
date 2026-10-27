@@ -37,8 +37,8 @@ export function ProgressView({
   jobId: string;
   etaS?: number | null;
   busy?: boolean;
-  /** The delete was confirmed and is on its way: stop anything else for this clip. */
-  onDeleting?: () => void;
+  /** The confirmed delete is on its way; `done` says whether it worked. */
+  onDeleting?: (done: Promise<boolean>) => void;
   onDeleted: () => void;
   /** 1 on its own page (/jobs/[id]); 2 under /try's page heading. */
   headingLevel?: 1 | 2;
@@ -60,9 +60,10 @@ export function ProgressView({
   const link = typeof window === "undefined" ? `/jobs/${jobId}` : `${window.location.origin}/jobs/${encodeURIComponent(jobId)}`;
   const doDelete = async () => {
     setConfirm(false);
-    onDeleting?.();
+    const attempt = getClient().deleteJob(jobId);
+    onDeleting?.(attempt.then(() => true, () => false));
     try {
-      await getClient().deleteJob(jobId);
+      await attempt;
       onDeleted();
     } catch (error) {
       setDeleteError(error instanceof ApiError && error.status === 429 ? COPY.rateLimited : COPY.unexpected);

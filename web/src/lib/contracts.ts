@@ -112,8 +112,9 @@ export const rolesSchema = z.object({
 });
 export type Roles = z.infer<typeof rolesSchema>;
 
-/** COCO-style run-length mask (WP0 `Rle`). The overlay draws the region's box, which contains it. */
+/** COCO-style run-length mask (WP0 `Rle`): `size` is [height, width]; the overlay fills it (`rle.ts`). */
 export const rleSchema = z.object({ size: z.tuple([z.number().int(), z.number().int()]), counts: z.string() });
+export type Rle = z.infer<typeof rleSchema>;
 
 export const regionSchema = z.object({
   item_id: z.string(),
