@@ -24,7 +24,7 @@ from safecut.config import Settings
 from safecut.meta import responses, sam
 from safecut.meta.budget import LocalLedger
 from safecut.meta.client import CallSpec
-from safecut.meta.errors import MetaBadRequest, MetaConfigError
+from safecut.meta.errors import MetaBadRequest, MetaConfigError, MetaUnavailable
 from safecut.meta.files import FileStore
 from safecut.meta.retry import RetryPolicy
 from scripts.probes import probes
@@ -317,3 +317,43 @@ async def test_a_video_body_needs_its_length_for_the_fallback_estimate(make_harn
             "input": [{"role": "user", "content": content}]}  # fmt: skip
     with pytest.raises(ValueError, match="needs video_seconds"):
         await responses.create(h.client, body, stage="s", effort="omit")
+
+
+# --- audit #30 ----------------------------------------------------------------------------------------------
+
+
+async def test_a_listing_item_of_another_shape_keeps_the_orphan_open(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter, tmp_path: Path
+) -> None:
+    h = make_harness()
+    store = _orphan_store(h, tmp_path)
+    item = {"id": "file-777", "name": "j_test-a.mp4", "size": 300, "created_at": "2026-10-27T10:00:00Z"}
+    mock_api.get("/files").mock(return_value=httpx.Response(200, json={"data": [item], "has_more": False}))
+    with pytest.raises(MetaConfigError, match="without a string filename and id"):
+        await store.delete_all()
+    assert not store.index().all_deleted
+
+
+async def test_probe_d_saves_an_empty_body_before_parsing(api: respx.MockRouter, tmp_path: Path) -> None:  # noqa: F811 -- pytest injects the imported fixture by name
+    api.post(f"{BASE}/asr/transcribe").mock(return_value=httpx.Response(200, json=[1, 2]))
+    results = await probes.run(
+        ["d"], settings=Settings(model_api_key=SecretStr("k")), out_root=tmp_path, ledger=LocalLedger()
+    )
+    assert results["d"]["error"].startswith("MetaIncomplete")
+    assert json.loads((tmp_path / "d" / "asr.response.json").read_text()) == [1, 2]  # kept, as sent
+
+
+async def test_r4_a_sam_sweep_that_times_out_twice_keeps_both_charges(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter, settings: Settings, tmp_path: Path
+) -> None:
+    # PRE-A §11 R4: 2 attempts, then MetaUnavailable; both were accepted, so both stay estimated charges.
+    cfg = settings.model_copy(update={"sam_send_store": False})
+    h = make_harness(cfg=cfg)
+    route = mock_api.post("/responses").mock(side_effect=httpx.ReadTimeout("slow"))
+    body = sam.video_body(cfg, file_id="file-1", text="face")
+    with pytest.raises(MetaUnavailable):
+        await sam.segment_video(h.client, body, sam_frames=60, responses=sam.ResponseLog(tmp_path))
+    assert route.call_count == 2
+    lines = [line for line in h.costs() if line.usd > 0]
+    assert len(lines) == 2
+    assert all(line.estimated for line in lines)

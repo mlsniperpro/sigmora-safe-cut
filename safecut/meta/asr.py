@@ -111,8 +111,9 @@ async def transcribe_raw(
     language_bias: Sequence[str],
     mode: Mode = "DIARIZATION",
     stage: str = "speech",
-) -> Mapping[str, Any]:
-    """:func:`transcribe`'s call, returning the response body as Meta sent it (probe d records it raw)."""
+) -> Any:
+    """:func:`transcribe`'s call, returning the response body as Meta sent it: any JSON, or ``None`` when empty
+    (probe d records it raw)."""
     path = Path(wav_path)
     size, seconds = await asyncio.to_thread(_audio_facts, path)
     if size > MAX_ASR_BYTES or seconds > MAX_ASR_SECONDS:
@@ -142,7 +143,7 @@ async def transcribe_raw(
     return result.body
 
 
-def parse_response(body: Mapping[str, Any]) -> AsrResponse:
+def parse_response(body: Any) -> AsrResponse:
     """The documented fields of a Voice Transcribe body; unknown fields are ignored, never an error."""
     try:
         return AsrResponse.model_validate(body)

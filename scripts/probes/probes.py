@@ -524,7 +524,7 @@ async def probe_d(p: Probe) -> Summary:
     finally:
         wav.unlink(missing_ok=True)  # never leave a (possibly hero) voice track on disk
     latency = time.monotonic() - started
-    p.save("asr.response.json", dict(body))  # as Meta sent it: probe d exists to learn the real shape
+    p.save("asr.response.json", body)  # as Meta sent it, before parsing: probe d exists to learn the real shape
     raw = asr.parse_response(body)
     transcript = asr.to_transcript(raw, source_model=p.settings.asr_model)
     return {

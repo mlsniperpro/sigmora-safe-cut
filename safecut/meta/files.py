@@ -397,9 +397,10 @@ def _matching_uploads(body: Any, remote_name: str, size: int | None, not_before:
         raise MetaConfigError("the /files listing is truncated (has_more); its copies can't be ruled out")
     found: list[str] = []
     for item in cast(list[Any], data):
-        if not isinstance(item, dict):
-            continue
-        entry = cast(dict[str, Any], item)
+        entry = cast(dict[str, Any], item) if isinstance(item, dict) else {}
+        if not isinstance(entry.get("filename"), str) or not isinstance(entry.get("id"), str):
+            # An item we can't read could be our copy under another shape (PRE-A: the item shape is unverified).
+            raise MetaConfigError("the /files listing has an item without a string filename and id")
         if entry.get("filename") != remote_name:
             continue  # the multipart name is job-unique: anything else is another job's file
         # Ours by name. Skip it only on a field that proves it's another upload (a different size, or created
