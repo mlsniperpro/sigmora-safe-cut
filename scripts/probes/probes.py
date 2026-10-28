@@ -840,8 +840,7 @@ async def run(
             meta = MetaClient(settings, job_id=job_id, caller=caller, ledger=ledger, cost_path=cost_path, http=http)
         except Exception as exc:
             results[name] = {"error": f"{type(exc).__name__}: {exc}"}
-            out.mkdir(parents=True, exist_ok=True)
-            (out / "summary.json").write_text(json.dumps(results[name], indent=1) + "\n")
+            save_summary(out, results[name])
             continue
         files = FileStore(meta, out / "job")
         probe_clip = clip if name in ("b", "d") else CLIP
@@ -858,8 +857,19 @@ async def run(
             except (MetaError, OSError, ContractError) as exc:  # the next probes and this summary still run
                 results.setdefault(name, {})["uploads_deleted"] = f"failed: {exc}"
             await meta.aclose()
-        probe.save("summary.json", results[name])
+        save_summary(out, results[name])
     return results
+
+
+def save_summary(out: Path, result: Summary) -> Path:
+    """Write ``summary.json``, unless this run only failed and an earlier run's summary (a paid, recorded result
+    that API-NOTES quotes and its raw files back) is already there: then the failure goes beside it."""
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / "summary.json"
+    if set(result) <= {"error", "uploads_deleted"} and path.exists():
+        path = out / f"summary.failed-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}.json"
+    path.write_text(json.dumps(result, indent=1, ensure_ascii=False) + "\n")
+    return path
 
 
 async def _run_h(settings: Settings, *, job_id: str, out: Path, ledger: LocalLedger, cost_path: Path) -> Summary:
@@ -877,8 +887,7 @@ async def _run_h(settings: Settings, *, job_id: str, out: Path, ledger: LocalLed
             result = {"error": f"{type(exc).__name__}: {exc}"}
         finally:
             await client.aclose()
-    out.mkdir(parents=True, exist_ok=True)
-    (out / "summary.json").write_text(json.dumps(result, indent=1, ensure_ascii=False) + "\n")
+    save_summary(out, result)
     return result
 
 
@@ -926,6 +935,14 @@ def main(argv: list[str]) -> int:
         return 2
     except ContractError as exc:
         print(f"{cost_path} is damaged, so the spend so far is unknown: {exc}", file=sys.stderr)
+        return 2
+    # Probes are live by definition: refuse up front rather than record a run of refusals.
+    if settings.replay:
+        print("SAFECUT_REPLAY is on: the probes make live calls; unset it to run them", file=sys.stderr)
+        return 2
+    needs_meta = any(n != "h" for n in names)
+    if (needs_meta and settings.model_api_key is None) or ("h" in names and settings.baseten_api_key is None):
+        print("the probes need MODEL_API_KEY (a-g) and BASETEN_API_KEY (h) for the probes asked", file=sys.stderr)
         return 2
     results = asyncio.run(
         run(

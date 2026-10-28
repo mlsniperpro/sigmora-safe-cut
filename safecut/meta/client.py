@@ -312,7 +312,8 @@ class MetaClient:
         default_url = settings.open_weight_base_url if provider == "baseten" else settings.meta_base_url
         self.base_url = config.trusted_base_url(base_url or default_url, config.ALLOWED_HOSTS[field])
         default_key = settings.open_api_key if provider == "baseten" else settings.api_key
-        self._key = api_key if api_key is not None else default_key()
+        # Replay mode refuses every live call (ReplayRefused) before a key is needed, so it runs without one.
+        self._key = api_key if api_key is not None else ("" if settings.replay else default_key())
         self.breaker = breaker or CircuitBreaker(clock=clock)
         # Process-wide bound: pass one shared semaphore to every client in a process (WP5 does).
         self._inflight = inflight or asyncio.Semaphore(config.PROCESS_INFLIGHT)

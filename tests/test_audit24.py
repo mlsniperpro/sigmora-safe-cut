@@ -776,3 +776,100 @@ async def test_a_replay_refusal_leaves_no_orphan(
     with pytest.raises(ReplayRefused):
         await store.upload(clip, "sam_proxy.mp4")
     assert store.index().root == []  # nothing was sent, so there's nothing to reconcile
+
+
+# --- audits #43 and #44 -------------------------------------------------------------------------------------
+
+
+def test_a_one_pixel_mask_hides_nothing(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "decisions.json", lambda d: next(i for i in d["items"] if i["item_id"] == "i_2").update(
+        {"style": "person_solid"}))  # fmt: skip
+    runs = [130 * 720 + 340, 1, 720 * 1280 - 130 * 720 - 341]  # one pixel at the centre of face:2
+    dot = {"size": [720, 1280], "counts": rle_string(runs)}
+    _entries(job_dir, "i_2", {"style": "person_solid", "shape": "mask", "mask": dot, "box": [0, 0, 1280, 720]})
+    with pytest.raises(c.ContractError, match="i_2 doesn't cover face:2's box"):
+        c.validate_job_dir(job_dir)
+
+
+def test_the_guards_temporal_padding_is_planned(tmp_path: Path) -> None:
+    # face:2 spans 5-9; with back-fill 57 and extend 8 the guard plans it on the whole 12-frame clip.
+    job_dir = _example(tmp_path)
+
+    def trim(d: Any) -> None:
+        for f, entries in d["frames"].items():
+            entries[:] = [e for e in entries if not (e["item_id"] == "i_2" and int(f) < 5)]
+
+    _edit(job_dir, "plan.json", trim)
+    with pytest.raises(c.ContractError, match=r"hidden item i_2 has no entry on frames \[0, 1, 2, 3, 4\]"):
+        c.validate_job_dir(job_dir)
+
+
+def test_an_entry_without_the_pixel_padding_is_refused(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "plan.json", lambda d: next(e for e in d["frames"]["5"] if e["item_id"] == "i_2").update(
+        {"box": [100, 300, 160, 380]}))  # fmt: skip  # exactly face:2's box, no padding
+    with pytest.raises(c.ContractError, match="i_2 doesn't cover face:2's box"):
+        c.validate_job_dir(job_dir)
+
+
+def test_a_crowd_fill_covers_a_crowded_frame(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "tracks.json", lambda d: d.update({"crowded_frames": [6, 7]}))
+
+    def fill_only(d: Any) -> None:
+        d["crowd_fills"] = [{"frames": [6, 7], "box": [0, 0, 1280, 720]}]
+        for f in ("6", "7"):
+            d["frames"][f] = [e for e in d["frames"][f] if e["item_id"] != "i_2"]
+
+    _edit(job_dir, "plan.json", fill_only)
+    assert "plan.json" in c.validate_job_dir(job_dir)
+
+
+def test_a_person_only_item_is_never_pixelated(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+
+    def person(d: Any) -> None:
+        track = next(t for t in d["tracks"] if t["track_id"] == "face:2")
+        track.update({"track_id": "person:9", "concept": "person"})
+
+    _edit(job_dir, "tracks.json", person)
+    _edit(job_dir, "roles.json", lambda d: next(t for t in d["tracks"] if t["track_id"] == "face:2").update(
+        {"track_id": "person:9"}))  # fmt: skip
+    _edit(job_dir, "decisions.json", lambda d: next(i for i in d["items"] if i["item_id"] == "i_2").update(
+        {"style": "pixelate", "track_ids": ["person:9"]}))  # fmt: skip
+    _entries(job_dir, "i_2", {"style": "pixelate", "grid": [83, 280, 40]})
+    with pytest.raises(c.ContractError, match="i_2: a pixelated item needs a face track"):
+        c.validate_job_dir(job_dir)
+
+
+@pytest.mark.parametrize(
+    ("env", "message"),
+    [({"SAFECUT_REPLAY": "1", "MODEL_API_KEY": "k"}, "SAFECUT_REPLAY is on"), ({}, "need MODEL_API_KEY")],
+)
+def test_the_probes_refuse_to_start_without_keys_or_in_replay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], env: dict[str, str],
+    message: str,
+) -> None:  # fmt: skip
+    root = tmp_path / "repo"
+    (root / "fixtures" / "probes").mkdir(parents=True)
+    monkeypatch.setattr(probes, "ROOT", root)
+    monkeypatch.setattr(probes, "load_settings", lambda: load_settings(env))
+    assert probes.main(["a"]) == 2
+    assert message in capsys.readouterr().err
+
+
+def test_a_failed_rerun_keeps_the_recorded_summary(tmp_path: Path) -> None:
+    out = tmp_path / "a"
+    probes.save_summary(out, {"model_ids": ["sam-3.1"]})
+    failed = probes.save_summary(out, {"error": "MetaUnavailable: down"})
+    assert json.loads((out / "summary.json").read_text()) == {"model_ids": ["sam-3.1"]}
+    assert failed.name.startswith("summary.failed-")
+
+
+async def test_replay_mode_needs_no_key_and_refuses_the_call(tmp_path: Path) -> None:
+    client = MetaClient(load_settings({"SAFECUT_REPLAY": "1"}), job_id="j", caller=Caller.local(),
+                        ledger=LocalLedger(), cost_path=tmp_path / "c.jsonl")  # fmt: skip
+    with pytest.raises(ReplayRefused):
+        await client.request("POST", "thing", _free_spec(), meter=lambda _: ({}, 0.0))
+    await client.aclose()

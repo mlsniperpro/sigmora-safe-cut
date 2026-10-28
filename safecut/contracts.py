@@ -1100,6 +1100,7 @@ def _check_decisions(decisions: Decisions, job: Job, tracks: Tracks | None, role
         set() if roles is None else {t.track_id for t in roles.tracks if t.role == "child" or "child" in t.votes}
     )
     votes = {} if roles is None else {t.track_id: t for t in roles.tracks}
+    concepts = None if tracks is None else {t.track_id: t.concept for t in tracks.tracks}
     for item in decisions.items:
         where = f"decisions.json {item.item_id}"
         if known is not None:
@@ -1111,6 +1112,13 @@ def _check_decisions(decisions: Decisions, job: Job, tracks: Tracks | None, role
         phrased = [tid for tid in item.track_ids if tid in child_phrase]
         if phrased and item.kind != "child":
             raise ContractError(f"{where}: track {phrased[0]} is a child_phrase track, so the item is kind child")
+        if (
+            item.style == "pixelate"
+            and concepts is not None
+            and "face" not in {concepts.get(t) for t in item.track_ids}
+        ):
+            # DESIGN §2.7 / WP3.md: pixelate is the face treatment, sized from the face; a person-only item is solid.
+            raise ContractError(f"{where}: a pixelated item needs a face track")
         ruled = [tid for tid in item.track_ids if tid in child_role]
         if ruled and item.kind != "child":
             raise ContractError(f"{where}: track {ruled[0]} has a child vote or ruling, so the item is kind child")
@@ -1309,8 +1317,11 @@ def _check_plan_geometry(plan: Plan, decisions: Decisions, tracks: Tracks, job: 
                 if not entries:
                     continue  # coverage is _check_plan_covers'
                 fills = [fill.box for fill in plan.crowd_fills if frame in fill.frames]
+                # The guard pads every box by at least `padding.px` (clamped to the frame) and a mask is SAM's own
+                # outline of the object, so it spans the track box.
+                padded = _grow(box, plan.padding.px, job)
                 held = any(
-                    _contains(e.box, box) if e.shape == "box" else e.mask is not None and _mask_touches(e.mask, box)
+                    _contains(e.box, padded) if e.shape == "box" else e.mask is not None and _mask_spans(e.mask, box)
                     for e in entries
                 ) or any(_contains(fill, box) for fill in fills)
                 if not held:
@@ -1331,11 +1342,17 @@ def _check_plan_geometry(plan: Plan, decisions: Decisions, tracks: Tracks, job: 
             raise ContractError(f"plan.json: {item.item_id}'s pixelate grid moves between frames ({len(grids)} grids)")
 
 
-def _mask_touches(mask: Rle, box: Box) -> bool:
-    """Whether a COCO RLE mask (column-major, runs alternating background/foreground) has a foreground pixel
-    inside ``box``."""
+def _grow(box: Box, px: int, job: Job) -> Box:
+    return (max(0, box[0] - px), max(0, box[1] - px), min(job.width, box[2] + px), min(job.height, box[3] + px))
+
+
+def _mask_spans(mask: Rle, box: Box, share: float = 0.8) -> bool:
+    """Whether a COCO RLE mask (column-major, runs alternating background/foreground) has foreground inside
+    ``box`` spanning at least ``share`` of its width and height: one stray pixel hides nothing."""
     height = mask.size[0]
     x1, y1, x2, y2 = box
+    xs: list[int] = []
+    ys: list[int] = []
     start = 0
     for i, run in enumerate(rle_runs(mask.counts)):
         if i % 2 and run:
@@ -1343,9 +1360,12 @@ def _mask_touches(mask: Rle, box: Box) -> bool:
                 lo = max(start, col * height + y1)
                 hi = min(start + run, col * height + y2)
                 if lo < hi:
-                    return True
+                    xs.append(col)
+                    ys += [lo - col * height, hi - 1 - col * height]
         start += run
-    return False
+    if not xs:
+        return False
+    return max(xs) - min(xs) + 1 >= share * (x2 - x1) and max(ys) - min(ys) + 1 >= share * (y2 - y1)
 
 
 def _contains(outer: Box, inner: Box) -> bool:
@@ -1353,18 +1373,37 @@ def _contains(outer: Box, inner: Box) -> bool:
 
 
 def _check_plan_covers(plan: Plan, decisions: Decisions, tracks: Tracks | None, job: Job) -> None:
-    """Every hidden item (``hide``, or ``needs_you``, which renders hidden) has a plan entry on every frame its
-    tracks are present (each track's own first..last, so a merged item's gap between tracks needs none), or
-    on an audit patch's own first..last, clamped to the clip. Extend/backfill entries beyond that are fine."""
-    spans = {t.track_id: (t.first, t.last) for t in tracks.tracks} if tracks is not None else {}
+    """Every hidden item (``hide``, or ``needs_you``, which renders hidden) is planned on every frame of each of
+    its tracks, widened by the guard's temporal padding (``first − backfill`` … ``last + extend``, DESIGN §2.6,
+    clamped to the clip; a merged item's gap between tracks needs nothing beyond that), or on an audit patch's
+    own ``first..last``. On a crowded frame, a crowd fill containing the track's box covers it too."""
+    by_track = {t.track_id: t for t in tracks.tracks} if tracks is not None else {}
     planned = {(frame, e.item_id) for frame, entries in plan.frames.items() for e in entries}
+    temporal = plan.temporal
     for item in decisions.items:
         if item.decision not in ("hide", "needs_you"):
             continue
-        present = _present_frames(item, spans)
-        missing = [f for f in sorted(present) if f < job.frames and (f, item.item_id) not in planned]
+        needed: dict[int, Box | None] = {}
+        if item.first is not None and item.last is not None:
+            needed = dict.fromkeys(range(item.first, item.last + 1))
+        for track in (by_track[tid] for tid in item.track_ids if tid in by_track):
+            for f in range(max(0, track.first - temporal.backfill), track.last + temporal.extend + 1):
+                needed.setdefault(f, _box_near(track, f))
+        missing = [
+            f for f, box in sorted(needed.items())
+            if f < job.frames and (f, item.item_id) not in planned
+            and not (box is not None and any(f in fl.frames and _contains(fl.box, box) for fl in plan.crowd_fills))
+        ]  # fmt: skip
         if missing:
             raise ContractError(f"plan.json: hidden item {item.item_id} has no entry on frames {missing[:10]}")
+
+
+def _box_near(track: Track, frame: int) -> Box | None:
+    """The track's box on ``frame``, or at its nearest keyframe (the guard holds the edge box when padding)."""
+    if not track.boxes:
+        return None
+    nearest = min(track.boxes, key=lambda k: (abs(k - frame), k))
+    return track.boxes[nearest]
 
 
 def _check_links(

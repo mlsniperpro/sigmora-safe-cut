@@ -389,3 +389,16 @@ Tests are in tests/test_audit24.py (the "audits #41 and #42" section). Audit #42
 - L4 (#41) nothing kept a pixelate grid fixed. An item now has at most one distinct grid per track. The origin isn't tied to the moving track box, since a fixed origin is set once (test_a_grid_that_moves_between_frames_is_refused)
 - L5 (#41) the ARCHITECTURE §3.9 receipt named Wonder for the scene while §3.4 used Spark, and omitted the red-team and auditor. Fixed. §3.5 gave a bystander `matches_participant: 0`; it is now null, and `RoleTrack` refuses it except on a unanimous participant (role-pass.md step 7) (test_matches_participant_only_on_a_unanimous_participant)
 - L6 (#42) a replay-mode refusal of an upload recorded an orphan that could never be resolved. Fixed: the replay guard raises `ReplayRefused` (a `MetaConfigError`), and `FileStore` re-raises it with no orphan, like `BreakerOpen` (test_a_replay_refusal_leaves_no_orphan)
+
+## Audits 43 and 44 (two independent Sonnet reviewers in parallel at 08b8098): 0 critical, 0 high, 2 medium, 5 low. NOT CLEAN; all verified and handled
+Tests are in tests/test_audit24.py (the "audits #43 and #44" section). #43 built realistic job directories from scratch and found no false refusal beyond its item L3. #44 read every module against the specs.
+- M1 (#43) a mask entry with one foreground pixel inside the track box passed (audit #41 closed only the empty mask). Fixed: the mask's foreground inside the box must span ≥ 80 % of the box's width and height (`_mask_spans`). SAM masks outline the object the track box bounds (test_a_one_pixel_mask_hides_nothing)
+- M2 (#43) the guard's declared padding was never verified. Fixed:
+  - a hidden item must be planned on each track's `first − backfill … last + extend` (clamped), DESIGN §2.6;
+  - a box entry must contain the track box grown by `padding.px` (clamped to the frame). The fractional face/default padding isn't checked, since its rounding is the guard's.
+  (test_the_guards_temporal_padding_is_planned, test_an_entry_without_the_pixel_padding_is_refused)
+- L3 (#43) a valid crowd-fill-only crowded span was refused for missing per-item entries. A crowd fill containing the track's box now counts as coverage (test_a_crowd_fill_covers_a_crowded_frame)
+- L4 (#43) a person-only item could be pixelated with tiny cells. A pixelated item now needs a face track (WP3 pixelates faces; the grid is sized from the face) (test_a_person_only_item_is_never_pixelated)
+- L5 (#43) API-NOTES' "≤ $2.36" didn't match its table. The table's a–g reservations sum to $2.27; the text now says so, with probe h's ≤ $0.53 of Baseten credits counted separately
+- L6 (#44) a failed probe re-run (no key, replay mode) overwrote a recorded paid `summary.json`. Fixed: `main()` refuses replay mode and missing keys up front, and `save_summary` writes an error-only result beside an existing summary, never over it (test_the_probes_refuse_to_start_without_keys_or_in_replay ×2, test_a_failed_rerun_keeps_the_recorded_summary)
+- L7 (#44) replay mode without a key failed at client construction with `ConfigError`, not `ReplayRefused`. In replay mode the client no longer needs a key, and the first call raises `ReplayRefused` (test_replay_mode_needs_no_key_and_refuses_the_call)
