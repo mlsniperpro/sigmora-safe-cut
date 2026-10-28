@@ -553,6 +553,13 @@ class EgoBlurSummary(Contract):
     faces: NonNegativeInt | None
     plates: NonNegativeInt | None
 
+    @model_validator(mode="after")
+    def _yunet_has_no_plates(self) -> EgoBlurSummary:
+        if self.model == "yunet-face" and self.plates is not None:
+            # PRE-A §12: YuNet detects faces only, so plates is null, never 0 (AGENTS rule 9: no misreport).
+            raise ValueError("yunet-face detects no plates: plates is null")
+        return self
+
 
 class Leak(Contract):
     frame: Frame
@@ -679,6 +686,15 @@ class Audit(Contract):
             raise ValueError("blocked_reason is set exactly when unresolved > 0 (the one publish gate)")
         if (self.audit_budget_cause is not None) != (self.blocked_reason == "over_budget"):
             raise ValueError("audit_budget_cause is set exactly when blocked_reason is over_budget")
+        return self
+
+    @model_validator(mode="after")
+    def _detector_kinds(self) -> Audit:
+        # The face detector reports faces and plates; YuNet faces only (PRE-A §12).
+        allowed = {"face"} if self.egoblur.model == "yunet-face" else {"face", "plate"}
+        for leak in self.leaks:
+            if leak.detector == "egoblur" and leak.kind not in allowed:
+                raise ValueError(f"leak at frame {leak.frame}: {self.egoblur.model} can't report a {leak.kind}")
         return self
 
     @property
@@ -1173,11 +1189,12 @@ def _check_audit(audit: Audit, job: Job) -> None:
     if audit.sample_step != job.fps:
         # PRE-A §12: sample_step = round(job.fps), the red-team's 1 fps step in output frames (fps is an int).
         raise ContractError(f"audit.json: sample_step {audit.sample_step} != the job's {job.fps} fps")
-    sampled = len({entry.frame for entry in audit.redteam})
-    floor = max(1, job.frames // job.fps)
-    if audit.unresolved == 0 and sampled < floor:
+    # 1 per second, whatever the sampling phase: each whole second of the clip has a red-team entry.
+    seconds = {entry.frame // job.fps for entry in audit.redteam}
+    unsampled = [k for k in range(max(1, job.frames // job.fps)) if k not in seconds]
+    if audit.unresolved == 0 and unsampled:
         raise ContractError(
-            f"audit.json: a publishable audit has red-team entries on {sampled} frames; 1 per second needs {floor}"
+            f"audit.json: a publishable audit has no red-team entry in seconds {unsampled[:5]} (1 per second)"
         )
     for spot in audit.spots:
         where = f"audit.json spot {spot.spot_id}"
@@ -1389,7 +1406,8 @@ def _check_between_anchors(plan: Plan, item: DecisionItem, track: Track) -> None
                 continue  # coverage (and a crowd fill instead) is _check_plan_covers'
             w = (frame - before) / (after - before)
             box = cast(Box, tuple(round(a[i] + (b[i] - a[i]) * w) for i in range(4)))
-            if not any(boxes_overlap(e.box, box) for e in entries):
+            fills = [fill.box for fill in plan.crowd_fills if frame in fill.frames]
+            if not any(boxes_overlap(e.box, box) for e in entries) and not any(_contains(f, box) for f in fills):
                 raise ContractError(
                     f"plan.json frame {frame}: {item.item_id} is nowhere near {track.track_id} (about {list(box)})"
                 )

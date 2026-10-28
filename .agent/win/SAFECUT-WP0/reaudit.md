@@ -438,3 +438,12 @@ Its 150-seed client chaos run kept ledger == Σ cost.jsonl, and about 10,000 mut
 - L4 a deeply nested server body overflowed `_scrub` (a raw `RecursionError`, billed as an estimate) and `_strings`. `_scrub` now stops at depth 64 and `_strings` is iterative (test_a_deeply_nested_error_body_is_a_typed_error, test_a_deeply_nested_listing_item_never_overflows)
 - L5 deeply nested JSON in an env var raised `RecursionError`. It is now a `ConfigError` (test_deeply_nested_env_json_is_a_config_error)
 - L6 `egoblur.faces: null` (the detector never ran) with a full `frames_scanned` passed. PRE-A §12 makes that `frames_scanned: 0` (test_a_detector_that_never_ran_scanned_nothing)
+
+## Audit 50 (independent Sonnet reviewer at 52c2d1a, re-checked at cfe0fd3): 0 critical, 0 high, 0 medium, 5 low. NOT CLEAN; all verified and fixed
+It built many realistic 60 s jobs, with merged and pixelated faces, ellipse masks, tiled crowds around a kept participant, patches, spot covers, a YuNet audit, a speech fallback and a sealed receipt. All validated at 52c2d1a, in 0.5–9 s even at 10.8k mask entries. Mutation fuzz raised only `ContractError`. Tests are in tests/test_audit24.py (the audit #50 section).
+- L1 the red-team floor counted frames, not their spread: 60 entries on frames 0–59 of a 1800-frame clip passed. Every whole second of the clip now needs an entry, which any 1 fps sampling phase meets (test_the_red_team_samples_every_second)
+- L2 a YuNet audit could report plates or a plate leak. `EgoBlurSummary` now requires `plates: null` for `yunet-face` (PRE-A §12), and an `egoblur` leak's kind is face or plate, face only for YuNet (test_yunet_reports_no_plates)
+- L3 (a regression from audit #49) the between-anchors check ignored crowd fills. A fill containing the interpolated box now covers that frame (test_a_crowd_fill_covers_a_sparse_track_between_anchors)
+- L4 four example cost lines kept `reasoning` outside `output`, though reasoning is part of output. Their `output` is now output plus reasoning, so `responses_usd_from_units` reproduces every `usd`. The receipt and its hash are unchanged
+- L5 probe b's `mask_matches_box_size` paired masks with boxes by position and claimed a match with no masks. It now pairs by (object, frame), reports null without masks, and records `mask_sizes`, `frame_size` and the skipped frames (WP0 step 3b)
+- Doc: ARCHITECTURE §3 states the full non-creator keep rule and the per-second red-team rule

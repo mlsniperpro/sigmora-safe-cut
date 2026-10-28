@@ -467,7 +467,7 @@ def test_an_audit_patch_follows_its_spec_row(change: dict[str, Any], message: st
 def test_a_publishable_audit_has_its_red_team_frames(tmp_path: Path) -> None:
     job_dir = _example(tmp_path)
     _edit(job_dir, "audit.json", lambda d: d.update({"redteam": [], "leaks": []}))
-    with pytest.raises(c.ContractError, match="red-team entries on 0 frames; 1 per second needs 1"):
+    with pytest.raises(c.ContractError, match=r"no red-team entry in seconds \[0\]"):
         c.validate_job_dir(job_dir)
 
 
@@ -1096,3 +1096,40 @@ def test_a_detector_that_never_ran_scanned_nothing(tmp_path: Path) -> None:
     _edit(job_dir, "audit.json", lambda d: d["egoblur"].update({"faces": None, "plates": None}))
     with pytest.raises(c.ContractError, match=r"egoblur\.faces is null"):
         c.validate_job_dir(job_dir)
+
+
+# --- audit #50 ----------------------------------------------------------------------------------------------
+
+
+def test_the_red_team_samples_every_second(tmp_path: Path) -> None:
+    # 1800 frames at 30 fps: 60 entries on frames 0-59 count 60 but leave seconds 2-59 unsampled.
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "job.json", lambda d: d.update({"frames": 1800, "times": [i / 30 for i in range(1800)]}))
+    _edit(job_dir, "audit.json", lambda d: d.update(
+        {"frames_scanned": 1800, "redteam": [{"frame": f, "finding": "none"} for f in range(60)]}))  # fmt: skip
+    audit = c.load(job_dir / "audit.json", c.Audit)
+    job = c.load(job_dir / "job.json", c.Job)
+    with pytest.raises(c.ContractError, match=r"no red-team entry in seconds \[2, 3, 4, 5, 6\]"):
+        c._check_audit(audit, job)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_yunet_reports_no_plates() -> None:
+    audit = json.loads((EXAMPLE / "audit.json").read_text())
+    with pytest.raises(ValueError, match="yunet-face detects no plates"):
+        c.Audit.model_validate(audit | {"egoblur": {"model": "yunet-face", "faces": 1, "plates": 0}})
+    plate = {"frame": 3, "box": [10, 10, 60, 40], "kind": "plate", "detector": "egoblur", "patched_item": "p_1"}
+    with pytest.raises(ValueError, match="yunet-face can't report a plate"):
+        c.Audit.model_validate(audit | {"egoblur": {"model": "yunet-face", "faces": 1, "plates": None},
+                                        "leaks": [*audit["leaks"], plate]})  # fmt: skip
+
+
+def test_a_crowd_fill_covers_a_sparse_track_between_anchors(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)  # screen:1 has anchors on frames 1 and 5 only
+    _edit(job_dir, "tracks.json", lambda d: d.update({"crowded_frames": [2]}))
+
+    def fill(d: Any) -> None:
+        next(e for e in d["frames"]["2"] if e["item_id"] == "i_3")["box"] = [0, 0, 2, 2]
+        d["crowd_fills"] = [{"frames": [2], "box": [800, 300, 1200, 700]}]
+
+    _edit(job_dir, "plan.json", fill)
+    assert "plan.json" in c.validate_job_dir(job_dir)

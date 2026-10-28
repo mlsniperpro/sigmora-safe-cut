@@ -197,6 +197,28 @@ async def _files_listing(p: Probe, spec: CallSpec) -> Summary:
 # -- b: SAM 3.1 video -------------------------------------------------------------
 
 
+def _masks_match_boxes(masks: list[SegmentationMaskRecord], boxes: list[SegmentationBoxRecord]) -> bool | None:
+    """Whether each mask has its box's size, pairing records by (object, frame); ``None`` with no masks."""
+    by_key = {(b.object_id, b.frame.frame_index): b for b in boxes if b.frame is not None}
+    pairs = [
+        (m, by_key.get((m.object_id, m.frame.frame_index))) for m in masks if m.frame is not None
+    ]  # fmt: skip
+    if not pairs:
+        return None
+    return all(
+        b is not None and (m.mask.width, m.mask.height) == (b.right - b.left, b.bottom - b.top) for m, b in pairs
+    )
+
+
+def _video_size(path: Path) -> tuple[int, int]:
+    """The clip's (width, height), read by the bundled ffmpeg."""
+    reader = imageio_ffmpeg.read_frames(str(path))
+    meta = cast(dict[str, Any], next(reader))
+    reader.close()
+    width, height = cast(tuple[int, int], meta["size"])
+    return width, height
+
+
 async def _sam_once(p: Probe, file_id: str, concept: str, frames: int, log: sam.ResponseLog) -> Summary:
     body = sam.video_body(p.settings, file_id=file_id, text=concept)
     started = time.monotonic()
@@ -216,10 +238,12 @@ async def _sam_once(p: Probe, file_id: str, concept: str, frames: int, log: sam.
         "frames_in_order": frame_order == sorted(frame_order),
         "confidence_present": any(b.confidence is not None for b in boxes),
         "mask_encodings": sorted({str(m.mask.encoding) for m in masks}),
-        "mask_matches_box_size": all(
-            (m.mask.width, m.mask.height) == (b.right - b.left, b.bottom - b.top)
-            for m, b in zip(masks, boxes, strict=False)
-        ),
+        # WP0 3b: mask size vs box and frame size, paired by object and frame (never by position).
+        "mask_matches_box_size": _masks_match_boxes(masks, boxes),
+        "mask_sizes": [list(size) for size in sorted({(m.mask.width, m.mask.height) for m in masks})],
+        "frame_size": list(_video_size(p.clip)),
+        "skipped_frames": sorted(set(range(frames)) - set(frame_order))[:50],
+        "skipped_frame_count": len(set(range(frames)) - set(frame_order)),
         "frames_billed": _usage(result.response).get("video_frames_processed"),
         "usd": result.usd,
         "diagnostics": [str(d) for d in final.diagnostics][:10],
