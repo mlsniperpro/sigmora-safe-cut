@@ -502,3 +502,15 @@ It confirmed every doc figure by recomputing it and ran a 400-case stream fuzz. 
 - L6 an unreadable `cost.jsonl` raised `OSError`. It is now a `ContractError` (test_an_unreadable_cost_jsonl_is_a_contract_error)
 - L7 the crowd-fill lookups scanned every fill per track and frame (27 s on a 100-track, 1800-frame crowded clip). Fills are now indexed by frame once per check
 - L8 API-NOTES-WP0 said WP0 makes no file-referencing call. It now says the one-shot D1 probes are its only ones
+
+## Audit 57 (independent Sonnet reviewer at 446b56b): 0 critical, 0 high, 0 medium, 2 low. NOT CLEAN; all verified and fixed
+Its own chaos harness ran 3,000 seeds of 1–3 jobs sharing a ledger and a breaker; the ledger always equalled Σ cost.jsonl. 2,300 Files-cleanup seeds left no copy behind, and 24k mutations of the example job raised only `ContractError`. Tests are in tests/test_audit24.py (the audit #57 section).
+- L1 a `Retry-After` HTTP-date past datetime's range raised a bare `OverflowError`. A 429 then escaped untyped, and a cleanup sweep stopped at that file, stranding the rest. `parse_retry_after` now returns `None` for it (test_an_out_of_range_retry_after_date_is_ignored)
+- L2 `append_cost_line` ignored short writes, so a full disk tore a line and corrupted `cost.jsonl` silently. It now finishes a short write; if the disk refuses the rest, it cuts the line back off and raises `OSError`, which `_log_cost` logs (test_a_torn_cost_line_is_cut_back_and_raised, test_a_short_write_is_finished)
+
+## Audit 58 (independent Sonnet reviewer at dbed4f5): 0 critical, 0 high, 1 medium, 3 low. NOT CLEAN; all verified and fixed
+8,000 mutations of the example job raised only `ContractError`, and `.env.example` round-trips exactly. Tests are in tests/test_audit24.py (the audit #58 section).
+- M1 (a regression from my audit #56 fix) the receipt had to name every model on a Meta cost line, including a call refused before processing (`usd: 0`, not estimated), which ran nothing. A Voice Transcribe call rejected before a Spark fallback would have refused a valid receipt. Only lines with `usd > 0` or `estimated` count as billed now (test_a_model_whose_calls_were_all_refused_need_not_be_named)
+- L2 `total_timeout_s` didn't cover a stream's response-header phase, so headers that never arrived held the call (and its reservation) up to the idle timeout. One deadline now wraps the whole `stream()` context in both stream methods (test_a_stream_whose_headers_never_arrive_is_bounded; it fails at dbed4f5)
+- L3 an unbounded frame size let a 55-byte mask make validation loop for minutes or exhaust memory. A frame side (`job.width`/`height`, `Rle.size`) is now at most 8192 px (test_a_huge_frame_is_refused_before_any_mask_check)
+- L4 a recorded outright-failure summary (`{"error": ...}`, no paid data) blocked any later run with 2 or more in-band errors from replacing it. Any run without a top-level error now replaces it (test_a_recorded_outright_failure_is_replaced_by_a_run_that_got_further)

@@ -113,10 +113,14 @@ class Contract(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True, allow_inf_nan=False)
 
 
+#: A frame side in pixels: 8K at most (prepared clips are ≤ 1280 px), so mask checks stay bounded.
+FrameSide = Annotated[int, Field(ge=1, le=8192)]
+
+
 class Rle(Contract):
     """A frame-sized COCO compressed RLE mask (``size`` = the prepared clip's ``[H, W]``)."""
 
-    size: tuple[PositiveInt, PositiveInt]
+    size: tuple[FrameSide, FrameSide]
     counts: str = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -172,8 +176,8 @@ class Job(Contract):
     source_sha256: str = Field(pattern=SHA256_PATTERN)
     prepared: RelPath
     fps: int = Field(ge=1, le=30)
-    width: PositiveInt
-    height: PositiveInt
+    width: FrameSide
+    height: FrameSide
     frames: PositiveInt
     times: list[Annotated[float, Field(ge=0)]]
     audio: bool
@@ -946,13 +950,26 @@ def dump(model: BaseModel, path: str | Path) -> Path:
 
 
 def append_cost_line(line: CostLine, path: str | Path) -> None:
-    """Append one line to ``cost.jsonl`` in a single write (``O_APPEND`` keeps lines whole)."""
+    """Append one line to ``cost.jsonl`` (``O_APPEND`` keeps lines whole). A short write (a full disk) is
+    finished or, if the disk refuses the rest, cut back off and raised: a torn line would corrupt the file."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     data = line.model_dump_json().encode("utf-8") + b"\n"
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
     try:
-        os.write(fd, data)
+        size = os.fstat(fd).st_size
+        written = 0
+        while written < len(data):
+            try:
+                n = os.write(fd, data[written:])
+            except OSError:
+                if written:
+                    os.ftruncate(fd, size)
+                raise
+            if n <= 0:
+                os.ftruncate(fd, size)
+                raise OSError(f"{path.name}: no progress writing a cost line")
+            written += n
     finally:
         os.close(fd)
 
@@ -2019,7 +2036,10 @@ def _check_receipt_models(
         billed = {
             line.model
             for line in read_cost_lines(cost_path)
-            if line.provider == "meta" and line.model is not None and not line.stage.startswith("budget:")
+            if line.provider == "meta"
+            and line.model is not None
+            and not line.stage.startswith("budget:")
+            and (line.usd > 0 or line.estimated)  # a call refused before processing ran nothing
         }
         if unnamed := sorted(billed - set(receipt.models.values())):
             raise ContractError(f"receipt.json models leaves out {unnamed}, which cost.jsonl shows ran")

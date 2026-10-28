@@ -58,8 +58,8 @@ def parse_retry_after(value: str | None, *, now: datetime | None = None) -> floa
     except ValueError:
         try:
             when = parsedate_to_datetime(text)
-        except (TypeError, ValueError, IndexError):
-            return None
+        except (TypeError, ValueError, IndexError, OverflowError):
+            return None  # a year past datetime's range overflows; a bad header never fails the call
         if when.tzinfo is None:
             when = when.replace(tzinfo=UTC)
         seconds = (when - (now or datetime.now(UTC))).total_seconds()

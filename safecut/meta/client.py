@@ -738,21 +738,21 @@ class MetaClient:
             started = self._clock()
             try:
                 mark_sent()
-                async with self._http.stream(
-                    "POST", self.url("responses"), headers=self._headers(), json=payload, timeout=spec.timeout
-                ) as resp:
-                    if resp.status_code >= 300:
-                        async with asyncio.timeout(spec.total_timeout_s):  # a dripping error body is bounded too
+                # One deadline covers the headers, a dripping error body and the stream itself.
+                async with asyncio.timeout(spec.total_timeout_s):
+                    async with self._http.stream(
+                        "POST", self.url("responses"), headers=self._headers(), json=payload, timeout=spec.timeout
+                    ) as resp:
+                        if resp.status_code >= 300:
                             parsed = _decode(await resp.aread())
-                        raise _status_failure(
-                            resp.status_code,
-                            self._scrub(parsed),
-                            resp.headers,
-                            resp.headers.get("x-request-id"),
-                            self._clock() - started,
-                        )
-                    self._note_rate_headers(resp.headers)
-                    async with asyncio.timeout(spec.total_timeout_s):
+                            raise _status_failure(
+                                resp.status_code,
+                                self._scrub(parsed),
+                                resp.headers,
+                                resp.headers.get("x-request-id"),
+                                self._clock() - started,
+                            )
+                        self._note_rate_headers(resp.headers)
                         async for event in aiter_sse(aiter_sse_lines(resp.aiter_bytes())):
                             events.append(event)
                             if on_response_id is not None:
@@ -806,17 +806,21 @@ class MetaClient:
             acc = _ChatAccumulator()
             try:
                 mark_sent()
-                async with self._http.stream(
-                    "POST", self.url("chat/completions"), headers=self._headers(), json=payload, timeout=spec.timeout
-                ) as resp:
-                    if resp.status_code >= 300:
-                        async with asyncio.timeout(spec.total_timeout_s):  # a dripping error body is bounded too
+                # One deadline covers the headers, a dripping error body and the stream itself.
+                async with asyncio.timeout(spec.total_timeout_s):
+                    async with self._http.stream(
+                        "POST",
+                        self.url("chat/completions"),
+                        headers=self._headers(),
+                        json=payload,
+                        timeout=spec.timeout,
+                    ) as resp:
+                        if resp.status_code >= 300:
                             parsed = _decode(await resp.aread())
-                        rid_header = resp.headers.get("x-request-id")
-                        raise _status_failure(
-                            resp.status_code, self._scrub(parsed), resp.headers, rid_header, self._clock() - started
-                        )
-                    async with asyncio.timeout(spec.total_timeout_s):
+                            rid_header = resp.headers.get("x-request-id")
+                            raise _status_failure(
+                                resp.status_code, self._scrub(parsed), resp.headers, rid_header, self._clock() - started
+                            )
                         async for chunk in aiter_sse(aiter_sse_lines(resp.aiter_bytes())):
                             acc.add(chunk)
             except httpx.TransportError as exc:

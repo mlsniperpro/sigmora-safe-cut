@@ -902,9 +902,12 @@ def _worse(result: Summary, recorded: Path) -> bool:
     if "error" in result:
         return True
     try:
-        return _errors(result) > _errors(json.loads(recorded.read_bytes()))
+        old: object = json.loads(recorded.read_bytes())
     except (OSError, ValueError):
         return True
+    if isinstance(old, dict) and "error" in cast(dict[str, Any], old):
+        return False  # a recorded outright failure holds no paid data: any run that got further replaces it
+    return _errors(result) > _errors(cast(object, old))
 
 
 def save_summary(out: Path, result: Summary) -> Path:

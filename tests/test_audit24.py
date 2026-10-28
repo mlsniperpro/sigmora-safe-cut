@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import json
+import os
 import shutil
 import time
 from collections.abc import AsyncIterator, Callable
@@ -32,7 +33,7 @@ from safecut.meta.client import (
 )
 from safecut.meta.errors import MetaBadRequest, MetaConfigError, MetaIncomplete, MetaUnavailable, ReplayRefused
 from safecut.meta.files import FileStore
-from safecut.meta.retry import RetryPolicy
+from safecut.meta.retry import RetryPolicy, parse_retry_after
 from safecut.meta.status import StatusUnavailableError, fetch_status
 from scripts.probes import probes
 from tests.conftest import BASE, Harness, narrow_patch, rle_string
@@ -1564,3 +1565,89 @@ def test_a_malformed_chat_chunk_is_ignored_not_a_type_error(choices: Any) -> Non
     acc = _ChatAccumulator()
     acc.add({"id": "x", "choices": choices})
     assert acc.answer()["text"] == ""
+
+
+# --- audit #57 ----------------------------------------------------------------------------------------------
+
+
+def test_an_out_of_range_retry_after_date_is_ignored() -> None:
+    assert parse_retry_after("Sun, 06 Nov 99999999999 08:49:37 GMT") is None
+
+
+def test_a_torn_cost_line_is_cut_back_and_raised(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "cost.jsonl"
+    line = c.CostLine.model_validate_json((EXAMPLE / "cost.jsonl").read_text().splitlines()[0])
+    c.append_cost_line(line, path)
+    before = path.read_bytes()
+    real = os.write
+    calls: list[int] = []
+
+    def short(fd: int, data: bytes) -> int:
+        calls.append(len(data))
+        if len(calls) == 1:
+            return real(fd, data[:10])  # the disk takes 10 bytes, then is full
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(c.os, "write", short)
+    with pytest.raises(OSError, match="No space left"):
+        c.append_cost_line(line, path)
+    monkeypatch.undo()
+    assert path.read_bytes() == before
+    c.append_cost_line(line, path)
+    assert len(list(c.read_cost_lines(path))) == 2
+
+
+def test_a_short_write_is_finished(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "cost.jsonl"
+    line = c.CostLine.model_validate_json((EXAMPLE / "cost.jsonl").read_text().splitlines()[0])
+    real = os.write
+    monkeypatch.setattr(c.os, "write", lambda fd, data: real(fd, data[:7]))  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType] -- a stand-in
+    c.append_cost_line(line, path)
+    monkeypatch.undo()
+    assert list(c.read_cost_lines(path)) == [line]
+
+
+# --- audit #58 ----------------------------------------------------------------------------------------------
+
+
+def test_a_model_whose_calls_were_all_refused_need_not_be_named(tmp_path: Path) -> None:
+    job_dir = tmp_path / "j_example"
+    shutil.copytree(EXAMPLE, job_dir)
+    first = json.loads((job_dir / "cost.jsonl").read_text().splitlines()[0])
+    refused = first | {"stage": "escalate", "model": "muse-wonder-1.0", "usd": 0.0, "request_id": "resp_refused"}
+    with (job_dir / "cost.jsonl").open("a") as handle:
+        handle.write(json.dumps(refused) + "\n")
+    c.validate_job_dir(job_dir)
+
+
+def test_a_huge_frame_is_refused_before_any_mask_check(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "job.json", lambda d: d.update({"width": 20_000_000}))
+    with pytest.raises(c.ContractError, match="less than or equal to 8192"):
+        c.validate_job_dir(job_dir)
+
+
+def test_a_recorded_outright_failure_is_replaced_by_a_run_that_got_further(tmp_path: Path) -> None:
+    probes.save_summary(tmp_path, {"error": "MetaConfigError: no key"})
+    better = {"red square": {"objects": 1}, "a": {"error": "x"}, "b": {"error": "y"}}
+    assert probes.save_summary(tmp_path, better).name == "summary.json"
+    assert json.loads((tmp_path / "summary.json").read_text()) == better
+
+
+async def test_a_stream_whose_headers_never_arrive_is_bounded(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter
+) -> None:
+    h = make_harness()
+
+    async def stall(_: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(30)
+        return httpx.Response(200)
+
+    mock_api.post("/responses").mock(side_effect=stall)
+    spec = CallSpec(stage="s", model="muse-spark-1.3", estimate_usd=0.01, estimate_units={},
+                    policy=RetryPolicy(attempts=1), timeout=httpx.Timeout(5.0), total_timeout_s=0.5)  # fmt: skip
+    started = time.monotonic()
+    with pytest.raises(MetaUnavailable):
+        await h.client.stream(spec, {"model": "muse-spark-1.3", "store": False}, meter=lambda _: ({}, 0.0))
+    assert time.monotonic() - started < 3
+    assert h.costs()[0].estimated  # sent, so the estimate is kept
