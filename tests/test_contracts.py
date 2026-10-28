@@ -559,7 +559,7 @@ def _first_item_geometry(d: Any) -> None:
         (lambda d: d["items"].append(d["items"][0]), r"unexpected \['i_1'\]"),
         (lambda d: d["items"][1].update({"item_id": "i_9"}), r"missing \['i_2'\], unexpected \['i_9'\]"),
         (_first_item_geometry, "exceeds"),
-        (lambda d: d["audit"].update({"leaks_found": 2}), "audit.leaks_found 2 != audit.json 1"),
+        (lambda d: d["audit"].update({"leaks_found": 3}), "audit.leaks_found 3 != audit.json 2"),
         (lambda d: d["audit"].update({"frames_scanned": 11}), "audit.frames_scanned"),
         (lambda d: d["audit"].update({"passes": 3}), "audit.passes"),
         (lambda d: d["audit"].update({"unresolved": 1, "blocked_reason": "audit_failed"}), "audit.unresolved"),

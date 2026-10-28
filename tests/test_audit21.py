@@ -94,7 +94,7 @@ def test_receipt_leaks_patched_matches_the_audit(tmp_path: Path) -> None:
     raw["audit"]["leaks_patched"] = 47
     sealed = c.Receipt.seal(c.ReceiptBody.model_validate(raw))
     (job_dir / "receipt.json").write_text(json.dumps(sealed.model_dump(mode="json")))
-    with pytest.raises(c.ContractError, match=r"leaks_patched 47 != audit\.json 1"):
+    with pytest.raises(c.ContractError, match=r"leaks_patched 47 != audit\.json 2"):
         c.validate_job_dir(job_dir)
 
 

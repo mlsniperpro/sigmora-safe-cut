@@ -78,7 +78,7 @@
      380
     ]
    },
-   "reentry_of": "face:1",
+   "reentry_of": null,
    "source": "sam-3.1",
    "prompt": "face",
    "sam_object": {

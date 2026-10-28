@@ -595,3 +595,93 @@ def test_load_infers_the_job_file_model() -> None:
     assert isinstance(c.load(EXAMPLE / "tracks.json"), c.Tracks)
     with pytest.raises(c.ContractError, match="not a job file"):
         c.load(EXAMPLE.parent / "README.md")
+
+
+# --- audit #39 ----------------------------------------------------------------------------------------------
+
+
+def _entries(job_dir: Path, item_id: str, change: dict[str, Any]) -> None:
+    def edit(d: Any) -> None:
+        for entries in d["frames"].values():
+            for entry in entries:
+                if entry["item_id"] == item_id:
+                    entry.update(change)
+
+    _edit(job_dir, "plan.json", edit)
+
+
+def test_a_plan_entry_must_cover_its_track(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _entries(job_dir, "i_2", {"box": [0, 0, 2, 2]})
+    with pytest.raises(c.ContractError, match=r"i_2 doesn't cover face:2's box \[100, 300, 160, 380\]"):
+        c.validate_job_dir(job_dir)
+
+
+def test_a_pixelate_grid_keeps_a_face_within_six_blocks(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "decisions.json", lambda d: next(i for i in d["items"] if i["item_id"] == "i_2").update(
+        {"style": "pixelate"}))  # fmt: skip
+    _entries(job_dir, "i_2", {"style": "pixelate", "grid": [83, 280, 1]})
+    with pytest.raises(c.ContractError, match="1 px grid leaves face:2 more than 6 blocks across"):
+        c.validate_job_dir(job_dir)
+    _entries(job_dir, "i_2", {"grid": [83, 280, 12]})  # 60 px wide face / 12 px cells = 5 blocks
+    assert "plan.json" in c.validate_job_dir(job_dir)
+
+
+def test_every_crowded_frame_has_a_crowd_fill(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "tracks.json", lambda d: d.update({"crowded_frames": [3, 4, 5]}))
+    with pytest.raises(c.ContractError, match=r"crowded frames \[3, 4, 5\] have no crowd fill"):
+        c.validate_job_dir(job_dir)
+    _edit(job_dir, "plan.json", lambda d: d.update({"crowd_fills": [{"frames": [3, 4, 5], "box": [0, 0, 1280, 720]}]}))
+    assert "plan.json" in c.validate_job_dir(job_dir)
+
+
+def test_the_backfill_is_the_hotstart_in_prepared_frames(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "plan.json", lambda d: d["temporal"].update({"backfill": 15}))
+    with pytest.raises(c.ContractError, match=r"backfill 15 != ceil\(15 x fps / sam_fps\) = 57"):
+        c.validate_job_dir(job_dir)
+
+
+def test_every_track_is_in_an_item(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "decisions.json", lambda d: d.update({"items": [i for i in d["items"] if i["item_id"] != "i_3"]}))
+    _edit(job_dir, "plan.json", lambda d: d.update(
+        {"frames": {f: [e for e in es if e["item_id"] != "i_3"] for f, es in d["frames"].items()}}))  # fmt: skip
+    with pytest.raises(c.ContractError, match="track screen:1 is in no item"):
+        c.validate_job_dir(job_dir)
+
+
+def test_only_a_unanimous_participant_is_kept_without_the_creator(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "roles.json", lambda d: next(t for t in d["tracks"] if t["track_id"] == "face:1").update(
+        {"role": "unsure", "votes": ["participant", "bystander", "participant"]}))  # fmt: skip
+    with pytest.raises(c.ContractError, match="kept by model, but face:1 isn't a unanimous participant"):
+        c.validate_job_dir(job_dir)
+    _edit(job_dir, "decisions.json", lambda d: next(i for i in d["items"] if i["item_id"] == "i_1").update(
+        {"decided_by": "creator"}))  # fmt: skip
+    assert "decisions.json" in c.validate_job_dir(job_dir)
+
+
+@pytest.mark.parametrize("file_id", ["file-123457", "file-999"])
+def test_sam_is_sent_the_proxy(tmp_path: Path, file_id: str) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "tracks.json", lambda d: d["requests"][0].update({"file_id": file_id}))
+    with pytest.raises(c.ContractError, match=f"{file_id} isn't sam_proxy.mp4 in files.json"):
+        c.validate_job_dir(job_dir)
+
+
+def test_a_reentry_follows_a_track_that_ended(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "tracks.json", lambda d: next(t for t in d["tracks"] if t["track_id"] == "face:2").update(
+        {"reentry_of": "face:1"}))  # fmt: skip  # face:1 is still on screen at frame 5
+    with pytest.raises(c.ContractError, match="reentry_of face:1 must be a track that ended before it starts"):
+        c.validate_job_dir(job_dir)
+
+
+def test_a_red_team_hit_needs_its_own_red_team_leak() -> None:
+    audit = json.loads((EXAMPLE / "audit.json").read_text())
+    egoblur_only = [leak for leak in audit["leaks"] if leak["detector"] != "redteam"]
+    with pytest.raises(ValueError, match="neither excluded nor a leak on its box"):
+        c.Audit.model_validate(audit | {"leaks": egoblur_only})

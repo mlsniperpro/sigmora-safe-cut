@@ -17,6 +17,18 @@
    "kind": "face",
    "detector": "egoblur",
    "patched_item": "p_1"
+  },
+  {
+   "frame": 10,
+   "box": [
+    200,
+    200,
+    260,
+    280
+   ],
+   "kind": "face",
+   "detector": "redteam",
+   "patched_item": "p_1"
   }
  ],
  "redteam": [

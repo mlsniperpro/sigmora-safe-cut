@@ -42,15 +42,15 @@ def _with_leak(tmp_path: Path, **leak: Any) -> Path:
     [
         (
             {"patched_item": "i_3"},
-            r"patch: i_3 doesn't hide frames \[10\]",
-        ),  # a track-span item that doesn't cover frame 10
+            r"patch: i_3 doesn't cover box \[200, 200, 260, 280\] on frame 10",
+        ),  # a track item planned elsewhere on frame 10
         (
             {"patched_item": "p_1", "flag": "redaction_too_weak", "through_item": "i_1"},
             "through_item: i_1 is a kept item",
         ),
         (
             {"patched_item": "p_1", "flag": "redaction_too_weak", "through_item": "i_3"},
-            r"through_item: i_3 doesn't hide frames \[10\]",
+            r"through_item: i_3 doesn't cover box \[200, 200, 260, 280\] on frame 10",
         ),
     ],
 )

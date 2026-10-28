@@ -12,13 +12,55 @@
  "frames": {
   "0": [
    {
+    "item_id": "i_2",
+    "shape": "box",
+    "box": [
+     83,
+     280,
+     177,
+     400
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
+    "item_id": "i_3",
+    "shape": "box",
+    "box": [
+     876,
+     376,
+     1124,
+     624
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
+    "item_id": "i_4",
+    "shape": "box",
+    "box": [
+     286,
+     487,
+     394,
+     573
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
     "item_id": "p_1",
     "shape": "box",
     "box": [
-     195,
-     194,
-     265,
-     286
+     183,
+     180,
+     277,
+     300
     ],
     "mask": null,
     "style": "solid",
@@ -28,13 +70,41 @@
   ],
   "1": [
    {
+    "item_id": "i_2",
+    "shape": "box",
+    "box": [
+     83,
+     280,
+     177,
+     400
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
     "item_id": "i_3",
     "shape": "box",
     "box": [
-     884,
-     384,
-     1116,
-     616
+     876,
+     376,
+     1124,
+     624
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
+    "item_id": "i_4",
+    "shape": "box",
+    "box": [
+     286,
+     487,
+     394,
+     573
     ],
     "mask": null,
     "style": "solid",
@@ -45,10 +115,10 @@
     "item_id": "p_1",
     "shape": "box",
     "box": [
-     195,
-     194,
-     265,
-     286
+     183,
+     180,
+     277,
+     300
     ],
     "mask": null,
     "style": "solid",
@@ -58,13 +128,41 @@
   ],
   "2": [
    {
+    "item_id": "i_2",
+    "shape": "box",
+    "box": [
+     83,
+     280,
+     177,
+     400
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
     "item_id": "i_3",
     "shape": "box",
     "box": [
-     884,
-     384,
-     1116,
-     616
+     876,
+     376,
+     1124,
+     624
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
+    "item_id": "i_4",
+    "shape": "box",
+    "box": [
+     286,
+     487,
+     394,
+     573
     ],
     "mask": null,
     "style": "solid",
@@ -75,10 +173,10 @@
     "item_id": "p_1",
     "shape": "box",
     "box": [
-     195,
-     194,
-     265,
-     286
+     183,
+     180,
+     277,
+     300
     ],
     "mask": null,
     "style": "solid",
@@ -88,13 +186,41 @@
   ],
   "3": [
    {
+    "item_id": "i_2",
+    "shape": "box",
+    "box": [
+     83,
+     280,
+     177,
+     400
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
     "item_id": "i_3",
     "shape": "box",
     "box": [
-     884,
-     384,
-     1116,
-     616
+     876,
+     376,
+     1124,
+     624
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
+    "item_id": "i_4",
+    "shape": "box",
+    "box": [
+     286,
+     487,
+     394,
+     573
     ],
     "mask": null,
     "style": "solid",
@@ -105,10 +231,10 @@
     "item_id": "p_1",
     "shape": "box",
     "box": [
-     195,
-     194,
-     265,
-     286
+     183,
+     180,
+     277,
+     300
     ],
     "mask": null,
     "style": "solid",
@@ -118,13 +244,41 @@
   ],
   "4": [
    {
+    "item_id": "i_2",
+    "shape": "box",
+    "box": [
+     83,
+     280,
+     177,
+     400
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
     "item_id": "i_3",
     "shape": "box",
     "box": [
-     884,
-     384,
-     1116,
-     616
+     876,
+     376,
+     1124,
+     624
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
+    "item_id": "i_4",
+    "shape": "box",
+    "box": [
+     286,
+     487,
+     394,
+     573
     ],
     "mask": null,
     "style": "solid",
@@ -135,10 +289,10 @@
     "item_id": "p_1",
     "shape": "box",
     "box": [
-     195,
-     194,
-     265,
-     286
+     183,
+     180,
+     277,
+     300
     ],
     "mask": null,
     "style": "solid",
@@ -151,10 +305,10 @@
     "item_id": "i_2",
     "shape": "box",
     "box": [
-     91,
-     288,
-     169,
-     392
+     83,
+     280,
+     177,
+     400
     ],
     "mask": null,
     "style": "solid",
@@ -165,10 +319,24 @@
     "item_id": "i_3",
     "shape": "box",
     "box": [
-     884,
-     384,
-     1116,
-     616
+     876,
+     376,
+     1124,
+     624
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
+    "item_id": "i_4",
+    "shape": "box",
+    "box": [
+     286,
+     487,
+     394,
+     573
     ],
     "mask": null,
     "style": "solid",
@@ -179,10 +347,10 @@
     "item_id": "p_1",
     "shape": "box",
     "box": [
-     195,
-     194,
-     265,
-     286
+     183,
+     180,
+     277,
+     300
     ],
     "mask": null,
     "style": "solid",
@@ -195,10 +363,38 @@
     "item_id": "i_2",
     "shape": "box",
     "box": [
-     94,
-     288,
-     172,
-     392
+     85,
+     280,
+     179,
+     400
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
+    "item_id": "i_3",
+    "shape": "box",
+    "box": [
+     876,
+     376,
+     1124,
+     624
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
+    "item_id": "i_4",
+    "shape": "box",
+    "box": [
+     286,
+     487,
+     394,
+     573
     ],
     "mask": null,
     "style": "solid",
@@ -209,10 +405,10 @@
     "item_id": "p_1",
     "shape": "box",
     "box": [
-     195,
-     194,
-     265,
-     286
+     183,
+     180,
+     277,
+     300
     ],
     "mask": null,
     "style": "solid",
@@ -225,10 +421,38 @@
     "item_id": "i_2",
     "shape": "box",
     "box": [
-     96,
-     288,
-     174,
-     392
+     88,
+     280,
+     182,
+     400
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
+    "item_id": "i_3",
+    "shape": "box",
+    "box": [
+     876,
+     376,
+     1124,
+     624
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
+    "item_id": "i_4",
+    "shape": "box",
+    "box": [
+     286,
+     487,
+     394,
+     573
     ],
     "mask": null,
     "style": "solid",
@@ -239,10 +463,10 @@
     "item_id": "p_1",
     "shape": "box",
     "box": [
-     195,
-     194,
-     265,
-     286
+     183,
+     180,
+     277,
+     300
     ],
     "mask": null,
     "style": "solid",
@@ -255,10 +479,38 @@
     "item_id": "i_2",
     "shape": "box",
     "box": [
-     99,
-     288,
-     177,
-     392
+     91,
+     280,
+     185,
+     400
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
+    "item_id": "i_3",
+    "shape": "box",
+    "box": [
+     876,
+     376,
+     1124,
+     624
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
+    "item_id": "i_4",
+    "shape": "box",
+    "box": [
+     286,
+     487,
+     394,
+     573
     ],
     "mask": null,
     "style": "solid",
@@ -269,10 +521,10 @@
     "item_id": "p_1",
     "shape": "box",
     "box": [
-     195,
-     194,
-     265,
-     286
+     183,
+     180,
+     277,
+     300
     ],
     "mask": null,
     "style": "solid",
@@ -285,10 +537,24 @@
     "item_id": "i_2",
     "shape": "box",
     "box": [
-     101,
-     288,
-     179,
-     392
+     93,
+     280,
+     187,
+     400
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
+    "item_id": "i_3",
+    "shape": "box",
+    "box": [
+     876,
+     376,
+     1124,
+     624
     ],
     "mask": null,
     "style": "solid",
@@ -299,10 +565,10 @@
     "item_id": "i_4",
     "shape": "box",
     "box": [
-     294,
-     495,
-     386,
-     565
+     286,
+     487,
+     394,
+     573
     ],
     "mask": null,
     "style": "solid",
@@ -313,10 +579,10 @@
     "item_id": "p_1",
     "shape": "box",
     "box": [
-     195,
-     194,
-     265,
-     286
+     183,
+     180,
+     277,
+     300
     ],
     "mask": null,
     "style": "solid",
@@ -326,13 +592,55 @@
   ],
   "10": [
    {
+    "item_id": "i_2",
+    "shape": "box",
+    "box": [
+     93,
+     280,
+     187,
+     400
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
+    "item_id": "i_3",
+    "shape": "box",
+    "box": [
+     876,
+     376,
+     1124,
+     624
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
+    "item_id": "i_4",
+    "shape": "box",
+    "box": [
+     286,
+     487,
+     394,
+     573
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
     "item_id": "p_1",
     "shape": "box",
     "box": [
-     195,
-     194,
-     265,
-     286
+     183,
+     180,
+     277,
+     300
     ],
     "mask": null,
     "style": "solid",
@@ -342,13 +650,55 @@
   ],
   "11": [
    {
+    "item_id": "i_2",
+    "shape": "box",
+    "box": [
+     93,
+     280,
+     187,
+     400
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
+    "item_id": "i_3",
+    "shape": "box",
+    "box": [
+     876,
+     376,
+     1124,
+     624
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
+    "item_id": "i_4",
+    "shape": "box",
+    "box": [
+     286,
+     487,
+     394,
+     573
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "decision"
+   },
+   {
     "item_id": "p_1",
     "shape": "box",
     "box": [
-     195,
-     194,
-     265,
-     286
+     183,
+     180,
+     277,
+     300
     ],
     "mask": null,
     "style": "solid",

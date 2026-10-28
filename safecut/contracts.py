@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import tempfile
 from collections import Counter
@@ -641,7 +642,12 @@ class Audit(Contract):
             # kept-clear rule excluded it. `redteam_open` stays advisory until the grid check passes.
             if not isinstance(hit, RedteamHit) or hit.excluded_by is not None:
                 continue
-            if not any(leak.frame == hit.frame and boxes_overlap(leak.box, hit.box) for leak in self.leaks):
+            # redteam.md: each finding gets its own leak with detector "redteam" (an EgoBlur leak on the same face
+            # isn't the red-team's record of it).
+            if not any(
+                leak.detector == "redteam" and leak.frame == hit.frame and boxes_overlap(leak.box, hit.box)
+                for leak in self.leaks
+            ):
                 raise ValueError(f"red-team hit at frame {hit.frame} is neither excluded nor a leak on its box")
         open_leaks = sum(leak.unresolved for leak in self.leaks)
         if self.unresolved < open_leaks:
@@ -989,15 +995,34 @@ def _check_rle(rle: Rle, job: Job, where: str) -> None:
         raise ContractError(f"{where}: mask size {list(rle.size)} != frame [{job.height}, {job.width}]")
 
 
-def _check_tracks(tracks: Tracks, job: Job) -> None:
+def _check_tracks(tracks: Tracks, job: Job, files: FilesIndex | None = None) -> None:
+    if files is not None:
+        _check_sam_requests(tracks, files)
     for frame in tracks.crowded_frames:
         _check_frame(frame, job, "tracks.json crowded_frames")
+    by_id = {t.track_id: t for t in tracks.tracks}
     for t in tracks.tracks:
         _check_frame(t.last, job, f"tracks.json {t.track_id}")
+        if t.reentry_of is not None:
+            # A re-entry is a new ID for an object that left the frame: the original exists and ended first.
+            original = by_id.get(t.reentry_of)
+            if original is None or original.last >= t.first:
+                raise ContractError(
+                    f"tracks.json {t.track_id}: reentry_of {t.reentry_of} must be a track that ended before it starts"
+                )
         for f, box in t.boxes.items():
             _check_box(box, job, f"tracks.json {t.track_id} frame {f}")
         for f, rle in t.masks.items():
             _check_rle(rle, job, f"tracks.json {t.track_id} frame {f}")
+
+
+def _check_sam_requests(tracks: Tracks, files: FilesIndex) -> None:
+    """PRE-A §10.6: SAM is sent the proxy (``sam_proxy.mp4``) by its ``files.json`` id; ``prepared.mp4`` would bill
+    ``job.fps / sam_fps`` times the frames and break the frame indexing."""
+    proxy = {e.file_id for e in files.root if e.name == "sam_proxy.mp4" and e.file_id is not None}
+    for i, request in enumerate(tracks.requests):
+        if request.file_id not in proxy:
+            raise ContractError(f"tracks.json requests[{i}]: {request.file_id} isn't sam_proxy.mp4 in files.json")
 
 
 def _check_transcript(transcript: Transcript, job: Job) -> None:
@@ -1071,6 +1096,7 @@ def _check_decisions(decisions: Decisions, job: Job, tracks: Tracks | None, role
     child_role: set[str] = (
         set() if roles is None else {t.track_id for t in roles.tracks if t.role == "child" or "child" in t.votes}
     )
+    votes = {} if roles is None else {t.track_id: t for t in roles.tracks}
     for item in decisions.items:
         where = f"decisions.json {item.item_id}"
         if known is not None:
@@ -1085,7 +1111,22 @@ def _check_decisions(decisions: Decisions, job: Job, tracks: Tracks | None, role
         ruled = [tid for tid in item.track_ids if tid in child_role]
         if ruled and item.kind != "child":
             raise ContractError(f"{where}: track {ruled[0]} has a child vote or ruling, so the item is kind child")
+        if item.decision == "keep" and item.decided_by != "creator":
+            # WP3: only a unanimous participant is kept by policy or model; anything else needs the creator.
+            doubtful = [
+                tid for tid in item.track_ids
+                if tid in votes and (votes[tid].role != "participant" or set(votes[tid].votes) != {"participant"})
+            ]  # fmt: skip
+            if doubtful:
+                raise ContractError(
+                    f"{where}: kept by {item.decided_by}, but {doubtful[0]} isn't a unanimous participant"
+                )
         _check_item(item, job, where)
+    if known is not None:
+        # Deny by default: every track is in an item, so nothing found is left undecided (and unhidden).
+        undecided = sorted(known - {tid for item in decisions.items for tid in item.track_ids})
+        if undecided:
+            raise ContractError(f"decisions.json: track {undecided[0]} is in no item")
 
 
 def _check_audit(audit: Audit, job: Job) -> None:
@@ -1236,6 +1277,49 @@ def _check_plan_styles(plan: Plan, decisions: Decisions, audit: Audit | None) ->
                 )
             if (entry.source == "audit_patch") != (item.origin == "audit_patch"):
                 raise ContractError(f"plan.json frame {frame}: {item.item_id} source {entry.source} != its origin")
+
+
+def _check_plan_geometry(plan: Plan, decisions: Decisions, tracks: Tracks, job: Job) -> None:
+    """What the plan draws really hides each track (the guard pads outward and clamps, never shrinks): a track's
+    box on a planned frame lies inside one of its item's box entries or a crowd fill (a mask entry must overlap
+    it); a pixelate grid keeps the face ≤ 6 blocks across (DESIGN §2.7); every crowded frame has a crowd fill;
+    and the back-fill is SAM's 15-frame hotstart in prepared frames (PRE-A §5b, T10)."""
+    filled = {f for fill in plan.crowd_fills for f in fill.frames}
+    unfilled = sorted(set(tracks.crowded_frames) - filled)
+    if unfilled:
+        raise ContractError(f"plan.json: crowded frames {unfilled[:5]} have no crowd fill")
+    want = math.ceil(15 * job.fps / min(tracks.sam_fps, job.fps))
+    if plan.temporal.backfill != want:
+        raise ContractError(
+            f"plan.json: temporal.backfill {plan.temporal.backfill} != ceil(15 x fps / sam_fps) = {want}"
+        )
+    by_track = {t.track_id: t for t in tracks.tracks}
+    for item in decisions.items:
+        if item.decision not in ("hide", "needs_you"):
+            continue
+        for track in (by_track[tid] for tid in item.track_ids if tid in by_track):
+            for frame, box in sorted(track.boxes.items()):
+                entries = [e for e in plan.frames.get(frame, []) if e.item_id == item.item_id]
+                if not entries:
+                    continue  # coverage is _check_plan_covers'
+                fills = [fill.box for fill in plan.crowd_fills if frame in fill.frames]
+                held = any(
+                    _contains(e.box, box) if e.shape == "box" else boxes_overlap(e.box, box) for e in entries
+                ) or any(_contains(fill, box) for fill in fills)
+                if not held:
+                    raise ContractError(
+                        f"plan.json frame {frame}: {item.item_id} doesn't cover {track.track_id}'s box {list(box)}"
+                    )
+                for e in entries:
+                    if e.grid is not None and e.grid[2] * 6 < box[2] - box[0]:
+                        raise ContractError(
+                            f"plan.json frame {frame}: {item.item_id}'s {e.grid[2]} px grid leaves"
+                            f" {track.track_id} more than 6 blocks across"
+                        )
+
+
+def _contains(outer: Box, inner: Box) -> bool:
+    return outer[0] <= inner[0] and outer[1] <= inner[1] and inner[2] <= outer[2] and inner[3] <= outer[3]
 
 
 def _check_plan_covers(plan: Plan, decisions: Decisions, tracks: Tracks | None, job: Job) -> None:
@@ -1450,7 +1534,7 @@ def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:
     plan = loaded.get("plan.json")
     receipt = loaded.get("receipt.json")
     if tracks is not None:
-        _check_tracks(tracks, job)
+        _check_tracks(tracks, job, files)
     if isinstance(transcript, Transcript):
         _check_transcript(transcript, job)
     if isinstance(roles, Roles):
@@ -1464,6 +1548,8 @@ def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:
     if isinstance(plan, Plan) and decisions is not None:
         _check_plan_covers(plan, decisions, tracks, job)
         _check_plan_styles(plan, decisions, audit)
+        if tracks is not None:
+            _check_plan_geometry(plan, decisions, tracks, job)
     scene = loaded.get("scene.json")
     _check_links(
         scene if isinstance(scene, Scene) else None,

@@ -362,3 +362,21 @@ Tests are in tests/test_audit24.py (the audit #38 and #40 sections) unless named
   - only one of the two $0.01 SAM requests had a cost line;
   - p_1's span should start at frame 0 (10 − 15 − 8, clamped), with plan entries on frames 0–1.
 - L6 the ARCHITECTURE §3.5 example told a different story from §3.2 and §3.6 for face:7. Its votes, evidence, frames and keyframes now match the bystander in §3.6 and the track's own 120–410 span. §3.8's `egoblur.faces` is 1 beside its face leak
+
+## Audit 39 (independent Sonnet reviewer at 0044d94, checked against the live tree): 0 critical, 0 high, 3 medium, 2 low. NOT CLEAN; all verified and fixed
+Tests are in tests/test_audit24.py (the audit #39 section) unless named. Its 400-seed concurrent chaos harness and 500-seed Files chaos found nothing, and it re-read the live Meta docs: prices, `/files` shapes, `has_more` and the DELETE `deleted: true` all match.
+- M1 plan geometry was never checked: entries boxed `[0,0,2,2]`, or a pixelate grid of 1 px cells, hid nothing and passed. Fixed in `_check_plan_geometry`:
+  - each track box on a planned frame lies inside one of its item's box entries or a crowd fill (the guard only pads outward and clamps), and a mask entry must overlap it;
+  - a pixelate cell keeps the face ≤ 6 blocks across;
+  - `temporal.backfill == ceil(15 × fps / sam_fps)` (PRE-A §5b, T10).
+  (test_a_plan_entry_must_cover_its_track, test_a_pixelate_grid_keeps_a_face_within_six_blocks, test_the_backfill_is_the_hotstart_in_prepared_frames)
+- M2 `crowded_frames` needn't be covered by `crowd_fills`. Every crowded frame now needs a fill (PRE-A §5b, T11, fail closed) (test_every_crowded_frame_has_a_crowd_fill)
+- M3 deny by default wasn't enforced across files: a track in no item validated and was never hidden. Every track must now be in an item. A `keep` not decided by the creator needs each of its `roles.json` tracks to be a unanimous participant (WP3: "nothing with role ≠ participant is ever keep") (test_every_track_is_in_an_item, test_only_a_unanimous_participant_is_kept_without_the_creator)
+- L4 `tracks.requests[].file_id` wasn't tied to `files.json`, and `reentry_of` could name a track still on screen. With `files.json` present, every request must use `sam_proxy.mp4`'s id (PRE-A §10.6). A `reentry_of` must name a track that ended before the re-entry starts (test_sam_is_sent_the_proxy ×2, test_a_reentry_follows_a_track_that_ended)
+- L5 the example job wasn't a faithful guard and cost trace. Fixed:
+  - `plan.json` is regenerated as the guard would write it: 15 %/8 % padding plus 8 px, extend and back-fill clamped to the clip, so every hidden item is planned on all 12 frames;
+  - face:2's impossible `reentry_of` is dropped;
+  - the red-team hit at frame 10 gets its own `detector: "redteam"` leak. The gate now requires that leak for every non-excluded red-team hit, not just an overlapping EgoBlur leak;
+  - cost.jsonl gains the third role vote, the escalation, ASR and the two red-team passes;
+  - the receipt is re-sealed (cost_usd $0.071619, 2 leaks found and patched, escalate/redteam models).
+  test_audit16, test_audit21 and test_contracts expectations follow the regenerated fixture (test_a_red_team_hit_needs_its_own_red_team_leak)
