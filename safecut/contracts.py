@@ -1167,6 +1167,17 @@ def _check_decisions(decisions: Decisions, job: Job, tracks: Tracks | None, role
             raise ContractError(f"decisions.json: track {undecided[0]} is in no item")
 
 
+def _check_audit_reasons(audit: Audit, job: Job, *, unscanned: int, open_leaks: int) -> None:
+    if audit.open_weight.status != "off" and not (job.consented and job.open_weight_attempted):
+        # PRE-A §3.8 privacy gate: frames go to a third party only for a consented job, attempted once.
+        raise ContractError("audit.json: an open-weight opinion ran on a job that isn't consented and attempted")
+    # Precedence over_budget > audit_failed > unresolved_leaks: frames no pass ran on are never "leaks".
+    if unscanned and audit.blocked_reason == "unresolved_leaks":
+        raise ContractError("audit.json: unscanned frames block as audit_failed or over_budget, not unresolved_leaks")
+    if audit.blocked_reason == "unresolved_leaks" and not open_leaks:
+        raise ContractError("audit.json: blocked_reason unresolved_leaks needs an unresolved leak")
+
+
 def _check_audit(audit: Audit, job: Job) -> None:
     # EgoBlur scans every output frame; a frame no pass ran on counts in `unresolved` (PRE-A §12, vector L10).
     if audit.egoblur.faces is None and audit.frames_scanned:
@@ -1182,6 +1193,7 @@ def _check_audit(audit: Audit, job: Job) -> None:
             f"audit.json: {unscanned} frames weren't scanned and {open_leaks} leaks are unresolved, but unresolved"
             f" is {audit.unresolved}"
         )
+    _check_audit_reasons(audit, job, unscanned=unscanned, open_leaks=open_leaks)
     if audit.unresolved == 0 and audit.passes == 0:
         raise ContractError("audit.json: a publishable audit ran no red-team pass")
     # redteam.md: one red-team entry per frame sent, at least 1 per second (sample_step frames), and frames are
@@ -1300,6 +1312,8 @@ def _check_plan_styles(plan: Plan, decisions: Decisions, audit: Audit | None) ->
     through (a flagged leak's ``through_item``, once re-planned) renders solid on every frame (redteam.md: a model
     that read through one mosaic can read through the next). An audit patch's entries are
     solid and marked ``source: "audit_patch"`` (PRE-A §12)."""
+    if audit is not None:
+        _check_read_through(audit, decisions, plan)
     by_id = {item.item_id: item for item in decisions.items}
     # A leak left unresolved after the last pass was found after the last re-plan: its item may still be soft.
     upgraded: set[str] = (
@@ -1407,10 +1421,19 @@ def _check_between_anchors(plan: Plan, item: DecisionItem, track: Track) -> None
             w = (frame - before) / (after - before)
             box = cast(Box, tuple(round(a[i] + (b[i] - a[i]) * w) for i in range(4)))
             fills = [fill.box for fill in plan.crowd_fills if frame in fill.frames]
-            if not any(boxes_overlap(e.box, box) for e in entries) and not any(_contains(f, box) for f in fills):
+            # The guard may hold an anchor's box (growing it) through a gap, so either anchor also counts.
+            near = (box, a, b)
+            if not any(_near(e, n) for e in entries for n in near) and not any(_contains(f, box) for f in fills):
                 raise ContractError(
                     f"plan.json frame {frame}: {item.item_id} is nowhere near {track.track_id} (about {list(box)})"
                 )
+
+
+def _near(entry: PlanEntry, box: Box) -> bool:
+    """A box entry overlaps ``box``; a mask entry has foreground inside it (an empty mask hides nothing)."""
+    if entry.shape == "mask":
+        return entry.mask is not None and _mask_spans(entry.mask, box, share=0)
+    return boxes_overlap(entry.box, box)
 
 
 def _held(entries: list[PlanEntry], fills: list[Box], box: Box, padded: Box) -> bool:
@@ -1672,6 +1695,31 @@ def _check_patches(audit: Audit, decisions: Decisions, tracks: Tracks | None, pl
                 _check_exclusion(entry, item, tracks, f"audit.json {name} at frame {entry.frame}")
 
 
+def _check_read_through(audit: Audit, decisions: Decisions, plan: Plan) -> None:
+    """redteam.md: a text finding on a redacted region (any overlap with a hidden item's planned region on that
+    frame) is a leak *and* a `redaction_too_weak` flag, so the item is re-rendered solid. A writer that records it
+    unflagged would leave the mosaic that was read through."""
+    hidden = {i.item_id for i in decisions.items if i.decision in ("hide", "needs_you")}
+    for hit in audit.redteam:
+        if (
+            not isinstance(hit, RedteamHit)
+            or hit.excluded_by is not None
+            or hit.kind not in ("text", "screen", "plate")
+        ):
+            continue
+        regions = [e.box for e in plan.frames.get(hit.frame, []) if e.item_id in hidden]
+        if not any(boxes_overlap(r, hit.box) for r in regions):
+            continue
+        if not any(
+            leak.detector == "redteam" and leak.frame == hit.frame and boxes_overlap(leak.box, hit.box) and leak.flag
+            for leak in audit.leaks
+        ):
+            raise ContractError(
+                f"audit.json red-team {hit.kind} hit at frame {hit.frame} reads through a hidden region, so its leak"
+                " carries flag redaction_too_weak"
+            )
+
+
 def _excludes(kind: LeakKind, concept: str) -> bool:
     """redteam.md "Leak decision": a finding's kind matches only its own track concept (no looser mapping)."""
     match kind:
@@ -1753,6 +1801,14 @@ def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:
         tracks=tracks,
         plan=plan if isinstance(plan, Plan) else None,
     )
+    _check_auto_keeps(
+        decisions,
+        job,
+        scene=scene if isinstance(scene, Scene) else None,
+        roles=roles if isinstance(roles, Roles) else None,
+        transcript=transcript if isinstance(transcript, Transcript) else None,
+        tracks=tracks,
+    )
     if isinstance(receipt, Receipt):
         responses = loaded.get("responses.json")
         _check_receipt(
@@ -1772,6 +1828,78 @@ def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:
             transcript=transcript if isinstance(transcript, Transcript) else None,
         )
     return loaded
+
+
+def _normal_words(text: str) -> str:
+    return " ".join("".join(ch if ch.isalnum() or ch.isspace() else " " for ch in text.lower()).split())
+
+
+def _speech_evidence(k: int | None, scene: Scene, transcript: Transcript) -> bool:
+    """PRE-A §12: participant ``k`` has a turn by its speaker, or an introduction quote (≥ 2 words) found in the
+    introducing turn's text, both normalised."""
+    if k is None or not 0 <= k < len(scene.participants):
+        return False
+    who = scene.participants[k]
+    if who.speaker is not None and any(t.speaker == who.speaker for t in transcript.turns):
+        return True
+    i, quote = who.introduced_in_turn, _normal_words(who.introduction_quote or "")
+    return (
+        i is not None
+        and i < len(transcript.turns)
+        and len(quote.split()) >= 2
+        and (quote in _normal_words(transcript.turns[i].text))
+    )
+
+
+def _check_auto_keeps(
+    decisions: Decisions | None,
+    job: Job,
+    *,
+    scene: Scene | None,
+    roles: Roles | None,
+    transcript: Transcript | None,
+    tracks: Tracks | None,
+) -> None:
+    """PRE-A §12's holds: a person is kept without the creator only when the scene pass ran (`no_scene`), the clip's
+    audio has a usable transcript (`no_speech`), every scene child is matched to a child item (`unmatched_child`)
+    and, with a transcript, each kept track's participant has speech or introduction evidence (`no_speech_link`).
+    A hold explains a `needs_you`, so a keep never carries one."""
+    if decisions is None:
+        return
+    auto = [i for i in decisions.items if i.decision == "keep" and i.decided_by != "creator" and i.kind == "person"]
+    if not auto:
+        return
+    held = [i for i in auto if i.hold is not None]
+    if held:
+        raise ContractError(f"decisions.json {held[0].item_id}: a keep carries hold {held[0].hold}")
+    where = f"decisions.json {auto[0].item_id}: kept by {auto[0].decided_by}, but"
+    if scene is not None and scene.status != "ok":
+        raise ContractError(f"{where} the scene pass didn't run (no_scene)")
+    usable = transcript is not None and transcript.status == "ok" and not transcript.degraded
+    if job.audio and transcript is not None and not usable:
+        raise ContractError(f"{where} the clip's audio has no usable transcript (no_speech)")
+    if scene is not None and roles is not None:
+        phrase: set[str] = set() if tracks is None else {t.track_id for t in tracks.tracks if t.child_phrase}
+        reentry: set[str] = set() if tracks is None else {t.track_id for t in tracks.tracks if t.reentry_of}
+        child_tracks = {
+            t.track_id for t in roles.tracks
+            if t.track_id not in phrase and ("child" in t.votes or (t.escalated and t.role == "child"))
+        }  # fmt: skip
+        children = [
+            i for i in decisions.items
+            if set(i.track_ids) & child_tracks and not set(i.track_ids) <= reentry
+        ]  # fmt: skip
+        if len(scene.children) > len(children):
+            raise ContractError(f"{where} the scene has an unmatched child (unmatched_child)")
+    if job.audio and usable and scene is not None and roles is not None and transcript is not None:
+        votes = {t.track_id: t for t in roles.tracks}
+        for item in auto:
+            for tid in item.track_ids:
+                if tid in votes and not _speech_evidence(votes[tid].matches_participant, scene, transcript):
+                    raise ContractError(
+                        f"decisions.json {item.item_id}: kept by {item.decided_by}, but {tid} has no speech or"
+                        " introduction evidence (no_speech_link)"
+                    )
 
 
 def _check_receipt_models(

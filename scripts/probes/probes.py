@@ -885,12 +885,23 @@ async def run(
     return results
 
 
+def _errors(value: object) -> int:
+    """How many ``error`` entries a summary holds at any depth."""
+    if isinstance(value, dict):
+        node = cast(dict[str, Any], value)
+        return int("error" in node) + sum(_errors(v) for v in node.values())
+    if isinstance(value, list):
+        return sum(_errors(v) for v in cast(list[Any], value))
+    return 0
+
+
 def save_summary(out: Path, result: Summary) -> Path:
     """Write ``summary.json``, unless this run only failed and an earlier run's summary (a paid, recorded result
     that API-NOTES quotes and its raw files back) is already there: then the failure goes beside it."""
     out.mkdir(parents=True, exist_ok=True)
     path = out / "summary.json"
-    if "error" in result and path.exists():  # a failed run (in-band or not) never replaces a recorded one
+    if path.exists() and _errors(result) > _errors(json.loads(path.read_text())):
+        # A run that failed more (in-band per concept, call or check, or outright) never replaces a recorded one.
         path = out / f"summary.failed-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}.json"
     path.write_text(json.dumps(result, indent=1, ensure_ascii=False) + "\n")
     return path

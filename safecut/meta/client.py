@@ -740,7 +740,8 @@ class MetaClient:
                     "POST", self.url("responses"), headers=self._headers(), json=payload, timeout=spec.timeout
                 ) as resp:
                     if resp.status_code >= 300:
-                        parsed = _decode(await resp.aread())
+                        async with asyncio.timeout(spec.total_timeout_s):  # a dripping error body is bounded too
+                            parsed = _decode(await resp.aread())
                         raise _status_failure(
                             resp.status_code,
                             self._scrub(parsed),
@@ -807,7 +808,8 @@ class MetaClient:
                     "POST", self.url("chat/completions"), headers=self._headers(), json=payload, timeout=spec.timeout
                 ) as resp:
                     if resp.status_code >= 300:
-                        parsed = _decode(await resp.aread())
+                        async with asyncio.timeout(spec.total_timeout_s):  # a dripping error body is bounded too
+                            parsed = _decode(await resp.aread())
                         rid_header = resp.headers.get("x-request-id")
                         raise _status_failure(
                             resp.status_code, self._scrub(parsed), resp.headers, rid_header, self._clock() - started

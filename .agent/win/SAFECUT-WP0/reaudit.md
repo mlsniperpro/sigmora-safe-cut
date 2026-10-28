@@ -447,3 +447,24 @@ It built many realistic 60 s jobs, with merged and pixelated faces, ellipse mask
 - L4 four example cost lines kept `reasoning` outside `output`, though reasoning is part of output. Their `output` is now output plus reasoning, so `responses_usd_from_units` reproduces every `usd`. The receipt and its hash are unchanged
 - L5 probe b's `mask_matches_box_size` paired masks with boxes by position and claimed a match with no masks. It now pairs by (object, frame), reports null without masks, and records `mask_sizes`, `frame_size` and the skipped frames (WP0 step 3b)
 - Doc: ARCHITECTURE §3 states the full non-creator keep rule and the per-second red-team rule
+
+## Audits 51 and 52 (two independent Sonnet reviewers at cfe0fd3 and 874ec4d): 0 critical, 0 high, 3 medium, 11 low. NOT CLEAN; all verified and handled
+#51 ran about 12k hostile-body and 3.8k cancel-chaos iterations with no ledger mismatch, plus 3,000 mutations. #52 found no false refusal across many realistic job shapes. Tests are in tests/test_audit24.py (the "audits #51 and #52" section) unless named.
+- (#51, #52 L5) audit #51's fuzz script wrote a stray `bad_1.json` into the repo root, and commit 874ec4d swept it in. Removed
+- M1 (#51 M1, #52 L3) PRE-A §12's holds weren't enforced on non-creator keeps. Fixed in `_check_auto_keeps`, from the job files present:
+  - `no_scene`: the scene pass didn't run;
+  - `no_speech`: an audio clip with no usable transcript;
+  - `unmatched_child`: more scene children than child items, counted as PRE-A defines them;
+  - `no_speech_link`: with a transcript, each kept track's participant needs speech or introduction evidence (PRE-A's normalised ≥ 2-word quote rule).
+  A keep also never carries a `hold`. test_audit20's redteam_open case now marks its job consented (test_a_policy_keep_respects_the_holds ×3, test_a_policy_keep_needs_a_speech_link, test_a_keep_never_carries_a_hold)
+- M2 (#51 L-M2) an open-weight opinion could run on a job that wasn't consented or attempted. It now needs `job.consented` and `open_weight_attempted`, PRE-A §3.8's privacy gate (test_an_open_weight_opinion_needs_consent)
+- M3 (#51 M-L4) probe summaries that fail in band per concept or call were still overwritten. A re-run with more `error` entries (at any depth) than the recorded summary now goes beside it (test_a_worse_rerun_never_replaces_a_recorded_summary)
+- L (#51 L3) `blocked_reason` precedence: unscanned frames are never `unresolved_leaks`, and `unresolved_leaks` needs an unresolved leak (test_the_blocked_reason_follows_its_precedence ×2)
+- L (#51 L5) a dripping HTTP error body in `stream`/`stream_chat` escaped `total_timeout_s`. The error-body read is now bounded too (test_a_dripping_error_body_is_bounded_by_the_total_timeout)
+- L (#51 L6, #52 L1) the between-anchors rule refused WP3's hold-and-grow through a gap. An entry near either anchor's box now also counts (test_a_held_and_growing_box_through_a_gap_passes)
+- L (#52 L2) empty masks between anchors passed. A mask entry there needs foreground near the box (test_an_empty_mask_between_anchors_hides_nothing)
+- L (#52 L4) a red-team text, screen or plate hit read through a hidden region could be recorded unflagged. Its leak now needs `redaction_too_weak` (test_a_red_team_read_through_carries_the_flag)
+- L (#51 L7) an over-long integer in env JSON raised a bare `ValueError`. It is now a `ConfigError` (test_an_oversized_integer_in_env_json_is_a_config_error)
+- L (#51 L8) malformed WAVs leaked untyped errors from `transcribe_raw`. They are now `MetaBadRequest` before any spend (test_an_unreadable_wav_is_refused_before_any_spend ×3)
+- Doc (#52 L6) the duplicated "1 per second" parenthetical is removed; ARCHITECTURE §3 states the new rules
+- Process: an edit script of mine truncated contracts.py while I applied these fixes; it was restored from HEAD and every change re-applied, then re-verified (607 → 624 tests)

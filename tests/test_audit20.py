@@ -130,5 +130,8 @@ def test_a_kept_item_absent_on_the_frame_cannot_exclude(tmp_path: Path, name: st
             d["open_weight"] = {"model": "m", "status": "ok", "frames": 1, "findings": 1}
 
     _edit_audit(job_dir, add)
+    if name == "redteam_open":  # the second opinion runs only on a consented job, attempted once (PRE-A §3.8)
+        job = json.loads((job_dir / "job.json").read_text())
+        (job_dir / "job.json").write_text(json.dumps(job | {"consented": True, "open_weight_attempted": True}))
     with pytest.raises(c.ContractError, match="excluded_by i_1, absent on that frame"):
         c.validate_job_dir(job_dir)

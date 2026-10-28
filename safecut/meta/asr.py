@@ -79,7 +79,10 @@ def wav_seconds(path: Path) -> float:
 
 
 def _audio_facts(path: Path) -> tuple[int, float]:
-    return path.stat().st_size, wav_seconds(path)
+    try:
+        return path.stat().st_size, wav_seconds(path)
+    except (wave.Error, EOFError, ZeroDivisionError) as exc:  # not a usable WAV: refused before any spend
+        raise MetaBadRequest(f"not a readable WAV: {type(exc).__name__}") from exc
 
 
 def _meter(response: Mapping[str, Any]) -> tuple[Units, float | None]:

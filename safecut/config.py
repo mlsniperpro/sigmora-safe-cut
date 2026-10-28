@@ -463,8 +463,8 @@ def _parse_env_value(name: str, raw: str) -> Any:
             parsed: Any = json.loads(raw)
         except json.JSONDecodeError as exc:
             raise ConfigError(f"{_ENV_PREFIX}{name.upper()} is not valid JSON: {exc.msg}") from exc
-        except RecursionError as exc:
-            raise ConfigError(f"{_ENV_PREFIX}{name.upper()} is nested too deeply") from exc
+        except (RecursionError, ValueError) as exc:  # too deep, or an integer past Python's digit limit
+            raise ConfigError(f"{_ENV_PREFIX}{name.upper()} is not usable JSON: {type(exc).__name__}") from exc
         if name == "code_windows":
             try:
                 pairs = _WINDOW_PAIRS.validate_python(parsed)

@@ -21,6 +21,7 @@ from safecut import config
 from safecut import contracts as c
 from safecut import open_weight as ow
 from safecut.config import ConfigError, Settings, load_settings
+from safecut.meta import asr as responses_asr
 from safecut.meta import files as files_mod
 from safecut.meta import responses, sam
 from safecut.meta.budget import Caller, LocalLedger
@@ -1087,7 +1088,7 @@ def test_a_deeply_nested_listing_item_never_overflows() -> None:
 
 
 def test_deeply_nested_env_json_is_a_config_error() -> None:
-    with pytest.raises(ConfigError, match="nested too deeply"):
+    with pytest.raises(ConfigError, match="not usable JSON"):
         load_settings({"SAFECUT_ACCESS_CODES": "[" * 100_000})
 
 
@@ -1133,3 +1134,158 @@ def test_a_crowd_fill_covers_a_sparse_track_between_anchors(tmp_path: Path) -> N
 
     _edit(job_dir, "plan.json", fill)
     assert "plan.json" in c.validate_job_dir(job_dir)
+
+
+# --- audits #51 and #52 -------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("name", "change", "hold"),
+    [
+        ("scene.json", {"status": "failed", "model": None}, "no_scene"),
+        ("transcript.json", {"status": "failed", "turns": [], "degraded": True, "source": None,
+                             "source_kind": None}, "no_speech"),
+        ("scene.json", {"children": [{"description": "a small child by the door"}]}, "unmatched_child"),
+    ],
+)  # fmt: skip
+def test_a_policy_keep_respects_the_holds(tmp_path: Path, name: str, change: dict[str, Any], hold: str) -> None:
+    job_dir = _example(tmp_path)
+    if hold == "no_speech":  # no turns left for the scene's introduction to point at
+        _edit(job_dir, "scene.json", lambda d: d["participants"][0].update(
+            {"introduced_in_turn": None, "introduction_quote": None}))  # fmt: skip
+    _edit(job_dir, name, lambda d: d.update(change))
+    with pytest.raises(c.ContractError, match=hold):
+        c.validate_job_dir(job_dir)
+
+
+def test_a_policy_keep_needs_a_speech_link(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "roles.json", lambda d: next(t for t in d["tracks"] if t["track_id"] == "face:1").update(
+        {"matches_participant": None}))  # fmt: skip
+    with pytest.raises(c.ContractError, match="no_speech_link"):
+        c.validate_job_dir(job_dir)
+
+
+def test_a_keep_never_carries_a_hold(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "decisions.json", lambda d: next(i for i in d["items"] if i["item_id"] == "i_1").update(
+        {"hold": "no_speech"}))  # fmt: skip
+    with pytest.raises(c.ContractError, match="i_1: a keep carries hold no_speech"):
+        c.validate_job_dir(job_dir)
+
+
+def test_an_open_weight_opinion_needs_consent(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "audit.json", lambda d: d.update({"open_weight": {"model": "m", "status": "ok", "frames": 0,
+                                                                     "findings": 0}}))  # fmt: skip
+    with pytest.raises(c.ContractError, match="isn't consented and attempted"):
+        c.validate_job_dir(job_dir)
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ({"frames_scanned": 7, "unresolved": 5, "blocked_reason": "unresolved_leaks"}, "unscanned frames block"),
+        ({"unresolved": 3, "blocked_reason": "unresolved_leaks"}, "needs an unresolved leak"),
+    ],
+)
+def test_the_blocked_reason_follows_its_precedence(tmp_path: Path, change: dict[str, Any], message: str) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "audit.json", lambda d: d.update(change))
+    with pytest.raises(c.ContractError, match=message):
+        c.validate_job_dir(job_dir)
+
+
+def test_a_worse_rerun_never_replaces_a_recorded_summary(tmp_path: Path) -> None:
+    out = tmp_path / "b"
+    probes.save_summary(out, {"concepts": {"face": {"records": 3}, "person": {"records": 1}}})
+    failed = probes.save_summary(out, {"concepts": {"face": {"error": "x"}, "person": {"error": "y"}}})
+    assert json.loads((out / "summary.json").read_text())["concepts"]["face"] == {"records": 3}
+    assert failed.name.startswith("summary.failed-")
+    better = probes.save_summary(out, {"concepts": {"face": {"records": 4}, "person": {"records": 2}}})
+    assert better.name == "summary.json"
+
+
+class _Drip(httpx.AsyncByteStream):
+    async def __aiter__(self):  # pyright: ignore[reportIncompatibleMethodOverride]
+        for _ in range(100):
+            await asyncio.sleep(0.1)
+            yield b" "
+
+
+async def test_a_dripping_error_body_is_bounded_by_the_total_timeout(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter
+) -> None:
+    h = make_harness()
+    mock_api.post("/responses").mock(return_value=httpx.Response(500, stream=_Drip()))
+    spec = CallSpec(stage="s", model="muse-spark-1.3", estimate_usd=0.01, estimate_units={},
+                    policy=RetryPolicy(attempts=1), timeout=httpx.Timeout(5.0), total_timeout_s=0.5)  # fmt: skip
+    started = time.monotonic()
+    with pytest.raises(MetaUnavailable):
+        await h.client.stream(spec, {"model": "muse-spark-1.3", "store": False}, meter=lambda _: ({}, 0.0))
+    assert time.monotonic() - started < 3
+
+
+def test_a_held_and_growing_box_through_a_gap_passes(tmp_path: Path) -> None:
+    # screen:1 anchors on 1 and 5; the guard holds frame 1's box (grown) through 2-4 while the object moves away.
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "tracks.json", lambda d: next(t for t in d["tracks"] if t["track_id"] == "screen:1")["boxes"]
+          .update({"5": [700, 400, 900, 600]}))  # fmt: skip
+
+    def plan(d: Any) -> None:
+        for f in ("2", "3", "4"):
+            next(e for e in d["frames"][f] if e["item_id"] == "i_3")["box"] = [884, 384, 1116, 616]
+        for f in ("5", "6", "7", "8", "9", "10", "11"):
+            next(e for e in d["frames"][f] if e["item_id"] == "i_3")["box"] = [684, 384, 916, 616]
+
+    _edit(job_dir, "plan.json", plan)
+    assert "plan.json" in c.validate_job_dir(job_dir)
+
+
+def test_an_oversized_integer_in_env_json_is_a_config_error() -> None:
+    with pytest.raises(ConfigError, match="not usable JSON"):
+        load_settings({"SAFECUT_ACCESS_CODES": "[" + "1" * 5000 + "]"})
+
+
+@pytest.mark.parametrize("content", [b"", b"RIFF\\x00\\x00", b"not a wav at all"])
+async def test_an_unreadable_wav_is_refused_before_any_spend(
+    make_harness: Callable[..., Harness], tmp_path: Path, content: bytes
+) -> None:
+    h = make_harness()
+    wav = tmp_path / "a.wav"
+    wav.write_bytes(content)
+    with pytest.raises(MetaBadRequest, match="not a readable WAV"):
+        await responses_asr.transcribe_raw(h.client, wav, model="muse-voice-transcribe-1.0", language_bias=[])
+    assert h.costs() == []
+
+
+def test_an_empty_mask_between_anchors_hides_nothing(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)  # screen:1 has anchors on frames 1 and 5 only
+    empty = {"size": [720, 1280], "counts": rle_string([720 * 1280])}
+    _edit(job_dir, "plan.json", lambda d: next(e for e in d["frames"]["3"] if e["item_id"] == "i_3").update(
+        {"shape": "mask", "mask": empty}))  # fmt: skip
+    with pytest.raises(c.ContractError, match="frame 3: i_3 is nowhere near screen:1"):
+        c.validate_job_dir(job_dir)
+
+
+def test_a_red_team_read_through_carries_the_flag(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)  # i_3 (the screen) is hidden on frame 3; the model reads text through it
+    hit = {
+        "frame": 3,
+        "finding": "hit",
+        "kind": "text",
+        "text": "AB",
+        "detail": "a name on the screen",
+        "box": [950, 450, 1050, 500],
+        "confidence": "high",
+        "excluded_by": None,
+    }
+    leak = {"frame": 3, "box": [950, 450, 1050, 500], "kind": "text", "detector": "redteam", "patched_item": "p_1"}
+
+    def add(d: Any) -> None:
+        d["redteam"].append(hit)
+        d["leaks"].append(leak)
+
+    _edit(job_dir, "audit.json", add)
+    with pytest.raises(c.ContractError, match="reads through a hidden region"):
+        c.validate_job_dir(job_dir)
