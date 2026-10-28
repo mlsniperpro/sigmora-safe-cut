@@ -146,3 +146,8 @@ Round 11 (fixes in the round-11 commit; details in `reaudit.md`):
 - [x] R11-2 (low) mock result frame counts match the sample clip: mock-backend test
 - [x] R11-3 (low) alerts re-keyed per answer, not per press: JobPage test
 
+Round 12 (fixes in the round-12 commit; details in `reaudit.md`):
+
+- [x] R12-1 (low) mock result job and result describe the same clip: mock-backend test
+- [x] R12-2 (low) a refusal that disables Start takes focus: e2e
+

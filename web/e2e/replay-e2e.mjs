@@ -285,6 +285,19 @@ try {
     await page.getByText("Too many tries in a short time. Wait a minute and try again.").first().waitFor();
     const focused = await cont.evaluate((el) => document.activeElement === el);
     check("/try: a refused Continue keeps focus on the button", focused);
+    // A refusal that disables Start (401 on POST /v1/jobs: the `expired` mock code) takes focus itself.
+    await page.getByLabel("Access code").fill("expired");
+    await cont.click();
+    await page.getByRole("button", { name: "Choose a file" }).waitFor();
+    await page.locator('input[type="file"]').setInputFiles(join(ROOT, "public", "sample", "prepared.mp4"));
+    await page.getByText(/prepared\.mp4 · 0:08/).waitFor();
+    await page.getByRole("checkbox").check();
+    const start = page.getByRole("button", { name: "Start" });
+    await start.focus();
+    await page.keyboard.press("Enter");
+    await page.getByRole("button", { name: "Use a different code" }).waitFor();
+    const inAlert = await page.evaluate(() => !!document.activeElement?.closest('[role="alert"]'));
+    check("/try: a refusal that disables Start takes focus", inAlert && (await start.isDisabled()));
     await context.close();
   }
 

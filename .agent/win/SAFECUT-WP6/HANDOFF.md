@@ -51,6 +51,7 @@
 - On the round-10 commit: 808 tests (28 files), e2e 87/87, `checks.sh` exit 0.
 - Audit round 11 (on 7edc297): 3 low, all fixed in the round-11 commit (focus on /try refusals, mock frame counts, alert keying). On that commit: 809 tests, e2e 88/88.
 - Lesson: jsdom keeps focus on a button that becomes `disabled`, while real browsers drop it to `<body>`. Focus-loss fixes need an e2e check, not only a unit test.
+- Audit round 12 (on 128d23b): 2 low, fixed in the round-12 commit. On that commit: 809 tests, e2e 89/89.
 - CLEAN_AUDITS_IN_A_ROW is 0. Two clean full audits are still needed, then a fresh break-it.md (fresh clone + FUZZ_RUNS=100000).
 
 ## Next steps, in order

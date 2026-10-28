@@ -360,7 +360,8 @@ export class MockBackend implements Transport {
 
   /** A `result-*` fixture is a result response; the job behind it is the hero, done, with that audit. */
   private async doneJobFor(id: string, result: { audit: unknown }): Promise<JobResponse> {
-    const hero = jobResponseSchema.parse(await this.fixture("job-review-hero1"));
+    // On the sample job when there's sample media, so the job, its result and the media agree.
+    const hero = jobResponseSchema.parse(await this.fixture(this.sample?.job ?? "job-review-hero1"));
     const audit = jobResponseSchema.shape.audit.parse(result.audit);
     return { ...hero, job_id: id, status: "done", stage: "done", has_render: true, audit, result: { video_url: this.mediaUrls(id).video_url } };
   }

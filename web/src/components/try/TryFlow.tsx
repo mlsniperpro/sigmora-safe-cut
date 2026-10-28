@@ -106,6 +106,12 @@ export function TryFlow() {
   const [now, setNow] = useState(0);
   const ids = { code: useId(), codeErr: useId(), file: useId(), rights: useId(), rightsErr: useId() };
 
+  // A refusal that disables Start would drop focus to the page with it: the refusal takes it (WCAG 2.4.3).
+  const refusalBox = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (refusal?.blockStart && step === "file") refusalBox.current?.focus();
+  }, [refusal, step]);
+
   // Re-enable a time-limited Start when its time comes.
   useEffect(() => {
     if (!refusal?.until) return;
@@ -385,7 +391,7 @@ export function TryFlow() {
       {step === "file" && (
         <div className="mt-8">
           {refusal && (
-            <div role="alert" className="mb-4 rounded-lg border border-danger bg-danger-bg p-3">
+            <div ref={refusalBox} role="alert" tabIndex={-1} className="mb-4 rounded-lg border border-danger bg-danger-bg p-3">
               <p>{refusal.message}</p>
               <p className="mt-2 flex flex-wrap gap-3">
                 {refusal.differentCode && (

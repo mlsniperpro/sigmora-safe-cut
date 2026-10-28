@@ -88,5 +88,9 @@ describe("MockBackend storage", () => {
     expect(res.body).toMatchObject({ video_url: "/sample/redacted.mp4", receipt_html_url: "/sample/receipt.html", receipt_json_url: "/sample/receipt.json" });
     // The summary counts the sample clip's frames, as its receipt does (240 of 240).
     expect(res.body).toMatchObject({ frames: 240, audit: { frames_scanned: 240 } });
+    // The job behind it is the same clip, so the page's "{scanned} of {frames}" agrees.
+    const job = await backend.request({ method: "GET", path: "/v1/jobs/result-fixed" });
+    expect((job.body as { status: string; job: { frames: number } }).job.frames).toBe(240);
+    expect((job.body as { status: string }).status).toBe("done");
   });
 });

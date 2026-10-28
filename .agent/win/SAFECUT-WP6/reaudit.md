@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 7edc297
+AUDITED_COMMIT: 128d23b
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -193,3 +193,13 @@ Fresh-clone README run also found: `pnpm typecheck` failed before any build (Nex
 | 1 | low | On /try, Continue and Start were `disabled` while their request was out, so a refusal that keeps the step (429, 503, 5xx, 413, timeout) dropped focus to `<body>` (WCAG 2.4.3, §10.2) | fixed: busy Continue/Start are `aria-disabled` and ignore presses. e2e: a refused Continue keeps focus (this check fails on the previous build and passes now; jsdom doesn't blur a focused element when it's disabled, so the unit test alone can't tell) |
 | 2 | low | Mock result fixtures played the 240-frame sample but said "12 of 12 frames checked" | fixed: in mock mode the result answer takes the sample's frame count; any gap the fixture's audit left unchecked stays unchecked. mock-backend test |
 | 3 | low | The code-cap alert was re-keyed on the press, so a second press refocused and re-announced the old alert while the request was out | fixed: the alerts' key moves when an answer arrives. JobPage test: the button keeps focus while the second press is out, then the new answer takes it |
+
+## Round 12 (audited 128d23b by a Sonnet reviewer; fresh archive build; 44 routes × 8 viewports × light/dark with axe (WCAG + best practice): 0 WCAG violations, no overflow, one h1 each; live build against a faked https API; each finding traced here; fixes in the next commit)
+
+0 critical, 0 high, 0 medium, 2 low.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | low | Regression from round 11 #2: mock `/jobs/result-*/result` said "240 of 12 frames checked" (the result's frames came from the sample, the job's from the 12-frame hero fixture) | fixed at the source: with sample media, result fixtures' jobs are built on the sample job, so job, result and media are one clip (and "Back to review" lands on it). mock-backend test checks both |
+| 2 | low | A refusal that disables Start on /try (401 on create, 429 daily cap or rate limit) still dropped focus to `<body>` | fixed: such a refusal takes focus itself (its alert box, which holds its actions). e2e with the `expired` mock code |
+| note | — | README's mock-code table lacked `open-weight` | added |

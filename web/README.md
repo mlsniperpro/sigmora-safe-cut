@@ -29,6 +29,7 @@ Access codes with scripted answers in mock mode (`MOCK_CODES`):
 | Code | Answer |
 |---|---|
 | `wrong` | 401 on Continue |
+| `open-weight` | accepted, as a code whose clips also get the open-weight second opinion (the Baseten data bullet shows) |
 | `not-yet` | 401 `code_not_active` on Continue |
 | `rate-limited` | 429 on Continue |
 | `expired` | 401 `code_not_active` on `POST /v1/jobs` |
