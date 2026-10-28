@@ -1828,3 +1828,64 @@ async def test_an_interrupted_run_sets_its_raw_files_aside(
     [aside] = list((tmp_path / "d").glob("failed-*"))
     assert json.loads((aside / "paid.json").read_text()) == {"answer": 1}
     assert not list((tmp_path / "d").glob(".run-*"))
+
+
+# --- audit #62 ----------------------------------------------------------------------------------------------
+
+
+async def test_an_interrupt_during_cleanup_sets_the_raw_files_aside(
+    api: respx.MockRouter,  # noqa: F811 -- pytest injects the imported fixture by name
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def paid(p: probes.Probe) -> probes.Summary:
+        p.save("paid.json", {"answer": 1})
+        return {"answer": 1}
+
+    async def interrupted_cleanup(_: FileStore) -> bool:
+        raise asyncio.CancelledError
+
+    monkeypatch.setitem(probes.PROBES, "d", paid)
+    monkeypatch.setattr(FileStore, "delete_all", interrupted_cleanup)
+    with pytest.raises(asyncio.CancelledError):
+        await probes.run(
+            ["d"], settings=Settings(model_api_key=SecretStr("k")), out_root=tmp_path, ledger=LocalLedger()
+        )
+    [aside] = list((tmp_path / "d").glob("failed-*"))
+    assert json.loads((aside / "paid.json").read_text()) == {"answer": 1}
+    assert not list((tmp_path / "d").glob(".run-*"))
+
+
+def test_a_partial_paid_run_replaces_a_recorded_outright_failure(tmp_path: Path) -> None:
+    probes.save_summary(tmp_path, {"error": "MetaConfigError: no key", "uploads_deleted": True})
+    partial = {"four_frames": {"latency_s": 2.0}, "error": "grid check not measured: 1 of 3 tries failed"}
+    assert probes.save_summary(tmp_path, partial).name == "summary.json"
+    assert probes.save_summary(tmp_path, {"error": "down"}).name.startswith("summary.failed-")
+
+
+def test_an_accepted_run_moves_the_old_raw_files_aside(tmp_path: Path) -> None:
+    def run(files: dict[str, int]) -> Path:
+        staged = tmp_path / f".run-{len(list(tmp_path.glob('superseded-*')))}"
+        staged.mkdir()
+        for name, value in files.items():
+            (staged / name).write_text(json.dumps(value))
+        return probes.save_summary(tmp_path, {"ok": True}, staged=staged)
+
+    run({"sam-face.events.json": 1, "sam-license_plate.events.json": 1})
+    run({"sam-face.events.json": 2})  # this run's plate call failed: it wrote no plate file
+    assert not (tmp_path / "sam-license_plate.events.json").exists()
+    assert json.loads((tmp_path / "sam-face.events.json").read_text()) == 2
+    [superseded] = list(tmp_path.glob("superseded-*"))
+    assert sorted(f.name for f in superseded.iterdir()) == ["sam-face.events.json", "sam-license_plate.events.json"]
+
+
+async def test_a_probe_b_rerun_reports_only_its_own_responses(
+    api: respx.MockRouter,  # noqa: F811 -- pytest injects the imported fixture by name
+    tmp_path: Path,
+) -> None:
+    cfg = Settings(model_api_key=SecretStr("k"))
+    for _ in range(2):
+        results = await probes.run(["b"], settings=cfg, out_root=tmp_path, ledger=LocalLedger())
+        check = results["b"]["delete_without_store"]
+        assert check["delete_requested"] == len(check["response_ids"]) == 1
+        assert len(check["repeat_delete"]) == 1

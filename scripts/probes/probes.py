@@ -285,12 +285,13 @@ async def probe_b(p: Probe) -> Summary:
         "concepts": {},
     }
     log = sam.ResponseLog(p.out / "job")
+    before = _requested_so_far(log)  # the log outlives a run: report this run's requests only
     try:
         await _probe_b_calls(p, file_id, frames, concepts=concepts, log=log, out=out)
     finally:
         # Every noted response is deleted, whatever failed above (PRE-A §10.4).
         if p.settings.delete_sam_responses:
-            out["responses_delete_requested"] = await log.delete_pending(p.meta)
+            out["responses_delete_requested"] = await log.delete_pending(p.meta) - before
             out["response_ids_refused"] = len(log.refused)
     return out
 
@@ -328,12 +329,14 @@ async def _sam_delete_check(p: Probe, file_id: str, frames: int) -> Summary:
         settings, job_id=p.meta.job_id, caller=p.meta.caller, ledger=p.meta.ledger, cost_path=p.meta.cost_path
     )
     log = sam.ResponseLog(p.out / "job-nostore")
+    earlier = {e.response_id for e in log.index().root}  # an earlier run's responses aren't this run's
+    before = _requested_so_far(log)
     first: int | None = None
     try:
         body = sam.video_body(settings, file_id=file_id, text="red square")
         await sam.segment_video(client, body, sam_frames=frames, stage="probe_b", responses=log)
-        first = await log.delete_pending(client)
-        ids = [e.response_id for e in log.index().root]
+        first = await log.delete_pending(client) - before
+        ids = [e.response_id for e in log.index().root if e.response_id not in earlier]
         repeat = {rid: await _delete_again(client, rid) for rid in ids}
     except MetaError as exc:
         return {"error": f"{type(exc).__name__}: {exc}"}
@@ -347,6 +350,11 @@ async def _sam_delete_check(p: Probe, file_id: str, frames: int) -> Summary:
         "delete_requested": first,
         "repeat_delete": repeat,
     }
+
+
+def _requested_so_far(log: sam.ResponseLog) -> int:
+    """What ``delete_pending`` would report before this run made any request (it counts the log's lifetime)."""
+    return log.requested() + log.unrecorded()
 
 
 async def _delete_again(client: MetaClient, response_id: str) -> str:
@@ -885,18 +893,21 @@ async def run(
             raw=staged,
         )
         try:
-            results[name] = await PROBES[name](probe)
-        except Exception as exc:
-            results[name] = {"error": f"{type(exc).__name__}: {exc}"}
-        except BaseException:
-            _set_aside(out, staged)  # Ctrl-C or a cancel after paid calls: the raw files stay findable
-            raise
-        finally:
             try:
-                results.setdefault(name, {})["uploads_deleted"] = await files.delete_all()
-            except (MetaError, OSError, ContractError) as exc:  # the next probes and this summary still run
-                results.setdefault(name, {})["uploads_deleted"] = f"failed: {exc}"
-            await meta.aclose()
+                results[name] = await PROBES[name](probe)
+            except Exception as exc:
+                results[name] = {"error": f"{type(exc).__name__}: {exc}"}
+            finally:
+                try:
+                    results.setdefault(name, {})["uploads_deleted"] = await files.delete_all()
+                except (MetaError, OSError, ContractError) as exc:  # the next probes and this summary still run
+                    results.setdefault(name, {})["uploads_deleted"] = f"failed: {exc}"
+                finally:
+                    await meta.aclose()
+        except BaseException:
+            # Ctrl-C or a cancel after paid calls (in the probe or its cleanup): the raw files stay findable.
+            _set_aside(out, staged)
+            raise
         save_summary(out, results[name], staged=staged)
     return results
 
@@ -936,16 +947,21 @@ def _errors(value: object) -> int:
     return 0
 
 
+def _outright(summary: Summary) -> bool:
+    """A run that failed before recording anything: its summary holds only the error (and the cleanup)."""
+    return "error" in summary and set(summary) <= {"error", "uploads_deleted"}
+
+
 def _worse(result: Summary, recorded: Path) -> bool:
     """Whether ``result`` must not replace the recorded summary: it failed outright, failed more, or the recorded
     file can't be read (it is kept for the owner to inspect, never overwritten)."""
-    if "error" in result:
+    if _outright(result):
         return True
     try:
         old: object = json.loads(recorded.read_bytes())
     except (OSError, ValueError):
         return True
-    if isinstance(old, dict) and set(cast(dict[str, Any], old)) <= {"error", "uploads_deleted"}:
+    if isinstance(old, dict) and _outright(cast(dict[str, Any], old)):
         return False  # a recorded outright failure holds no paid data: any run that got further replaces it
     return _errors(result) > _errors(cast(object, old))
 
@@ -965,6 +981,15 @@ def save_summary(out: Path, result: Summary, *, staged: Path | None = None) -> P
         if staged is not None:
             _set_aside(out, staged)
     elif staged is not None:
+        # The recorded run's raw files go with its summary: anything this run didn't write must not stay
+        # beside the new summary as if it were this run's (`job*/` folders are working state, not results).
+        old = [f for f in out.iterdir() if f.is_file() and f.name != "summary.json" and not f.name.startswith(".")]
+        old = [f for f in old if not f.name.startswith("summary.failed-")]
+        if old:
+            superseded = _aside(out, "superseded")
+            superseded.mkdir()
+            for f in old:
+                os.replace(f, superseded / f.name)
         for raw in staged.iterdir():
             os.replace(raw, out / raw.name)
         staged.rmdir()
@@ -986,14 +1011,15 @@ async def _run_h(settings: Settings, *, job_id: str, out: Path, ledger: LocalLed
         result: Summary = {"error": f"{type(exc).__name__}: {exc}"}
     else:
         try:
-            result = await probe_h(settings, client, staged)
-        except Exception as exc:
-            result = {"error": f"{type(exc).__name__}: {exc}"}
+            try:
+                result = await probe_h(settings, client, staged)
+            except Exception as exc:
+                result = {"error": f"{type(exc).__name__}: {exc}"}
+            finally:
+                await client.aclose()
         except BaseException:
             _set_aside(out, staged)
             raise
-        finally:
-            await client.aclose()
     save_summary(out, result, staged=staged)
     return result
 
