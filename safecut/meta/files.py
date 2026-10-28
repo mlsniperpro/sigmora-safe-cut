@@ -395,15 +395,21 @@ def _matching_uploads(body: Any, remote_name: str, size: int | None, not_before:
         raise MetaConfigError("the /files listing has no 'data' list; its copies can't be ruled out")
     if cast(dict[str, Any], body).get("has_more") is True:
         raise MetaConfigError("the /files listing is truncated (has_more); its copies can't be ruled out")
+    items = cast(list[Any], data)
+    if items and not any(
+        isinstance(i, dict) and isinstance(cast(dict[str, Any], i).get("filename"), str) for i in items
+    ):
+        # Not one item in the documented shape: the listing can't show which copies are ours (PRE-A §10.4).
+        raise MetaConfigError("the /files listing has no item with a filename; its copies can't be ruled out")
     found: list[str] = []
-    for item in cast(list[Any], data):
+    for item in items:
         entry = cast(dict[str, Any], item) if isinstance(item, dict) else {}
         if not isinstance(entry.get("filename"), str) or not isinstance(entry.get("id"), str):
             # The listing is team-wide, so an unreadable item is usually another job's and is skipped. One that
-            # carries our job-unique name under any key may be our copy in another shape (the item shape is
-            # unverified, PRE-A §10.4): fail closed on it.
-            if remote_name in (v for v in entry.values() if isinstance(v, str)):
-                raise MetaConfigError("the /files listing has our file without a string filename and id")
+            # carries our job-unique name anywhere may be our copy in another shape (the item shape is
+            # unverified, PRE-A §10.4), and so may an item that isn't an object at all: fail closed on both.
+            if not isinstance(item, dict) or remote_name in _strings(entry):
+                raise MetaConfigError("the /files listing has an item it can't rule out as our copy")
             continue
         if entry.get("filename") != remote_name:
             continue  # the multipart name is job-unique: anything else is another job's file
@@ -419,6 +425,17 @@ def _matching_uploads(body: Any, remote_name: str, size: int | None, not_before:
             raise MetaConfigError(f"the /files listing has a copy of {remote_name} with an unusable id")
         found.append(file_id)
     return found
+
+
+def _strings(value: object) -> list[str]:
+    """Every string anywhere inside a JSON value."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for v in cast(dict[str, Any], value).values() for s in _strings(v)]
+    if isinstance(value, list):
+        return [s for v in cast(list[Any], value) for s in _strings(v)]
+    return []
 
 
 def _number(value: object) -> bool:

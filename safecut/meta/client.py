@@ -297,8 +297,10 @@ class MetaClient:
         )
         # Each provider's key may only go to that provider's host: never a Meta key to Baseten or back.
         field = "open_weight_base_url" if provider == "baseten" else "meta_base_url"
-        self.base_url = config.trusted_base_url(base_url or settings.meta_base_url, config.ALLOWED_HOSTS[field])
-        self._key = api_key if api_key is not None else settings.api_key()
+        default_url = settings.open_weight_base_url if provider == "baseten" else settings.meta_base_url
+        self.base_url = config.trusted_base_url(base_url or default_url, config.ALLOWED_HOSTS[field])
+        default_key = settings.open_api_key if provider == "baseten" else settings.api_key
+        self._key = api_key if api_key is not None else default_key()
         self.breaker = breaker or CircuitBreaker(clock=clock)
         # Process-wide bound: pass one shared semaphore to every client in a process (WP5 does).
         self._inflight = inflight or asyncio.Semaphore(config.PROCESS_INFLIGHT)

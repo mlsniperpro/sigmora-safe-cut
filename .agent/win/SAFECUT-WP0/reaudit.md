@@ -298,3 +298,13 @@ Tests are in tests/test_audit24.py (the audit #32 section) unless named. Its 400
 - L1 audit #30's fail-closed rule raised on any unreadable item in the team-wide `/files` listing, so one unrelated item would block every job's orphan reconcile forever. Fixed: an unreadable item fails closed only when one of its string values is our job-unique name, and is skipped otherwise (test_an_unrelated_unreadable_item_never_blocks_cleanup; test_a_listing_item_of_another_shape_keeps_the_orphan_open now lists an unrelated item too)
 - L2 the hero-run cost was wrong: on a hero clip, probe b runs only the 4 base concepts (no delete check or fps hint). The figure is now ≈ $0.72 for 900 frames, scaling with the frame count
 - L3 the ARCHITECTURE §3.8 example's unflagged leak named `i_9` as its patch, which the gate refuses (only an audit patch may patch an unflagged leak). It now names `p_1`
+
+## Audit 33 (independent Sonnet reviewer at 9d53096 plus the audit #32 tree): 0 critical, 0 high, 2 medium, 1 low. NOT CLEAN; all verified and fixed
+Tests are in tests/test_audit24.py (the audit #33 section).
+- M1 the audit #32 skip was fail-open for listings that hide our name: bare-id items (`["file-777"]`) or our name nested a level down were skipped, and the orphan was resolved. Fixed:
+  - a listing with no item carrying a string `filename` is unusable and raises;
+  - a non-object item raises;
+  - an unreadable object item raises when our job-unique name appears anywhere inside it (searched recursively), and is skipped otherwise.
+  Unrelated unreadable items in an otherwise documented listing still never block cleanup (test_a_listing_that_hides_our_name_keeps_the_orphan_open ×4)
+- M2 a `MetaClient(provider="baseten")` built without `api_key` defaulted to the Meta key, and to the Meta base URL. Only `open_weight_client` passed the right ones. Fixed: the defaults follow the provider, so a Baseten client takes `BASETEN_API_KEY` (or refuses without it) and the Baseten URL (test_a_baseten_client_never_defaults_to_the_meta_key)
+- L3 `.gitignore` lacked PRE-A §12's `*.jit`, `*.zip`, `*.tar.gz` and `/models/` (EgoBlur Gen 2 weights, O8 archives). Added; no tracked file is newly ignored

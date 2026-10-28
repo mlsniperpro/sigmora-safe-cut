@@ -22,8 +22,8 @@ from safecut import contracts as c
 from safecut import open_weight as ow
 from safecut.config import ConfigError, Settings, load_settings
 from safecut.meta import responses, sam
-from safecut.meta.budget import LocalLedger
-from safecut.meta.client import CallSpec
+from safecut.meta.budget import Caller, LocalLedger
+from safecut.meta.client import CallSpec, MetaClient
 from safecut.meta.errors import MetaBadRequest, MetaConfigError, MetaUnavailable
 from safecut.meta.files import FileStore
 from safecut.meta.retry import RetryPolicy
@@ -330,7 +330,7 @@ async def test_a_listing_item_of_another_shape_keeps_the_orphan_open(
     item = {"id": "file-777", "name": "j_test-a.mp4", "size": 300, "created_at": "2026-10-27T10:00:00Z"}
     other = {"id": 5, "filename": None}  # another job's unreadable item is skipped
     mock_api.get("/files").mock(return_value=httpx.Response(200, json={"data": [other, item], "has_more": False}))
-    with pytest.raises(MetaConfigError, match="our file without a string filename and id"):
+    with pytest.raises(MetaConfigError, match="can't"):
         await store.delete_all()
     assert not store.index().all_deleted
 
@@ -368,7 +368,8 @@ async def test_an_unrelated_unreadable_item_never_blocks_cleanup(
 ) -> None:
     h = make_harness()
     store = _orphan_store(h, tmp_path)
-    listing = {"data": [{"id": "file-5", "filename": None}, {"name": "other-job.mp4"}], "has_more": False}
+    other = {"id": "file-9", "filename": "j_other-a.mp4", "bytes": 1, "created_at": 9e12}
+    listing = {"data": [other, {"id": "file-5", "filename": None}, {"name": "other-job.mp4"}], "has_more": False}
     mock_api.get("/files").mock(return_value=httpx.Response(200, json=listing))
     assert await store.delete_all()  # nothing of ours is listed, so the orphan is resolved
 
@@ -377,3 +378,40 @@ async def test_an_unrelated_unreadable_item_never_blocks_cleanup(
 def test_a_base_url_with_whitespace_is_refused_at_load(url: str) -> None:
     with pytest.raises(ConfigError, match="whitespace or control"):
         load_settings({"SAFECUT_META_BASE_URL": url})
+
+
+# --- audit #33 ----------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("data", "message"),
+    [
+        (["file-777", "file-778"], "no item with a filename"),
+        ([{"id": "file-777", "file": {"filename": "j_test-a.mp4"}}], "no item with a filename"),
+        ([{"id": "file-1", "filename": "other.mp4"}, {"id": "file-777", "file": {"name": "j_test-a.mp4"}}],
+         "can't rule out as our copy"),
+        ([{"id": "file-1", "filename": "other.mp4"}, "file-777"], "can't rule out as our copy"),
+    ],
+)  # fmt: skip
+async def test_a_listing_that_hides_our_name_keeps_the_orphan_open(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter, tmp_path: Path, data: list[Any], message: str
+) -> None:
+    h = make_harness()
+    store = _orphan_store(h, tmp_path)
+    mock_api.get("/files").mock(return_value=httpx.Response(200, json={"data": data, "has_more": False}))
+    with pytest.raises(MetaConfigError, match=message):
+        await store.delete_all()
+    assert not store.index().all_deleted
+
+
+async def test_a_baseten_client_never_defaults_to_the_meta_key(tmp_path: Path) -> None:
+    cfg = Settings(model_api_key=SecretStr("meta-key"), baseten_api_key=SecretStr("baseten-key"))
+    client = MetaClient(cfg, job_id="j", caller=Caller.local(), ledger=LocalLedger(), cost_path=tmp_path / "c.jsonl",
+                        provider="baseten")  # fmt: skip
+    assert client.base_url == "https://inference.baseten.co/v1"
+    assert client._key == "baseten-key"  # pyright: ignore[reportPrivateUsage] -- the key it would send
+    await client.aclose()
+    without = Settings(model_api_key=SecretStr("meta-key"))
+    with pytest.raises(ConfigError):
+        MetaClient(without, job_id="j", caller=Caller.local(), ledger=LocalLedger(), cost_path=tmp_path / "c.jsonl",
+                   provider="baseten")  # fmt: skip

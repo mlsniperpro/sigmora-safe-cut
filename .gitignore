@@ -24,8 +24,12 @@ __pycache__/
 node_modules/
 .next/
 .vercel/
-# models
+# models (PRE-A §12: EgoBlur Gen 2 weights are .jit; O8 archives)
 weights/
+/models/
+*.jit
+*.zip
+*.tar.gz
 *.pt
 *.pth
 *.onnx
