@@ -435,14 +435,18 @@ def _matching_uploads(body: Any, remote_name: str, size: int | None, not_before:
 
 
 def _strings(value: object) -> list[str]:
-    """Every string anywhere inside a JSON value."""
-    if isinstance(value, str):
-        return [value]
-    if isinstance(value, dict):
-        return [s for v in cast(dict[str, Any], value).values() for s in _strings(v)]
-    if isinstance(value, list):
-        return [s for v in cast(list[Any], value) for s in _strings(v)]
-    return []
+    """Every string anywhere inside a JSON value (iterative: a deeply nested body can't overflow the stack)."""
+    found: list[str] = []
+    stack: list[object] = [value]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, str):
+            found.append(node)
+        elif isinstance(node, dict):
+            stack.extend(cast(dict[str, Any], node).values())
+        elif isinstance(node, list):
+            stack.extend(cast(list[Any], node))
+    return found
 
 
 def _number(value: object) -> bool:

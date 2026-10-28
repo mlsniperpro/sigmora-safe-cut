@@ -21,6 +21,7 @@ from safecut import config
 from safecut import contracts as c
 from safecut import open_weight as ow
 from safecut.config import ConfigError, Settings, load_settings
+from safecut.meta import files as files_mod
 from safecut.meta import responses, sam
 from safecut.meta.budget import Caller, LocalLedger
 from safecut.meta.client import CallSpec, MetaClient
@@ -1047,4 +1048,51 @@ def test_the_receipt_names_the_models_that_ran(tmp_path: Path) -> None:
         c.validate_job_dir(job_dir)
     seal(lambda b: b["models"].update({"scene": "gpt-x"}))
     with pytest.raises(c.ContractError, match=r"models\.scene 'gpt-x' != the job's 'muse-spark-1\.3'"):
+        c.validate_job_dir(job_dir)
+
+
+# --- audit #49 ----------------------------------------------------------------------------------------------
+
+
+def test_a_frame_between_anchors_must_be_near_the_track(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)  # screen:1 has boxes on frames 1 and 5 only
+    _edit(job_dir, "plan.json", lambda d: next(e for e in d["frames"]["2"] if e["item_id"] == "i_3").update(
+        {"box": [0, 0, 2, 2]}))  # fmt: skip
+    with pytest.raises(c.ContractError, match="frame 2: i_3 is nowhere near screen:1"):
+        c.validate_job_dir(job_dir)
+
+
+def test_a_runaway_mask_varint_is_refused_fast() -> None:
+    started = time.monotonic()
+    with pytest.raises(ValueError, match="aren't COCO compressed RLE"):
+        c.Rle(size=(720, 1280), counts="o" * 300_000)  # every char sets the continuation bit
+    assert time.monotonic() - started < 2
+
+
+async def test_a_deeply_nested_error_body_is_a_typed_error(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter
+) -> None:
+    h = make_harness()
+    body = b'{"error":' * 1000 + b'"x"' + b"}" * 1000
+    mock_api.post("/thing").mock(return_value=httpx.Response(400, content=body))
+    with pytest.raises(MetaBadRequest):
+        await h.client.request("POST", "thing", _free_spec(), meter=lambda _: ({}, 0.0))
+
+
+def test_a_deeply_nested_listing_item_never_overflows() -> None:
+    nested: Any = "j_test-a.mp4"
+    for _ in range(5000):
+        nested = {"x": nested}
+    assert "j_test-a.mp4" in files_mod._strings(nested)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_deeply_nested_env_json_is_a_config_error() -> None:
+    with pytest.raises(ConfigError, match="nested too deeply"):
+        load_settings({"SAFECUT_ACCESS_CODES": "[" * 100_000})
+
+
+def test_a_detector_that_never_ran_scanned_nothing(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "audit.json", lambda d: d["egoblur"].update({"faces": None, "plates": None}))
+    with pytest.raises(c.ContractError, match=r"egoblur\.faces is null"):
         c.validate_job_dir(job_dir)

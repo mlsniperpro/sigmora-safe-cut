@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import bisect
 import hashlib
+import itertools
 import json
 import math
 import os
@@ -19,7 +20,7 @@ from collections import Counter
 from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, Any, Literal, overload
+from typing import Annotated, Any, Literal, cast, overload
 
 from pydantic import (
     AfterValidator,
@@ -140,6 +141,8 @@ def rle_runs(counts: str) -> list[int]:
                 raise ValueError("mask counts end inside a run")
             c = ord(counts[p]) - 48
             if not 0 <= c < 64:
+                raise ValueError("mask counts aren't COCO compressed RLE")
+            if k > 12:  # a real run needs at most 4 groups; a runaway continuation is garbage (and slow)
                 raise ValueError("mask counts aren't COCO compressed RLE")
             x |= (c & 0x1F) << (5 * k)
             more = bool(c & 0x20)
@@ -1150,6 +1153,9 @@ def _check_decisions(decisions: Decisions, job: Job, tracks: Tracks | None, role
 
 def _check_audit(audit: Audit, job: Job) -> None:
     # EgoBlur scans every output frame; a frame no pass ran on counts in `unresolved` (PRE-A §12, vector L10).
+    if audit.egoblur.faces is None and audit.frames_scanned:
+        # PRE-A §12: a detector that never ran reports `faces: null` and frames_scanned 0 (its frames unresolved).
+        raise ContractError("audit.json: egoblur.faces is null (the detector never ran), so frames_scanned is 0")
     if audit.frames_scanned > job.frames:
         raise ContractError(f"audit.json: frames_scanned {audit.frames_scanned} > the job's {job.frames} frames")
     unscanned = job.frames - audit.frames_scanned
@@ -1363,10 +1369,30 @@ def _check_plan_geometry(plan: Plan, decisions: Decisions, tracks: Tracks, job: 
                             f"plan.json frame {frame}: {item.item_id}'s {e.grid[2]} px grid leaves"
                             f" {track.track_id} more than 6 blocks across"
                         )
+            _check_between_anchors(plan, item, track)
         # A shifting grid leaks detail across frames (DESIGN §2.7): one fixed grid per track of the item.
         grids = {e.grid for entries in plan.frames.values() for e in entries if e.item_id == item.item_id and e.grid}
         if len(grids) > max(1, len(item.track_ids)):
             raise ContractError(f"plan.json: {item.item_id}'s pixelate grid moves between frames ({len(grids)} grids)")
+
+
+def _check_between_anchors(plan: Plan, item: DecisionItem, track: Track) -> None:
+    """A track with boxes only on some frames (SAM anchors; gaps the guard holds through): on the frames in
+    between, the item's entry must at least overlap the box interpolated between the neighbouring anchors. The
+    guard's held or grown box may differ, so containment would refuse valid output; a box moved away won't pass."""
+    keys = sorted(track.boxes)
+    for before, after in itertools.pairwise(keys):
+        a, b = track.boxes[before], track.boxes[after]
+        for frame in range(before + 1, after):
+            entries = [e for e in plan.frames.get(frame, []) if e.item_id == item.item_id]
+            if not entries:
+                continue  # coverage (and a crowd fill instead) is _check_plan_covers'
+            w = (frame - before) / (after - before)
+            box = cast(Box, tuple(round(a[i] + (b[i] - a[i]) * w) for i in range(4)))
+            if not any(boxes_overlap(e.box, box) for e in entries):
+                raise ContractError(
+                    f"plan.json frame {frame}: {item.item_id} is nowhere near {track.track_id} (about {list(box)})"
+                )
 
 
 def _held(entries: list[PlanEntry], fills: list[Box], box: Box, padded: Box) -> bool:
@@ -1555,6 +1581,13 @@ def _check_patches(audit: Audit, decisions: Decisions, tracks: Tracks | None, pl
     by_id = {item.item_id: item for item in decisions.items}
     spans = {t.track_id: (t.first, t.last) for t in tracks.tracks} if tracks is not None else {}
 
+    cache: dict[str, set[int] | None] = {}
+
+    def hidden_of(item: DecisionItem) -> set[int] | None:
+        if item.item_id not in cache:
+            cache[item.item_id] = _hidden_frames(item, spans, plan)
+        return cache[item.item_id]
+
     def check(
         item_id: str | None, boxes: Mapping[int, tuple[int, int, int, int]], where: str, *, contain: bool
     ) -> None:
@@ -1563,7 +1596,7 @@ def _check_patches(audit: Audit, decisions: Decisions, tracks: Tracks | None, pl
             return
         if item.decision == "keep":
             raise ContractError(f"audit.json {where}: {item.item_id} is a kept item")
-        hidden = _hidden_frames(item, spans, plan)
+        hidden = hidden_of(item)
         outside = [f for f in sorted(boxes) if hidden is not None and f not in hidden]
         if outside:
             raise ContractError(f"audit.json {where}: {item.item_id} doesn't hide frames {outside[:5]}")
@@ -1598,7 +1631,7 @@ def _check_patches(audit: Audit, decisions: Decisions, tracks: Tracks | None, pl
         where = f"spot {spot.spot_id} cover"
         check(spot.covered_by, spot.boxes, where, contain=True)  # cover_spot's patch is the union of the boxes
         cover = by_id.get(spot.covered_by or "")
-        hidden = _hidden_frames(cover, spans, plan) if cover is not None else None
+        hidden = hidden_of(cover) if cover is not None else None
         missing = [f for f in range(spot.first, spot.last + 1) if hidden is not None and f not in hidden]
         if missing:
             raise ContractError(f"audit.json {where}: {spot.covered_by} doesn't hide frames {missing[:5]}")

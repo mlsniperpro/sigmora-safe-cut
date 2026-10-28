@@ -250,6 +250,9 @@ _NEVER_SENT = (
 )
 
 
+_SCRUB_DEPTH = 64
+
+
 def _json_ready(payload: Any) -> None:
     """Refuse a body JSON can't carry (NaN, a set, a lone surrogate) before any reservation: httpx would fail
     to encode it only after the attempt was marked sent, and bill a request that never left."""
@@ -348,15 +351,18 @@ class MetaClient:
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._key}", "User-Agent": f"safecut/{__version__}"}
 
-    def _scrub(self, body: Any) -> Any:
+    def _scrub(self, body: Any, depth: int = 0) -> Any:
         """An error body with our own key masked: servers echo it ("Invalid API key: sk-…"), and error text
-        ends up in exceptions and logs."""
+        ends up in exceptions and logs. Nesting past 64 levels is dropped (it can't be a real error body, and
+        walking it would overflow the stack)."""
+        if depth > _SCRUB_DEPTH:
+            return "[too deep]"
         if isinstance(body, str):
             return body.replace(self._key, "[redacted]") if self._key else body
         if isinstance(body, dict):
-            return {k: self._scrub(v) for k, v in cast(dict[str, Any], body).items()}
+            return {k: self._scrub(v, depth + 1) for k, v in cast(dict[str, Any], body).items()}
         if isinstance(body, list):
-            return [self._scrub(v) for v in cast(list[Any], body)]
+            return [self._scrub(v, depth + 1) for v in cast(list[Any], body)]
         return body
 
     def _log_cost(
