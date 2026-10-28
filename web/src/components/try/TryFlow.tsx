@@ -631,6 +631,7 @@ function Progress({
         jobId={jobId}
         etaS={uploading ? null : (job?.eta_s ?? null)}
         busy={job?.status === "retry_later"}
+        firstFrameUrl={job?.job?.prepared_url ?? null}
         onDeleting={onDeleting}
         onDeleted={onDeleted}
       />

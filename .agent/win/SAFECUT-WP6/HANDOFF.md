@@ -28,6 +28,13 @@
   - Field border contrast, an earlier demo banner, κ rounding.
   - Mask-shaped covers.
 - On the round-6 commit: 798 tests (26 files), e2e 73/73, `checks.sh` exit 0. Screenshots refreshed.
+- Audit round 7 (on d4bb6a1): 1 high, 1 medium and 2 low, all fixed in the round-7 commit. Highlights:
+  - The desktop player is no longer sticky over the chips.
+  - Scroll padding follows what really sticks, and the bar is static under 480 px tall.
+  - 429 cooldowns.
+  - The first frame on step C.
+- On the round-7 commit: 801 tests (27 files), e2e 81/81, `checks.sh` exit 0. Screenshots refreshed.
+- The audit agent hit the usage limit once (19:5x to 23:20 UTC). It resumed with SendMessage, keeping its saved work.
 - CLEAN_AUDITS_IN_A_ROW is 0. Two clean full audits are still needed, then a fresh break-it.md (fresh clone + FUZZ_RUNS=100000).
 
 ## Next steps, in order

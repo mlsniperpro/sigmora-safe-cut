@@ -241,6 +241,56 @@ try {
     await context.close();
   }
 
+  // Desktop: the player isn't sticky, so it never covers the chip columns (§3.1, WCAG 2.4.11).
+  for (const viewport of [{ width: 1280, height: 720 }, { width: 1366, height: 768 }]) {
+    const label = `${viewport.width}×${viewport.height}`;
+    const context = await browser.newContext({ viewport });
+    const page = await context.newPage();
+    await page.goto(`${BASE}/jobs/job-review-sample`, { waitUntil: "networkidle" });
+    await page.getByText(/hidden · /).waitFor();
+    const position = await page.locator("video").first().evaluate((el) => getComputedStyle(el.closest("[class*='bg-bg']")).position);
+    check(`${label}: the desktop player isn't sticky`, position !== "sticky", position);
+    const buttons = page.locator("article button");
+    const n = Math.min(await buttons.count(), 12);
+    let hidden = 0;
+    for (let i = 0; i < n; i++) {
+      await buttons.nth(i).focus();
+      const covered = await buttons.nth(i).evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return !hit || !el.contains(hit);
+      });
+      if (covered) hidden += 1;
+    }
+    check(`${label}: focused chip buttons aren't covered by the player or the bar`, hidden === 0, `${hidden} of ${n} covered`);
+    await context.close();
+  }
+
+  // Short narrow screens (400% zoom): the static player adds no scroll padding, so focus stays clear of the bar.
+  for (const viewport of [{ width: 320, height: 400 }, { width: 480, height: 270 }]) {
+    const label = `${viewport.width}×${viewport.height}`;
+    const context = await browser.newContext({ viewport });
+    const page = await context.newPage();
+    await page.goto(`${BASE}/jobs/job-review-200-items`, { waitUntil: "networkidle" });
+    await page.getByText(/hidden · /).waitFor();
+    const pad = await page.evaluate(() => getComputedStyle(document.documentElement).scrollPaddingTop);
+    check(`${label}: no top scroll padding for a static player`, pad === "0px", pad);
+    const chips = page.getByRole("article");
+    let hidden = 0;
+    const n = Math.min(await chips.count(), 8);
+    for (let i = 0; i < n; i++) {
+      await chips.nth(i).focus();
+      const clear = await chips.nth(i).evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + 8, r.top + 8);
+        return !!hit && el.contains(hit);
+      });
+      if (!clear) hidden += 1;
+    }
+    check(`${label}: focused chips aren't under the bottom bar`, n > 1 && hidden === 0, `${hidden} of ${n} covered`);
+    await context.close();
+  }
+
   // The review page's fixed bottom bar never covers the footer, even scrolled to the end (WCAG 2.4.11).
   for (const [label, viewport] of [["desktop", { width: 1280, height: 900 }], ["mobile", { width: 390, height: 844 }]]) {
     const context = await browser.newContext({ viewport });

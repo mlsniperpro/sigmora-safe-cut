@@ -2,7 +2,9 @@
 /** A failed job (UI-SPEC §2.6, §10.3): the reason's copy and only the actions it allows. */
 import Link from "next/link";
 import { useState } from "react";
+import { useCooldown } from "@/hooks/useCooldown";
 import { useNow } from "@/hooks/useNow";
+import { RATE_LIMIT_DEFAULT_MS } from "@/lib/polling";
 import { ApiError } from "@/lib/api";
 import { getClient } from "@/lib/client";
 import type { JobResponse } from "@/lib/contracts";
@@ -17,6 +19,7 @@ export function FailedJob({ jobId, job, onResume, onDeleted }: { jobId: string; 
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const { coolingDown, coolDown } = useCooldown();
   const now = useNow(15_000);
   const retryAt = view.retryAt ? Date.parse(view.retryAt) : null;
 
@@ -46,7 +49,11 @@ export function FailedJob({ jobId, job, onResume, onDeleted }: { jobId: string; 
       } else if (e?.status === 422) {
         setNote(COPY.jobCapJob);
         setBlocked(true);
-      } else if (e?.status === 429) setNote(COPY.rateLimited);
+      } else if (e?.status === 429) {
+        setNote(COPY.rateLimited);
+        // The button that sent it waits out Retry-After (or 60 s) (§10.3).
+        setBlockedUntil(Date.now() + (e.retryAfterS ?? RATE_LIMIT_DEFAULT_MS / 1000) * 1000);
+      }
       else if (e?.status === 503) setNote(e.code === "billing" ? COPY.billing : COPY.auditorUnavailable);
       else if (e?.status === 409) onResume();
       else if (e?.kind === "network" || e?.kind === "timeout") {
@@ -64,7 +71,9 @@ export function FailedJob({ jobId, job, onResume, onDeleted }: { jobId: string; 
       await getClient().deleteJob(jobId);
       onDeleted();
     } catch (error) {
-      setDeleteError(error instanceof ApiError && error.status === 429 ? COPY.rateLimited : COPY.unexpected);
+      const limited = error instanceof ApiError && error.status === 429;
+      if (limited) coolDown(error.retryAfterS);
+      setDeleteError(limited ? COPY.rateLimited : COPY.unexpected);
     }
   };
 
@@ -98,7 +107,7 @@ export function FailedJob({ jobId, job, onResume, onDeleted }: { jobId: string; 
             Download this version
           </a>
         )}
-        <button type="button" className={btn.danger} onClick={() => setConfirm(true)}>
+        <button type="button" className={btn.danger} disabled={coolingDown} onClick={() => setConfirm(true)}>
           Delete now
         </button>
       </div>

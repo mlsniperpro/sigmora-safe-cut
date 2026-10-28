@@ -65,7 +65,8 @@ export const trackSchema = z.object({
   concept: z.string(),
   first: frame,
   last: frame,
-  reentry_of: z.string().nullable(),
+  // WP0's Track defaults it to None, so its JSON may leave the key out (wp0-foundation's j_example fixture).
+  reentry_of: z.string().nullable().default(null),
   boxes: z.record(z.string(), boxSchema),
   child_phrase: z.boolean().optional(),
 });

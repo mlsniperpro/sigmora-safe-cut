@@ -12,6 +12,7 @@ import { URL_REFRESH_MS } from "@/lib/polling";
 import type { ResultResponse } from "@/lib/contracts";
 import { COPY, auditSummary, formatLocal } from "@/lib/copy";
 import { SITE, fromSigmora, keptQuery } from "@/lib/site";
+import { useCooldown } from "@/hooks/useCooldown";
 import { useJob } from "@/hooks/useJob";
 import { CheckIcon, WarningIcon } from "../icons";
 import { useMode, useReportMode } from "../mode";
@@ -91,6 +92,7 @@ export function ResultPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const { coolingDown, coolDown } = useCooldown();
   const { replay } = useMode();
   useReportMode(job?.mode ?? (result.kind === "ready" ? result.result.mode : null));
 
@@ -164,7 +166,9 @@ export function ResultPage() {
       await getClient().deleteJob(id);
       markDeleted();
     } catch (error) {
-      setDeleteError(error instanceof ApiError && error.status === 429 ? COPY.rateLimited : COPY.unexpected);
+      const limited = error instanceof ApiError && error.status === 429;
+      if (limited) coolDown(error.retryAfterS);
+      setDeleteError(limited ? COPY.rateLimited : COPY.unexpected);
     }
   };
 
@@ -288,7 +292,7 @@ export function ResultPage() {
               {deleteError}
             </p>
           )}
-          <button type="button" className={btn.danger} onClick={() => setConfirm(true)}>
+          <button type="button" className={btn.danger} disabled={coolingDown} onClick={() => setConfirm(true)}>
             Delete everything now
           </button>
         </div>

@@ -109,3 +109,13 @@ Round 6 (fixes in the round-6 commit; details in `reaudit.md`):
 - [x] R6-5 (low) κ rounded down: landing test
 - [x] R6-6 (low) masked covers drawn in the mask's shape: `rle.test.ts`, overlay tests
 
+Round 7 (fixes in the round-7 commit; details in `reaudit.md`):
+
+- [x] R7-1 (high) desktop player no longer sticky over the chips: e2e 1280×720 and 1366×768
+- [x] R7-2 (med) scroll padding follows what's really sticky; bar static on very short screens: e2e 320×400 and 480×270
+- [x] R7-3 (low) rate-limited Try again and Delete wait out Retry-After: JobPage tests
+- [x] R7-4 (low) first frame on step C: JobPage test
+- [x] R7-n1 `reentry_of` defaults to null: contracts test
+- [x] R7-n2 one delete at a time
+- [-] R7-n3 "Keep Plate 1 clear" naming: kept "Keep clear Plate 1" for WCAG 2.5.3
+

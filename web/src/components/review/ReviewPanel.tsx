@@ -241,15 +241,24 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
   const bottomBar = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const root = document.documentElement;
+    // The player sticks only on narrow, tall-enough screens (its classes); measure what it does
+    // rather than guess, so a static player never pads focus under the bottom bar.
     const measure = () => {
-      root.style.setProperty("--sticky-top", `${desktop ? 0 : (stickyTop.current?.offsetHeight ?? 0)}px`);
-      root.style.setProperty("--sticky-bottom", `${(bottomBar.current?.offsetHeight ?? 0) + 8}px`);
+      const top = stickyTop.current;
+      const sticky = !!top && getComputedStyle(top).position === "sticky";
+      root.style.setProperty("--sticky-top", `${sticky ? top.offsetHeight : 0}px`);
+      const bar = bottomBar.current;
+      const fixed = !!bar && getComputedStyle(bar).position === "fixed";
+      root.style.setProperty("--sticky-bottom", `${fixed ? bar.offsetHeight + 8 : 0}px`);
     };
     const ro = new ResizeObserver(measure);
     if (stickyTop.current) ro.observe(stickyTop.current);
     if (bottomBar.current) ro.observe(bottomBar.current);
+    const heights = [window.matchMedia("(min-height: 640px)"), window.matchMedia("(min-height: 480px)")];
+    for (const q of heights) q.addEventListener("change", measure);
     measure();
     return () => {
+      for (const q of heights) q.removeEventListener("change", measure);
       ro.disconnect();
       root.style.removeProperty("--sticky-top");
       root.style.removeProperty("--sticky-bottom");
@@ -501,7 +510,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
         </p>
       </div>
 
-      <div ref={stickyTop} className="-mx-4 mt-3 bg-bg px-4 pb-2 lg:static lg:mx-0 lg:px-0 [@media(min-height:640px)]:sticky [@media(min-height:640px)]:top-0 [@media(min-height:640px)]:z-10">
+      <div ref={stickyTop} className="-mx-4 mt-3 bg-bg px-4 pb-2 lg:mx-0 lg:px-0 max-lg:[@media(min-height:640px)]:sticky max-lg:[@media(min-height:640px)]:top-0 max-lg:[@media(min-height:640px)]:z-10">
         <VideoPane
           ref={video}
           src={job.job?.prepared_url}
@@ -896,7 +905,9 @@ function BottomBar({
   }
 
   return (
-    <div ref={barRef} className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface/95 backdrop-blur">
+    // Fixed only where it leaves room to work: on a very short screen (400% zoom) it would cover
+    // nearly everything, so it sits at the end of the panel instead (WCAG 2.4.11, 1.4.10).
+    <div ref={barRef} className="mt-6 border-t border-border bg-surface/95 backdrop-blur [@media(min-height:480px)]:fixed [@media(min-height:480px)]:inset-x-0 [@media(min-height:480px)]:bottom-0 [@media(min-height:480px)]:z-20 [@media(min-height:480px)]:mt-0">
       <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-3">
         {state.capNote && <p className="text-sm">{COPY.codeCapJob}</p>}
         {text && <p className="font-medium">{text}</p>}

@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError, isMockMode } from "@/lib/api";
 import { getClient } from "@/lib/client";
+import { useCooldown } from "@/hooks/useCooldown";
 import { COPY } from "@/lib/copy";
 import { StageList } from "../StageList";
 import { ConfirmDialog, btn } from "../ui";
@@ -29,6 +30,7 @@ export function ProgressView({
   onDeleting,
   onDeleted,
   headingLevel = 2,
+  firstFrameUrl = null,
 }: {
   fileName: string | null;
   duration: number | null;
@@ -40,6 +42,8 @@ export function ProgressView({
   /** The confirmed delete is on its way; `done` says whether it worked. */
   onDeleting?: (done: Promise<boolean>) => void;
   onDeleted: () => void;
+  /** The prepared clip, once `prepare` made it: its first frame shows, with no overlay yet (§2.3, §2.9). */
+  firstFrameUrl?: string | null;
   /** 1 on its own page (/jobs/[id]); 2 under /try's page heading. */
   headingLevel?: 1 | 2;
 }) {
@@ -49,6 +53,9 @@ export function ProgressView({
   const [seenMissLoop, setSeenMissLoop] = useState(false);
   if (active === "miss_loop" && !seenMissLoop) setSeenMissLoop(true);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const { coolingDown, coolDown } = useCooldown();
+  /** One delete at a time: the button waits for the answer. */
+  const [deleting, setDeleting] = useState(false);
   const [copied, setCopied] = useState<"idle" | "copied" | "failed">("idle");
   const linkRef = useRef<HTMLElement>(null);
   // "Copied" goes back to "Copy link" after a moment, so a second copy also confirms.
@@ -60,13 +67,18 @@ export function ProgressView({
   const link = typeof window === "undefined" ? `/jobs/${jobId}` : `${window.location.origin}/jobs/${encodeURIComponent(jobId)}`;
   const doDelete = async () => {
     setConfirm(false);
+    setDeleting(true);
     const attempt = getClient().deleteJob(jobId);
     onDeleting?.(attempt.then(() => true, () => false));
     try {
       await attempt;
       onDeleted();
     } catch (error) {
-      setDeleteError(error instanceof ApiError && error.status === 429 ? COPY.rateLimited : COPY.unexpected);
+      const limited = error instanceof ApiError && error.status === 429;
+      if (limited) coolDown(error.retryAfterS);
+      setDeleteError(limited ? COPY.rateLimited : COPY.unexpected);
+    } finally {
+      setDeleting(false);
     }
   };
   return (
@@ -76,6 +88,16 @@ export function ProgressView({
           {fileName}
           {duration !== null ? ` · ${fmtDuration(duration)}` : ""}
         </p>
+      )}
+      {firstFrameUrl && (
+        <video
+          src={firstFrameUrl}
+          preload="metadata"
+          muted
+          playsInline
+          aria-label="The first frame of your clip, before anything is covered"
+          className="mt-4 aspect-video w-full max-w-md rounded-lg bg-black"
+        />
       )}
       <Heading data-step-heading tabIndex={-1} className="mt-4 text-xl font-semibold">
         Working on your clip
@@ -121,7 +143,7 @@ export function ProgressView({
             {deleteError}
           </p>
         )}
-        <button type="button" className={btn.danger} onClick={() => setConfirm(true)}>
+        <button type="button" className={btn.danger} disabled={coolingDown || deleting} onClick={() => setConfirm(true)}>
           Cancel and delete
         </button>
       </div>

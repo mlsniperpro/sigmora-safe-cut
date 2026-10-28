@@ -358,11 +358,35 @@ describe("job states", () => {
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
 
+  it("a rate-limited Try again or Delete waits out Retry-After before it works again (§10.3)", async () => {
+    const user = setup("job-failed-roles");
+    await screen.findByRole("button", { name: "Try again" });
+    backend.inject(/\/start$/, "error-429-rate");
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Too many tries in a short time. Wait a minute and try again.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeDisabled();
+    backend.inject(/^DELETE /, "error-429-rate");
+    await user.click(screen.getByRole("button", { name: "Delete now" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Delete now" })).toBeDisabled());
+  });
+
+  it("a rate-limited Cancel and delete while processing waits out Retry-After", async () => {
+    const user = setup("job-processing-track");
+    await screen.findByRole("button", { name: "Cancel and delete" });
+    backend.inject(/^DELETE /, "error-429-rate");
+    await user.click(screen.getByRole("button", { name: "Cancel and delete" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Cancel and delete" })).toBeDisabled());
+  });
+
   it("shows the stage list while processing", async () => {
     setup("job-processing-track");
     const active = await screen.findByRole("listitem", { current: "step" });
     expect(active).toHaveTextContent("Finding people and objects");
     expect(active).toHaveTextContent("SAM 3.1 is looking for faces, people, plates, screens and documents.");
+    // The prepared clip's first frame, with no overlay yet (§2.3, §2.9).
+    expect(screen.getByLabelText("The first frame of your clip, before anything is covered")).toHaveAttribute("preload", "metadata");
   });
 
   it("moves a done job to its result unless opened for review", async () => {

@@ -81,6 +81,7 @@ export function JobPage() {
             jobId={id}
             etaS={j.eta_s ?? null}
             busy={j.status === "retry_later"}
+            firstFrameUrl={j.job?.prepared_url ?? null}
             onDeleted={markDeleted}
             headingLevel={1}
           />

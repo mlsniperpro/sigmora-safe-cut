@@ -1,4 +1,4 @@
-AUDITED_COMMIT: f690e1f
+AUDITED_COMMIT: d4bb6a1
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -135,3 +135,18 @@ Fresh-clone README run also found: `pnpm typecheck` failed before any build (Nex
 | 4 | low | The demo banner waited for the first poll instead of the `POST /v1/jobs` answer (§6) | fixed: the create response's `mode` is reported at once; test |
 | 5 | low | κ shown with `toFixed(2)` could round up (AGENTS rule 9) | fixed: rounded down; test |
 | 6 | low | The preview drew every cover as its box, though §3.6 says solid covers take the mask's shape | fixed: COCO RLE decoding (`rle.ts`, cached), solid/person_solid regions with a frame-sized mask fill run by run. A mask that doesn't decode or doesn't fit the frame falls back to the box, so the preview never covers less than the plan. Property test against an independent pycocotools-style encoder (2,000 masks), overlay tests |
+
+## Round 7 (audited d4bb6a1 by a Sonnet reviewer, with real-browser probes; RLE decoder cross-checked against pycocotools 2.0.11 on 318 masks plus WP0's fixture, 0 mismatches; each finding traced here; fixes in the next commit)
+
+0 critical, 1 high, 1 medium, 2 low, plus three of its notes acted on.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | high | On desktop the 750 px player was `sticky` (the `min-height` variant outranked `lg:static`) and covered the chip columns: at 1280×720 no chip could be hit and 30/30 focus stops were hidden. This dated from round 2 | fixed: sticky only below `lg` (`max-lg:` variants). e2e at 1280×720 and 1366×768: the player is static and 0 of 12 focused chip buttons are covered |
+| 2 | med | `--sticky-top` padded scrolling by the player's height even when it wasn't sticky (short or zoomed screens), parking focus under the bottom bar | fixed: the player's and the bar's real computed position is measured, and re-measured on height breakpoint changes. On very short screens (< 480 px tall, 400% zoom) the bottom bar is no longer fixed: it sits at the end of the panel. e2e at 320×400 and 480×270: no top padding, 0 of 8 focused chips covered |
+| 3 | low | A 429 on Try again (failed job) or on Delete (progress, failed, result) left the control enabled (§10.3) | fixed: a shared `useCooldown` holds the control until `Retry-After` (or 60 s); Try again uses the page's existing until-timer. JobPage tests |
+| 4 | low | /try step C lacked the first frame (§2.3, §2.9) | fixed: the prepared clip's first frame, with no overlay, shows once `prepared_url` exists (/try and the job page); test |
+| note | — | `reentry_of` was required but WP0's Track defaults it to None and may omit it, so a whole job could fail to parse | fixed: defaults to null; contracts test |
+| note | — | A double-confirmed Delete could race; nothing showed while a DELETE was pending | fixed: Cancel and delete is disabled until the DELETE answers |
+| note | — | §3.8's example name "Keep Plate 1 clear" | kept "Keep clear Plate 1": the accessible name must contain the visible label "Keep clear" (WCAG 2.5.3 Label in Name), which the spec's wording would break |
+| note | — | "This version hasn't been fully checked." sits in the §5.3 banner rather than the bar | kept: it shows once, directly under the §5.3 message as the row says; the bar repeats it only when no audit banner exists |
