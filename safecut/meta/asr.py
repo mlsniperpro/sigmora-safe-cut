@@ -63,6 +63,11 @@ def request_part(
     """The JSON ``request`` part. Mode is checked here: Meta silently ignores an unknown mode."""
     if mode not in _MODES:
         raise ValueError(f"unknown ASR mode {mode!r}; Meta would ignore it silently")
+    if isinstance(language_bias, str):
+        raise TypeError("language_bias is a list of language names, not one string")
+    unknown = [lang for lang in language_bias if lang not in config.ASR_LANGUAGES]
+    if unknown:
+        raise ValueError(f"unsupported ASR languages {unknown}")
     config.ensure_standard_model(model)
     part: dict[str, Any] = {"mode": mode, "model": model, "audioEncoding": "WAV", "keywords": list(keywords)}
     if language_bias:
@@ -122,6 +127,9 @@ async def transcribe_raw(
     size, seconds = await asyncio.to_thread(_audio_facts, path)
     if size > MAX_ASR_BYTES or seconds > MAX_ASR_SECONDS:
         raise MetaBadRequest(f"audio too large for one-shot ASR ({seconds:.0f} s, {size} bytes)")
+    if seconds <= 0:
+        # A header claiming no frames would price the call at $0: a free call skips the ledger and the caps.
+        raise MetaBadRequest("the WAV header reports no audio frames")
     part = json.dumps(request_part(model, mode=mode, language_bias=language_bias)).encode()
     handles: list[IO[bytes]] = []
 

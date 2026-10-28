@@ -26,7 +26,7 @@ from safecut.meta import files as files_mod
 from safecut.meta import responses, sam
 from safecut.meta.budget import Caller, LocalLedger
 from safecut.meta.client import CallSpec, MetaClient
-from safecut.meta.errors import MetaBadRequest, MetaConfigError, MetaUnavailable, ReplayRefused
+from safecut.meta.errors import MetaBadRequest, MetaConfigError, MetaIncomplete, MetaUnavailable, ReplayRefused
 from safecut.meta.files import FileStore
 from safecut.meta.retry import RetryPolicy
 from scripts.probes import probes
@@ -1328,4 +1328,49 @@ def test_an_audit_patch_spans_its_finding(tmp_path: Path) -> None:
     _edit(job_dir, "plan.json", lambda d: d["frames"].update(
         {"11": [e for e in d["frames"]["11"] if e["item_id"] != "p_1"]}))  # fmt: skip
     with pytest.raises(c.ContractError, match="audit patch for frame 10 spans at least 0-11, not 10-10"):
+        c.validate_job_dir(job_dir)
+
+
+# --- audit #54 ----------------------------------------------------------------------------------------------
+
+
+def test_an_audit_runs_at_most_three_passes() -> None:
+    audit = json.loads((EXAMPLE / "audit.json").read_text())
+    with pytest.raises(ValueError, match="passes"):
+        c.Audit.model_validate(audit | {"passes": 9})
+
+
+@pytest.mark.parametrize("body", [{"output": 5}, {"output": [{"type": "message", "content": 5}]}])
+def test_a_malformed_output_is_a_typed_error(body: dict[str, Any]) -> None:
+    with pytest.raises(MetaIncomplete, match="isn't a list"):
+        responses.output_text(body)
+
+
+@pytest.mark.parametrize(("bias", "message"), [("English", "not one string"), (["Klingon"], "unsupported")])
+def test_the_asr_language_bias_is_a_list_of_known_languages(bias: Any, message: str) -> None:
+    with pytest.raises((TypeError, ValueError), match=message):
+        responses_asr.request_part("muse-voice-transcribe-1.0", mode="DIARIZATION", language_bias=bias)
+
+
+async def test_a_wav_reporting_no_frames_is_refused_before_any_spend(
+    make_harness: Callable[..., Harness], tmp_path: Path
+) -> None:
+    import wave  # noqa: PLC0415 -- only this test writes a WAV
+
+    h = make_harness()
+    path = tmp_path / "empty.wav"
+    with wave.open(str(path), "wb") as out:
+        out.setnchannels(1)
+        out.setsampwidth(2)
+        out.setframerate(24000)
+    with pytest.raises(MetaBadRequest, match="no audio frames"):
+        await responses_asr.transcribe_raw(h.client, path, model="muse-voice-transcribe-1.0", language_bias=[])
+    assert h.costs() == []
+
+
+def test_a_job_file_that_is_a_directory_is_a_contract_error(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    (job_dir / "tracks.json").unlink()
+    (job_dir / "tracks.json").mkdir()
+    with pytest.raises(c.ContractError, match=r"tracks\.json: unreadable"):
         c.validate_job_dir(job_dir)

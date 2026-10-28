@@ -474,3 +474,12 @@ It confirmed the audit #51/#52 holds against realistic jobs: introduction-only p
 - H1 (a regression from my audit #52 fix) the read-through rule counted the audit patch WP4 drew for the finding itself, so every ordinary text, screen or plate hit patched by its own `p_n` was refused unless falsely flagged. Only hidden *decision* items (`origin != "audit_patch"`) are existing redactions now (test_a_text_hit_patched_by_its_own_audit_patch_needs_no_flag)
 - L2 the introduction quote's normalisation replaced punctuation with spaces ("I'm" became two words). PRE-A §12 removes punctuation, so "I'm" is one word, "im", and is no evidence (P11c) (test_an_introduction_quote_is_normalised_as_pre_a_says ×2)
 - L3 an audit patch's span wasn't enforced. With plan.json and audit.json present, a patch must now cover at least `f − ceil(sample_step/2) − extend … f + ceil(sample_step/2) + extend` around its evidence frame, clamped. A merged run or a covered spot spans wider and still passes (test_an_audit_patch_spans_its_finding)
+
+## Audit 54 (independent Sonnet reviewer at dda693a): 0 critical, 0 high, 0 medium, 6 low. NOT CLEAN; all verified and handled
+Its 6,000 hostile-env runs raised only `ConfigError`, and 4,500 extreme mutations of the example job raised only `ContractError`. Tests are in tests/test_audit24.py (the audit #54 section).
+- L1 the introduction-quote normalisation was already fixed in b8fced7 (audit #53 L2)
+- L2 `Audit.passes` had no upper bound. It is now at most 3, per redteam.md and WP4 (test_an_audit_runs_at_most_three_passes)
+- L3 `output_text` raised a raw `TypeError` on a non-list `output` or `content`, after the call was billed. It now raises `MetaIncomplete` (test_a_malformed_output_is_a_typed_error ×2)
+- L4 `request_part` turned a bare `"English"` into letters. A string is now refused, and every entry must be one of the 25 ASR languages (test_the_asr_language_bias_is_a_list_of_known_languages ×2)
+- L5 a WAV header reporting 0 frames priced the call at $0, so it skipped the ledger and caps, yet was sent. It is now refused before any spend (test_a_wav_reporting_no_frames_is_refused_before_any_spend)
+- L6 `load` raised `IsADirectoryError`/`PermissionError` for an unreadable job file. Any `OSError` is now a `ContractError` (test_a_job_file_that_is_a_directory_is_a_contract_error)

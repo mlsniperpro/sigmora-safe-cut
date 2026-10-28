@@ -179,10 +179,16 @@ async def create(
 def output_text(response: Mapping[str, Any]) -> str:
     """The ``output_text`` of the ``message`` item; a refusal part raises, no text is ``MetaIncomplete``."""
     texts: list[str] = []
-    for item in cast(list[Any], response.get("output") or []):
+    output: Any = response.get("output") or []
+    if not isinstance(output, list):
+        raise MetaIncomplete("response output isn't a list", eof=False)
+    for item in cast(list[Any], output):
         if not isinstance(item, Mapping) or cast(Mapping[str, Any], item).get("type") != "message":
             continue
-        for part in cast(list[Any], cast(Mapping[str, Any], item).get("content") or []):
+        content: Any = cast(Mapping[str, Any], item).get("content") or []
+        if not isinstance(content, list):
+            raise MetaIncomplete("message content isn't a list", eof=False)
+        for part in cast(list[Any], content):
             if not isinstance(part, Mapping):
                 continue
             p = cast(Mapping[str, Any], part)

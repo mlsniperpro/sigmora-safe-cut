@@ -637,7 +637,7 @@ class Audit(Contract):
     leaks: list[Leak]
     redteam: list[RedteamNone | RedteamHit]
     unresolved: NonNegativeInt
-    passes: NonNegativeInt
+    passes: int = Field(ge=0, le=3)  # redteam.md / WP4: at most 3 passes
     sample_step: PositiveInt
     spots: list[Spot] = Field(default_factory=list[Spot])
     blocked_reason: BlockedReason | None
@@ -919,6 +919,8 @@ def load(path: str | Path, model: type[BaseModel] | None = None) -> BaseModel:
         raw = path.read_bytes()
     except FileNotFoundError:
         raise ContractError(f"{path.name}: missing") from None
+    except OSError as exc:  # a directory where a file should be, an unreadable file
+        raise ContractError(f"{path.name}: unreadable ({type(exc).__name__})") from exc
     try:
         return model.model_validate_json(raw)
     except ValidationError as exc:
