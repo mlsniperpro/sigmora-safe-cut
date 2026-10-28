@@ -954,3 +954,30 @@ def test_a_crowd_fill_covers_a_capped_concept(tmp_path: Path) -> None:
     _edit(job_dir, "plan.json", plan)
     with pytest.raises(c.ContractError, match="frame 3: no crowd fill covers the 17 face objects"):
         c.validate_job_dir(job_dir)
+
+
+# --- audit #47 ----------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("change", [{"votes": ["participant"] * 2}, {"frames": [1]}])
+def test_a_policy_keep_needs_three_votes_on_two_keyframes(tmp_path: Path, change: dict[str, Any]) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "roles.json", lambda d: next(t for t in d["tracks"] if t["track_id"] == "face:1").update(change))
+    with pytest.raises(c.ContractError, match="kept by model, but face:1 isn't a unanimous participant"):
+        c.validate_job_dir(job_dir)
+
+
+def test_an_in_band_failure_never_replaces_a_recorded_summary(tmp_path: Path) -> None:
+    out = tmp_path / "e"
+    probes.save_summary(out, {"model": "m", "answer": "x", "usd": 0.01})
+    failed = probes.save_summary(out, {"model": "m", "effort": "low", "error": "MetaBadRequest: 400"})
+    assert json.loads((out / "summary.json").read_text())["answer"] == "x"
+    assert failed.name.startswith("summary.failed-")
+
+
+def test_a_huge_extend_never_hangs_validation(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "plan.json", lambda d: d["temporal"].update({"extend": 10**9}))
+    started = time.monotonic()
+    c.validate_job_dir(job_dir)  # more padding than the clip is valid; the loops stay within the clip
+    assert time.monotonic() - started < 5

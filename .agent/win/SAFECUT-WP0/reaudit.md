@@ -414,3 +414,9 @@ Five valid guard variants validated: per-track, union, box-only and ellipse-mask
 - M2 the padding constants were self-declared, so zero padding validated. `Padding` now requires DESIGN §2.6's minimums (face ≥ 0.15, default ≥ 0.08, px ≥ 8), and `Temporal.extend ≥ 8`. A guard may pad more, never less (test_the_guards_padding_is_at_least_designs ×2)
 - L3 a crowd fill's box was never checked. On a crowded frame, any concept with SAM's 16-object cap reached must now have a fill containing all its objects' boxes. The cap is per concept, PRE-A §1.6 (test_a_crowd_fill_covers_a_capped_concept)
 - Doc: ARCHITECTURE §3 now says `tracks.sam_fps` is the effective rate `min(SAFECUT_SAM_FPS, job.fps)`, as the back-fill rule assumes
+
+## Audit 47 (independent Sonnet reviewer, launched at b1f0aec, audited 6127250): 0 critical, 0 high, 0 medium, 3 low. NOT CLEAN; all verified and fixed
+It found no defect in the Meta client, cleanup, open weight, config or the doc arithmetic. Tests are in tests/test_audit24.py (the audit #47 section).
+- L1 the non-creator keep accepted 1 or 2 `participant` votes, or no cited keyframes. ARCHITECTURE §3 says three votes, and WP3 needs consistency on ≥ 2 keyframes. The check now requires exactly three `participant` votes and ≥ 2 distinct frames (test_a_policy_keep_needs_three_votes_on_two_keyframes ×2)
+- L2 probes that report failure in band (`{"model", "effort", "error"}`) still overwrote a recorded summary. Any result with a top-level `error` now goes beside an existing summary as `summary.failed-<ts>.json` (test_an_in_band_failure_never_replaces_a_recorded_summary)
+- L3 a huge `temporal.extend` made `validate_job_dir` loop for minutes before any refusal. The coverage and held-box loops are now clamped to the clip (test_a_huge_extend_never_hangs_validation)

@@ -866,7 +866,7 @@ def save_summary(out: Path, result: Summary) -> Path:
     that API-NOTES quotes and its raw files back) is already there: then the failure goes beside it."""
     out.mkdir(parents=True, exist_ok=True)
     path = out / "summary.json"
-    if set(result) <= {"error", "uploads_deleted"} and path.exists():
+    if "error" in result and path.exists():  # a failed run (in-band or not) never replaces a recorded one
         path = out / f"summary.failed-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}.json"
     path.write_text(json.dumps(result, indent=1, ensure_ascii=False) + "\n")
     return path

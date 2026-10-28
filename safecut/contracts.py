@@ -1131,7 +1131,8 @@ def _check_decisions(decisions: Decisions, job: Job, tracks: Tracks | None, role
                 raise ContractError(f"{where}: a {item.kind} item is never kept without the creator")
             doubtful = [
                 tid for tid in item.track_ids
-                if tid not in votes or votes[tid].role != "participant" or set(votes[tid].votes) != {"participant"}
+                if tid not in votes or votes[tid].role != "participant" or votes[tid].votes != ["participant"] * 3
+                or len(set(votes[tid].frames)) < 2  # WP3: consistent on ≥ 2 keyframes
             ]  # fmt: skip
             if doubtful:
                 raise ContractError(
@@ -1416,7 +1417,7 @@ def _check_plan_covers(plan: Plan, decisions: Decisions, tracks: Tracks | None, 
         if item.first is not None and item.last is not None:
             needed = dict.fromkeys(range(item.first, item.last + 1))
         for track in (by_track[tid] for tid in item.track_ids if tid in by_track):
-            for f in range(max(0, track.first - temporal.backfill), track.last + temporal.extend + 1):
+            for f in range(max(0, track.first - temporal.backfill), min(job.frames, track.last + temporal.extend + 1)):
                 needed.setdefault(f, _box_near(track, f))
         missing = [
             f for f, box in sorted(needed.items())
@@ -1437,7 +1438,7 @@ def _check_held_boxes(plan: Plan, item: DecisionItem, by_track: Mapping[str, Tra
         for f in range(item.first, item.last + 1):
             held.setdefault(f, []).append(item.box)
     for track in (by_track[tid] for tid in item.track_ids if tid in by_track):
-        edges = range(max(0, track.first - temporal.backfill), track.last + temporal.extend + 1)
+        edges = range(max(0, track.first - temporal.backfill), min(job.frames, track.last + temporal.extend + 1))
         for f in (f for f in edges if not track.first <= f <= track.last):
             box = _box_near(track, f)
             if box is not None:
