@@ -471,3 +471,21 @@ async def test_a_body_json_cant_carry_is_refused_before_any_charge(
             await h.client.request("POST", "thing", _free_spec(), meter=lambda _: ({}, 0.0), json_body=body)
     assert route.call_count == 0
     assert h.costs() == []
+
+
+# --- audit #36 ----------------------------------------------------------------------------------------------
+
+
+def test_the_red_team_step_is_the_jobs_fps(tmp_path: Path) -> None:
+    # A writer declaring sample_step 900 would otherwise shrink the 1 fps floor to one frame.
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "audit.json", lambda d: d.update({"sample_step": 900}))
+    with pytest.raises(c.ContractError, match="sample_step 900 != the job's 30 fps"):
+        c.validate_job_dir(job_dir)
+
+
+def test_probe_f_compares_the_named_pair() -> None:
+    assert (config.COMPARE_SPARK_MODEL, config.COMPARE_WONDER_MODEL) == ("muse-spark-1.3", "muse-wonder-1.0")
+    source = Path(probes.__file__).read_text()
+    assert '"muse-spark-1.3"' not in source
+    assert '"muse-wonder-1.0"' not in source

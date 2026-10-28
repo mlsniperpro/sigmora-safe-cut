@@ -111,6 +111,10 @@ TOKEN_PRICES: Mapping[str, TokenPrice] = {
     "muse-spark-1.1": TokenPrice(input=1.25, cached=0.15, output=4.25),
     "muse-wonder-1.0": TokenPrice(input=4.00, cached=0.20, output=20.00),
 }
+#: WP0 probe f's fixed comparison pair (DESIGN's Spark-vs-Wonder question), named here so no probe hard-codes an ID.
+#: The models the pipeline calls come from Settings (env), not from these.
+COMPARE_SPARK_MODEL = "muse-spark-1.3"
+COMPARE_WONDER_MODEL = "muse-wonder-1.0"
 SAM_USD_PER_FRAME = 0.20 / 1000
 SAM_USD_PER_IMAGE = 2.50 / 1000
 SAM_MIN_FRAMES_BILLED = 50

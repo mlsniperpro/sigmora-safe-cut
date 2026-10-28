@@ -33,7 +33,7 @@ Legend: `- [x]` done with evidence · `- [P]` parked on an owner input (BLOCKED.
 
 ## Judging criteria (WP0's share)
 - [x] Technical depth 20%: strict-typed client (pyright strict on safecut/ and scripts/), reservation ledger, measured vs estimated spend. Evidence: checks.sh green
-- [x] Meta tooling 25%: Standard mode only, store:false on Responses and SAM, uploads deleted with files.json proof, every model ID from env, SAM parsed by Meta's own meta-sam-parser. Evidence: tests/test_meta_endpoints.py::test_sam_stream_feeds_the_official_parser
+- [x] Meta tooling 25%: Standard mode only, store:false on Responses and SAM, uploads deleted with files.json proof, every model ID the pipeline calls from env (probe f's fixed Spark/Wonder comparison pair is named in config.py), SAM parsed by Meta's own meta-sam-parser. Evidence: tests/test_meta_endpoints.py::test_sam_stream_feeds_the_official_parser
 - [x] Production 'holds up': timeouts, bounded retries, breaker, caps, no secrets in logs or errors. Evidence: test_key_is_sent_and_never_logged, test_errors_never_echo_values
 
 - [x] PRE-A §12 contract rows (job.consented, job.open_weight_attempted, audit.open_weight, audit.redteam_open, cost.jsonl provider, cap baseten_job, receipt.cost_usd_baseten, responses.json + data_handling.responses_delete_requested, the SAFECUT_OPEN_WEIGHT_* and SAFECUT_SAM_DELETE_RESPONSES env vars with the SAM response delete step). Evidence: safecut/contracts.py, safecut/config.py, safecut/meta/sam.py, tests/test_open_weight.py, tests/test_audit5.py
@@ -43,6 +43,7 @@ Legend: `- [x]` done with evidence · `- [P]` parked on an owner input (BLOCKED.
 - [x] Audit #23 findings (2 medium, 3 low): an exclusion needs a matching-concept track overlapping the finding, an audit accounts for every frame, only the trial closes the breaker, `/jobs/` anchored, stale HANDOFF/BLOCKED lines. Evidence: reaudit.md, tests/test_audit23.py
 - [x] Audit #24 and #25 findings (3 medium, 4 low): an unflagged leak's patch is an audit patch, containment uses the rendered box, Files lines record bytes, the 46-frame figure, the WP1 `sam.py` request. Evidence: reaudit.md, tests/test_audit24.py
 - [x] Audit #28 and #29 findings (1 medium, 2 low): vector R10 (`call_with_reupload`), Files cleanup fails closed on an unusable listing or a DELETE without `deleted: true`, a stalled ledger call is retried once. Evidence: reaudit.md, tests/test_audit24.py
+- [x] Audit #36 findings (3 low): sample_step must equal job.fps, the §3.9 store_by_model example, probe f's comparison pair named in config. Evidence: reaudit.md, tests/test_audit24.py
 - [x] Audit #35 finding (1 low, docs): the §3.8 example meets the red-team floor; WP4 keeps pass 1's sample set. Evidence: reaudit.md
 - [x] Audit #34 findings (2 medium, 2 low): a read-through item must render solid, audit patches follow their spec row, a publishable audit has its 1 fps red-team frames, unencodable bodies refused before any charge, the §3.9 receipt example. Evidence: reaudit.md, tests/test_audit24.py
 - [x] Audit #33 findings (2 medium, 1 low): listings that hide our name fail closed, Baseten clients default to the Baseten key and URL, PRE-A's weight and archive ignores. Evidence: reaudit.md, tests/test_audit24.py

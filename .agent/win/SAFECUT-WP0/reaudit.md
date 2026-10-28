@@ -322,3 +322,9 @@ Tests are in tests/test_audit24.py (the audit #34 section) unless named.
 ## Audit 35 (independent Sonnet reviewer at fe0ff7b, re-checked at fde9708): 0 critical, 0 high, 0 medium, 1 low (docs only). NOT CLEAN; verified and fixed
 Its own stress runs found nothing: 150 concurrency/cancel seeds, 200 Files seeds against a fake file server, 3,000 mutation-fuzz seeds of `validate_job_dir`, and an independent receipt-hash verifier.
 - L1 the ARCHITECTURE §3.8 `audit.json` example (900 frames, step 30) had one red-team entry, which audit #34's 1 fps floor refuses. The example now shows the sampled set and says pass 1's entries are kept across later passes. That assumption is also a WP4 request in PR #3 and HANDOFF: `redteam[]` keeps pass 1's full sample set across passes and re-runs. The change is docs only (`*.md`, outside the gate's code diff)
+
+## Audit 36 (independent Sonnet reviewer at fde9708, finished at 9c4db61): 0 critical, 0 high, 0 medium, 3 low. NOT CLEAN; all verified and fixed
+Tests are in tests/test_audit24.py (the audit #36 section). It found no false refusal in the newest gate rules.
+- L1 the red-team floor trusted the audit's own `sample_step`, so `sample_step: 900` on a 900-frame, 30 fps job let one entry pass. Fixed: PRE-A §12 fixes `sample_step = round(job.fps)` (an int), so the gate requires `sample_step == job.fps` and computes the floor from `job.fps` (test_the_red_team_step_is_the_jobs_fps)
+- L2 the ARCHITECTURE §3.9 receipt example's `store_by_model` listed only Spark, though its `models` name Wonder and SAM too (PRE-A §12: every Responses-API model). The example now lists all three
+- L3 probes a and f hard-coded the Spark/Wonder comparison pair (AGENTS rule 8). The pair is now named in config.py (`COMPARE_SPARK_MODEL`, `COMPARE_WONDER_MODEL`), and the checklist line now says the pipeline's models come from env while probe f's fixed pair lives in config (test_probe_f_compares_the_named_pair)

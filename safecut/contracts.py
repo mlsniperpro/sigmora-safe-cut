@@ -1044,8 +1044,11 @@ def _check_audit(audit: Audit, job: Job) -> None:
         raise ContractError("audit.json: a publishable audit ran no red-team pass")
     # redteam.md: one red-team entry per frame sent, at least 1 per second (sample_step frames), and frames are
     # never silently skipped. Whatever the sampling phase, that is at least frames // sample_step distinct frames.
+    if audit.sample_step != job.fps:
+        # PRE-A §12: sample_step = round(job.fps), the red-team's 1 fps step in output frames (fps is an int).
+        raise ContractError(f"audit.json: sample_step {audit.sample_step} != the job's {job.fps} fps")
     sampled = len({entry.frame for entry in audit.redteam})
-    floor = max(1, job.frames // audit.sample_step)
+    floor = max(1, job.frames // job.fps)
     if audit.unresolved == 0 and sampled < floor:
         raise ContractError(
             f"audit.json: a publishable audit has red-team entries on {sampled} frames; 1 per second needs {floor}"

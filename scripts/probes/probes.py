@@ -36,7 +36,7 @@ from meta_sam_parser import (
 )
 from pydantic import BaseModel
 
-from safecut import open_weight
+from safecut import config, open_weight
 from safecut.config import OpenWeightPrice, Settings, load_settings
 from safecut.contracts import ContractError, read_cost_lines
 from safecut.meta import asr, responses, sam
@@ -155,7 +155,7 @@ async def probe_a(p: Probe) -> Summary:
     wanted = [
         p.settings.sam_model,
         p.settings.role_model,
-        "muse-wonder-1.0",
+        config.COMPARE_WONDER_MODEL,
         p.settings.asr_model,
         p.settings.speech_fallback_model,
     ]
@@ -412,7 +412,8 @@ async def probe_e(p: Probe) -> Summary:
 async def probe_f(p: Probe) -> Summary:
     file_id = await p.files.upload(CLIP, "prepared.mp4")
     out: Summary = {}
-    for model, effort in (("muse-spark-1.3", "max"), ("muse-wonder-1.0", "max"), ("muse-wonder-1.0", "medium")):
+    spark, wonder = config.COMPARE_SPARK_MODEL, config.COMPARE_WONDER_MODEL
+    for model, effort in ((spark, "max"), (wonder, "max"), (wonder, "medium")):
         out[f"{model}@{effort}"] = await _video_question(
             p, model=model, effort=effort, stage="probe_f", file_id=file_id
         )
@@ -457,7 +458,7 @@ async def _role_calls(p: Probe, keyframes: Path) -> Summary:
     """
     calls = [RoleCall.model_validate(c) for c in json.loads((keyframes / "role_calls.json").read_text())]
     out: Summary = {}
-    for model in ("muse-spark-1.3", "muse-wonder-1.0"):
+    for model in (config.COMPARE_SPARK_MODEL, config.COMPARE_WONDER_MODEL):
         rows: list[Summary] = []
         for call in calls:
             try:
