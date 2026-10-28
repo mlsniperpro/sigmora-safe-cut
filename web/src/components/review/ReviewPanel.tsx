@@ -294,21 +294,40 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [refusalValidUntil, setRefusalValidUntil] = useState<string | null>(null);
+  /** Bumped per press, so a repeated identical answer is announced and focused again. */
+  const [actionAttempt, setActionAttempt] = useState(0);
+  /** A render this page started: once its progress shows, focus follows the press there. */
+  const focusProgress = useRef(false);
+  const focusRenderProgress = () => {
+    focusProgress.current = true;
+  };
+  const renderingNow = state.status === "rendering";
+  useEffect(() => {
+    if (!renderingNow || !focusProgress.current) return;
+    focusProgress.current = false;
+    // Unless the creator moved on meanwhile.
+    const at = document.activeElement;
+    if (at && at !== document.body && !bottomBar.current?.contains(at)) return;
+    document.querySelector<HTMLElement>("[data-render-progress]")?.focus();
+  }, [renderingNow]);
   const runAction = async (button: "render" | "audit") => {
     setActionBusy(true);
     setActionError(null);
+    setActionAttempt((n) => n + 1);
     try {
       const ack = await (button === "render" ? getClient().render(jobId) : getClient().audit(jobId));
       dispatch({ type: "ACTION_ACK", button, status: ack.status });
       onRenderStarted();
       onPatchJob((j) => ({ ...j, status: ack.status, stage: ack.stage ?? j.stage }));
       onResume();
+      focusRenderProgress();
     } catch (error) {
       const e = error instanceof ApiError ? error : null;
       if (e?.status === 409) {
         // Already rendering: the render this page asked for is under way.
         onRenderStarted();
         onResume();
+        focusRenderProgress();
       } else if (e?.status === 401) {
         dispatch({ type: "ACTION_REFUSE", button, code: e.code === "code_not_active" ? "code_not_active" : "unauthorized", until: null });
         setRefusalValidUntil(e.detail?.valid_until ?? null);
@@ -608,6 +627,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
         job={job}
         state={state}
         busy={actionBusy}
+        attempt={actionAttempt}
         error={actionError}
         refusalValidUntil={refusalValidUntil}
         now={now}
@@ -784,6 +804,7 @@ function BottomBar({
   job,
   state,
   busy,
+  attempt,
   error,
   refusalValidUntil,
   now,
@@ -800,6 +821,8 @@ function BottomBar({
   job: JobResponse;
   state: ReviewState;
   busy: boolean;
+  /** Which press the answers on show belong to (a new press re-announces an identical one). */
+  attempt: number;
   error: string | null;
   refusalValidUntil: string | null;
   now: number;
@@ -817,13 +840,14 @@ function BottomBar({
   const download = hasRender && job.result?.video_url ? job.result.video_url : null;
   let text: string | null = null;
   let main: React.ReactNode = null;
+  // While a request is out the button only looks disabled, so it keeps focus (WCAG 2.4.3).
   const approve = (disabled: boolean) => (
-    <button type="button" className={btn.primary} disabled={disabled || busy} onClick={onRender}>
+    <button type="button" className={btn.primary} disabled={disabled} aria-disabled={busy || undefined} onClick={busy ? undefined : onRender}>
       Approve &amp; render
     </button>
   );
   const runAudit = (disabled: boolean) => (
-    <button type="button" className={btn.primary} disabled={disabled || busy} onClick={onAudit}>
+    <button type="button" className={btn.primary} disabled={disabled} aria-disabled={busy || undefined} onClick={busy ? undefined : onAudit}>
       Run the audit again
     </button>
   );
@@ -863,7 +887,8 @@ function BottomBar({
     }
     case "rendering":
       main = (
-        <div className="w-full">
+        // Takes focus when a render starts here, as the button that started it is gone.
+        <div className="w-full" data-render-progress tabIndex={-1}>
           <StageList kind="render" active={job.stage === "audit" || job.stage === "receipt" ? job.stage : "render"} auditPatch={job.stage_reason === "audit_patch"} />
         </div>
       );
@@ -929,8 +954,8 @@ function BottomBar({
       <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-3">
         {/* An answer to the button just pressed is announced and takes focus: that button may now be
             disabled, and focus must not fall to the page (WCAG 4.1.3, 2.4.3). */}
-        {state.capNote && <ActionError message={COPY.codeCapJob} className="text-sm" tone="plain" />}
-        {text && (bar.kind === "refused" ? <ActionError message={text} className="font-medium" tone="plain" /> : <p className="font-medium">{text}</p>)}
+        {state.capNote && <ActionError key={`cap-${attempt}`} message={COPY.codeCapJob} className="text-sm" tone="plain" />}
+        {text && (bar.kind === "refused" ? <ActionError key={`refused-${attempt}`} message={text} className="font-medium" tone="plain" /> : <p className="font-medium">{text}</p>)}
         <div className="flex flex-wrap items-center gap-2">
           {main}
           <span className="flex-1" />

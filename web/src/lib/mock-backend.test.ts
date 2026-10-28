@@ -81,4 +81,10 @@ describe("MockBackend storage", () => {
     expect((res.body as { deletes_at: string }).deletes_at).toBe("2026-11-07T10:00:00.000Z");
     expect(JSON.parse(storage.data.get("safecut.mock-jobs") ?? "{}")).toEqual({});
   });
+
+  it("result fixtures play the sample media in mock mode", async () => {
+    const backend = new MockBackend({ latencyMs: 0, sample: { job: "job-review-sample", mediaBase: "/sample" } });
+    const res = await backend.request({ method: "GET", path: "/v1/jobs/result-fixed/result" });
+    expect(res.body).toMatchObject({ video_url: "/sample/redacted.mp4", receipt_html_url: "/sample/receipt.html", receipt_json_url: "/sample/receipt.json" });
+  });
 });

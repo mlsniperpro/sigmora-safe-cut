@@ -67,6 +67,8 @@ export function ProgressView({
   const link = typeof window === "undefined" ? `/jobs/${jobId}` : `${window.location.origin}/jobs/${encodeURIComponent(jobId)}`;
   const doDelete = async () => {
     setConfirm(false);
+    // A fresh attempt: an identical error is announced and focused again.
+    setDeleteError(null);
     setDeleting(true);
     const attempt = getClient().deleteJob(jobId);
     onDeleting?.(attempt.then(() => true, () => false));

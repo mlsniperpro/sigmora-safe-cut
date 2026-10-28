@@ -67,6 +67,8 @@ export function FailedJob({ jobId, job, onResume, onDeleted }: { jobId: string; 
 
   const doDelete = async () => {
     setConfirm(false);
+    // A fresh attempt: an identical error is announced and focused again.
+    setDeleteError(null);
     try {
       await getClient().deleteJob(jobId);
       onDeleted();

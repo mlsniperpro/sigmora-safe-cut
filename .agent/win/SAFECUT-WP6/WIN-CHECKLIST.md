@@ -134,3 +134,9 @@ Round 9 (fixes in the round-9 commit; details in `reaudit.md`):
 - [x] R9-4 (low) tab focus ring not clipped
 - [x] R9-5 (low) footer and landing link targets 44/32 px
 
+Round 10 (fixes in the round-10 commit; details in `reaudit.md`):
+
+- [x] R10-1 (low) repeated identical answers re-announced and focused: JobPage tests
+- [x] R10-2 (low) busy action buttons keep focus; focus follows to the render progress: JobPage test
+- [x] R10-3 (low) result fixtures play the sample media in mock mode: mock-backend test
+

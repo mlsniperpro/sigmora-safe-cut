@@ -47,6 +47,8 @@
   - Bigger link targets.
 - On the round-9 commit: 804 tests (28 files), e2e 87/87, `checks.sh` exit 0.
 - Known stale asset: `web/docs/screenshots/review-flow.gif` predates the round-8 desktop layout; the JPG screenshots are current.
+- Audit round 10 (on 663f6df): 3 low and nothing higher, all fixed in the round-10 commit. Findings are getting fewer and lower round by round.
+- On the round-10 commit: 808 tests (28 files), e2e 87/87, `checks.sh` exit 0.
 - CLEAN_AUDITS_IN_A_ROW is 0. Two clean full audits are still needed, then a fresh break-it.md (fresh clone + FUZZ_RUNS=100000).
 
 ## Next steps, in order

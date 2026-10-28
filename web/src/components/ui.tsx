@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef } from "react";
 
 export const btn = {
-  primary: "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-accent px-4 font-semibold text-accent-text hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50 lg:min-h-9",
+  primary: "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-accent px-4 font-semibold text-accent-text hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 lg:min-h-9",
   secondary: "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 font-medium hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50 lg:min-h-8",
   danger: "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-danger px-3 font-medium text-danger hover:bg-danger-bg disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 lg:min-h-8",
   link: "inline-flex min-h-11 items-center underline underline-offset-4 lg:min-h-8",

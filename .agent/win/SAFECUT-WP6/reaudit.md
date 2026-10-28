@@ -1,4 +1,4 @@
-AUDITED_COMMIT: da3d5da
+AUDITED_COMMIT: 663f6df
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -173,3 +173,13 @@ Fresh-clone README run also found: `pnpm typecheck` failed before any build (Nex
 | 3 | low | The 24-row timeline cap dropped the selected item's bars past row 24 (§3.3) | fixed: the selection always gets a row (`timelineRows`); test |
 | 4 | low | The top of a mobile tab's focus ring was clipped by the scrolling strip | fixed: the strip has top padding |
 | 5 | low | Footer and landing bottom links were 20–24 px tall; §3.8/§9 ask 44 px on mobile, 32 px on desktop | fixed: `min-h-11 lg:min-h-8` |
+
+## Round 10 (audited 663f6df by a Sonnet reviewer; fresh `git archive` build; 48 routes × 5 viewports × light/dark with axe: 0 violations, no overflow, one h1 each, no page errors; each finding traced here; fixes in the next commit)
+
+0 critical, 0 high, 0 medium, 3 low. The round-9 focus changes held: nothing steals focus on load, polls, re-renders, edits or resizes.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | low | A second identical delete error (failed, progress, result) or code-cap line didn't remount, so it wasn't re-announced and focus fell to `<body>` | fixed: delete errors clear when an attempt starts; the bar's refusal and cap alerts are keyed by the press. JobPage tests for a repeated delete error and a repeated code-cap answer |
+| 2 | low | Pressing Approve & render or Run the audit again disabled the focused button while busy, and focus never came back, even on success | fixed: busy buttons are `aria-disabled` (keep focus, ignore presses); once the render's progress shows, focus moves to it, unless the creator has moved elsewhere. JobPage test, stable over repeated runs |
+| 3 | low | README-listed `/jobs/result-*/result` URLs showed a dead player and a blank receipt in mock mode (the fixtures' `example.invalid` URLs) | fixed: with sample media, result fixtures answer with the sample's video and receipt; mock-backend test |

@@ -374,6 +374,39 @@ describe("job states", () => {
     await waitFor(() => expect(screen.getAllByText("Too many tries in a short time. Wait a minute and try again.", { selector: "p[role=alert]" }).at(-1)).toHaveFocus());
   });
 
+  it("Approve & render keeps focus while busy and hands it to the render progress", async () => {
+    const user = setup("job-review-hero1");
+    await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
+    const button = screen.getByRole("button", { name: "Approve & render" });
+    act(() => button.focus());
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(document.querySelector("[data-render-progress]")).toHaveFocus(), { timeout: 3_000 });
+  });
+
+  it("pressing Approve & render again on the code-cap line announces and focuses it again", async () => {
+    const user = setup("job-review-hero1");
+    await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
+    backend.inject(/\/render$/, "error-429-render-code-cap", 2);
+    await user.click(screen.getByRole("button", { name: "Approve & render" }));
+    const first = await screen.findByRole("alert");
+    await waitFor(() => expect(first).toHaveFocus());
+    await user.click(screen.getByRole("button", { name: "Approve & render" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveFocus());
+    expect(screen.getByRole("alert")).not.toBe(first);
+  });
+
+  it("a second identical delete error is announced and focused again", async () => {
+    const user = setup("job-failed-roles");
+    await screen.findByRole("button", { name: "Delete now" });
+    backend.inject(/^DELETE /, "error-500-delete", 2);
+    for (let i = 0; i < 2; i++) {
+      await user.click(screen.getByRole("button", { name: "Delete now" }));
+      await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }));
+      await waitFor(() => expect(screen.getByText("Something went wrong on our side. Nothing has been published.", { selector: "p[role=alert]" })).toHaveFocus());
+      act(() => screen.getByRole("button", { name: "Delete now" }).focus());
+    }
+  });
+
   it("a refused Approve & render is announced and takes focus, since its button is now disabled", async () => {
     const user = setup("job-review-hero1");
     await screen.findByText("2 hidden · 1 kept clear · 1 needs you");

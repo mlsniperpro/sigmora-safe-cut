@@ -278,7 +278,8 @@ export class MockBackend implements Transport {
   private async getResult(id: string): Promise<RawResponse> {
     if (id.startsWith("result-") && id in MOCK_LOADERS) {
       const data = (await this.fixture(id as MockName)) as Record<string, unknown>;
-      if ("receipt_html_url" in data) return respond(200, { ...data, deletes_at: this.deletesAt() });
+      // With sample media (the app's mock mode), its URLs replace the fixture's unreachable ones.
+      if ("receipt_html_url" in data) return respond(200, { ...data, ...(this.sample && this.mediaUrls(id)), deletes_at: this.deletesAt() });
     }
     const job = await this.load(id);
     if (!job) return notFound();

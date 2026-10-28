@@ -162,6 +162,8 @@ export function ResultPage() {
   const summary = auditSummary(r.audit, j.job?.frames ?? r.frames);
   const doDelete = async () => {
     setConfirm(false);
+    // A fresh attempt: an identical error is announced and focused again.
+    setDeleteError(null);
     try {
       await getClient().deleteJob(id);
       markDeleted();
