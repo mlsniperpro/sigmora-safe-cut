@@ -37,6 +37,7 @@
 - **In-flight work:** this session's uncommitted audit #5 fixes were built on 207cd90. They duplicated what origin had already done in 8cc543c ("close audit #5 findings; implement the new PRE-A §12 rows") and in audits #6–#59. They were not merged, to avoid regressing newer code. No code changed in this commit.
 - **Gate:** run once on this head before the push. Its last line is in PR #3's Status.
 - **State and next steps:** the state section above and the next steps below (from session_01FE6cwwWXD1E2eCpwUV9ftx) are current.
+- **Lease re-claimed** by session_01FE6cwwWXD1E2eCpwUV9ftx at merge time; it continues the audit loop (audits #60 and #61 closed at 80654da).
 
 ## Next steps, in order
 1. Claim the lease, then run `bash .agent/win/SAFECUT-WP0/checks.sh`; expect 672 passed.
