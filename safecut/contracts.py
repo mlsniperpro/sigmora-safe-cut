@@ -9,6 +9,7 @@ model validators; rules that need two files (box bounds, mask sizes, ID links, r
 
 from __future__ import annotations
 
+import bisect
 import hashlib
 import json
 import math
@@ -358,7 +359,7 @@ class Scene(Contract):
 class RoleTrack(Contract):
     track_id: str = Field(pattern=TRACK_ID_PATTERN)
     role: Role
-    votes: list[Role] = Field(min_length=1)
+    votes: list[Role] = Field(min_length=3, max_length=3)  # role-pass.md step 7: missing votes are `unsure`
     escalated: bool
     evidence: str
     frames: list[Frame]
@@ -1132,6 +1133,7 @@ def _check_decisions(decisions: Decisions, job: Job, tracks: Tracks | None, role
             doubtful = [
                 tid for tid in item.track_ids
                 if tid not in votes or votes[tid].role != "participant" or votes[tid].votes != ["participant"] * 3
+                or votes[tid].failed_votes
                 or len(set(votes[tid].frames)) < 2  # WP3: consistent on ≥ 2 keyframes
             ]  # fmt: skip
             if doubtful:
@@ -1299,24 +1301,26 @@ def _check_plan_styles(plan: Plan, decisions: Decisions, audit: Audit | None) ->
 SAM_OBJECT_CAP = 16  # PRE-A §1.6: SAM returns at most 16 objects per concept per frame
 
 
-def _check_crowd_fills(plan: Plan, tracks: Tracks) -> None:
+def _check_crowd_fills(plan: Plan, tracks: Tracks, hidden: set[str]) -> None:
     for frame in sorted(set(tracks.crowded_frames)):
         # The cap is SAM's 16 objects per concept: where a concept hit it, the fill covers all its objects.
-        present: dict[str, list[Box]] = {}
+        present: dict[str, list[Track]] = {}
         for t in tracks.tracks:
-            if t.first <= frame <= t.last and (box := _box_near(t, frame)) is not None:
-                present.setdefault(t.concept, []).append(box)
-        for concept, boxes in present.items():
-            if len(boxes) < SAM_OBJECT_CAP:
+            if t.first <= frame <= t.last:
+                present.setdefault(t.concept, []).append(t)
+        for concept, objects in present.items():
+            if len(objects) < SAM_OBJECT_CAP:
                 continue
-            union = (
-                min(b[0] for b in boxes),
-                min(b[1] for b in boxes),
-                max(b[2] for b in boxes),
-                max(b[3] for b in boxes),
-            )
-            if not any(frame in fill.frames and _contains(fill.box, union) for fill in plan.crowd_fills):
-                raise ContractError(f"plan.json frame {frame}: no crowd fill covers the {len(boxes)} {concept} objects")
+            # Only what's hidden must be under a fill: a kept participant in the crowd stays visible.
+            boxes = [b for t in objects if t.track_id in hidden and (b := _box_near(t, frame)) is not None]
+            # Fills may be split into tiles (DESIGN §2.6): each object lies inside some fill on this frame.
+            frame_fills = [fill.box for fill in plan.crowd_fills if frame in fill.frames]
+            outside = [b for b in boxes if not any(_contains(fill, b) for fill in frame_fills)]
+            if outside:
+                raise ContractError(
+                    f"plan.json frame {frame}: no crowd fill covers {len(outside)} of the {len(boxes)}"
+                    f" {concept} objects"
+                )
 
 
 def _check_plan_geometry(plan: Plan, decisions: Decisions, tracks: Tracks, job: Job) -> None:
@@ -1328,7 +1332,8 @@ def _check_plan_geometry(plan: Plan, decisions: Decisions, tracks: Tracks, job: 
     unfilled = sorted(set(tracks.crowded_frames) - filled)
     if unfilled:
         raise ContractError(f"plan.json: crowded frames {unfilled[:5]} have no crowd fill")
-    _check_crowd_fills(plan, tracks)
+    hidden = {tid for i in decisions.items if i.decision in ("hide", "needs_you") for tid in i.track_ids}
+    _check_crowd_fills(plan, tracks, hidden)
     want = math.ceil(15 * job.fps / min(tracks.sam_fps, job.fps))
     if plan.temporal.backfill != want:
         raise ContractError(
@@ -1406,24 +1411,34 @@ def _check_plan_covers(plan: Plan, decisions: Decisions, tracks: Tracks | None, 
     """Every hidden item (``hide``, or ``needs_you``, which renders hidden) is planned on every frame of each of
     its tracks, widened by the guard's temporal padding (``first − backfill`` … ``last + extend``, DESIGN §2.6,
     clamped to the clip; a merged item's gap between tracks needs nothing beyond that), or on an audit patch's
-    own ``first..last``. On a crowded frame, a crowd fill containing the track's box covers it too."""
+    own ``first..last``. On a frame with no entry, crowd fills must contain every one of the item's track boxes."""
     by_track = {t.track_id: t for t in tracks.tracks} if tracks is not None else {}
     planned = {(frame, e.item_id) for frame, entries in plan.frames.items() for e in entries}
+    fills: dict[int, list[Box]] = {}
+    for fill in plan.crowd_fills:
+        for f in fill.frames:
+            fills.setdefault(f, []).append(fill.box)
     temporal = plan.temporal
     for item in decisions.items:
         if item.decision not in ("hide", "needs_you"):
             continue
-        needed: dict[int, Box | None] = {}
+        needed: dict[int, list[Track]] = {}
         if item.first is not None and item.last is not None:
-            needed = dict.fromkeys(range(item.first, item.last + 1))
+            for f in range(item.first, min(job.frames, item.last + 1)):
+                needed.setdefault(f, [])
         for track in (by_track[tid] for tid in item.track_ids if tid in by_track):
             for f in range(max(0, track.first - temporal.backfill), min(job.frames, track.last + temporal.extend + 1)):
-                needed.setdefault(f, _box_near(track, f))
+                needed.setdefault(f, []).append(track)
+
+        def filled(f: int, owners: list[Track]) -> bool:
+            if not owners or f not in fills:
+                return False  # an audit patch is always planned itself
+            boxes = [_box_near(t, f) for t in owners]
+            return all(b is not None and any(_contains(fill, b) for fill in fills[f]) for b in boxes)
+
         missing = [
-            f for f, box in sorted(needed.items())
-            if f < job.frames and (f, item.item_id) not in planned
-            and not (box is not None and any(f in fl.frames and _contains(fl.box, box) for fl in plan.crowd_fills))
-        ]  # fmt: skip
+            f for f, owners in sorted(needed.items()) if (f, item.item_id) not in planned and not filled(f, owners)
+        ]
         if missing:
             raise ContractError(f"plan.json: hidden item {item.item_id} has no entry on frames {missing[:10]}")
         _check_held_boxes(plan, item, by_track, job)
@@ -1455,10 +1470,13 @@ def _check_held_boxes(plan: Plan, item: DecisionItem, by_track: Mapping[str, Tra
 
 def _box_near(track: Track, frame: int) -> Box | None:
     """The track's box on ``frame``, or at its nearest keyframe (the guard holds the edge box when padding)."""
+    if frame in track.boxes:
+        return track.boxes[frame]  # the common case for a densified track: no search
     if not track.boxes:
         return None
-    nearest = min(track.boxes, key=lambda k: (abs(k - frame), k))
-    return track.boxes[nearest]
+    keys = sorted(track.boxes)
+    i = bisect.bisect_left(keys, frame)
+    return track.boxes[min(keys[max(0, i - 1) : i + 1], key=lambda k: (abs(k - frame), k))]
 
 
 def _check_links(
@@ -1695,4 +1713,32 @@ def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:
             responses=responses if isinstance(responses, ResponsesIndex) else None,
             cost_path=job_dir / "cost.jsonl",
         )
+        _check_receipt_models(
+            receipt,
+            audit=audit,
+            scene=scene if isinstance(scene, Scene) else None,
+            roles=roles if isinstance(roles, Roles) else None,
+            transcript=transcript if isinstance(transcript, Transcript) else None,
+        )
     return loaded
+
+
+def _check_receipt_models(
+    receipt: Receipt, *, audit: Audit | None, scene: Scene | None, roles: Roles | None, transcript: Transcript | None
+) -> None:
+    """The receipt names the models that actually ran (AGENTS rule 9; PRE-A: a YuNet fallback is never sealed as
+    EgoBlur): each stage's model in ``models`` and the audit's ``auditor`` match the job file that recorded it."""
+    ran: dict[str, str | None] = {
+        "scene": scene.model if scene is not None else None,
+        "roles": roles.model if roles is not None else None,
+        "auditor": audit.egoblur.model if audit is not None else None,
+    }
+    if transcript is not None and transcript.source is not None:
+        ran["speech_fallback" if transcript.source_kind == "fallback" else "asr"] = transcript.source
+    for stage, model in ran.items():
+        if model is not None and receipt.models.get(stage) != model:
+            raise ContractError(f"receipt.json models.{stage} {receipt.models.get(stage)!r} != the job's {model!r}")
+    if audit is not None and receipt.audit.auditor != audit.egoblur.model:
+        raise ContractError(
+            f"receipt.json audit.auditor {receipt.audit.auditor!r} != audit.json {audit.egoblur.model!r}"
+        )

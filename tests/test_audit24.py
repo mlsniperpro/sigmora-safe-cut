@@ -952,18 +952,25 @@ def test_a_crowd_fill_covers_a_capped_concept(tmp_path: Path) -> None:
         d["crowd_fills"] = [{"frames": [3], "box": [0, 0, 2, 2]}]
 
     _edit(job_dir, "plan.json", plan)
-    with pytest.raises(c.ContractError, match="frame 3: no crowd fill covers the 17 face objects"):
+    with pytest.raises(c.ContractError, match="frame 3: no crowd fill covers 16 of the 16 face objects"):
         c.validate_job_dir(job_dir)
 
 
 # --- audit #47 ----------------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("change", [{"votes": ["participant"] * 2}, {"frames": [1]}])
-def test_a_policy_keep_needs_three_votes_on_two_keyframes(tmp_path: Path, change: dict[str, Any]) -> None:
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ({"votes": ["participant"] * 2}, "tracks.0.votes"),  # role-pass step 7 always writes three
+        ({"frames": [1]}, "kept by model, but face:1 isn't a unanimous participant"),
+        ({"failed_votes": 1}, "kept by model, but face:1 isn't a unanimous participant"),
+    ],
+)
+def test_a_policy_keep_needs_three_votes_on_two_keyframes(tmp_path: Path, change: dict[str, Any], message: str) -> None:
     job_dir = _example(tmp_path)
     _edit(job_dir, "roles.json", lambda d: next(t for t in d["tracks"] if t["track_id"] == "face:1").update(change))
-    with pytest.raises(c.ContractError, match="kept by model, but face:1 isn't a unanimous participant"):
+    with pytest.raises(c.ContractError, match=message):
         c.validate_job_dir(job_dir)
 
 
@@ -981,3 +988,63 @@ def test_a_huge_extend_never_hangs_validation(tmp_path: Path) -> None:
     started = time.monotonic()
     c.validate_job_dir(job_dir)  # more padding than the clip is valid; the loops stay within the clip
     assert time.monotonic() - started < 5
+
+
+# --- audit #48 ----------------------------------------------------------------------------------------------
+
+
+def test_a_crowd_fill_must_cover_every_track_of_the_item(tmp_path: Path) -> None:
+    # i_2 gains a wide person:2 track; on crowded frame 7 its entries are dropped and the fill covers only the face.
+    job_dir = _example(tmp_path)
+    _pixelate_person(job_dir)
+    _edit(job_dir, "tracks.json", lambda d: d.update({"crowded_frames": [7]}))
+
+    def fill(d: Any) -> None:
+        d["frames"]["7"] = [e for e in d["frames"]["7"] if e["item_id"] != "i_2"]
+        d["crowd_fills"] = [{"frames": [7], "box": [60, 260, 200, 420]}]
+
+    _edit(job_dir, "plan.json", fill)
+    with pytest.raises(c.ContractError, match=r"hidden item i_2 has no entry on frames \[7\]"):
+        c.validate_job_dir(job_dir)
+
+
+def test_split_crowd_fills_may_cover_a_capped_concept(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+
+    def crowd(d: Any) -> None:
+        d["crowded_frames"] = [3]
+        for n in range(16):
+            x = 40 * n + (400 if n >= 8 else 0)
+            d["tracks"].append({"track_id": f"face:{50 + n}", "concept": "face", "first": 3, "last": 3,
+                                "boxes": {"3": [x, 600, x + 30, 640]}, "source": None, "prompt": "face",
+                                "origin": "static"})  # fmt: skip
+
+    _edit(job_dir, "tracks.json", crowd)
+    item = {"item_id": "i_9", "track_ids": [f"face:{50 + n}" for n in range(16)], "kind": "person",
+            "decision": "hide", "reason": "crowd", "evidence_frames": [3], "style": "solid", "decided_by": "policy",
+            "locked": False}  # fmt: skip
+    _edit(job_dir, "decisions.json", lambda d: d["items"].append(item))
+    every = list(range(12))
+    tiles = [{"frames": every, "box": [0, 590, 330, 650]}, {"frames": every, "box": [710, 590, 1040, 650]}]
+    _edit(job_dir, "plan.json", lambda d: d.update({"crowd_fills": tiles}))
+    assert "plan.json" in c.validate_job_dir(job_dir)  # two tiles, each over one cluster
+
+
+def test_the_receipt_names_the_models_that_ran(tmp_path: Path) -> None:
+    job_dir = tmp_path / "j_example"
+    shutil.copytree(EXAMPLE, job_dir)
+    raw = json.loads((job_dir / "receipt.json").read_text())
+    raw.pop("hash")
+
+    def seal(change: Callable[[Any], None]) -> None:
+        body = json.loads(json.dumps(raw))
+        change(body)
+        sealed = c.Receipt.seal(c.ReceiptBody.model_validate(body))
+        (job_dir / "receipt.json").write_text(json.dumps(sealed.model_dump(mode="json")))
+
+    seal(lambda b: b["audit"].update({"auditor": "egoblur-gen2-FAKE"}))
+    with pytest.raises(c.ContractError, match=r"auditor 'egoblur-gen2-FAKE' != audit\.json 'egoblur-gen2'"):
+        c.validate_job_dir(job_dir)
+    seal(lambda b: b["models"].update({"scene": "gpt-x"}))
+    with pytest.raises(c.ContractError, match=r"models\.scene 'gpt-x' != the job's 'muse-spark-1\.3'"):
+        c.validate_job_dir(job_dir)
