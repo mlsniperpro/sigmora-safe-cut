@@ -144,6 +144,7 @@ async def probe_a(p: Probe) -> Summary:
         estimate_units={},
         policy=RetryPolicy(attempts=4),
         timeout=httpx.Timeout(30.0),
+        total_timeout_s=60.0,
     )
     models = await p.meta.request("GET", "models", spec, meter=lambda _: ({}, 0.0))
     p.save("models.json", models.body)
@@ -895,12 +896,23 @@ def _errors(value: object) -> int:
     return 0
 
 
+def _worse(result: Summary, recorded: Path) -> bool:
+    """Whether ``result`` must not replace the recorded summary: it failed outright, failed more, or the recorded
+    file can't be read (it is kept for the owner to inspect, never overwritten)."""
+    if "error" in result:
+        return True
+    try:
+        return _errors(result) > _errors(json.loads(recorded.read_bytes()))
+    except (OSError, ValueError):
+        return True
+
+
 def save_summary(out: Path, result: Summary) -> Path:
     """Write ``summary.json``, unless this run only failed and an earlier run's summary (a paid, recorded result
     that API-NOTES quotes and its raw files back) is already there: then the failure goes beside it."""
     out.mkdir(parents=True, exist_ok=True)
     path = out / "summary.json"
-    if path.exists() and _errors(result) > _errors(json.loads(path.read_text())):
+    if path.exists() and _worse(result, path):
         # A run that failed more (in-band per concept, call or check, or outright) never replaces a recorded one.
         path = out / f"summary.failed-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}.json"
     path.write_text(json.dumps(result, indent=1, ensure_ascii=False) + "\n")

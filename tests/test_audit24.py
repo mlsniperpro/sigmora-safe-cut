@@ -8,7 +8,7 @@ import functools
 import json
 import shutil
 import time
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Any, cast
 
@@ -25,10 +25,15 @@ from safecut.meta import asr as responses_asr
 from safecut.meta import files as files_mod
 from safecut.meta import responses, sam
 from safecut.meta.budget import Caller, LocalLedger
-from safecut.meta.client import CallSpec, MetaClient
+from safecut.meta.client import (
+    CallSpec,
+    MetaClient,
+    _ChatAccumulator,  # pyright: ignore[reportPrivateUsage] -- the unit under test
+)
 from safecut.meta.errors import MetaBadRequest, MetaConfigError, MetaIncomplete, MetaUnavailable, ReplayRefused
 from safecut.meta.files import FileStore
 from safecut.meta.retry import RetryPolicy
+from safecut.meta.status import StatusUnavailableError, fetch_status
 from scripts.probes import probes
 from tests.conftest import BASE, Harness, narrow_patch, rle_string
 from tests.test_probes_replay import api  # noqa: F401 -- the replay server fixture, reused
@@ -1383,9 +1388,9 @@ def test_an_outline_mask_between_anchors_hides_nothing(tmp_path: Path) -> None:
     job_dir = _example(tmp_path)  # screen:1 has anchors on frames 1 and 5 only
     runs: list[int] = []
     end = 0
-    for col in (884, 1115):  # two one-pixel columns at the box's edges: it spans the box but fills ~1 %
-        runs += [col * 720 + 384 - end, 232]
-        end = col * 720 + 616
+    for col in (900, 1099):  # two one-pixel columns at the track box's edges: they span it but fill 1 %
+        runs += [col * 720 + 400 - end, 200]
+        end = col * 720 + 600
     runs.append(720 * 1280 - end)
     outline = {"size": [720, 1280], "counts": rle_string(runs)}
     _edit(job_dir, "plan.json", lambda d: next(e for e in d["frames"]["3"] if e["item_id"] == "i_3").update(
@@ -1470,3 +1475,92 @@ def test_an_open_weight_read_through_carries_the_flag(tmp_path: Path) -> None:
     _edit(job_dir, "audit.json", lambda d: d["leaks"].append(leak))
     with pytest.raises(c.ContractError, match="reads through a hidden region"):
         c.validate_job_dir(job_dir)
+
+
+# --- audit #56 ----------------------------------------------------------------------------------------------
+
+
+def test_one_mask_pixel_between_anchors_hides_nothing(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)  # screen:1's box on frame 3 is about [900, 400, 1100, 600]
+    at = 1000 * 720 + 500
+    dot = {"size": [720, 1280], "counts": rle_string([at, 1, 720 * 1280 - at - 1])}
+    _edit(job_dir, "plan.json", lambda d: next(e for e in d["frames"]["3"] if e["item_id"] == "i_3").update(
+        {"shape": "mask", "mask": dot}))  # fmt: skip
+    with pytest.raises(c.ContractError, match="frame 3: i_3 is nowhere near screen:1"):
+        c.validate_job_dir(job_dir)
+
+
+def test_the_receipt_names_every_model_cost_jsonl_billed(tmp_path: Path) -> None:
+    job_dir = tmp_path / "j_example"
+    shutil.copytree(EXAMPLE, job_dir)  # cost.jsonl bills sam-3.1
+    data = json.loads((job_dir / "receipt.json").read_text())
+    data.pop("hash")
+    del data["models"]["sam"]
+    data["data_handling"]["store_by_model"].pop("sam-3.1")
+    (job_dir / "receipt.json").write_text(c.Receipt.seal(c.ReceiptBody.model_validate(data)).model_dump_json())
+    with pytest.raises(c.ContractError, match=r"models leaves out \['sam-3\.1'\]"):
+        c.validate_job_dir(job_dir)
+
+
+def test_an_unreadable_cost_jsonl_is_a_contract_error(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    (job_dir / "cost.jsonl").unlink()
+    (job_dir / "cost.jsonl").mkdir()
+    with pytest.raises(c.ContractError, match=r"cost\.jsonl: unreadable"):
+        c.validate_job_dir(job_dir)
+
+
+def test_an_outright_failure_never_replaces_a_summary_with_an_in_band_error(tmp_path: Path) -> None:
+    recorded = {"max_length": {"180s": {"accepted": False, "error": "too long"}}, "60s": {"accepted": True}}
+    assert probes.save_summary(tmp_path, recorded).name == "summary.json"
+    aside = probes.save_summary(tmp_path, {"error": "MetaUnavailable: down"})
+    assert aside.name.startswith("summary.failed-")
+    assert json.loads((tmp_path / "summary.json").read_text()) == recorded
+
+
+def test_an_unreadable_recorded_summary_is_kept(tmp_path: Path) -> None:
+    (tmp_path / "summary.json").write_text("{not json")
+    assert probes.save_summary(tmp_path, {"ok": True}).name.startswith("summary.failed-")
+    assert (tmp_path / "summary.json").read_text() == "{not json"
+
+
+def test_a_dripping_status_body_is_bounded() -> None:
+    class Drip(httpx.AsyncByteStream):
+        async def __aiter__(self) -> AsyncIterator[bytes]:
+            yield b"{"
+            while True:
+                await asyncio.sleep(0.05)
+                yield b" "
+
+    async def run() -> None:
+        transport = httpx.MockTransport(lambda _: httpx.Response(200, stream=Drip()))
+        async with httpx.AsyncClient(transport=transport) as http:
+            started = time.monotonic()
+            with pytest.raises(StatusUnavailableError):
+                await fetch_status(http, BASE, timeout_s=0.3)
+            assert time.monotonic() - started < 2
+
+    asyncio.run(run())
+
+
+def test_an_oversized_status_body_is_refused() -> None:
+    async def run() -> None:
+        transport = httpx.MockTransport(lambda _: httpx.Response(200, content=b" " * (65 * 1024)))
+        async with httpx.AsyncClient(transport=transport) as http:
+            with pytest.raises(StatusUnavailableError, match="over 64 KiB"):
+                await fetch_status(http, BASE)
+
+    asyncio.run(run())
+
+
+def test_every_call_has_a_deadline() -> None:
+    spec = CallSpec(stage="s", model=None, estimate_usd=0.0, estimate_units={}, policy=RetryPolicy(attempts=1),
+                    timeout=httpx.Timeout(1.0))  # fmt: skip
+    assert spec.total_timeout_s == config.DEFAULT_TOTAL_TIMEOUT_S
+
+
+@pytest.mark.parametrize("choices", [5, 1.5, True, "x", {"a": 1}])
+def test_a_malformed_chat_chunk_is_ignored_not_a_type_error(choices: Any) -> None:
+    acc = _ChatAccumulator()
+    acc.add({"id": "x", "choices": choices})
+    assert acc.answer()["text"] == ""

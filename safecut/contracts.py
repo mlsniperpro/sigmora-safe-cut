@@ -962,14 +962,17 @@ def read_cost_lines(path: str | Path) -> Iterator[CostLine]:
     path = Path(path)
     if not path.exists():
         return
-    with path.open("rb") as handle:
-        for number, raw in enumerate(handle, start=1):
-            if not raw.strip():
-                continue
-            try:
-                yield CostLine.model_validate_json(raw)
-            except ValidationError as exc:
-                raise ContractError(f"{path.name} line {number}: {_summarise(exc)}") from exc
+    try:
+        with path.open("rb") as handle:
+            for number, raw in enumerate(handle, start=1):
+                if not raw.strip():
+                    continue
+                try:
+                    yield CostLine.model_validate_json(raw)
+                except ValidationError as exc:
+                    raise ContractError(f"{path.name} line {number}: {_summarise(exc)}") from exc
+    except OSError as exc:
+        raise ContractError(f"{path.name}: unreadable ({type(exc).__name__})") from exc
 
 
 def measured_usd(lines: Iterator[CostLine] | list[CostLine], *, provider: Provider = "meta") -> tuple[float, float]:
@@ -1381,7 +1384,16 @@ def _check_plan_styles(plan: Plan, decisions: Decisions, audit: Audit | None) ->
 SAM_OBJECT_CAP = 16  # PRE-A §1.6: SAM returns at most 16 objects per concept per frame
 
 
+def _fills_by_frame(plan: Plan) -> dict[int, list[Box]]:
+    fills: dict[int, list[Box]] = {}
+    for fill in plan.crowd_fills:
+        for f in set(fill.frames):
+            fills.setdefault(f, []).append(fill.box)
+    return fills
+
+
 def _check_crowd_fills(plan: Plan, tracks: Tracks, hidden: set[str]) -> None:
+    fills = _fills_by_frame(plan)
     for frame in sorted(set(tracks.crowded_frames)):
         # The cap is SAM's 16 objects per concept: where a concept hit it, the fill covers all its objects.
         present: dict[str, list[Track]] = {}
@@ -1394,7 +1406,7 @@ def _check_crowd_fills(plan: Plan, tracks: Tracks, hidden: set[str]) -> None:
             # Only what's hidden must be under a fill: a kept participant in the crowd stays visible.
             boxes = [b for t in objects if t.track_id in hidden and (b := _box_near(t, frame)) is not None]
             # Fills may be split into tiles (DESIGN §2.6): each object lies inside some fill on this frame.
-            frame_fills = [fill.box for fill in plan.crowd_fills if frame in fill.frames]
+            frame_fills = fills.get(frame, [])
             outside = [b for b in boxes if not any(_contains(fill, b) for fill in frame_fills)]
             if outside:
                 raise ContractError(
@@ -1420,6 +1432,7 @@ def _check_plan_geometry(plan: Plan, decisions: Decisions, tracks: Tracks, job: 
             f"plan.json: temporal.backfill {plan.temporal.backfill} != ceil(15 x fps / sam_fps) = {want}"
         )
     by_track = {t.track_id: t for t in tracks.tracks}
+    fills_on = _fills_by_frame(plan)
     for item in decisions.items:
         if item.decision not in ("hide", "needs_you"):
             continue
@@ -1428,7 +1441,7 @@ def _check_plan_geometry(plan: Plan, decisions: Decisions, tracks: Tracks, job: 
                 entries = [e for e in plan.frames.get(frame, []) if e.item_id == item.item_id]
                 if not entries:
                     continue  # coverage is _check_plan_covers'
-                fills = [fill.box for fill in plan.crowd_fills if frame in fill.frames]
+                fills = fills_on.get(frame, [])
                 # The guard pads every box by at least `padding.px` (clamped to the frame) and a mask is SAM's own
                 # outline of the object, so it spans the track box.
                 if not _held(entries, fills, box, _grow(box, plan.padding.px, job)):
@@ -1443,14 +1456,14 @@ def _check_plan_geometry(plan: Plan, decisions: Decisions, tracks: Tracks, job: 
                             f"plan.json frame {frame}: {item.item_id}'s {e.grid[2]} px grid leaves"
                             f" {track.track_id} more than 6 blocks across"
                         )
-            _check_between_anchors(plan, item, track)
+            _check_between_anchors(plan, item, track, fills_on)
         # A shifting grid leaks detail across frames (DESIGN §2.7): one fixed grid per track of the item.
         grids = {e.grid for entries in plan.frames.values() for e in entries if e.item_id == item.item_id and e.grid}
         if len(grids) > max(1, len(item.track_ids)):
             raise ContractError(f"plan.json: {item.item_id}'s pixelate grid moves between frames ({len(grids)} grids)")
 
 
-def _check_between_anchors(plan: Plan, item: DecisionItem, track: Track) -> None:
+def _check_between_anchors(plan: Plan, item: DecisionItem, track: Track, fills_on: dict[int, list[Box]]) -> None:
     """A track with boxes only on some frames (SAM anchors; gaps the guard holds through): on the frames in
     between, the item's entry must at least overlap the box interpolated between the neighbouring anchors. The
     guard's held or grown box may differ, so containment would refuse valid output; a box moved away won't pass."""
@@ -1463,7 +1476,7 @@ def _check_between_anchors(plan: Plan, item: DecisionItem, track: Track) -> None
                 continue  # coverage (and a crowd fill instead) is _check_plan_covers'
             w = (frame - before) / (after - before)
             box = cast(Box, tuple(round(a[i] + (b[i] - a[i]) * w) for i in range(4)))
-            fills = [fill.box for fill in plan.crowd_fills if frame in fill.frames]
+            fills = fills_on.get(frame, [])
             # The guard may hold an anchor's box (growing it) through a gap, so either anchor also counts.
             near = (box, a, b)
             if not any(_near(e, n) for e in entries for n in near) and not any(_contains(f, box) for f in fills):
@@ -1473,9 +1486,11 @@ def _check_between_anchors(plan: Plan, item: DecisionItem, track: Track) -> None
 
 
 def _near(entry: PlanEntry, box: Box) -> bool:
-    """A box entry overlaps ``box``; a mask entry has foreground inside it (an empty mask hides nothing)."""
+    """A box entry overlaps ``box``; a mask entry's foreground fills a tenth of it (a stray pixel hides nothing,
+    while the guessed box between anchors may sit beside the object's real outline)."""
     if entry.shape == "mask":
-        return entry.mask is not None and _mask_spans(entry.mask, box, share=0)
+        area = (box[2] - box[0]) * (box[3] - box[1])
+        return entry.mask is not None and _mask_area(entry.mask, box) >= 0.1 * area
     return boxes_overlap(entry.box, box)
 
 
@@ -1540,10 +1555,7 @@ def _check_plan_covers(plan: Plan, decisions: Decisions, tracks: Tracks | None, 
     own ``first..last``. On a frame with no entry, crowd fills must contain every one of the item's track boxes."""
     by_track = {t.track_id: t for t in tracks.tracks} if tracks is not None else {}
     planned = {(frame, e.item_id) for frame, entries in plan.frames.items() for e in entries}
-    fills: dict[int, list[Box]] = {}
-    for fill in plan.crowd_fills:
-        for f in fill.frames:
-            fills.setdefault(f, []).append(fill.box)
+    fills = _fills_by_frame(plan)
     temporal = plan.temporal
     for item in decisions.items:
         if item.decision not in ("hide", "needs_you"):
@@ -1567,10 +1579,12 @@ def _check_plan_covers(plan: Plan, decisions: Decisions, tracks: Tracks | None, 
         ]
         if missing:
             raise ContractError(f"plan.json: hidden item {item.item_id} has no entry on frames {missing[:10]}")
-        _check_held_boxes(plan, item, by_track, job)
+        _check_held_boxes(plan, item, by_track, job, fills)
 
 
-def _check_held_boxes(plan: Plan, item: DecisionItem, by_track: Mapping[str, Track], job: Job) -> None:
+def _check_held_boxes(
+    plan: Plan, item: DecisionItem, by_track: Mapping[str, Track], job: Job, fills_on: dict[int, list[Box]]
+) -> None:
     temporal = plan.temporal
     # Where the guard holds a box the tracks don't carry (back-fill and extend frames, which hold the edge box;
     # an audit patch's static box), the entry must still cover it: these frames are where leaks happen.
@@ -1588,7 +1602,7 @@ def _check_held_boxes(plan: Plan, item: DecisionItem, by_track: Mapping[str, Tra
         if f >= job.frames:
             continue
         entries = [e for e in plan.frames.get(f, []) if e.item_id == item.item_id]
-        fills = [fl.box for fl in plan.crowd_fills if f in fl.frames]
+        fills = fills_on.get(f, [])
         for box in boxes:
             if not _held(entries, fills, box, _grow(box, plan.padding.px, job) if item.box is None else box):
                 raise ContractError(f"plan.json frame {f}: {item.item_id} doesn't cover its held box {list(box)}")
@@ -1894,6 +1908,7 @@ def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:
             scene=scene if isinstance(scene, Scene) else None,
             roles=roles if isinstance(roles, Roles) else None,
             transcript=transcript if isinstance(transcript, Transcript) else None,
+            cost_path=job_dir / "cost.jsonl",
         )
     return loaded
 
@@ -1972,7 +1987,13 @@ def _check_auto_keeps(
 
 
 def _check_receipt_models(
-    receipt: Receipt, *, audit: Audit | None, scene: Scene | None, roles: Roles | None, transcript: Transcript | None
+    receipt: Receipt,
+    *,
+    audit: Audit | None,
+    scene: Scene | None,
+    roles: Roles | None,
+    transcript: Transcript | None,
+    cost_path: Path | None = None,
 ) -> None:
     """The receipt names the models that actually ran (AGENTS rule 9; PRE-A: a YuNet fallback is never sealed as
     EgoBlur): each stage's model in ``models`` and the audit's ``auditor`` match the job file that recorded it."""
@@ -1992,6 +2013,17 @@ def _check_receipt_models(
         )
     # AGENTS rule 9: the store claim covers every Meta model that ran (the auditor runs locally).
     stated = set(receipt.data_handling.store_by_model) | set(receipt.data_handling.no_store_param)
-    unstated = sorted({m for stage, m in receipt.models.items() if stage != "auditor"} - stated)
+    named = {m for stage, m in receipt.models.items() if stage != "auditor"}
+    if cost_path is not None:
+        # cost.jsonl is the independent record of what Meta was sent: each model it billed is named and stated.
+        billed = {
+            line.model
+            for line in read_cost_lines(cost_path)
+            if line.provider == "meta" and line.model is not None and not line.stage.startswith("budget:")
+        }
+        if unnamed := sorted(billed - set(receipt.models.values())):
+            raise ContractError(f"receipt.json models leaves out {unnamed}, which cost.jsonl shows ran")
+        named |= billed
+    unstated = sorted(named - stated)
     if unstated:
         raise ContractError(f"receipt.json data_handling says nothing about the store setting of {unstated}")

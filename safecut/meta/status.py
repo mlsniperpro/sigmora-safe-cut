@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -32,12 +34,22 @@ class StatusUnavailableError(RuntimeError):
     """The status endpoint couldn't be read or returned an unexpected shape."""
 
 
+_MAX_STATUS_BYTES = 64 * 1024
+
+
 async def fetch_status(
     http: httpx.AsyncClient, base_url: str, *, timeout_s: float = config.CONNECT_TIMEOUT_S
 ) -> MetaStatus:
+    """``timeout_s`` bounds the whole check (a dripping body included), and the body is at most 64 KiB."""
     try:
-        resp = await http.get(f"{base_url.rstrip('/')}/status", timeout=timeout_s)
-        resp.raise_for_status()
-        return MetaStatus.model_validate_json(resp.content)
-    except (httpx.HTTPError, ValidationError) as exc:
+        async with asyncio.timeout(timeout_s):
+            async with http.stream("GET", f"{base_url.rstrip('/')}/status", timeout=timeout_s) as resp:
+                resp.raise_for_status()
+                body = b""
+                async for chunk in resp.aiter_bytes():
+                    body += chunk
+                    if len(body) > _MAX_STATUS_BYTES:
+                        raise StatusUnavailableError("Meta status check failed: the body is over 64 KiB")
+        return MetaStatus.model_validate_json(body)
+    except (httpx.HTTPError, ValidationError, TimeoutError) as exc:
         raise StatusUnavailableError(f"Meta status check failed: {type(exc).__name__}") from exc

@@ -81,7 +81,8 @@ class CallSpec:
     policy: RetryPolicy
     timeout: httpx.Timeout
     lane: Lane = "other"
-    total_timeout_s: float | None = None
+    #: Every call has a deadline: a server dripping a body never holds a call (or its budget slot) forever.
+    total_timeout_s: float = config.DEFAULT_TOTAL_TIMEOUT_S
     #: False for best-effort helpers (the free token count): their failures say nothing about the
     #: endpoints that matter, so they neither open nor are refused by the circuit breaker.
     breaker: bool = True
@@ -124,7 +125,8 @@ class _ChatAccumulator:
         if self.rid is None and isinstance(chunk.get("id"), str):
             self.rid = cast(str, chunk["id"])
         self.usage = chunk.get("usage") or self.usage
-        for choice in cast(list[Any], chunk.get("choices") or []):
+        choices = chunk.get("choices")
+        for choice in cast(list[Any], choices if isinstance(choices, list) else []):
             if not isinstance(choice, Mapping):
                 continue
             choice_map = cast(Mapping[str, Any], choice)
