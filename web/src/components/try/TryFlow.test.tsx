@@ -295,6 +295,18 @@ describe("/try", () => {
     expect(start).toHaveFocus();
   });
 
+  it("Try again after a failed upload hands focus to Start, so a refused retry keeps it there", async () => {
+    const user = setup();
+    vi.spyOn(backend, "upload").mockRejectedValueOnce(new Error("stalled"));
+    await pickAndStart(user);
+    const retry = await screen.findByRole("button", { name: "Try again" });
+    backend.inject(/^POST \/v1\/jobs$/, "error-503-billing");
+    act(() => retry.focus());
+    await user.keyboard("{Enter}");
+    expect(await screen.findByText(COPY.billing)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Start" })).toHaveFocus());
+  });
+
   it("a daily-cap refusal whose retry_at has already passed leaves Start enabled", async () => {
     const user = setup();
     const original = backend.request.bind(backend);

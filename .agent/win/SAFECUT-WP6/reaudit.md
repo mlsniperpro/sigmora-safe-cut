@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 128d23b
+AUDITED_COMMIT: cd7913a
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -203,3 +203,15 @@ Fresh-clone README run also found: `pnpm typecheck` failed before any build (Nex
 | 1 | low | Regression from round 11 #2: mock `/jobs/result-*/result` said "240 of 12 frames checked" (the result's frames came from the sample, the job's from the 12-frame hero fixture) | fixed at the source: with sample media, result fixtures' jobs are built on the sample job, so job, result and media are one clip (and "Back to review" lands on it). mock-backend test checks both |
 | 2 | low | A refusal that disables Start on /try (401 on create, 429 daily cap or rate limit) still dropped focus to `<body>` | fixed: such a refusal takes focus itself (its alert box, which holds its actions). e2e with the `expired` mock code |
 | note | — | README's mock-code table lacked `open-weight` | added |
+
+## Round 13 (audited cd7913a by a Sonnet reviewer; fresh archive build; live build against a faked https API end to end; axe sweeps light and dark at 8 viewport sizes: 0 WCAG violations; each finding traced here; fixes in the next commit)
+
+0 critical, 0 high, 1 medium, 3 low. Round-12 fixes held: the refusal box doesn't re-fire on re-render and wins over the step effect's target only for blocking refusals.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | med | In a live build, hero and result captions on the storage host never loaded: a cross-origin `<track>` needs a `crossorigin` video (WCAG 1.2.2, §1.5) | fixed without making the videos depend on CORS: `useRemoteCaptions` fetches the WebVTT and attaches it as a blob URL, and same-origin paths are used as they are. A 403, non-WebVTT body or CORS failure leaves the video playing without captions. README notes the bucket needs CORS GET (WP5). Hook tests |
+| 2 | low | "Try again" after a failed upload unmounted its button, and a refused retry (non-blocking) left focus on `<body>` | fixed: focus moves to Start once the refusal clears. TryFlow test (fails without the fix) |
+| 3 | low | Mock mode put the 8 s sample video under fixtures with a different clip (12-frame plans), so the overlay covered the wrong places | fixed: the sample is swapped in only for a fixture with the sample's frame count; others keep their unreachable URL, so the player honestly says the video didn't load. README calls the fixtures state viewers whose dates are their own |
+| 4 | low | The landing "Try it" link was 39 px wide (§9 44×44) | fixed (`min-w-11`) |
+| note | — | `mediaUrl` accepted "/\t/evil.com", protocol-relative once the browser strips the tab | hardened: whitespace and control characters are rejected; api test |

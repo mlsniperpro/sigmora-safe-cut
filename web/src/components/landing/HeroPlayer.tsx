@@ -9,6 +9,7 @@ import { SAMPLE_MEDIA_BASE, getClient } from "@/lib/client";
 import type { DemoResponse } from "@/lib/contracts";
 import { SITE } from "@/lib/site";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
+import { useRemoteCaptions } from "@/hooks/useRemoteCaptions";
 import { useReportMode } from "../mode";
 import { PlayCircleIcon } from "../icons";
 
@@ -51,6 +52,7 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["au
 
   const src = demo ? (version === "raw" ? demo.job.prepared_url : demo.video_url) : undefined;
   const mock = isMockMode();
+  const captions = useRemoteCaptions(demo?.captions_url);
   // §1.4: the poster shows while loading and stays under the message if the video fails. Before
   // the first answer only mock mode knows it (the sample's); live mode shows the dark frame.
   const poster = demo?.poster_url ?? (mock ? `${SAMPLE_MEDIA_BASE}/poster.jpg` : null);
@@ -89,7 +91,7 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["au
             }}
             aria-label={version === "raw" ? "Raw footage of the demo clip" : "The demo clip after Safe Cut"}
           >
-            {demo.captions_url && <track kind="captions" src={demo.captions_url} srcLang="en" label="English" default />}
+            {captions && <track kind="captions" src={captions} srcLang="en" label="English" default />}
           </video>
         ) : (
           <div className="relative flex h-full items-center justify-center text-sm text-white/80">

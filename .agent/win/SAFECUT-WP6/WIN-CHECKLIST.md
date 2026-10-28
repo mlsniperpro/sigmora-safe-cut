@@ -151,3 +151,11 @@ Round 12 (fixes in the round-12 commit; details in `reaudit.md`):
 - [x] R12-1 (low) mock result job and result describe the same clip: mock-backend test
 - [x] R12-2 (low) a refusal that disables Start takes focus: e2e
 
+Round 13 (fixes in the round-13 commit; details in `reaudit.md`):
+
+- [x] R13-1 (med) cross-origin captions load as blob URLs, videos never depend on CORS: `useRemoteCaptions.test.ts`
+- [x] R13-2 (low) focus after a refused upload retry: TryFlow test
+- [x] R13-3 (low) sample media only under fixtures for the same clip
+- [x] R13-4 (low) landing Try it target 44 px wide
+- [x] R13-n media URLs reject whitespace/control characters: api test
+

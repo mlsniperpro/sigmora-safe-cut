@@ -21,7 +21,7 @@ With `NEXT_PUBLIC_SAFECUT_API` unset, every request goes to an **in-browser mock
 | `/` | Landing: the sample hero with the Raw / Safe Cut toggle |
 | `/try` | The whole flow: any access code, then pick any MP4/MOV (`public/sample/prepared.mp4` works) |
 | `/jobs/job-review-sample` | Review panel on the synthetic sample scene (playable video, keyframes) |
-| `/jobs/<fixture>` | Any job fixture in `mocks/`, e.g. `job-review-reentry`, `job-review-cafe`, `result-audit-failed`, `job-replay` (demo-mode banner), `job-failed-roles`, `error-404-expired` |
+| `/jobs/<fixture>` | Any job fixture in `mocks/`, e.g. `job-review-reentry`, `job-review-cafe`, `result-audit-failed`, `job-replay` (demo-mode banner), `job-failed-roles`, `error-404-expired`. These are state viewers: only the sample scene has a real clip, so their player says the video didn't load, and dates in them are the fixtures' own |
 | `/jobs/result-fixed/result` | Result page states: also `result-clean`, `result-unresolved`, `result-clean-yunet` |
 
 Access codes with scripted answers in mock mode (`MOCK_CODES`):
@@ -76,6 +76,8 @@ The `NEXT_PUBLIC_*` values are public and fixed at build time; no secret ever re
 ## Deploy
 
 Vercel builds `web/` on push (root directory `web`, framework Next.js, install `pnpm install --frozen-lockfile`). Don't deploy from a sandbox. The owner sets the custom domain and the variables above. Security headers (CSP, HSTS, nosniff, Permissions-Policy, `noindex` on job pages) are in `next.config.ts`.
+
+Captions on the hero and result videos are fetched from the storage host and attached as blob URLs (`src/hooks/useRemoteCaptions.ts`), so the media bucket needs CORS `GET` for the site's origin (WP5). Without it the videos still play, just without captions.
 
 ## Regenerating fixtures and sample media
 

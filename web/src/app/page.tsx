@@ -49,7 +49,7 @@ export default function Home() {
 
       <section aria-label="Next steps" className="mx-auto max-w-6xl px-4">
         <p className="flex flex-wrap gap-x-6 gap-y-2 rounded-xl border border-border bg-surface p-5 font-medium">
-          <Link href="/try" className="inline-flex min-h-11 items-center underline underline-offset-4 lg:min-h-8">
+          <Link href="/try" className="inline-flex min-h-11 min-w-11 items-center justify-center underline underline-offset-4 lg:min-h-8">
             Try it
           </Link>
           <a href={SITE.repoUrl} className="inline-flex min-h-11 items-center underline underline-offset-4 lg:min-h-8" rel="noopener noreferrer" target="_blank">

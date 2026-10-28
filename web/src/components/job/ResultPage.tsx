@@ -14,6 +14,7 @@ import { COPY, auditSummary, formatLocal } from "@/lib/copy";
 import { SITE, fromSigmora, keptQuery } from "@/lib/site";
 import { useCooldown } from "@/hooks/useCooldown";
 import { useJob } from "@/hooks/useJob";
+import { useRemoteCaptions } from "@/hooks/useRemoteCaptions";
 import { CheckIcon, WarningIcon } from "../icons";
 import { useMode, useReportMode } from "../mode";
 import { StageList } from "../StageList";
@@ -65,6 +66,7 @@ export function ResultPage() {
     keepMedia.current = false;
   }, [attempt]);
   const latest = result.kind === "ready" ? result.result : null;
+  const captions = useRemoteCaptions(latest?.captions_url);
   // An iframe fires no error event for HTTP failures, so a receipt that hasn't loaded in time counts
   // as failed (§5.4), after one refetch in case its signed URL had expired (§10.7).
   useEffect(() => {
@@ -199,7 +201,7 @@ export function ResultPage() {
               setMediaRefreshes((n) => n + 1);
             }}
           >
-            {r.captions_url && <track kind="captions" src={r.captions_url} srcLang="en" label="English" default />}
+            {captions && <track kind="captions" src={captions} srcLang="en" label="English" default />}
           </video>
         </div>
         <div className="flex flex-col gap-4">

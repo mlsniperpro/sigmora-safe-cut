@@ -108,6 +108,7 @@ export function TryFlow() {
 
   // A refusal that disables Start would drop focus to the page with it: the refusal takes it (WCAG 2.4.3).
   const refusalBox = useRef<HTMLDivElement>(null);
+  const startButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (refusal?.blockStart && step === "file") refusalBox.current?.focus();
   }, [refusal, step]);
@@ -293,6 +294,9 @@ export function TryFlow() {
     setJobId(null);
     setUploaded(false);
     setRefusal(null);
+    // Its button goes with the refusal: focus moves to Start (enabled again once the refusal has
+    // gone), the button the retry stands for, so a refusal of the retry leaves it there (WCAG 2.4.3).
+    requestAnimationFrame(() => startButton.current?.focus());
     await onStart();
   };
 
@@ -512,7 +516,7 @@ export function TryFlow() {
             {rightsError}
           </p>
           <div className="mt-6 flex justify-end">
-            <button type="button" className={btn.primary} disabled={startDisabled} aria-disabled={busy || undefined} onClick={() => void onStart()}>
+            <button ref={startButton} type="button" className={btn.primary} disabled={startDisabled} aria-disabled={busy || undefined} onClick={() => void onStart()}>
               Start
             </button>
           </div>

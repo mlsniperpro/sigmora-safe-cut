@@ -16,8 +16,9 @@ const isoTime = z.iso.datetime({ offset: true });
  */
 export const mediaUrl = z
   .string()
-  // Browsers read a backslash as "/", so "/" + backslash + "evil.com" would be protocol-relative: no backslashes anywhere.
-  .refine((u) => !u.includes("\\") && (u.startsWith("https://") || /^\/(?!\/)/.test(u)), { message: "must be an https URL or a same-origin path" });
+  // Browsers read a backslash as "/" and strip tabs and newlines, so "/" + backslash (or a tab) +
+  // "/evil.com" would be protocol-relative: no backslashes, whitespace or control characters anywhere.
+  .refine((u) => !/[\\\s\u0000-\u001f\u007f]/.test(u) && (u.startsWith("https://") || /^\/(?!\/)/.test(u)), { message: "must be an https URL or a same-origin path" });
 /** The presigned upload URL; the mock backend's `mock://` scheme is accepted only in mock mode's own responses. */
 const uploadUrl = z.string().refine((u) => u.startsWith("https://") || u.startsWith("mock://"), { message: "must be an https URL" });
 

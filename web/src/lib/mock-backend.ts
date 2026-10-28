@@ -348,12 +348,13 @@ export class MockBackend implements Transport {
     if (!(id in MOCK_LOADERS)) return null;
     const data = (await this.fixture(id as MockName)) as JobResponse & { status?: unknown };
     if (typeof data !== "object" || data === null || typeof data.status !== "string" || !("deletes_at" in data)) return null;
-    if ("receipt_html_url" in data) return this.adopt(id, await this.doneJobFor(id, data as unknown as { audit: unknown }));
-    return this.adopt(id, jobResponseSchema.parse(data));
+    const sampleFrames = this.sample ? (jobResponseSchema.parse(await this.fixture(this.sample.job)).job?.frames ?? null) : null;
+    if ("receipt_html_url" in data) return this.adopt(id, await this.doneJobFor(id, data as unknown as { audit: unknown }), sampleFrames);
+    return this.adopt(id, jobResponseSchema.parse(data), sampleFrames);
   }
 
-  private adopt(id: string, data: JobResponse): MockJob {
-    const job: MockJob = { data: { ...this.withSampleMedia(data), deletes_at: this.deletesAt() }, code: null, timeline: null, edits: new Map(), deleted: false };
+  private adopt(id: string, data: JobResponse, sampleFrames: number | null): MockJob {
+    const job: MockJob = { data: { ...this.withSampleMedia(data, sampleFrames), deletes_at: this.deletesAt() }, code: null, timeline: null, edits: new Map(), deleted: false };
     this.jobs.set(id, job);
     return job;
   }
@@ -376,8 +377,13 @@ export class MockBackend implements Transport {
     };
   }
 
-  private withSampleMedia(data: JobResponse): JobResponse {
-    if (!this.sample || !data.job?.prepared_url?.startsWith("https://example.invalid/")) return data;
+  /**
+   * Points a fixture at the sample video only when it describes that clip (same frame count):
+   * another fixture's plan over the sample would cover the wrong things, so it keeps its
+   * unreachable URL and the player says the video didn't load.
+   */
+  private withSampleMedia(data: JobResponse, sampleFrames: number | null): JobResponse {
+    if (!this.sample || !data.job?.prepared_url?.startsWith("https://example.invalid/") || data.job.frames !== sampleFrames) return data;
     const base = this.sample.mediaBase;
     return { ...data, job: { ...data.job, prepared_url: `${base}/prepared.mp4` } };
   }
