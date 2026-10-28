@@ -503,7 +503,11 @@ def test_job_id_must_match_the_directory_name(tmp_path: Path) -> None:
         ("roles.json", lambda d: d["missed"][0].update({"track_ids": ["envelope:9"]}), "unknown track envelope:9"),
         ("plan.json", lambda d: d["frames"]["5"][0].update({"item_id": "i_99"}), "unknown item i_99"),
         ("decisions.json", lambda d: d["items"][4].update({"box": [1250, 200, 1300, 280]}), "exceeds"),
-        ("decisions.json", lambda d: d["items"][4].update({"first": 12, "last": 13}), "job.frames"),
+        (
+            "decisions.json",
+            lambda d: d["items"][4].update({"first": 12, "last": 13, "evidence_frames": [12]}),
+            "job.frames",
+        ),
         ("decisions.json", lambda d: d["items"][4].update({"last": 12}), "job.frames"),
         ("decisions.json", lambda d: d["items"][0].update({"evidence_frames": [1, 12]}), "job.frames"),
         (

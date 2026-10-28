@@ -415,3 +415,59 @@ async def test_a_baseten_client_never_defaults_to_the_meta_key(tmp_path: Path) -
     with pytest.raises(ConfigError):
         MetaClient(without, job_id="j", caller=Caller.local(), ledger=LocalLedger(), cost_path=tmp_path / "c.jsonl",
                    provider="baseten")  # fmt: skip
+
+
+# --- audit #34 ----------------------------------------------------------------------------------------------
+
+
+def test_a_flagged_leak_needs_its_through_item_rendered_solid(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)  # i_3 (the screen) is pixelate in plan.json
+    leak = {"frame": 3, "box": [900, 400, 1000, 500], "kind": "text", "detector": "redteam", "patched_item": "i_3",
+            "flag": "redaction_too_weak", "through_item": "i_3"}  # fmt: skip
+    _edit(job_dir, "audit.json", lambda d: d["leaks"].append(leak))
+    with pytest.raises(c.ContractError, match=r"i_3 was read through but isn't solid on frames \[1, 2, 3, 4, 5\]"):
+        c.validate_job_dir(job_dir)
+
+    def solid(d: Any) -> None:
+        for entries in d["frames"].values():
+            for entry in entries:
+                if entry["item_id"] == "i_3":
+                    entry.update({"style": "solid", "grid": None})
+
+    _edit(job_dir, "plan.json", solid)
+    assert "audit.json" in c.validate_job_dir(job_dir)
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ({"style": "pixelate"}, "solid and decided by policy"),
+        ({"decided_by": "creator"}, "solid and decided by policy"),
+        ({"evidence_frames": []}, "one evidence frame inside first..last"),
+        ({"evidence_frames": [0]}, "one evidence frame inside first..last"),
+    ],
+)
+def test_an_audit_patch_follows_its_spec_row(change: dict[str, Any], message: str) -> None:
+    items = json.loads((EXAMPLE / "decisions.json").read_text())["items"]
+    patch = next(i for i in items if i["item_id"] == "p_1")
+    with pytest.raises(ValueError, match=message):
+        c.DecisionItem.model_validate(patch | change)
+
+
+def test_a_publishable_audit_has_its_red_team_frames(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "audit.json", lambda d: d.update({"redteam": [], "leaks": []}))
+    with pytest.raises(c.ContractError, match="red-team entries on 0 frames; 1 per second needs 1"):
+        c.validate_job_dir(job_dir)
+
+
+async def test_a_body_json_cant_carry_is_refused_before_any_charge(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter
+) -> None:
+    h = make_harness()
+    route = mock_api.post("/thing").mock(return_value=httpx.Response(200, json={}))
+    for body in ({"x": float("nan")}, {"x": {1, 2}}, {"x": "\udcff"}):
+        with pytest.raises(MetaBadRequest, match="can't be sent as JSON"):
+            await h.client.request("POST", "thing", _free_spec(), meter=lambda _: ({}, 0.0), json_body=body)
+    assert route.call_count == 0
+    assert h.costs() == []

@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import functools
+import json
 import logging
 import random
 import time
@@ -29,6 +30,7 @@ from safecut.contracts import CostLine, append_cost_line, now_utc
 from safecut.meta.budget import Caller, CapLimit, Ledger, job_limit
 from safecut.meta.errors import (
     BudgetExceeded,
+    MetaBadRequest,
     MetaConfigError,
     MetaError,
     MetaIncomplete,
@@ -245,6 +247,15 @@ _NEVER_SENT = (
     httpx.UnsupportedProtocol,
     httpx.LocalProtocolError,  # h11 refused to write the request (e.g. a malformed header)
 )
+
+
+def _json_ready(payload: Any) -> None:
+    """Refuse a body JSON can't carry (NaN, a set, a lone surrogate) before any reservation: httpx would fail
+    to encode it only after the attempt was marked sent, and bill a request that never left."""
+    try:
+        json.dumps(payload, allow_nan=False, ensure_ascii=False).encode()  # as httpx encodes it
+    except (TypeError, ValueError) as exc:
+        raise MetaBadRequest(f"request body can't be sent as JSON: {type(exc).__name__}") from exc
 
 
 def _transport_failure(exc: httpx.TransportError) -> _AttemptFailed:
@@ -642,6 +653,8 @@ class MetaClient:
     ) -> CallResult:
         """One non-streamed call with retries. The response body must be JSON (or empty on DELETE)."""
         payload: Any = json_body
+        if payload is not None:
+            _json_ready(payload)
         model: Any = cast(Mapping[str, Any], json_body).get("model") if isinstance(json_body, Mapping) else None
         if isinstance(model, str):
             config.ensure_standard_model(model)
@@ -707,6 +720,7 @@ class MetaClient:
         """
         guard_body(body, store_param=spec.store_param)
         payload = dict(body) | {"stream": True}
+        _json_ready(payload)
 
         async def attempt(mark_sent: Callable[[], None]) -> _Attempt:
             events: list[dict[str, Any]] = []
@@ -774,6 +788,7 @@ class MetaClient:
             raise ValueError("request body has no model")
         config.ensure_standard_model(model)
         payload = dict(body) | {"stream": True, "stream_options": {"include_usage": True}}
+        _json_ready(payload)
 
         async def attempt(mark_sent: Callable[[], None]) -> _Attempt:
             started = self._clock()

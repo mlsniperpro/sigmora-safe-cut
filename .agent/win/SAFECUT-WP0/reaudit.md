@@ -308,3 +308,13 @@ Tests are in tests/test_audit24.py (the audit #33 section).
   Unrelated unreadable items in an otherwise documented listing still never block cleanup (test_a_listing_that_hides_our_name_keeps_the_orphan_open ×4)
 - M2 a `MetaClient(provider="baseten")` built without `api_key` defaulted to the Meta key, and to the Meta base URL. Only `open_weight_client` passed the right ones. Fixed: the defaults follow the provider, so a Baseten client takes `BASETEN_API_KEY` (or refuses without it) and the Baseten URL (test_a_baseten_client_never_defaults_to_the_meta_key)
 - L3 `.gitignore` lacked PRE-A §12's `*.jit`, `*.zip`, `*.tar.gz` and `/models/` (EgoBlur Gen 2 weights, O8 archives). Added; no tracked file is newly ignored
+
+## Audit 34 (independent Sonnet reviewer, launched at 8f6c12b, reviewed fe0ff7b): 0 critical, 0 high, 2 medium, 2 low. NOT CLEAN; all verified and fixed
+Tests are in tests/test_audit24.py (the audit #34 section) unless named.
+- M1 a flagged leak counted as fixed while its `through_item` was still a mosaic. redteam.md: the item is re-rendered solid, and WP3's guard reads the flag on every re-plan. Also, audit patches weren't held to PRE-A §12's row (`style: "solid"`, `decided_by: "policy"`, one evidence frame). Fixed:
+  - a flagged leak that isn't unresolved needs its `through_item` solid on every `plan.json` frame;
+  - `DecisionItem` requires an audit patch to be solid and policy-decided, with exactly one evidence frame inside `first..last`.
+  test_contracts' span-move case now moves its evidence frame too (test_a_flagged_leak_needs_its_through_item_rendered_solid, test_an_audit_patch_follows_its_spec_row ×4)
+- M2 a publishable audit could have no red-team entries at all. redteam.md: 1 frame per second, one entry per frame sent, never silently skipped. Fixed: with `unresolved == 0`, `redteam` must cover at least `max(1, job.frames // sample_step)` distinct frames. That is the 1 fps floor whatever the sampling phase, so a valid writer is never refused (test_a_publishable_audit_has_its_red_team_frames)
+- L3 a body JSON can't carry (NaN, a set, a lone surrogate) failed inside httpx after `mark_sent`, so it was billed as an estimated charge. Fixed: `request`, `stream` and `stream_chat` encode the payload as httpx does before any reservation, and refuse it as `MetaBadRequest` (test_a_body_json_cant_carry_is_refused_before_any_charge)
+- L4 ARCHITECTURE §3.9's receipt example elided `audit` and `items`. It now shows the `ReceiptAudit` fields and the item-plus-thumbnail shape. §3 lists the new rules

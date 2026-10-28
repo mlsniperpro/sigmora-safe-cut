@@ -418,6 +418,11 @@ class DecisionItem(Contract):
                 raise ValueError(f"{self.item_id}: an audit patch needs box, first and last")
             if self.track_ids or self.decision != "hide" or not self.locked or self.audit_label is None:
                 raise ValueError(f"{self.item_id}: an audit patch is a locked hide with no tracks and a label")
+            # PRE-A §12: a policy decision, solid, with one evidence frame (the finding's) inside its span.
+            if self.style != "solid" or self.decided_by != "policy":
+                raise ValueError(f"{self.item_id}: an audit patch is solid and decided by policy")
+            if len(self.evidence_frames) != 1 or not self.first <= self.evidence_frames[0] <= self.last:
+                raise ValueError(f"{self.item_id}: an audit patch has one evidence frame inside first..last")
         else:
             if self.box is not None or self.first is not None or self.last is not None:
                 raise ValueError(f"{self.item_id}: box/first/last are only for audit patches")
@@ -1037,6 +1042,14 @@ def _check_audit(audit: Audit, job: Job) -> None:
         )
     if audit.unresolved == 0 and audit.passes == 0:
         raise ContractError("audit.json: a publishable audit ran no red-team pass")
+    # redteam.md: one red-team entry per frame sent, at least 1 per second (sample_step frames), and frames are
+    # never silently skipped. Whatever the sampling phase, that is at least frames // sample_step distinct frames.
+    sampled = len({entry.frame for entry in audit.redteam})
+    floor = max(1, job.frames // audit.sample_step)
+    if audit.unresolved == 0 and sampled < floor:
+        raise ContractError(
+            f"audit.json: a publishable audit has red-team entries on {sampled} frames; 1 per second needs {floor}"
+        )
     for spot in audit.spots:
         where = f"audit.json spot {spot.spot_id}"
         _check_frame(spot.first, job, where)
@@ -1220,6 +1233,18 @@ def _regions(item: DecisionItem, frame: int, plan: Plan | None) -> list[tuple[in
     return planned or ([item.box] if item.box is not None else [])
 
 
+def _check_solid(through: DecisionItem | None, plan: Plan | None, where: str) -> None:
+    """redteam.md: the item a model read through is re-rendered solid (the guard reads the flag on every
+    re-plan), because a model that read through one mosaic can read through the next."""
+    if through is None or plan is None:
+        return
+    soft = sorted(f for f, es in plan.frames.items() for e in es if e.item_id == through.item_id and e.style != "solid")
+    if soft:
+        raise ContractError(
+            f"audit.json {where}: {through.item_id} was read through but isn't solid on frames {soft[:5]}"
+        )
+
+
 def _check_patches(audit: Audit, decisions: Decisions, tracks: Tracks | None, plan: Plan | None) -> None:
     """A leak's ``patched_item`` and ``through_item``, and a spot's ``covered_by``, are hidden items that hide
     the leak's (or spot's) frames and region: an audit patch's box contains the leak's box; a track item's
@@ -1266,6 +1291,8 @@ def _check_patches(audit: Audit, decisions: Decisions, tracks: Tracks | None, pl
                 f"audit.json {where} patch: {patch.item_id} is neither an audit patch nor the flagged through_item"
             )
         check(leak.through_item, {leak.frame: leak.box}, f"{where} through_item", contain=False)
+        if not leak.unresolved:
+            _check_solid(by_id.get(leak.through_item or ""), plan, where)
     for spot in audit.spots:
         where = f"spot {spot.spot_id} cover"
         check(spot.covered_by, spot.boxes, where, contain=True)  # cover_spot's patch is the union of the boxes
