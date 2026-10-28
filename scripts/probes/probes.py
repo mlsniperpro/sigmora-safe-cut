@@ -888,6 +888,9 @@ async def run(
             results[name] = await PROBES[name](probe)
         except Exception as exc:
             results[name] = {"error": f"{type(exc).__name__}: {exc}"}
+        except BaseException:
+            _set_aside(out, staged)  # Ctrl-C or a cancel after paid calls: the raw files stay findable
+            raise
         finally:
             try:
                 results.setdefault(name, {})["uploads_deleted"] = await files.delete_all()
@@ -904,6 +907,23 @@ def _stamp() -> str:
 
 def _staging(out: Path) -> Path:
     return out / f".run-{_stamp()}-{os.getpid()}"
+
+
+def _aside(out: Path, stem: str, suffix: str = "") -> Path:
+    """``out/<stem>-<ts><suffix>``, numbered when a run in the same second already took it."""
+    stamp = _stamp()
+    path = out / f"{stem}-{stamp}{suffix}"
+    n = 2
+    while path.exists():
+        path = out / f"{stem}-{stamp}-{n}{suffix}"
+        n += 1
+    return path
+
+
+def _set_aside(out: Path, staged: Path) -> None:
+    """Move a run's staged raw files to ``failed-<ts>/``, beside the recorded results (never over them)."""
+    if staged.is_dir():
+        staged.rename(_aside(out, "failed"))
 
 
 def _errors(value: object) -> int:
@@ -925,7 +945,7 @@ def _worse(result: Summary, recorded: Path) -> bool:
         old: object = json.loads(recorded.read_bytes())
     except (OSError, ValueError):
         return True
-    if isinstance(old, dict) and "error" in cast(dict[str, Any], old):
+    if isinstance(old, dict) and set(cast(dict[str, Any], old)) <= {"error", "uploads_deleted"}:
         return False  # a recorded outright failure holds no paid data: any run that got further replaces it
     return _errors(result) > _errors(cast(object, old))
 
@@ -941,10 +961,9 @@ def save_summary(out: Path, result: Summary, *, staged: Path | None = None) -> P
     staged = staged if staged is not None and staged.is_dir() else None
     if path.exists() and _worse(result, path):
         # A run that failed more (in-band per concept, call or check, or outright) never replaces a recorded one.
-        stamp = _stamp()
-        path = out / f"summary.failed-{stamp}.json"
+        path = _aside(out, "summary.failed", ".json")
         if staged is not None:
-            staged.rename(out / f"failed-{stamp}")
+            _set_aside(out, staged)
     elif staged is not None:
         for raw in staged.iterdir():
             os.replace(raw, out / raw.name)
@@ -970,6 +989,9 @@ async def _run_h(settings: Settings, *, job_id: str, out: Path, ledger: LocalLed
             result = await probe_h(settings, client, staged)
         except Exception as exc:
             result = {"error": f"{type(exc).__name__}: {exc}"}
+        except BaseException:
+            _set_aside(out, staged)
+            raise
         finally:
             await client.aclose()
     save_summary(out, result, staged=staged)

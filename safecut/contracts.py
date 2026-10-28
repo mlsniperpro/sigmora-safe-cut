@@ -22,6 +22,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal, cast, overload
 
+import numpy as np
+from numpy.typing import NDArray
 from pydantic import (
     AfterValidator,
     BaseModel,
@@ -29,6 +31,7 @@ from pydantic import (
     Field,
     NonNegativeInt,
     PositiveInt,
+    PrivateAttr,
     RootModel,
     StrictBool,
     ValidationError,
@@ -101,7 +104,10 @@ SHA256_PATTERN = r"^[0-9a-f]{64}$"
 def _utc_datetime(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("timestamps must carry a timezone (ISO 8601 UTC, '…Z')")
-    return value.astimezone(UTC)
+    try:
+        return value.astimezone(UTC)
+    except OverflowError as exc:  # year 1 or 9999 shifted past datetime's range
+        raise ValueError("timestamp is outside the representable range in UTC") from exc
 
 
 UtcDatetime = Annotated[datetime, AfterValidator(_utc_datetime)]
@@ -117,46 +123,77 @@ class Contract(BaseModel):
 FrameSide = Annotated[int, Field(ge=1, le=8192)]
 
 
+class _Runs:
+    """A derived cache on a model: it never makes two otherwise equal models unequal (pydantic compares private
+    attributes, and a numpy array has no single truth value)."""
+
+    __slots__ = ("array",)
+
+    def __init__(self, array: NDArray[np.int64]) -> None:
+        self.array = array
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, _Runs)
+
+    __hash__ = None  # pyright: ignore[reportAssignmentType] -- mutable cache holder, deliberately unhashable
+
+
 class Rle(Contract):
     """A frame-sized COCO compressed RLE mask (``size`` = the prepared clip's ``[H, W]``)."""
 
     size: tuple[FrameSide, FrameSide]
     counts: str = Field(min_length=1)
+    #: The decoded runs, parsed once here: the plan checks read them per entry (a 60 s clip has ~20k masks).
+    _runs: _Runs | None = PrivateAttr(default=None)
 
     @model_validator(mode="after")
     def _covers_the_frame(self) -> Rle:
         # A box-sized mask labelled frame-sized decodes silently into the top-left corner (pycocotools treats a
         # run deficit as background), leaving the item exposed: its runs must cover exactly H x W pixels.
-        runs = rle_runs(self.counts)
-        if any(r < 0 for r in runs) or sum(runs) != self.size[0] * self.size[1]:
-            raise ValueError(f"mask runs cover {sum(runs)} pixels, not the {self.size[0]}x{self.size[1]} frame")
+        runs = _runs_array(self.counts)
+        pixels = self.size[0] * self.size[1]
+        # Each run within 0..H x W first, so the int64 sum can't wrap round to a matching total.
+        if bool(((runs < 0) | (runs > pixels)).any()) or int(runs.sum()) != pixels:
+            raise ValueError(f"mask runs cover {int(runs.sum())} pixels, not the {self.size[0]}x{self.size[1]} frame")
+        self._runs = _Runs(runs)
         return self
+
+    def runs(self) -> NDArray[np.int64]:
+        return self._runs.array if self._runs is not None else _runs_array(self.counts)
 
 
 def rle_runs(counts: str) -> list[int]:
     """The run lengths of a COCO compressed RLE string (cocoapi ``rleFrString``)."""
-    runs: list[int] = []
-    p = 0
-    while p < len(counts):
-        x = k = 0
-        more = True
-        while more:
-            if p >= len(counts):
-                raise ValueError("mask counts end inside a run")
-            c = ord(counts[p]) - 48
-            if not 0 <= c < 64:
-                raise ValueError("mask counts aren't COCO compressed RLE")
-            if k > 12:  # a real run needs at most 4 groups; a runaway continuation is garbage (and slow)
-                raise ValueError("mask counts aren't COCO compressed RLE")
-            x |= (c & 0x1F) << (5 * k)
-            more = bool(c & 0x20)
-            p += 1
-            k += 1
-            if not more and c & 0x10:
-                x |= -1 << (5 * k)
-        if len(runs) > 2:
-            x += runs[-2]
-        runs.append(x)
+    return [int(r) for r in _runs_array(counts)]
+
+
+def _runs_array(counts: str) -> NDArray[np.int64]:
+    """``rle_runs``, vectorised: each run is 5-bit groups, low first, 0x20 continuing and 0x10 the sign of the
+    last; from the third run on, each is a delta on the run two back (cocoapi ``rleFrString``)."""
+    if not counts.isascii():
+        raise ValueError("mask counts aren't COCO compressed RLE")
+    c = np.frombuffer(counts.encode("ascii"), dtype=np.uint8).astype(np.int64) - 48
+    if c.size == 0:
+        return np.zeros(0, dtype=np.int64)
+    if bool(((c < 0) | (c >= 64)).any()):
+        raise ValueError("mask counts aren't COCO compressed RLE")
+    more = (c & 0x20) != 0
+    ends = np.flatnonzero(~more)
+    tail = c.size - (int(ends[-1]) + 1 if ends.size else 0)
+    starts = np.concatenate(([0], ends[:-1] + 1)).astype(np.int64)
+    lengths = ends - starts + 1
+    # A real run needs at most 6 groups (8192 x 8192 < 2^30); 12 keeps int64 exact, and longer is garbage.
+    if tail > 12 or (lengths.size and int(lengths.max()) > 12):
+        raise ValueError("mask counts aren't COCO compressed RLE")
+    if tail:
+        raise ValueError("mask counts end inside a run")
+    k = np.arange(c.size, dtype=np.int64) - np.repeat(starts, lengths)
+    x = np.add.reduceat((c & 0x1F) << (5 * k), starts)
+    sign = (c[ends] & 0x10) != 0
+    x[sign] -= np.left_shift(np.int64(1), 5 * lengths[sign])
+    runs = x.copy()
+    runs[1::2] = np.cumsum(x[1::2])
+    runs[2::2] = np.cumsum(x[2::2])
     return runs
 
 
@@ -463,6 +500,9 @@ class DecisionItem(Contract):
             raise ValueError(f"{self.item_id}: a {self.kind} item is always solid, never pixelate")
         if self.kind == "child" and (self.decision != "hide" or not self.locked):
             raise ValueError(f"{self.item_id}: children are always hidden and locked")
+        if (self.origin == "audit_patch") != self.item_id.startswith("p_"):
+            # PRE-A §12: audit patches are `p_<n>`, tracked items never are; WP3 and WP4 key off the prefix.
+            raise ValueError(f"{self.item_id}: an item id starts with p_ exactly when it is an audit patch")
         if self.origin == "audit_patch":
             if self.box is None or self.first is None or self.last is None or self.last < self.first:
                 raise ValueError(f"{self.item_id}: an audit patch needs box, first and last")
@@ -1220,6 +1260,12 @@ def _check_baseten_sent(audit: Audit | None, job: Job, cost_path: Path) -> None:
 def _check_egoblur_ran(audit: Audit) -> None:
     if audit.egoblur.faces is None and any(leak.detector == "egoblur" for leak in audit.leaks):
         raise ContractError("audit.json: an egoblur leak, but egoblur.faces is null (the detector never ran)")
+    # `plates: null` means no plate detector ran (the YuNet fallback, PRE-A §12), so it found no plate. A count of
+    # 0 is not refused: PRE-A doesn't say whether the counts are per pass, and a later pass may find none.
+    if audit.egoblur.plates is None and any(
+        leak.detector == "egoblur" and leak.kind == "plate" for leak in audit.leaks
+    ):
+        raise ContractError("audit.json: an egoblur plate leak, but egoblur.plates is null (no plate detector ran)")
     if audit.egoblur.faces is None and audit.frames_scanned:
         # PRE-A §12: a detector that never ran reports `faces: null` and frames_scanned 0 (its frames unresolved).
         raise ContractError("audit.json: egoblur.faces is null (the detector never ran), so frames_scanned is 0")
@@ -1305,6 +1351,14 @@ def _check_receipt(
             f"receipt.json: responses_delete_requested {receipt.data_handling.responses_delete_requested}"
             f" != {responses.requested} requested in responses.json"
         )
+    if responses is not None and responses.root:
+        # PRE-A §10.4: responses.json holds entries only when SAM ran without `store: false`, so Meta kept them.
+        sam_model = receipt.models.get("sam")
+        if sam_model is None or receipt.data_handling.store_by_model.get(sam_model) is not True:
+            raise ContractError(
+                f"receipt.json: responses.json holds {len(responses.root)} SAM responses Meta kept, but"
+                f" store_by_model says {sam_model!r} stored nothing"
+            )
     if cost_path.exists():
         _check_receipt_cost(receipt, job, cost_path)
 
@@ -1519,17 +1573,44 @@ def _held(entries: list[PlanEntry], fills: list[Box], box: Box, padded: Box) -> 
     ) or any(_contains(fill, box) for fill in fills)
 
 
-def _mask_area(mask: Rle, box: Box) -> int:
-    """Foreground pixels of a column-major COCO RLE mask inside ``box``."""
+def _mask_stats(mask: Rle, box: Box) -> tuple[int, Box | None]:
+    """A column-major COCO RLE mask's foreground inside ``box``: its pixel count, and the extent of those
+    pixels as ``(x_min, y_min, x_max, y_max)`` (inclusive), or None when there are none. Vectorised per column
+    of the box, so it costs O(width x log runs), whatever the mask's size."""
+    runs = mask.runs()
     height = mask.size[0]
     x1, y1, x2, y2 = box
-    total, start = 0, 0
-    for i, run in enumerate(rle_runs(mask.counts)):
-        if i % 2 and run:
-            for col in range(max(start // height, x1), min((start + run - 1) // height, x2 - 1) + 1):
-                total += max(0, min(start + run, col * height + y2) - max(start, col * height + y1))
-        start += run
-    return total
+    ends = np.cumsum(runs)
+    starts = ends - runs
+    fg = np.zeros(runs.size, dtype=bool)
+    fg[1::2] = True
+    fg_runs = np.where(fg, runs, 0)
+    fg_before = np.cumsum(fg_runs) - fg_runs  # foreground pixels in the runs before each run
+    last = runs.size - 1
+
+    def fg_below(p: NDArray[np.int64]) -> NDArray[np.int64]:  # foreground pixels at positions < p
+        j = np.minimum(np.searchsorted(ends, p, side="right"), last)
+        return np.where(p >= ends[-1], fg_runs.sum(), fg_before[j] + np.where(fg[j], p - starts[j], 0))
+
+    cols = np.arange(x1, x2, dtype=np.int64)
+    lo, hi = cols * height + y1, cols * height + y2
+    counts = fg_below(hi) - fg_below(lo)
+    hit = counts > 0
+    if not bool(hit.any()):
+        return 0, None
+    cols, lo, hi = cols[hit], lo[hit], hi[hit]
+    solid = np.flatnonzero(fg & (runs > 0))  # the foreground runs that hold pixels
+    j = np.searchsorted(ends, lo, side="right")
+    first = np.where(fg[j], lo, starts[solid[np.minimum(np.searchsorted(solid, j), solid.size - 1)]])
+    j = np.searchsorted(ends, hi - 1, side="right")
+    final = np.where(fg[j], hi - 1, ends[solid[np.maximum(np.searchsorted(solid, j) - 1, 0)]] - 1)
+    extent = (int(cols[0]), int((first - cols * height).min()), int(cols[-1]), int((final - cols * height).max()))
+    return int(counts.sum()), extent
+
+
+def _mask_area(mask: Rle, box: Box) -> int:
+    """Foreground pixels of a column-major COCO RLE mask inside ``box``."""
+    return _mask_stats(mask, box)[0]
 
 
 def _grow(box: Box, px: int, job: Job) -> Box:
@@ -1539,26 +1620,14 @@ def _grow(box: Box, px: int, job: Job) -> Box:
 def _mask_spans(mask: Rle, box: Box, share: float = 0.8) -> bool:
     """Whether a COCO RLE mask (column-major, runs alternating background/foreground) has foreground inside
     ``box`` spanning at least ``share`` of its width and height: one stray pixel hides nothing."""
-    height = mask.size[0]
     x1, y1, x2, y2 = box
-    xs: list[int] = []
-    ys: list[int] = []
-    start = 0
-    for i, run in enumerate(rle_runs(mask.counts)):
-        if i % 2 and run:
-            for col in range(max(start // height, x1), min((start + run - 1) // height, x2 - 1) + 1):
-                lo = max(start, col * height + y1)
-                hi = min(start + run, col * height + y2)
-                if lo < hi:
-                    xs.append(col)
-                    ys += [lo - col * height, hi - 1 - col * height]
-        start += run
-    if not xs:
+    area, extent = _mask_stats(mask, box)
+    if extent is None:
         return False
-    spans = max(xs) - min(xs) + 1 >= share * (x2 - x1) and max(ys) - min(ys) + 1 >= share * (y2 - y1)
+    spans = extent[2] - extent[0] + 1 >= share * (x2 - x1) and extent[3] - extent[1] + 1 >= share * (y2 - y1)
     # A sparse or outline-only mask spans the box but hides nothing: it must also fill a quarter of it (an
     # inscribed ellipse fills 78 %, a SAM person mask about half its box).
-    return spans and _mask_area(mask, box) >= share * 0.3125 * (x2 - x1) * (y2 - y1)
+    return spans and area >= share * 0.3125 * (x2 - x1) * (y2 - y1)
 
 
 def _contains(outer: Box, inner: Box) -> bool:

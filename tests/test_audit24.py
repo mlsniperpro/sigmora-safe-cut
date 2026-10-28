@@ -14,9 +14,10 @@ from pathlib import Path
 from typing import Any, cast
 
 import httpx
+import numpy as np
 import pytest
 import respx
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 from safecut import config
 from safecut import contracts as c
@@ -1691,3 +1692,139 @@ async def test_a_diverted_run_keeps_the_recorded_raw_files(api: respx.MockRouter
     assert json.loads((failed / "asr.response.json").read_text()) == [1, 2]
     assert not list(out.glob(".run-*"))
     assert not list(out.glob(".*.tmp"))
+
+
+# --- audits #60 and #61 -------------------------------------------------------------------------------------
+
+
+def _jagged_mask(rng: np.random.Generator, height: int, width: int) -> tuple[np.ndarray, str]:
+    """A random blob with ragged edges and holes, as column-major COCO RLE."""
+    m = np.zeros((height, width), dtype=np.uint8)
+    for _ in range(int(rng.integers(1, 6 + 1))):
+        x, y = int(rng.integers(width)), int(rng.integers(height))
+        m[y : y + int(rng.integers(1, height + 1)), x : x + int(rng.integers(1, width + 1))] ^= 1
+    flat = m.flatten(order="F")
+    edges = np.flatnonzero(np.diff(flat.astype(np.int8))) + 1
+    runs = np.diff(np.concatenate([[0], edges, [flat.size]])).tolist()
+    return m, rle_string(([0] if flat[0] else []) + runs)
+
+
+def test_the_mask_checks_match_a_full_decode() -> None:
+    rng = np.random.default_rng(60)
+    for _ in range(300):
+        height, width = int(rng.integers(1, 60 + 1)), int(rng.integers(1, 60 + 1))
+        m, counts = _jagged_mask(rng, height, width)
+        rle = c.Rle(size=(height, width), counts=counts)
+        assert c.rle_runs(counts) == c.rle_runs(counts)  # parsed once, consistently
+        for _ in range(5):
+            x1, y1 = int(rng.integers(width)), int(rng.integers(height))
+            box = (x1, y1, int(rng.integers(x1 + 1, width + 1)), int(rng.integers(y1 + 1, height + 1)))
+            inside = m[box[1] : box[3], box[0] : box[2]]
+            area, extent = c._mask_stats(rle, box)  # pyright: ignore[reportPrivateUsage] -- the unit under test
+            assert area == int(inside.sum())
+            if area:
+                ys, xs = np.nonzero(inside)
+                want = (box[0] + int(xs.min()), box[1] + int(ys.min()), box[0] + int(xs.max()), box[1] + int(ys.max()))
+                assert extent == want
+            else:
+                assert extent is None
+
+
+def test_mask_heavy_plans_validate_fast() -> None:
+    rng = np.random.default_rng(61)
+    masks = [c.Rle(size=(720, 1280), counts=_jagged_mask(rng, 720, 1280)[1]) for _ in range(20)]
+    started = time.monotonic()
+    for i in range(2000):  # a dozen masked people over a few seconds of video
+        c._mask_spans(masks[i % 20], (100, 100, 400, 600))  # pyright: ignore[reportPrivateUsage] -- the unit under test
+    assert time.monotonic() - started < 5
+
+
+@pytest.mark.parametrize("stamp", ["0001-01-01T00:00:00+05:00", "9999-12-31T23:59:59-05:00"])
+def test_an_out_of_range_timestamp_is_a_contract_error(tmp_path: Path, stamp: str) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "job.json", lambda d: d.update({"created_at": stamp}))
+    with pytest.raises(c.ContractError, match="outside the representable range"):
+        c.validate_job_dir(job_dir)
+
+
+def test_an_egoblur_plate_leak_needs_a_plate_detector(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+
+    def change(d: Any) -> None:
+        d["egoblur"]["plates"] = None
+        d["leaks"][0]["kind"] = "plate"
+
+    _edit(job_dir, "audit.json", change)
+    with pytest.raises(c.ContractError, match=r"plate leak, but egoblur\.plates is null"):
+        c.validate_job_dir(job_dir)
+
+
+def test_only_an_audit_patch_is_a_p_item() -> None:
+    items = json.loads((EXAMPLE / "decisions.json").read_text())["items"]
+    patch = next(i for i in items if i.get("origin") == "audit_patch")
+    tracked = next(i for i in items if i.get("origin") != "audit_patch")
+    with pytest.raises(ValidationError, match="starts with p_ exactly when it is an audit patch"):
+        c.DecisionItem.model_validate(patch | {"item_id": "i_7"})
+    with pytest.raises(ValidationError, match="starts with p_ exactly when it is an audit patch"):
+        c.DecisionItem.model_validate(tracked | {"item_id": "p_7"})
+
+
+def test_kept_sam_responses_mean_sam_stored(tmp_path: Path) -> None:
+    job_dir = tmp_path / "j_example"
+    shutil.copytree(EXAMPLE, job_dir)
+    entry = {"response_id": "resp_1", "requested_at": "2026-10-27T10:05:00Z"}
+    (job_dir / "responses.json").write_text(json.dumps([entry]))
+
+    def reseal(store: bool) -> None:
+        data = json.loads((job_dir / "receipt.json").read_text())
+        data.pop("hash")
+        handling = data["data_handling"]
+        handling["responses_delete_requested"] = 1
+        handling["store_by_model"]["sam-3.1"] = store
+        handling["store"] = any(handling["store_by_model"].values())
+        (job_dir / "receipt.json").write_text(c.Receipt.seal(c.ReceiptBody.model_validate(data)).model_dump_json())
+
+    reseal(False)
+    with pytest.raises(c.ContractError, match="SAM responses Meta kept"):
+        c.validate_job_dir(job_dir)
+    reseal(True)
+    c.validate_job_dir(job_dir)
+
+
+def test_a_paid_summary_with_a_top_level_error_is_compared_not_replaced(tmp_path: Path) -> None:
+    recorded = {"four_frames": {"latency_s": 2.1}, "error": "grid check not measured: 1 of 3 tries failed"}
+    probes.save_summary(tmp_path, recorded)
+    worse = {"four_frames": {"latency_s": 2.0}, "eight_images": {"error": "x"}, "omit_effort": {"error": "y"}}
+    assert probes.save_summary(tmp_path, worse).name.startswith("summary.failed-")
+    assert json.loads((tmp_path / "summary.json").read_text()) == recorded
+
+
+def test_diversions_in_the_same_second_never_collide(tmp_path: Path) -> None:
+    probes.save_summary(tmp_path, {"ok": True})
+    names = set()
+    for _ in range(3):
+        staged = tmp_path / f".run-{len(names)}"
+        staged.mkdir()
+        (staged / "raw.json").write_text("{}")
+        names.add(probes.save_summary(tmp_path, {"error": "down"}, staged=staged).name)
+    assert len(names) == 3
+    assert len(list(tmp_path.glob("failed-*"))) == 3
+
+
+async def test_an_interrupted_run_sets_its_raw_files_aside(
+    api: respx.MockRouter,  # noqa: F811 -- pytest injects the imported fixture by name
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def interrupted(p: probes.Probe) -> probes.Summary:
+        p.save("paid.json", {"answer": 1})
+        raise KeyboardInterrupt
+
+    monkeypatch.setitem(probes.PROBES, "d", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        await probes.run(
+            ["d"], settings=Settings(model_api_key=SecretStr("k")), out_root=tmp_path, ledger=LocalLedger()
+        )
+    [aside] = list((tmp_path / "d").glob("failed-*"))
+    assert json.loads((aside / "paid.json").read_text()) == {"answer": 1}
+    assert not list((tmp_path / "d").glob(".run-*"))
