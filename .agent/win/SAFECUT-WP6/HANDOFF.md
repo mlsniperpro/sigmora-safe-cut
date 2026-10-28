@@ -55,6 +55,7 @@
 - Audit round 13 (on cd7913a): 1 medium (cross-origin captions) and 3 low, all fixed in the round-13 commit. On that commit: 815 tests (29 files), e2e 89/89.
 - Audit round 14 (on 0381440): 3 low, fixed in the round-14 commit (refresh race, dead player on a same-URL refetch, two touch targets). On that commit: 820 tests, e2e 89/89.
 - Audit round 15 (on 79b9b19): 3 low (two were regressions from round 14), fixed in the round-15 commit (late fresh URL, quiet flag leaking into resume, reduced-motion Play demo button). On that commit: 823 tests, e2e 93/93, `checks.sh` exit 0.
+- Self-found on 2026-10-28: the fixtures' absolute dates started to pass (a daily cap's `retry_at` of 2026-10-28T00:00Z made a JobPage test flaky; the "code isn't active yet" test would have flipped on Nov 5, and the mock demo would have done the same during judging). MockBackend now shifts every fixture timestamp by (now − 2026-10-27T10:00Z), so the fixtures behave as written on any date. The suite was run with the clock moved −1, +10, +40 and +400 days: all pass. 825 tests, e2e 93/93.
 - CLEAN_AUDITS_IN_A_ROW is 0. Two clean full audits are still needed, then a fresh break-it.md (fresh clone + FUZZ_RUNS=100000).
 
 ## Next steps, in order

@@ -15,7 +15,7 @@ const push = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push, replace: vi.fn() }), usePathname: () => "/try" }));
 
 let backend: MockBackend;
-let now = 0;
+let now = Date.now();
 
 /** A clip whose metadata reports `duration` seconds (jsdom has no media pipeline). */
 function clip(name = "street.mp4", type = "video/mp4", size = 1_000_000) {
@@ -32,7 +32,8 @@ function setup(latencyMs = 0) {
 
 let duration = 30;
 beforeEach(() => {
-  now = 0;
+  // The mock clock runs from the wall clock, as fixtures shift their times to it.
+  now = Date.now();
   duration = 30;
   push.mockReset();
   URL.createObjectURL = vi.fn(() => "blob:clip");
@@ -134,7 +135,7 @@ describe("/try", () => {
     expect(await screen.findByText("Working on your clip")).toBeInTheDocument();
     await waitFor(() => expect(backend.log.some((l) => l.path.endsWith("/start"))).toBe(true));
     expect(backend.log.find((l) => l.path === "/v1/jobs")?.body).toMatchObject({ code: "judge", content_type: "video/mp4", file_name: "street.mp4" });
-    now = 1_000_000;
+    now += 1_000_000;
     await waitFor(() => expect(push).toHaveBeenCalledWith("/jobs/j_mock1"), { timeout: 5_000 });
   });
 
@@ -167,7 +168,7 @@ describe("/try", () => {
     await pickAndStart(user);
     expect(await screen.findByText(COPY.unreachable)).toBeInTheDocument();
     expect(await screen.findByText("Working on your clip")).toBeInTheDocument();
-    now = 1_000_000;
+    now += 1_000_000;
     await waitFor(() => expect(push).toHaveBeenCalledWith("/jobs/j_mock1"), { timeout: 5_000 });
   });
 
@@ -337,7 +338,7 @@ describe("/try", () => {
     await waitFor(() => expect(backend.log.some((l) => l.path.endsWith("/start"))).toBe(true), { timeout: 3_000 });
     // The mock answers after its 30 ms latency: let the start land before moving the clock on.
     await new Promise((r) => setTimeout(r, 100));
-    now = 1_000_000;
+    now += 1_000_000;
     await waitFor(() => expect(push).toHaveBeenCalledWith("/jobs/j_mock1"), { timeout: 5_000 });
   }, 15_000);
 
@@ -356,7 +357,7 @@ describe("/try", () => {
     });
     await user.click(screen.getByRole("button", { name: "Cancel and delete" }));
     await user.click(within(await screen.findByRole("dialog", { name: "Delete this clip?" })).getByRole("button", { name: "Delete" }));
-    now = 1_000_000;
+    now += 1_000_000;
     expect(await screen.findByText(COPY.unexpected)).toBeInTheDocument();
     await waitFor(() => expect(push).toHaveBeenCalledWith("/jobs/j_mock1"), { timeout: 5_000 });
   });
@@ -428,7 +429,7 @@ describe("/try", () => {
     // No GET before the start is answered: a "created" answer would stop polling for good.
     const startIndex = backend.log.findIndex((l) => l.path.endsWith("/start"));
     expect(backend.log.slice(0, startIndex).some((l) => l.method === "GET")).toBe(false);
-    now = 1_000_000;
+    now += 1_000_000;
     await waitFor(() => expect(push).toHaveBeenCalledWith("/jobs/j_mock1"), { timeout: 5_000 });
   });
 

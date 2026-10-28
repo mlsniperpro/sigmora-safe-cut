@@ -81,6 +81,20 @@ export interface MockBackendOptions {
 
 const STORAGE_KEY = "safecut.mock-jobs";
 const DAY_MS = 24 * 60 * 60 * 1000;
+/**
+ * The moment the fixtures were written as of (their jobs' `created_at`). Every timestamp in a
+ * fixture moves by (now − this), so a cap's "tomorrow" stays ahead and a code that "isn't active
+ * yet" stays so however late the mock runs; the fixtures' own dates passed on 2026-10-28.
+ */
+export const FIXTURE_NOW = Date.parse("2026-10-27T10:00:00Z");
+const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
+
+function shiftTimes(value: unknown, by: number): unknown {
+  if (typeof value === "string") return ISO_INSTANT.test(value) ? new Date(Date.parse(value) + by).toISOString() : value;
+  if (Array.isArray(value)) return value.map((v) => shiftTimes(v, by));
+  if (value !== null && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, shiftTimes(v, by)]));
+  return value;
+}
 const isCreated = (id: string) => /^j_mock\d+$/.test(id);
 
 interface StoredJob {
@@ -224,7 +238,8 @@ export class MockBackend implements Transport {
 
   private async fixture(name: MockName): Promise<unknown> {
     const mod = (await MOCK_LOADERS[name]()) as { default: unknown };
-    return structuredClone(mod.default);
+    // Whole minutes, so a shifted time reads like one a server would send.
+    return shiftTimes(mod.default, Math.round((this.now() - FIXTURE_NOW) / 60_000) * 60_000);
   }
 
   private checkCode(body: unknown): Promise<RawResponse> | RawResponse {

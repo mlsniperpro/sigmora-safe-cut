@@ -3,7 +3,7 @@
  * finds them in mock mode, as the real API would for 24 hours.
  */
 import { describe, expect, it } from "vitest";
-import { MockBackend } from "./mock-backend";
+import { FIXTURE_NOW, MockBackend } from "./mock-backend";
 
 function memoryStorage() {
   const data = new Map<string, string>();
@@ -92,5 +92,34 @@ describe("MockBackend storage", () => {
     const job = await backend.request({ method: "GET", path: "/v1/jobs/result-fixed" });
     expect((job.body as { status: string; job: { frames: number } }).job.frames).toBe(240);
     expect((job.body as { status: string }).status).toBe("done");
+  });
+});
+
+describe("MockBackend fixture times", () => {
+  const retryAt = async (now: number) => {
+    const backend = new MockBackend({ latencyMs: 0, now: () => now });
+    backend.inject(/\/render$/, "error-429-render-daily-cap");
+    const res = await backend.request({ method: "POST", path: "/v1/jobs/job-review-hero1/render" });
+    return Date.parse((res.body as { error: { retry_at: string } }).error.retry_at);
+  };
+
+  it("keep their distance from now, so a daily cap's retry stays ahead however late the mock runs", async () => {
+    // As written: retry_at is 14 hours after the fixtures' moment.
+    expect(await retryAt(FIXTURE_NOW)).toBe(Date.parse("2026-10-28T00:00:00Z"));
+    const later = Date.parse("2027-03-01T08:30:00Z");
+    expect((await retryAt(later)) - later).toBe(14 * 60 * 60 * 1000);
+  });
+
+  it("keep a code's window where the fixture put it, and leave other strings alone", async () => {
+    const now = Date.parse("2026-12-01T12:00:00Z");
+    const backend = new MockBackend({ latencyMs: 0, now: () => now });
+    const res = await backend.request({ method: "POST", path: "/v1/codes/check", body: { code: "not-yet" } });
+    const error = (res.body as { error: { code: string; valid_from: string; valid_until: string } }).error;
+    expect(error.code).toBe("code_not_active");
+    expect(Date.parse(error.valid_from) - now).toBe(Date.parse("2026-11-05T00:00:00Z") - FIXTURE_NOW);
+    expect(Date.parse(error.valid_until)).toBeGreaterThan(Date.parse(error.valid_from));
+    const job = (await backend.request({ method: "GET", path: "/v1/jobs/job-review-hero1" })).body as { job_id: string; job: { prepared_url: string } };
+    expect(job.job_id).toBe("j_hero1");
+    expect(job.job.prepared_url).not.toMatch(/^\d{4}-/);
   });
 });

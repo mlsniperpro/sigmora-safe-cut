@@ -167,5 +167,6 @@ Round 14 (fixes in the round-14 commit; details in `reaudit.md`):
 - [x] R14-n captions survive the result page's link refresh: hook test
 - [x] R15-1 (low) a late fresh URL brings the review player back: JobPage test
 - [x] R15-2 (low) an action's GET isn't made quiet by a cut-short refresh: useJob test
+- [x] Self-found: fixture dates shift with the clock, so the mock and the tests hold on any date: mock-backend tests, suite run at clock shifts up to +400 days
 - [x] R15-3 (low) reduced-motion "Play demo" shows only while paused and hands focus to the player: landing test, e2e
 
