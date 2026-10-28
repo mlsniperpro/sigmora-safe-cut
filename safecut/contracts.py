@@ -374,6 +374,9 @@ class RoleTrack(Contract):
             raise ValueError(f"track {self.track_id}: failed_votes exceeds the number of votes")
         if not self.escalated and (self.escalation_evidence is not None or self.escalation_frames is not None):
             raise ValueError(f"track {self.track_id}: escalation fields set without an escalation")
+        if self.matches_participant is not None and (self.role != "participant" or set(self.votes) != {"participant"}):
+            # role-pass.md step 7: set only for a unanimous participant, so the UI never links speech on a guess.
+            raise ValueError(f"track {self.track_id}: matches_participant is only for a unanimous participant")
         return self
 
 
@@ -1111,11 +1114,14 @@ def _check_decisions(decisions: Decisions, job: Job, tracks: Tracks | None, role
         ruled = [tid for tid in item.track_ids if tid in child_role]
         if ruled and item.kind != "child":
             raise ContractError(f"{where}: track {ruled[0]} has a child vote or ruling, so the item is kind child")
-        if item.decision == "keep" and item.decided_by != "creator":
-            # WP3: only a unanimous participant is kept by policy or model; anything else needs the creator.
+        if item.decision == "keep" and item.decided_by != "creator" and roles is not None:
+            # WP3: only a unanimous participant (a person) is kept by policy or model; a screen, a never-judged
+            # track or any doubt needs the creator.
+            if item.kind != "person":
+                raise ContractError(f"{where}: a {item.kind} item is never kept without the creator")
             doubtful = [
                 tid for tid in item.track_ids
-                if tid in votes and (votes[tid].role != "participant" or set(votes[tid].votes) != {"participant"})
+                if tid not in votes or votes[tid].role != "participant" or set(votes[tid].votes) != {"participant"}
             ]  # fmt: skip
             if doubtful:
                 raise ContractError(
@@ -1304,18 +1310,42 @@ def _check_plan_geometry(plan: Plan, decisions: Decisions, tracks: Tracks, job: 
                     continue  # coverage is _check_plan_covers'
                 fills = [fill.box for fill in plan.crowd_fills if frame in fill.frames]
                 held = any(
-                    _contains(e.box, box) if e.shape == "box" else boxes_overlap(e.box, box) for e in entries
+                    _contains(e.box, box) if e.shape == "box" else e.mask is not None and _mask_touches(e.mask, box)
+                    for e in entries
                 ) or any(_contains(fill, box) for fill in fills)
                 if not held:
                     raise ContractError(
                         f"plan.json frame {frame}: {item.item_id} doesn't cover {track.track_id}'s box {list(box)}"
                     )
+                if track.concept != "face":
+                    continue  # DESIGN §2.7's ≤ 6 blocks is about the face
                 for e in entries:
-                    if e.grid is not None and e.grid[2] * 6 < box[2] - box[0]:
+                    if e.grid is not None and _contains(e.box, box) and e.grid[2] * 6 < box[2] - box[0]:
                         raise ContractError(
                             f"plan.json frame {frame}: {item.item_id}'s {e.grid[2]} px grid leaves"
                             f" {track.track_id} more than 6 blocks across"
                         )
+        # A shifting grid leaks detail across frames (DESIGN §2.7): one fixed grid per track of the item.
+        grids = {e.grid for entries in plan.frames.values() for e in entries if e.item_id == item.item_id and e.grid}
+        if len(grids) > max(1, len(item.track_ids)):
+            raise ContractError(f"plan.json: {item.item_id}'s pixelate grid moves between frames ({len(grids)} grids)")
+
+
+def _mask_touches(mask: Rle, box: Box) -> bool:
+    """Whether a COCO RLE mask (column-major, runs alternating background/foreground) has a foreground pixel
+    inside ``box``."""
+    height = mask.size[0]
+    x1, y1, x2, y2 = box
+    start = 0
+    for i, run in enumerate(rle_runs(mask.counts)):
+        if i % 2 and run:
+            for col in range(max(start // height, x1), min((start + run - 1) // height, x2 - 1) + 1):
+                lo = max(start, col * height + y1)
+                hi = min(start + run, col * height + y2)
+                if lo < hi:
+                    return True
+        start += run
+    return False
 
 
 def _contains(outer: Box, inner: Box) -> bool:

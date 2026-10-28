@@ -36,6 +36,7 @@ from safecut.meta.errors import (
     MetaIncomplete,
     MetaRefusal,
     MetaUnavailable,
+    ReplayRefused,
     classify,
 )
 from safecut.meta.retry import CircuitBreaker, RetryAfterTooLong, RetryPolicy, backoff_seconds, parse_retry_after
@@ -465,7 +466,7 @@ class MetaClient:
         """Check that ``usd`` (every call of a multi-call pass) fits every cap now, spending nothing: reserve
         and release at once. A stop raises ``BudgetExceeded`` and writes the ``budget:<stage>`` line."""
         if self.settings.replay:
-            raise MetaConfigError("SAFECUT_REPLAY is on: live calls are refused (use the saved responses)")
+            raise ReplayRefused("SAFECUT_REPLAY is on: live calls are refused (use the saved responses)")
         call_id = f"{self.job_id or 'system'}:{spec.stage}:preflight:{uuid.uuid4().hex}"
         try:
             await self._reserve(call_id, usd)
@@ -487,7 +488,7 @@ class MetaClient:
         if self.settings.replay:
             # Replay mode serves saved responses from the job directory: a stage that reaches the
             # transport anyway would spend live credits, so it is refused here, before any reservation.
-            raise MetaConfigError("SAFECUT_REPLAY is on: live calls are refused (use the saved responses)")
+            raise ReplayRefused("SAFECUT_REPLAY is on: live calls are refused (use the saved responses)")
         breaker = self.breaker if spec.breaker else None
         trial = breaker.before_call() if breaker else False
         try:

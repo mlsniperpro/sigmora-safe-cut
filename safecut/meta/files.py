@@ -18,7 +18,14 @@ import httpx
 from safecut import config
 from safecut.contracts import FILE_ID_PATTERN, FileEntry, FilesIndex, dump, load, now_utc
 from safecut.meta.client import CallSpec, MetaClient, Units, outlive_cancel
-from safecut.meta.errors import BreakerOpen, MetaBadRequest, MetaConfigError, MetaError, MetaFileGone
+from safecut.meta.errors import (
+    BreakerOpen,
+    MetaBadRequest,
+    MetaConfigError,
+    MetaError,
+    MetaFileGone,
+    ReplayRefused,
+)
 from safecut.meta.retry import RetryPolicy
 
 INDEX_NAME = "files.json"
@@ -152,8 +159,8 @@ class FileStore:
                 },
             )
             file_id = _file_id(result.body)
-        except BreakerOpen:
-            raise  # refused before anything was sent
+        except (BreakerOpen, ReplayRefused):
+            raise  # refused before anything was sent: no copy can exist
         except MetaError:
             # Any other failure may have left a copy, even a fast 5xx (the server stored the file, then failed)
             # or a timeout whose copy lands after our listing: recover what's there now, and leave an orphan so

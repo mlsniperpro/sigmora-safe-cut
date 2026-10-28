@@ -64,6 +64,10 @@ class BreakerOpen(MetaUnavailable):
     """The circuit breaker refused the call: nothing was sent."""
 
 
+class ReplayRefused(MetaConfigError):
+    """``SAFECUT_REPLAY`` is on: the live call was refused before any reservation, so nothing was sent."""
+
+
 class MetaRefusal(MetaError):
     """The model refused (a refusal part or event).
 

@@ -24,7 +24,7 @@ from safecut.config import ConfigError, Settings, load_settings
 from safecut.meta import responses, sam
 from safecut.meta.budget import Caller, LocalLedger
 from safecut.meta.client import CallSpec, MetaClient
-from safecut.meta.errors import MetaBadRequest, MetaConfigError, MetaUnavailable
+from safecut.meta.errors import MetaBadRequest, MetaConfigError, MetaUnavailable, ReplayRefused
 from safecut.meta.files import FileStore
 from safecut.meta.retry import RetryPolicy
 from scripts.probes import probes
@@ -567,7 +567,7 @@ def test_a_track_with_a_child_vote_or_ruling_is_a_child(tmp_path: Path, role: st
     # escalation.md rule 1: any child vote makes the track a child (locked, hidden), never kept.
     job_dir = _example(tmp_path)
     _edit(job_dir, "roles.json", lambda d: next(t for t in d["tracks"] if t["track_id"] == "face:1").update(
-        {"role": role, "votes": votes}))  # fmt: skip
+        {"role": role, "votes": votes, "matches_participant": None}))  # fmt: skip
     with pytest.raises(c.ContractError, match="face:1 has a child vote or ruling, so the item is kind child"):
         c.validate_job_dir(job_dir)
 
@@ -655,8 +655,8 @@ def test_every_track_is_in_an_item(tmp_path: Path) -> None:
 
 def test_only_a_unanimous_participant_is_kept_without_the_creator(tmp_path: Path) -> None:
     job_dir = _example(tmp_path)
-    _edit(job_dir, "roles.json", lambda d: next(t for t in d["tracks"] if t["track_id"] == "face:1").update(
-        {"role": "unsure", "votes": ["participant", "bystander", "participant"]}))  # fmt: skip
+    doubt = {"role": "unsure", "votes": ["participant", "bystander", "participant"], "matches_participant": None}
+    _edit(job_dir, "roles.json", lambda d: next(t for t in d["tracks"] if t["track_id"] == "face:1").update(doubt))
     with pytest.raises(c.ContractError, match="kept by model, but face:1 isn't a unanimous participant"):
         c.validate_job_dir(job_dir)
     _edit(job_dir, "decisions.json", lambda d: next(i for i in d["items"] if i["item_id"] == "i_1").update(
@@ -685,3 +685,94 @@ def test_a_red_team_hit_needs_its_own_red_team_leak() -> None:
     egoblur_only = [leak for leak in audit["leaks"] if leak["detector"] != "redteam"]
     with pytest.raises(ValueError, match="neither excluded nor a leak on its box"):
         c.Audit.model_validate(audit | {"leaks": egoblur_only})
+
+
+# --- audits #41 and #42 -------------------------------------------------------------------------------------
+
+
+def _pixelate_person(job_dir: Path) -> None:
+    """i_2 (face:2) pixelated, plus a person:2 track 3x wider in the same item, each with its own entry and grid."""
+
+    def tracks(d: Any) -> None:
+        d["tracks"].append({"track_id": "person:2", "concept": "person", "first": 5, "last": 9,
+                            "boxes": {"5": [40, 280, 220, 700], "9": [50, 280, 230, 700]}, "source": None,
+                            "prompt": "person", "origin": "static"})  # fmt: skip
+
+    _edit(job_dir, "tracks.json", tracks)
+    _edit(job_dir, "decisions.json", lambda d: next(i for i in d["items"] if i["item_id"] == "i_2").update(
+        {"style": "pixelate", "track_ids": ["face:2", "person:2"]}))  # fmt: skip
+
+    def plan(d: Any) -> None:
+        for entries in d["frames"].values():
+            for e in [e for e in entries if e["item_id"] == "i_2"]:
+                e.update({"style": "pixelate", "grid": [83, 280, 12]})
+                entries.append(e | {"box": [0, 240, 300, 720], "grid": [0, 240, 40]})
+
+    _edit(job_dir, "plan.json", plan)
+
+
+def test_a_face_and_person_item_may_pixelate_each_track_with_its_own_grid(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _pixelate_person(job_dir)
+    assert "plan.json" in c.validate_job_dir(job_dir)  # the person's 40 px grid is never held to the face's rule
+
+
+def test_a_grid_that_moves_between_frames_is_refused(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _pixelate_person(job_dir)
+
+    def shift(d: Any) -> None:
+        for frame, entries in d["frames"].items():
+            for e in entries:
+                if e["item_id"] == "i_2" and e["grid"] == [83, 280, 12]:
+                    e["grid"] = [83 + int(frame), 280, 12]
+
+    _edit(job_dir, "plan.json", shift)
+    with pytest.raises(c.ContractError, match="i_2's pixelate grid moves between frames"):
+        c.validate_job_dir(job_dir)
+
+
+def test_an_empty_mask_entry_hides_nothing(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "decisions.json", lambda d: next(i for i in d["items"] if i["item_id"] == "i_2").update(
+        {"style": "person_solid"}))  # fmt: skip
+    empty = {"size": [720, 1280], "counts": rle_string([720 * 1280])}
+    _entries(job_dir, "i_2", {"style": "person_solid", "shape": "mask", "mask": empty, "box": [0, 0, 1280, 720]})
+    with pytest.raises(c.ContractError, match="i_2 doesn't cover face:2's box"):
+        c.validate_job_dir(job_dir)
+    # Foreground over face:2 (columns 100-169, rows 280-399): one run per column.
+    runs: list[int] = []
+    for col in range(1280):
+        runs += [280, 120, 320] if 83 <= col < 180 else [720, 0, 0]
+    full = {"size": [720, 1280], "counts": rle_string(runs)}
+    _entries(job_dir, "i_2", {"mask": full})
+    assert "plan.json" in c.validate_job_dir(job_dir)
+
+
+def test_a_never_judged_track_or_a_screen_is_never_kept_without_the_creator(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "decisions.json", lambda d: next(i for i in d["items"] if i["item_id"] == "i_3").update(
+        {"decision": "keep", "style": None, "decided_by": "policy"}))  # fmt: skip
+    _edit(job_dir, "plan.json", lambda d: d.update(
+        {"frames": {f: [e for e in es if e["item_id"] != "i_3"] for f, es in d["frames"].items()}}))  # fmt: skip
+    with pytest.raises(c.ContractError, match="a screen item is never kept without the creator"):
+        c.validate_job_dir(job_dir)
+
+
+def test_matches_participant_only_on_a_unanimous_participant() -> None:
+    roles = json.loads((EXAMPLE / "roles.json").read_text())
+    face_2 = next(t for t in roles["tracks"] if t["track_id"] == "face:2")
+    with pytest.raises(ValueError, match="matches_participant is only for a unanimous participant"):
+        c.RoleTrack.model_validate(face_2 | {"matches_participant": 0})
+
+
+async def test_a_replay_refusal_leaves_no_orphan(
+    make_harness: Callable[..., Harness], settings: Settings, tmp_path: Path
+) -> None:
+    h = make_harness(cfg=settings.model_copy(update={"replay": True}))
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"x" * 300)
+    store = FileStore(h.client, tmp_path / "job")
+    with pytest.raises(ReplayRefused):
+        await store.upload(clip, "sam_proxy.mp4")
+    assert store.index().root == []  # nothing was sent, so there's nothing to reconcile
