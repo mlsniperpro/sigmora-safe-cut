@@ -76,6 +76,36 @@ describe("hero and steps (UI-SPEC §1)", () => {
     expect(screen.getByRole("link", { name: "Try it with an access code" })).toHaveAttribute("href", "/try");
   });
 
+  it("with reduced motion, Play demo shows only while the clip is paused, so it never covers the controls in play", async () => {
+    const real = window.matchMedia;
+    window.matchMedia = ((query: string) => ({ ...real(query), matches: query === "(prefers-reduced-motion: reduce)" })) as typeof window.matchMedia;
+    try {
+      setClientForTests(new SafeCutClient({ transport: new MockBackend({ latencyMs: 0 }) }));
+      render(
+        <ModeProvider>
+          <HeroAndSteps />
+        </ModeProvider>,
+      );
+      const player = await screen.findByLabelText("The demo clip after Safe Cut");
+      const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+      fireEvent.click(screen.getByRole("button", { name: "Play demo" }));
+      // jsdom can't focus a video; the e2e checks focus moves to the player in Chromium.
+      expect(play).toHaveBeenCalled();
+      fireEvent.play(player);
+      await waitFor(() => expect(screen.queryByRole("button", { name: "Play demo" })).not.toBeInTheDocument());
+      fireEvent.pause(player);
+      expect(await screen.findByRole("button", { name: "Play demo" })).toBeInTheDocument();
+      fireEvent.play(player);
+      await waitFor(() => expect(screen.queryByRole("button", { name: "Play demo" })).not.toBeInTheDocument());
+      // Switching version mounts a new, paused element.
+      fireEvent.click(screen.getByRole("radio", { name: /Raw/ }));
+      expect(await screen.findByRole("button", { name: "Play demo" })).toBeInTheDocument();
+    } finally {
+      window.matchMedia = real;
+      vi.restoreAllMocks();
+    }
+  });
+
   it("a refetch that gives back the same URL says the video didn't load, with the poster kept", async () => {
     setClientForTests(new SafeCutClient({ transport: new MockBackend({ latencyMs: 0 }) }));
     render(

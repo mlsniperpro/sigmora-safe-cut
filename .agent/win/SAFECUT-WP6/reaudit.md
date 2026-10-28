@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 0381440
+AUDITED_COMMIT: 79b9b19
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -226,3 +226,13 @@ Fresh-clone README run also found: `pnpm typecheck` failed before any build (Nex
 | 2 | low | When a refetch gave back the same URL (mock fixtures, or a re-sign inside the same second), the video stayed a blank player with no message | fixed: the review player says the video didn't load if no fresh URL arrives within 10 s of asking; hero and result say so as soon as the refetch returns the failed URL. Tests for all three |
 | 3 | low | /privacy contact link (20 px) and the demo banner's "What's demo mode?" (32 px) were under §9's 44 px on mobile | fixed (`min-h-11 lg:min-h-8`) |
 | note | — | The result page's 10-min link refresh dropped and remounted the captions track, switching captions back on | fixed: the caption blob stays on show while a re-signed URL loads; identical text keeps the same blob. Hook test |
+
+## Round 15 (audited 79b9b19 by a Sonnet reviewer; each finding traced here; fixes in the next commit)
+
+0 critical, 0 high, 0 medium, 3 low. Two were regressions from round 14's fixes.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | low | A fresh URL that arrived after the review player's 10 s wait had given up (a slow refetch) was switched in but left the "didn't load" message over it | fixed: a late fresh URL clears the failure and gets its try. JobPage test (fails without the fix) |
+| 2 | low | Round 14's carry-over let a quiet refresh cut short by an action's GET (resume) make that GET quiet too, so its failure was swallowed instead of retried and reported | fixed: the quiet flag carries over only while nothing polls, and resume clears it. useJob test (fails without the fix) |
+| 3 | low | With reduced motion, the hero's "Play demo" button stayed over the video while it played, covering the controls | fixed: it shows only while the clip is paused, and pressing it moves focus to the player. Landing test (fails without the fix) and e2e checks for focus and visibility in Chromium |

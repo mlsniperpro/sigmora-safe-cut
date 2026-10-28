@@ -54,10 +54,11 @@
 - Audit round 12 (on 128d23b): 2 low, fixed in the round-12 commit. On that commit: 809 tests, e2e 89/89.
 - Audit round 13 (on cd7913a): 1 medium (cross-origin captions) and 3 low, all fixed in the round-13 commit. On that commit: 815 tests (29 files), e2e 89/89.
 - Audit round 14 (on 0381440): 3 low, fixed in the round-14 commit (refresh race, dead player on a same-URL refetch, two touch targets). On that commit: 820 tests, e2e 89/89.
+- Audit round 15 (on 79b9b19): 3 low (two were regressions from round 14), fixed in the round-15 commit (late fresh URL, quiet flag leaking into resume, reduced-motion Play demo button). On that commit: 823 tests, e2e 93/93, `checks.sh` exit 0.
 - CLEAN_AUDITS_IN_A_ROW is 0. Two clean full audits are still needed, then a fresh break-it.md (fresh clone + FUZZ_RUNS=100000).
 
 ## Next steps, in order
-1. Run full audit round 4 on HEAD. If it finds anything, fix it and reset CLEAN_AUDITS_IN_A_ROW to 0. Repeat until two consecutive audits find nothing. Then set AUDITED_COMMIT to the last code commit and CLEAN_AUDITS_IN_A_ROW to 2.
+1. Run the next full audit round on HEAD (round 16 is next). If it finds anything, fix it and reset CLEAN_AUDITS_IN_A_ROW to 0. Repeat until two consecutive audits find nothing. Then set AUDITED_COMMIT to the last code commit and CLEAN_AUDITS_IN_A_ROW to 2.
 2. After the last code change, run the fresh-clone `checks.sh` (`git clone --branch wp6-web` into an empty dir) and the FUZZ_RUNS=100000 agreement soak. Rewrite break-it.md with TESTED_COMMIT set to that commit.
 3. Run the gate until it prints `GATE: PASS` on the pushed HEAD. Then post the final status on PR #4, including the gate's last line.
 4. If time remains: live deployment (owner sets up Vercel), Safari/Firefox runs.

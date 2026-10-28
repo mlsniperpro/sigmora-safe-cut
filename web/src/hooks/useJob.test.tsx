@@ -110,6 +110,20 @@ describe("useJob polling", () => {
     expect(tryPoller.result.current.load.kind).toBe("ready");
   });
 
+  it("a quiet refresh cut short by an action doesn't make the action's GET quiet: its failure is retried", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { result } = renderHook(() => useJob("job-review-hero1"));
+    await settle();
+    act(() => void vi.advanceTimersByTime(URL_REFRESH_MS)); // the quiet GET starts…
+    backend.inject(/^GET \/v1\/jobs\/job-review-hero1$/, "error-500");
+    act(() => result.current.resume()); // …and Approve & render cuts it short; its own GET fails.
+    await settle();
+    const before = gets("job-review-hero1");
+    await poll();
+    expect(gets("job-review-hero1")).toBeGreaterThan(before);
+    expect(result.current.load.kind).toBe("ready");
+  });
+
   it("a paused page refetches quietly before its signed URLs expire, and a failed refresh keeps the page", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { result } = renderHook(() => useJob("job-review-hero1"));

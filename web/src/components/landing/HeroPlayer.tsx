@@ -22,6 +22,8 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["au
   const [refreshes, setRefreshes] = useState(0);
   const [version, setVersion] = useState<Version>("safecut");
   const reduced = useReducedMotion();
+  /** Reduced motion's "Play demo" button would cover the controls while the clip plays, so it shows only while paused. */
+  const [playing, setPlaying] = useState(false);
   const video = useRef<HTMLVideoElement>(null);
   const resumeAt = useRef<number | null>(null);
   /** One refetch per failure; a source that loads re-arms it, for a page left open past the URLs' 15 min. */
@@ -52,6 +54,8 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["au
   const switchTo = (next: Version) => {
     if (next === version) return;
     resumeAt.current = video.current?.currentTime ?? 0;
+    // The new element starts paused; autoplay or the resume below reports play again.
+    setPlaying(false);
     setVersion(next);
   };
 
@@ -78,6 +82,9 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["au
             playsInline
             autoPlay={!reduced}
             preload="metadata"
+            onPlay={() => setPlaying(true)}
+            onPause={() => setPlaying(false)}
+            onEnded={() => setPlaying(false)}
             onLoadedMetadata={(e) => {
               retried.current = false;
               if (resumeAt.current !== null) {
@@ -106,11 +113,15 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["au
             {!failed && <span className="relative rounded bg-black/60 px-2 py-1">Loading the demo…</span>}
           </div>
         )}
-        {reduced && demo && !failed && (
+        {reduced && demo && !failed && !playing && (
           <button
             type="button"
             className="absolute bottom-14 left-3 flex min-h-11 items-center gap-2 rounded-md bg-surface px-3 text-sm font-medium text-text"
-            onClick={() => void video.current?.play()}
+            onClick={() => {
+              // The button goes away once playback starts, so focus moves to the player's own controls.
+              video.current?.focus();
+              void video.current?.play().catch(() => undefined);
+            }}
           >
             <PlayCircleIcon size={18} /> Play demo
           </button>

@@ -60,7 +60,11 @@ export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function Vi
    * after an error.
    */
   const [playing, setPlaying] = useState(src);
-  if (src && (!playing || (refreshedFor !== null && src !== refreshedFor && src !== playing))) setPlaying(src);
+  if (src && (!playing || (refreshedFor !== null && src !== refreshedFor && src !== playing))) {
+    setPlaying(src);
+    // A fresh URL that came after the wait gave up (a slow refetch) still gets its try.
+    if (failed) setFailed(false);
+  }
   // Asked for a fresh URL but none came (the refetch gave back the same one): say the video
   // didn't load rather than leave a dead player.
   useEffect(() => {

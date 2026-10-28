@@ -138,7 +138,8 @@ export function useJob(jobId: string, { pollCreated = false }: { pollCreated?: b
       // on to the next one, or two refreshes a frame apart would lose the fresh URLs (§10.7).
       if (!answered) {
         fresh.current ||= freshGet;
-        quiet.current ||= quietGet;
+        // Quiet only while nothing polls: a GET an action asked for (resume) must report a failure.
+        quiet.current ||= quietGet && !polling.current;
       }
       controller.abort();
       if (timer.current) clearTimeout(timer.current);
@@ -169,6 +170,7 @@ export function useJob(jobId: string, { pollCreated = false }: { pollCreated?: b
   const resume = useCallback(() => {
     viewStart.current = Date.now();
     polling.current = true;
+    quiet.current = false;
     setTick((t) => t + 1);
   }, []);
 

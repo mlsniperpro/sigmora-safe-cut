@@ -355,6 +355,35 @@ describe("review panel", () => {
     }
   });
 
+  it("a fresh URL that arrives after the wait gave up still gets its try: the player comes back", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+    try {
+      setup("job-review-hero1");
+      await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
+      // The refetch the error asks for is held until the wait has given up, then answers re-signed.
+      let release: () => void = () => undefined;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      let hold = false;
+      const original = backend.request.bind(backend);
+      vi.spyOn(backend, "request").mockImplementation(async (init) => {
+        const raw = await original(init);
+        if (!hold || init.method !== "GET" || init.path !== "/v1/jobs/job-review-hero1" || raw.status !== 200) return raw;
+        await held;
+        const job = raw.body as { job: { prepared_url: string } };
+        return { ...raw, body: { ...job, job: { ...job.job, prepared_url: "https://media.example/prepared.mp4?sig=late" } } };
+      });
+      hold = true;
+      fireEvent.error(screen.getByLabelText("Your clip, with the Safe Cut preview drawn over it"));
+      act(() => void vi.advanceTimersByTime(FRESH_URL_WAIT_MS));
+      expect(await screen.findByText("The video didn't load. The decisions below still work.")).toBeInTheDocument();
+      act(() => release());
+      await waitFor(() => expect(screen.getByLabelText("Your clip, with the Safe Cut preview drawn over it")).toHaveAttribute("src", "https://media.example/prepared.mp4?sig=late"));
+      expect(screen.queryByText("The video didn't load. The decisions below still work.")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("shows the demo-mode banner for a replayed job", async () => {
     setup("job-replay");
     expect(await screen.findByText(/You're seeing saved results from a real run/)).toBeInTheDocument();

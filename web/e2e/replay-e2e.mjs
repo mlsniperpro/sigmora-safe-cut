@@ -226,6 +226,23 @@ try {
     await context.close();
   }
 
+  // Reduced motion (§1.4): no autoplay; "Play demo" plays and hands focus to the player, then stays out of the way until paused.
+  {
+    const context = await browser.newContext({ reducedMotion: "reduce" });
+    const page = await context.newPage();
+    await page.goto(`${BASE}/`, { waitUntil: "networkidle" });
+    const button = page.getByRole("button", { name: "Play demo" });
+    await button.waitFor();
+    check("reduced motion: the hero doesn't autoplay", await page.locator("figure video").evaluate((v) => v.paused));
+    await button.click();
+    await page.locator("figure video").evaluate((v) => new Promise((r) => (v.paused ? v.addEventListener("playing", r, { once: true }) : r())));
+    check("reduced motion: Play demo leaves while the clip plays", (await button.count()) === 0);
+    check("reduced motion: focus moves to the player, not the page", await page.locator("figure video").evaluate((v) => document.activeElement === v));
+    await page.locator("figure video").evaluate((v) => v.pause());
+    check("reduced motion: Play demo is back once paused", await button.isVisible());
+    await context.close();
+  }
+
   // A short landscape screen (or 200% zoom): the player isn't sticky, so the chips can scroll into view.
   {
     const context = await browser.newContext({ viewport: { width: 844, height: 390 } });
