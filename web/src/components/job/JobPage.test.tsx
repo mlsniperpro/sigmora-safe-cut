@@ -9,6 +9,7 @@ import { SafeCutClient } from "@/lib/api";
 import { setClientForTests } from "@/lib/client";
 import { MockBackend } from "@/lib/mock-backend";
 import { ModeBanners, ModeProvider } from "../mode";
+import { FRESH_URL_WAIT_MS } from "../review/VideoPane";
 import { JobPage } from "./JobPage";
 
 const nav = vi.hoisted(() => ({ id: "job-review-hero1", search: "", replace: vi.fn(), push: vi.fn() }));
@@ -336,6 +337,22 @@ describe("review panel", () => {
     await waitFor(() => expect(player().getAttribute("src")).toMatch(/sig=\d+$/));
     expect(player().getAttribute("src")).not.toBe(playing);
     expect(gets()).toBe(before + 1);
+  });
+
+  it("a review video whose refetch brings no fresh URL says it didn't load", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+    try {
+      setup("job-review-hero1");
+      await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
+      const gets = () => backend.log.filter((l) => l.method === "GET" && l.path === "/v1/jobs/job-review-hero1").length;
+      const before = gets();
+      fireEvent.error(screen.getByLabelText("Your clip, with the Safe Cut preview drawn over it"));
+      await waitFor(() => expect(gets()).toBe(before + 1));
+      act(() => void vi.advanceTimersByTime(FRESH_URL_WAIT_MS));
+      expect(await screen.findByText("The video didn't load. The decisions below still work.")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows the demo-mode banner for a replayed job", async () => {

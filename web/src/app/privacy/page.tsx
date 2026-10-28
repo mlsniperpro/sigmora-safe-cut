@@ -24,11 +24,11 @@ export default function Privacy() {
         <h2 className="text-xl font-semibold">Contact</h2>
         <p className="mt-2 text-muted">
           {SITE.privacyContact ? (
-            <a href={`mailto:${SITE.privacyContact}`} className="underline underline-offset-2">
+            <a href={`mailto:${SITE.privacyContact}`} className="inline-flex min-h-11 items-center underline underline-offset-2 lg:min-h-8">
               {SITE.privacyContact}
             </a>
           ) : (
-            <a href={`${SITE.repoUrl}/issues`} className="underline underline-offset-2" rel="noopener noreferrer" target="_blank">
+            <a href={`${SITE.repoUrl}/issues`} className="inline-flex min-h-11 items-center underline underline-offset-2 lg:min-h-8" rel="noopener noreferrer" target="_blank">
               Open an issue on GitHub
             </a>
           )}

@@ -159,3 +159,10 @@ Round 13 (fixes in the round-13 commit; details in `reaudit.md`):
 - [x] R13-4 (low) landing Try it target 44 px wide
 - [x] R13-n media URLs reject whitespace/control characters: api test
 
+Round 14 (fixes in the round-14 commit; details in `reaudit.md`):
+
+- [x] R14-1 (low) a cut-short fresh refetch hands its request on: useJob test
+- [x] R14-2 (low) a refetch with the same URL ends in the "didn't load" message: JobPage, ResultPage, landing tests
+- [x] R14-3 (low) privacy link and demo-banner button 44 px on mobile
+- [x] R14-n captions survive the result page's link refresh: hook test
+

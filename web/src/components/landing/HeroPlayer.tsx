@@ -26,6 +26,8 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["au
   const resumeAt = useRef<number | null>(null);
   /** One refetch per failure; a source that loads re-arms it, for a page left open past the URLs' 15 min. */
   const retried = useRef(false);
+  /** The URL that failed: a refetch that gives it back means it won't play, so say so (§1.4). */
+  const failedSrc = useRef<string | null>(null);
   // The sample hero in mock mode isn't a real run, so it doesn't claim demo mode.
   useReportMode(isMockMode() ? null : demo?.mode);
 
@@ -34,6 +36,9 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["au
     getClient()
       .getDemo(SITE.heroId, controller.signal)
       .then((d) => {
+        const failedAgain = failedSrc.current !== null && (d.video_url === failedSrc.current || d.job.prepared_url === failedSrc.current);
+        failedSrc.current = null;
+        if (failedAgain) setFailed(true);
         setDemo(d);
         onAuditor?.(d.audit);
       })
@@ -87,6 +92,7 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["au
                 return;
               }
               retried.current = true;
+              failedSrc.current = src ?? null;
               setRefreshes((n) => n + 1);
             }}
             aria-label={version === "raw" ? "Raw footage of the demo clip" : "The demo clip after Safe Cut"}

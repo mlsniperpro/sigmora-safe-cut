@@ -34,4 +34,16 @@ describe("useRemoteCaptions", () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(result.current).toBeNull();
   });
+
+  it("keeps the captions on show while a re-signed URL for them loads", async () => {
+        vi.spyOn(globalThis, "fetch").mockImplementation(() => Promise.resolve(new Response(vtt, { status: 200 })));
+    const { result, rerender } = renderHook(({ u }) => useRemoteCaptions(u), { initialProps: { u: "https://storage.example/c.vtt?sig=1" } });
+    await waitFor(() => expect(result.current).toMatch(/^blob:/));
+    const first = result.current;
+    rerender({ u: "https://storage.example/c.vtt?sig=2" });
+    expect(result.current).toBe(first);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(result.current).toBe(first);
+  });
 });
+

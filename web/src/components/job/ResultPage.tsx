@@ -57,10 +57,13 @@ export function ResultPage() {
   const receiptRetried = useRef(false);
   const receiptLoadedRef = useRef(false);
   const videoRetried = useRef(false);
+  /** The video URL that failed: a refetch that gives it back means it won't play (§10.7). */
+  const failedVideo = useRef<string | null>(null);
   /** Bumped by "Try again" on a result error: a fresh fetch with its one-time retries restored. */
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     videoRetried.current = false;
+    failedVideo.current = null;
     receiptRetried.current = false;
     receiptLoadedRef.current = false;
     keepMedia.current = false;
@@ -112,6 +115,10 @@ export function ResultPage() {
     getClient()
       .getResult(id, controller.signal)
       .then((r) => {
+        if (!keep && failedVideo.current !== null) {
+          if (r.video_url === failedVideo.current) setMediaFailed(true);
+          failedVideo.current = null;
+        }
         setResult((prev) =>
           keep && prev.kind === "ready"
             ? { kind: "ready", result: r, video: prev.video, receipt: receiptLoadedRef.current ? prev.receipt : r.receipt_html_url }
@@ -198,6 +205,7 @@ export function ResultPage() {
                 return;
               }
               videoRetried.current = true;
+              failedVideo.current = result.video;
               setMediaRefreshes((n) => n + 1);
             }}
           >

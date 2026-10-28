@@ -60,7 +60,7 @@ export function ModeBanners() {
                 {mock && " In this preview the saved results are sample data, so you can see how demo mode is labelled."}
               </span>
             </p>
-            <button type="button" className="min-h-8 underline underline-offset-2" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+            <button type="button" className="min-h-11 underline underline-offset-2 lg:min-h-8" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
               What&apos;s demo mode?
             </button>
             {open && (

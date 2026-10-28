@@ -40,5 +40,7 @@ export function useRemoteCaptions(url: string | null | undefined): string | null
   }, [url, local]);
   if (!url) return null;
   if (local) return url;
-  return fetched?.url === url ? fetched.blob : null;
+  // A re-signed URL for the same captions keeps the blob on show until the new one is in (and
+  // identical text gives the same blob), so the <track> isn't remounted and switched back on.
+  return fetched?.blob ?? null;
 }

@@ -1,4 +1,4 @@
-AUDITED_COMMIT: cd7913a
+AUDITED_COMMIT: 0381440
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -215,3 +215,14 @@ Fresh-clone README run also found: `pnpm typecheck` failed before any build (Nex
 | 3 | low | Mock mode put the 8 s sample video under fixtures with a different clip (12-frame plans), so the overlay covered the wrong places | fixed: the sample is swapped in only for a fixture with the sample's frame count; others keep their unreachable URL, so the player honestly says the video didn't load. README calls the fixtures state viewers whose dates are their own |
 | 4 | low | The landing "Try it" link was 39 px wide (§9 44×44) | fixed (`min-w-11`) |
 | note | — | `mediaUrl` accepted "/\t/evil.com", protocol-relative once the browser strips the tab | hardened: whitespace and control characters are rejected; api test |
+
+## Round 14 (audited 0381440 by a Sonnet reviewer; about 75 routes × 5 viewports × light/dark with axe: 0 WCAG violations, no overflow, one h1 each; live build against a faked https API, including an instrumented copy for the refresh race; each finding traced here; fixes in the next commit)
+
+0 critical, 0 high, 0 medium, 3 low. The round-13 changes held: cross-origin captions load as blobs with no CSP errors, failures leave the video playing, and no legitimate signed-URL shape is rejected.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | low | A fresh-URL refetch cut short by another tick (a second refresh a frame later, or a poll) lost its "fresh" request, so the new signed URLs were dropped and the player stayed dead (reproduced 5 of 6 runs in an instrumented build) | fixed: an unanswered GET's fresh/quiet request passes on to the next one. useJob test (fails without the fix) |
+| 2 | low | When a refetch gave back the same URL (mock fixtures, or a re-sign inside the same second), the video stayed a blank player with no message | fixed: the review player says the video didn't load if no fresh URL arrives within 10 s of asking; hero and result say so as soon as the refetch returns the failed URL. Tests for all three |
+| 3 | low | /privacy contact link (20 px) and the demo banner's "What's demo mode?" (32 px) were under §9's 44 px on mobile | fixed (`min-h-11 lg:min-h-8`) |
+| note | — | The result page's 10-min link refresh dropped and remounted the captions track, switching captions back on | fixed: the caption blob stays on show while a re-signed URL loads; identical text keeps the same blob. Hook test |

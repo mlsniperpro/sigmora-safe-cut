@@ -53,6 +53,7 @@
 - Lesson: jsdom keeps focus on a button that becomes `disabled`, while real browsers drop it to `<body>`. Focus-loss fixes need an e2e check, not only a unit test.
 - Audit round 12 (on 128d23b): 2 low, fixed in the round-12 commit. On that commit: 809 tests, e2e 89/89.
 - Audit round 13 (on cd7913a): 1 medium (cross-origin captions) and 3 low, all fixed in the round-13 commit. On that commit: 815 tests (29 files), e2e 89/89.
+- Audit round 14 (on 0381440): 3 low, fixed in the round-14 commit (refresh race, dead player on a same-URL refetch, two touch targets). On that commit: 820 tests, e2e 89/89.
 - CLEAN_AUDITS_IN_A_ROW is 0. Two clean full audits are still needed, then a fresh break-it.md (fresh clone + FUZZ_RUNS=100000).
 
 ## Next steps, in order

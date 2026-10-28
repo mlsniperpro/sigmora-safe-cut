@@ -168,6 +168,18 @@ describe("signed URLs on screen (UI-SPEC §10.7)", () => {
     expect(ready(result.current.load)?.job?.prepared_url).toMatch(/sig=4$/);
   });
 
+  it("a fresh-URL refresh cut short by another tick still ends with fresh URLs", async () => {
+    signing = true;
+    const { result } = renderHook(() => useJob("job-review-hero1"));
+    await settle();
+    expect(ready(result.current.load)?.job?.prepared_url).toMatch(/sig=1$/);
+    // The fresh GET is in flight when another tick (a poll, resume()) starts a plain one.
+    act(() => result.current.refreshUrls());
+    act(() => result.current.resume());
+    await settle();
+    expect(ready(result.current.load)?.job?.prepared_url).not.toMatch(/sig=1$/);
+  });
+
   it("the quiet refresh brings fresh URLs, and survives the tab being hidden and shown again", async () => {
     signing = true;
     const visibility = vi.spyOn(document, "visibilityState", "get");

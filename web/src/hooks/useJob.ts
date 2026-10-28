@@ -75,6 +75,7 @@ export function useJob(jobId: string, { pollCreated = false }: { pollCreated?: b
     quiet.current = false;
     const freshGet = fresh.current;
     fresh.current = false;
+    let answered = false;
     const schedule = (ms: number) => {
       timer.current = setTimeout(() => setTick((t) => t + 1), ms);
     };
@@ -90,6 +91,7 @@ export function useJob(jobId: string, { pollCreated = false }: { pollCreated?: b
     getClient()
       .getJob(jobId, controller.signal)
       .then((job) => {
+        answered = true;
         if (deleted.current || controller.signal.aborted) return;
         const status = pollCreated && job.status === "created" ? "processing" : job.status;
         const delay = nextPollDelay(status, Date.now() - (viewStart.current ?? Date.now()), job.retry_at, Date.now());
@@ -110,6 +112,7 @@ export function useJob(jobId: string, { pollCreated = false }: { pollCreated?: b
         }
       })
       .catch((error: unknown) => {
+        answered = true;
         if (deleted.current || controller.signal.aborted) return;
         // A failed quiet refresh keeps the page as it is and tries again later.
         if (quietGet && shown.current) {
@@ -131,6 +134,12 @@ export function useJob(jobId: string, { pollCreated = false }: { pollCreated?: b
         setLoad({ kind: classifyLoadError(error) });
       });
     return () => {
+      // A newer tick cut this GET short: what it was asked for (fresh URLs, a quiet refresh) passes
+      // on to the next one, or two refreshes a frame apart would lose the fresh URLs (§10.7).
+      if (!answered) {
+        fresh.current ||= freshGet;
+        quiet.current ||= quietGet;
+      }
       controller.abort();
       if (timer.current) clearTimeout(timer.current);
     };

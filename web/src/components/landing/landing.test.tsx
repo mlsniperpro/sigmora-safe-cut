@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import kappaUndefined from "../../../mocks/results-kappa-undefined.json";
 import noEgoblur from "../../../mocks/results-no-egoblur.json";
 import twoLabellers from "../../../mocks/results-two-labellers.json";
@@ -76,8 +76,29 @@ describe("hero and steps (UI-SPEC §1)", () => {
     expect(screen.getByRole("link", { name: "Try it with an access code" })).toHaveAttribute("href", "/try");
   });
 
+  it("a refetch that gives back the same URL says the video didn't load, with the poster kept", async () => {
+    setClientForTests(new SafeCutClient({ transport: new MockBackend({ latencyMs: 0 }) }));
+    render(
+      <ModeProvider>
+        <HeroAndSteps />
+      </ModeProvider>,
+    );
+    fireEvent.error(await screen.findByLabelText("The demo clip after Safe Cut"));
+    expect(await screen.findByText("The demo video didn't load. You can still try Safe Cut with an access code.")).toBeInTheDocument();
+  });
+
   it("refetches the demo on a video error, re-arms after a load, and keeps the poster under the failure message (§1.4)", async () => {
     const backend = new MockBackend({ latencyMs: 0 });
+    // Each answer signs its URLs afresh, as the live API does.
+    let signed = 0;
+    const original = backend.request.bind(backend);
+    vi.spyOn(backend, "request").mockImplementation(async (init) => {
+      const raw = await original(init);
+      if (!init.path.startsWith("/v1/demo/")) return raw;
+      signed += 1;
+      const d = raw.body as { video_url: string; job: { prepared_url: string } };
+      return { ...raw, body: { ...d, video_url: `${d.video_url}?sig=${signed}`, job: { ...d.job, prepared_url: `${d.job.prepared_url}?sig=${signed}` } } };
+    });
     setClientForTests(new SafeCutClient({ transport: backend }));
     render(
       <ModeProvider>

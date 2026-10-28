@@ -28,6 +28,9 @@ export interface VideoPaneProps {
 
 const noSubscribe = () => () => undefined;
 
+/** How long a media error waits for a fresh URL before the player gives up (§10.7). */
+export const FRESH_URL_WAIT_MS = 10_000;
+
 export const TIMELINE_ROWS = 24;
 
 /** The timeline's rows: the first `TIMELINE_ROWS` items, the last swapped for the selection if it's further down. */
@@ -58,6 +61,13 @@ export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function Vi
    */
   const [playing, setPlaying] = useState(src);
   if (src && (!playing || (refreshedFor !== null && src !== refreshedFor && src !== playing))) setPlaying(src);
+  // Asked for a fresh URL but none came (the refetch gave back the same one): say the video
+  // didn't load rather than leave a dead player.
+  useEffect(() => {
+    if (refreshedFor === null || playing !== refreshedFor) return;
+    const t = setTimeout(() => setFailed(true), FRESH_URL_WAIT_MS);
+    return () => clearTimeout(t);
+  }, [refreshedFor, playing]);
   const latest = useRef({ props, mode });
   useLayoutEffect(() => {
     latest.current = { props, mode };

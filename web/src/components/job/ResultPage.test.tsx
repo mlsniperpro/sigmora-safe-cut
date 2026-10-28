@@ -76,6 +76,15 @@ describe("result and receipt (UI-SPEC §5)", () => {
   });
 });
 
+describe("a video that won't play", () => {
+  it("says so when the refetch gives back the same URL, instead of leaving a dead player", async () => {
+    setup("result-clean");
+    expect(await screen.findByText("No leaks found.")).toBeInTheDocument();
+    fireEvent.error(screen.getByLabelText("Your clip after Safe Cut"));
+    expect(await screen.findByText("Something went wrong on our side. Nothing has been published.")).toBeInTheDocument();
+  });
+});
+
 describe("signed URLs expire (UI-SPEC §10.7)", () => {
   /** Each result fetch signs its URLs afresh (`v=<n>`), as the live API does. */
   let backend: MockBackend;
