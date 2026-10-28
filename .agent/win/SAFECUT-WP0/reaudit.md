@@ -402,3 +402,8 @@ Tests are in tests/test_audit24.py (the "audits #43 and #44" section). #43 built
 - L5 (#43) API-NOTES' "≤ $2.36" didn't match its table. The table's a–g reservations sum to $2.27; the text now says so, with probe h's ≤ $0.53 of Baseten credits counted separately
 - L6 (#44) a failed probe re-run (no key, replay mode) overwrote a recorded paid `summary.json`. Fixed: `main()` refuses replay mode and missing keys up front, and `save_summary` writes an error-only result beside an existing summary, never over it (test_the_probes_refuse_to_start_without_keys_or_in_replay ×2, test_a_failed_rerun_keeps_the_recorded_summary)
 - L7 (#44) replay mode without a key failed at client construction with `ConfigError`, not `ReplayRefused`. In replay mode the client no longer needs a key, and the first call raises `ReplayRefused` (test_replay_mode_needs_no_key_and_refuses_the_call)
+
+## Audit 46 (independent Sonnet reviewer at f5c39b1): 0 critical, 0 high, 0 medium, 2 low. NOT CLEAN; both verified and fixed
+It read every module and recomputed the cost figures, and found no defect in retries, cancels, the ledger, cleanup, probes or the publish gate. Tests are in tests/test_audit24.py (the audit #46 section).
+- L1 `open_weight_client` still demanded `BASETEN_API_KEY` in replay mode (audit #44 L7 fixed only `MetaClient`'s default). It now passes a blank key in replay, and the first call raises `ReplayRefused` (test_the_baseten_client_needs_no_key_in_replay)
+- L2 `trusted_base_url` accepted a bare trailing `?` or `#` (urlsplit gives an empty query or fragment), which moves every endpoint path into the query or fragment. Any `?` or `#` is now refused at load (test_a_base_url_with_an_empty_query_or_fragment_is_refused ×2)

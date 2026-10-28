@@ -56,7 +56,8 @@ def open_weight_client(
         ledger=ledger,
         cost_path=cost_path,
         base_url=settings.open_weight_base_url,
-        api_key=settings.open_api_key(),
+        # Replay refuses every call (ReplayRefused) before a key is needed, so it runs without one.
+        api_key="" if settings.replay else settings.open_api_key(),
         provider="baseten",
     )
 

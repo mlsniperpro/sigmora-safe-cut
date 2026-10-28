@@ -69,8 +69,8 @@ def trusted_base_url(value: str, allowed: frozenset[str]) -> str:
         or parts.username
         or parts.password
         or parts.port not in (None, 443)
-        or parts.query
-        or parts.fragment
+        or "?" in value  # even an empty query or fragment would move every endpoint path into it
+        or "#" in value
     ):
         raise ValueError(f"base URLs must be https://{'|'.join(sorted(allowed))}/… with no credentials or port")
     return value.rstrip("/")

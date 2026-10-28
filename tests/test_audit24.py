@@ -873,3 +873,21 @@ async def test_replay_mode_needs_no_key_and_refuses_the_call(tmp_path: Path) -> 
     with pytest.raises(ReplayRefused):
         await client.request("POST", "thing", _free_spec(), meter=lambda _: ({}, 0.0))
     await client.aclose()
+
+
+# --- audit #46 ----------------------------------------------------------------------------------------------
+
+
+async def test_the_baseten_client_needs_no_key_in_replay(tmp_path: Path) -> None:
+    cfg = load_settings({"SAFECUT_REPLAY": "1", "SAFECUT_OPEN_WEIGHT_PRICE": '{"in": 1.25, "out": 4.25}'})
+    client = ow.open_weight_client(cfg, job_id="j", caller=Caller.local(), ledger=LocalLedger(),
+                                   cost_path=tmp_path / "c.jsonl")  # fmt: skip
+    with pytest.raises(ReplayRefused):
+        await client.request("POST", "thing", _free_spec(), meter=lambda _: ({}, 0.0))
+    await client.aclose()
+
+
+@pytest.mark.parametrize("url", ["https://api.meta.ai/v1?", "https://api.meta.ai/v1#"])
+def test_a_base_url_with_an_empty_query_or_fragment_is_refused(url: str) -> None:
+    with pytest.raises(ConfigError, match="base URLs must be"):
+        load_settings({"SAFECUT_META_BASE_URL": url})
