@@ -19,8 +19,9 @@ from pydantic import SecretStr
 
 from safecut import config
 from safecut import contracts as c
+from safecut import open_weight as ow
 from safecut.config import Settings
-from safecut.meta import sam
+from safecut.meta import responses, sam
 from safecut.meta.budget import LocalLedger
 from safecut.meta.client import CallSpec
 from safecut.meta.errors import MetaBadRequest, MetaConfigError
@@ -245,3 +246,74 @@ async def test_an_explicitly_refused_response_delete_stays_pending(
     mock_api.delete("/responses/resp_2").mock(return_value=httpx.Response(200, json={"id": "resp_2"}))
     assert await log.delete_pending(h.client) == 1  # the body is unspecified; only an explicit refusal counts
     assert log.index().pending == ["resp_1"]
+
+
+# --- audit #31 ----------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "item",
+    [
+        {"id": "file-777", "filename": "j_test-a.mp4", "bytes": 300, "created_at": "2026-10-28T00:00:00Z"},
+        {"id": "file-777", "filename": "j_test-a.mp4", "bytes": "300", "created_at": 9e12},
+    ],
+)
+async def test_an_unreadable_field_never_hides_our_copy(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter, tmp_path: Path, item: dict[str, Any]
+) -> None:
+    h = make_harness()
+    store = _orphan_store(h, tmp_path)
+    mock_api.get("/files").mock(return_value=httpx.Response(200, json={"data": [item]}))
+    gone = mock_api.delete("/files/file-777").mock(return_value=httpx.Response(200, json={"deleted": True}))
+    await store.delete_all()
+    assert gone.call_count == 1  # matched by its job-unique name, then deleted
+
+
+async def test_a_copy_with_an_unusable_id_keeps_the_orphan_open(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter, tmp_path: Path
+) -> None:
+    h = make_harness()
+    store = _orphan_store(h, tmp_path)
+    listing = {"data": [{"id": "../x", "filename": "j_test-a.mp4", "bytes": 300, "created_at": 9e12}]}
+    mock_api.get("/files").mock(return_value=httpx.Response(200, json=listing))
+    with pytest.raises(MetaConfigError, match="unusable id"):
+        await store.delete_all()
+    assert not store.index().all_deleted
+
+
+def test_the_open_weight_summary_counts_the_kept_entries(tmp_path: Path) -> None:
+    # The model boxed our own frame label in the bar; WP4 drops it (PRE-A §5) and writes a `none` entry.
+    label = ow.RedteamFinding(kind="text", detail="label", text="F 000030", box=(0, 0, 100, 20), confidence="high")
+    opinion = ow.SecondOpinion(model="m", frames=[ow.RedteamFrame(frame=10, findings=[label])], failed_batches=0,
+                               errors=[])  # fmt: skip
+    kept = [c.RedteamNone(frame=10, finding="none")]
+    assert opinion.summary().findings == 1  # the raw answer
+    summary = opinion.summary(kept)
+    assert (summary.frames, summary.findings) == (1, 0)
+    audit = json.loads((EXAMPLE / "audit.json").read_text())
+    entries = [e.model_dump(mode="json") for e in kept]
+    c.Audit.model_validate(audit | {"open_weight": summary.model_dump(mode="json"), "redteam_open": entries})
+
+
+async def test_the_receipt_count_is_only_what_responses_json_records(
+    make_harness: Callable[..., Harness],
+    mock_api: respx.MockRouter,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    h = make_harness()
+    log = sam.ResponseLog(tmp_path)
+    log.note("resp_1")
+    mock_api.delete("/responses/resp_1").mock(return_value=httpx.Response(200, json={"deleted": True}))
+    monkeypatch.setattr(sam, "dump", lambda *_: (_ for _ in ()).throw(OSError("disk full")))
+    assert await log.delete_pending(h.client) == 1  # the request was made
+    assert (log.requested(), log.unrecorded()) == (0, 1)  # but responses.json can't show it
+
+
+async def test_a_video_body_needs_its_length_for_the_fallback_estimate(make_harness: Callable[..., Harness]) -> None:
+    h = make_harness()
+    content = [{"type": "input_text", "text": "hi"}, {"type": "input_video", "file_id": "file-1"}]
+    body = {"model": "muse-spark-1.3", "max_output_tokens": 50, "store": False,
+            "input": [{"role": "user", "content": content}]}  # fmt: skip
+    with pytest.raises(ValueError, match="needs video_seconds"):
+        await responses.create(h.client, body, stage="s", effort="omit")

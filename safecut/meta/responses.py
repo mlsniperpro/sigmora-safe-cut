@@ -72,10 +72,11 @@ def build_body(
     return body
 
 
-def _count_parts(body: Mapping[str, Any]) -> tuple[int, int]:
-    """``(text_bytes, images)`` over the input messages, for the fallback estimate."""
+def _count_parts(body: Mapping[str, Any]) -> tuple[int, int, int]:
+    """``(text_bytes, images, videos)`` over the input messages, for the fallback estimate."""
     text_bytes = 0
     images = 0
+    videos = 0
     for message in cast(list[Mapping[str, Any]], body.get("input", [])):
         content = message.get("content")
         parts: list[Any] = cast(list[Any], content) if isinstance(content, list) else [content]
@@ -86,12 +87,14 @@ def _count_parts(body: Mapping[str, Any]) -> tuple[int, int]:
                 p = cast(Mapping[str, Any], part)
                 if p.get("type") == "input_image":
                     images += 1
+                elif p.get("type") == "input_video":
+                    videos += 1
                 elif isinstance(p.get("text"), str):
                     text_bytes += len(cast(str, p["text"]).encode())
     fmt = body.get("text")
     if fmt is not None:
         text_bytes += len(str(fmt).encode())
-    return text_bytes, images
+    return text_bytes, images, videos
 
 
 def meter_for(model: str) -> Meter:
@@ -152,7 +155,11 @@ async def create(
         raise ValueError(f"effort={effort!r} but the body sends reasoning.effort={sent or 'omit (none)'!r}")
     model = cast(str, body["model"])
     max_out = cast(int, body["max_output_tokens"])
-    text_bytes, images = _count_parts(body)
+    text_bytes, images, videos = _count_parts(body)
+    if videos and video_seconds <= 0:
+        # The fallback estimate is what's reserved when the free count fails: without the clip's length it would
+        # reserve the output only and let a video call overrun the caps.
+        raise ValueError("a body with input_video needs video_seconds > 0 for its fallback estimate")
     fallback = cost.fallback_input_tokens(text_bytes=text_bytes, images=images, video_seconds=video_seconds)
     counted = await count_input_tokens(client, body, stage=stage) if count else None
     estimate = cost.responses_estimate(model, counted=counted, fallback=fallback, max_output_tokens=max_out)

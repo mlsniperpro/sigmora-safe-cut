@@ -400,15 +400,21 @@ def _matching_uploads(body: Any, remote_name: str, size: int | None, not_before:
         if not isinstance(item, dict):
             continue
         entry = cast(dict[str, Any], item)
-        created = entry.get("created_at")
+        if entry.get("filename") != remote_name:
+            continue  # the multipart name is job-unique: anything else is another job's file
+        # Ours by name. Skip it only on a field that proves it's another upload (a different size, or created
+        # before this one started); a field we can't read proves nothing, so it still counts (fail closed).
+        size_seen, created = entry.get("bytes"), entry.get("created_at")
+        if size is not None and _number(size_seen) and size_seen != size:
+            continue
+        if _number(created) and cast(float, created) < not_before:
+            continue
         file_id = entry.get("id")
-        if (
-            entry.get("filename") == remote_name
-            and (size is None or entry.get("bytes") == size)
-            and isinstance(created, int | float)
-            and created >= not_before
-            and isinstance(file_id, str)
-            and _FILE_ID.fullmatch(file_id)
-        ):
-            found.append(file_id)
+        if not isinstance(file_id, str) or not _FILE_ID.fullmatch(file_id):
+            raise MetaConfigError(f"the /files listing has a copy of {remote_name} with an unusable id")
+        found.append(file_id)
     return found
+
+
+def _number(value: object) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool)

@@ -22,7 +22,7 @@ from pydantic import BaseModel, BeforeValidator, ValidationError
 
 from safecut import config
 from safecut.config import ConfigError, OpenWeightPrice, Settings
-from safecut.contracts import OpenWeightSummary
+from safecut.contracts import OpenWeightSummary, RedteamHit, RedteamNone
 from safecut.meta import cost
 from safecut.meta.budget import Caller, Ledger
 from safecut.meta.client import CallResult, CallSpec, MetaClient, Units
@@ -305,10 +305,15 @@ class SecondOpinion:
     def status(self) -> Literal["ok", "failed"]:
         return "failed" if self.failed_batches else "ok"
 
-    def summary(self) -> OpenWeightSummary:
-        """``audit.open_weight`` for WP4."""
-        findings = sum(len(frame.findings) for frame in self.frames)
-        return OpenWeightSummary(model=self.model, status=self.status, frames=len(self.frames), findings=findings)
+    def summary(self, kept: Sequence[RedteamNone | RedteamHit] | None = None) -> OpenWeightSummary:
+        """``audit.open_weight`` for WP4. Pass the ``redteam_open`` entries WP4 writes after its post-processing
+        (e.g. a frame label dropped in the bar, PRE-A §5): the counts must match them (the audit gate). Without
+        them, the raw answers are counted."""
+        if kept is None:
+            frames, findings = len(self.frames), sum(len(frame.findings) for frame in self.frames)
+        else:
+            frames, findings = len({e.frame for e in kept}), sum(isinstance(e, RedteamHit) for e in kept)
+        return OpenWeightSummary(model=self.model, status=self.status, frames=frames, findings=findings)
 
 
 async def second_opinion(

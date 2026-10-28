@@ -139,16 +139,21 @@ class ResponseLog:
         self._streaming.difference_update(response_ids)
 
     def requested(self) -> int:
-        """The receipt's ``responses_delete_requested``: recorded in responses.json, plus any it couldn't hold."""
+        """The receipt's ``responses_delete_requested``: only the requests recorded in responses.json (PRE-A
+        §10.4; the receipt check compares the two). Requests it couldn't record are :meth:`unrecorded`."""
         try:
-            recorded = self.index().requested
+            return self.index().requested
         except (OSError, ValueError):
-            log.exception("responses.json unreadable; counting only in-memory requests")
-            recorded = 0
-        return recorded + len(self._requested_unrecorded)
+            log.exception("responses.json unreadable; no request can be counted")
+            return 0
+
+    def unrecorded(self) -> int:
+        """Deletes Meta accepted whose record failed: for the receipt's note, never its count."""
+        return len(self._requested_unrecorded)
 
     async def delete_pending(self, client: MetaClient) -> int:
-        """Request deletion of every noted response not yet requested. Returns :meth:`requested`.
+        """Request deletion of every noted response not yet requested. Returns every request made, recorded or
+        not (:meth:`requested` plus :meth:`unrecorded`); the receipt counts only :meth:`requested`.
 
         A 404 with an error body counts as done (an earlier DELETE landed); an empty-body 404 means a wrong
         path (``MetaConfigError``) and is a failure. Any failure is logged and stays pending for the sweeper;
@@ -181,7 +186,7 @@ class ResponseLog:
                 self._requested_unrecorded.add(response_id)
             else:
                 self._mark(response_id)
-        return self.requested()
+        return self.requested() + self.unrecorded()
 
     def _flush_unsaved(self) -> None:
         for response_id in list(self._unsaved):
