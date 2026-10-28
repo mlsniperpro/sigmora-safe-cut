@@ -278,8 +278,19 @@ export class MockBackend implements Transport {
   private async getResult(id: string): Promise<RawResponse> {
     if (id.startsWith("result-") && id in MOCK_LOADERS) {
       const data = (await this.fixture(id as MockName)) as Record<string, unknown>;
-      // With sample media (the app's mock mode), its URLs replace the fixture's unreachable ones.
-      if ("receipt_html_url" in data) return respond(200, { ...data, ...(this.sample && this.mediaUrls(id)), deletes_at: this.deletesAt() });
+      if ("receipt_html_url" in data) {
+        // With sample media (the app's mock mode), its URLs and frame count replace the fixture's,
+        // so the player, the audit summary and the sample receipt all describe the same clip.
+        const sample = this.sample ? jobResponseSchema.parse(await this.fixture(this.sample.job)).job : null;
+        const audit = data.audit as Record<string, unknown> | undefined;
+        return respond(200, {
+          ...data,
+          ...(this.sample && this.mediaUrls(id)),
+          // Frames the fixture's audit left unchecked stay unchecked.
+          ...(sample && { frames: sample.frames, audit: { ...audit, frames_scanned: sample.frames - (Number(data.frames) - Number(audit?.frames_scanned)) } }),
+          deletes_at: this.deletesAt(),
+        });
+      }
     }
     const job = await this.load(id);
     if (!job) return notFound();

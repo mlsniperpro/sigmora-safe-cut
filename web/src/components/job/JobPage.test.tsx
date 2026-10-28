@@ -390,7 +390,16 @@ describe("job states", () => {
     await user.click(screen.getByRole("button", { name: "Approve & render" }));
     const first = await screen.findByRole("alert");
     await waitFor(() => expect(first).toHaveFocus());
-    await user.click(screen.getByRole("button", { name: "Approve & render" }));
+    // While the second press is out, focus stays on the button; the answer then takes it.
+    const original = backend.request.bind(backend);
+    vi.spyOn(backend, "request").mockImplementation(async (init) => {
+      if (init.path.endsWith("/render")) await new Promise((r) => setTimeout(r, 300));
+      return original(init);
+    });
+    const button = screen.getByRole("button", { name: "Approve & render" });
+    await user.click(button);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(button).toHaveFocus();
     await waitFor(() => expect(screen.getByRole("alert")).toHaveFocus());
     expect(screen.getByRole("alert")).not.toBe(first);
   });

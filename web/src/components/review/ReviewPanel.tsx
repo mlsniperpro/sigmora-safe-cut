@@ -294,7 +294,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [refusalValidUntil, setRefusalValidUntil] = useState<string | null>(null);
-  /** Bumped per press, so a repeated identical answer is announced and focused again. */
+  /** Bumped per answer (not per press), so a repeated identical answer is announced and focused again. */
   const [actionAttempt, setActionAttempt] = useState(0);
   /** A render this page started: once its progress shows, focus follows the press there. */
   const focusProgress = useRef(false);
@@ -313,7 +313,6 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
   const runAction = async (button: "render" | "audit") => {
     setActionBusy(true);
     setActionError(null);
-    setActionAttempt((n) => n + 1);
     try {
       const ack = await (button === "render" ? getClient().render(jobId) : getClient().audit(jobId));
       dispatch({ type: "ACTION_ACK", button, status: ack.status });
@@ -348,6 +347,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
         setActionError(COPY.unexpected);
       }
     } finally {
+      setActionAttempt((n) => n + 1);
       setActionBusy(false);
     }
   };
@@ -821,7 +821,7 @@ function BottomBar({
   job: JobResponse;
   state: ReviewState;
   busy: boolean;
-  /** Which press the answers on show belong to (a new press re-announces an identical one). */
+  /** Which answer the alerts on show belong to (a new answer re-announces an identical one). */
   attempt: number;
   error: string | null;
   refusalValidUntil: string | null;

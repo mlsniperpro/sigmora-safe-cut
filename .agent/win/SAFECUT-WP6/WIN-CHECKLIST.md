@@ -140,3 +140,9 @@ Round 10 (fixes in the round-10 commit; details in `reaudit.md`):
 - [x] R10-2 (low) busy action buttons keep focus; focus follows to the render progress: JobPage test
 - [x] R10-3 (low) result fixtures play the sample media in mock mode: mock-backend test
 
+Round 11 (fixes in the round-11 commit; details in `reaudit.md`):
+
+- [x] R11-1 (low) /try busy buttons keep focus on refusal: e2e (fails on the previous build)
+- [x] R11-2 (low) mock result frame counts match the sample clip: mock-backend test
+- [x] R11-3 (low) alerts re-keyed per answer, not per press: JobPage test
+

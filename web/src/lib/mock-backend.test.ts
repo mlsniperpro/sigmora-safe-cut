@@ -86,5 +86,7 @@ describe("MockBackend storage", () => {
     const backend = new MockBackend({ latencyMs: 0, sample: { job: "job-review-sample", mediaBase: "/sample" } });
     const res = await backend.request({ method: "GET", path: "/v1/jobs/result-fixed/result" });
     expect(res.body).toMatchObject({ video_url: "/sample/redacted.mp4", receipt_html_url: "/sample/receipt.html", receipt_json_url: "/sample/receipt.json" });
+    // The summary counts the sample clip's frames, as its receipt does (240 of 240).
+    expect(res.body).toMatchObject({ frames: 240, audit: { frames_scanned: 240 } });
   });
 });

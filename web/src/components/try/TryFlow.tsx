@@ -121,6 +121,7 @@ export function TryFlow() {
 
   // ------------------------------------------------------------------ step A
   const onContinue = async () => {
+    if (checking) return;
     const value = normaliseCode(code);
     if (!value) {
       setCodeError(COPY.emptyCode);
@@ -219,7 +220,7 @@ export function TryFlow() {
   };
 
   const onStart = async () => {
-    if (!file) return;
+    if (!file || busy) return;
     if (!rights) {
       setRightsError(COPY.noRights);
       rightsBox.current?.focus();
@@ -312,7 +313,9 @@ export function TryFlow() {
     setStep("code");
   };
 
-  const startDisabled = !file || busy || (refusal?.blockStart === true && !(refusal.until && now >= refusal.until));
+  // Busy only looks disabled (`aria-disabled`): a refusal that keeps this step must leave focus on
+  // the button, and a disabled one drops it to the page (WCAG 2.4.3).
+  const startDisabled = !file || (refusal?.blockStart === true && !(refusal.until && now >= refusal.until));
 
   if (step === "deleted") {
     return (
@@ -365,7 +368,7 @@ export function TryFlow() {
             <button type="button" className={btn.secondary} aria-pressed={showCode} onClick={() => setShowCode((v) => !v)}>
               {showCode ? "Hide" : "Show"}
             </button>
-            <button type="submit" className={btn.primary} disabled={checking}>
+            <button type="submit" className={btn.primary} aria-disabled={checking || undefined}>
               {checking ? "Checking…" : "Continue"}
             </button>
           </div>
@@ -503,7 +506,7 @@ export function TryFlow() {
             {rightsError}
           </p>
           <div className="mt-6 flex justify-end">
-            <button type="button" className={btn.primary} disabled={startDisabled} onClick={() => void onStart()}>
+            <button type="button" className={btn.primary} disabled={startDisabled} aria-disabled={busy || undefined} onClick={() => void onStart()}>
               Start
             </button>
           </div>

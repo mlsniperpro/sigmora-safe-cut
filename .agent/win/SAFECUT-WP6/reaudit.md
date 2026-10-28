@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 663f6df
+AUDITED_COMMIT: 7edc297
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -183,3 +183,13 @@ Fresh-clone README run also found: `pnpm typecheck` failed before any build (Nex
 | 1 | low | A second identical delete error (failed, progress, result) or code-cap line didn't remount, so it wasn't re-announced and focus fell to `<body>` | fixed: delete errors clear when an attempt starts; the bar's refusal and cap alerts are keyed by the press. JobPage tests for a repeated delete error and a repeated code-cap answer |
 | 2 | low | Pressing Approve & render or Run the audit again disabled the focused button while busy, and focus never came back, even on success | fixed: busy buttons are `aria-disabled` (keep focus, ignore presses); once the render's progress shows, focus moves to it, unless the creator has moved elsewhere. JobPage test, stable over repeated runs |
 | 3 | low | README-listed `/jobs/result-*/result` URLs showed a dead player and a blank receipt in mock mode (the fixtures' `example.invalid` URLs) | fixed: with sample media, result fixtures answer with the sample's video and receipt; mock-backend test |
+
+## Round 11 (audited 7edc297 by a Sonnet reviewer; fresh archive build; live build against a faked https API end to end; axe on key routes in light and dark: 0 violations; each finding traced here; fixes in the next commit)
+
+0 critical, 0 high, 0 medium, 3 low.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | low | On /try, Continue and Start were `disabled` while their request was out, so a refusal that keeps the step (429, 503, 5xx, 413, timeout) dropped focus to `<body>` (WCAG 2.4.3, §10.2) | fixed: busy Continue/Start are `aria-disabled` and ignore presses. e2e: a refused Continue keeps focus (this check fails on the previous build and passes now; jsdom doesn't blur a focused element when it's disabled, so the unit test alone can't tell) |
+| 2 | low | Mock result fixtures played the 240-frame sample but said "12 of 12 frames checked" | fixed: in mock mode the result answer takes the sample's frame count; any gap the fixture's audit left unchecked stays unchecked. mock-backend test |
+| 3 | low | The code-cap alert was re-keyed on the press, so a second press refocused and re-announced the old alert while the request was out | fixed: the alerts' key moves when an answer arrives. JobPage test: the button keeps focus while the second press is out, then the new answer takes it |

@@ -272,6 +272,22 @@ try {
     await context.close();
   }
 
+  // A refusal that keeps the /try step leaves focus on the pressed button (§10.2; a disabled
+  // button would drop it to the page, which jsdom doesn't model).
+  {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const page = await context.newPage();
+    await page.goto(`${BASE}/try`, { waitUntil: "networkidle" });
+    await page.getByLabel("Access code").fill("rate-limited");
+    const cont = page.getByRole("button", { name: "Continue" });
+    await cont.focus();
+    await page.keyboard.press("Enter");
+    await page.getByText("Too many tries in a short time. Wait a minute and try again.").first().waitFor();
+    const focused = await cont.evaluate((el) => document.activeElement === el);
+    check("/try: a refused Continue keeps focus on the button", focused);
+    await context.close();
+  }
+
   // Narrow phones: the open tab (often "Needs you", the last) is scrolled fully into its strip.
   for (const width of [320, 390]) {
     const context = await browser.newContext({ viewport: { width, height: 700 } });

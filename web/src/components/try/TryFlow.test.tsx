@@ -1,7 +1,7 @@
 /**
  * `/try` against the mock backend: the happy path and the §2.6 refusals.
  */
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SafeCutClient } from "@/lib/api";
@@ -271,6 +271,28 @@ describe("/try", () => {
     expect(screen.queryByText(/The upload stopped/)).toBeNull();
     expect(backend.log.filter((l) => l.path === "/v1/jobs")).toHaveLength(1);
     expect(backend.log.some((l) => l.path.endsWith("/start"))).toBe(false);
+  });
+
+  it("a refusal that keeps the step leaves focus on the button that was pressed (§10.2)", async () => {
+    const user = setup();
+    backend.inject(/codes\/check$/, "error-429-rate");
+    await user.type(screen.getByLabelText("Access code"), "judge");
+    const cont = screen.getByRole("button", { name: "Continue" });
+    act(() => cont.focus());
+    await user.keyboard("{Enter}");
+    expect(await screen.findByText(COPY.rateLimited)).toBeInTheDocument();
+    expect(cont).toHaveFocus();
+    await user.keyboard("{Enter}");
+    await screen.findByRole("button", { name: "Choose a file" });
+    await user.upload(fileInput(), clip());
+    await screen.findByText(/street\.mp4/);
+    await user.click(screen.getByRole("checkbox"));
+    backend.inject(/^POST \/v1\/jobs$/, "error-503-billing");
+    const start = screen.getByRole("button", { name: "Start" });
+    act(() => start.focus());
+    await user.keyboard("{Enter}");
+    expect(await screen.findByText(COPY.billing)).toBeInTheDocument();
+    expect(start).toHaveFocus();
   });
 
   it("a daily-cap refusal whose retry_at has already passed leaves Start enabled", async () => {
