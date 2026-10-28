@@ -493,13 +493,15 @@ class Decisions(Contract):
 
 
 class Padding(Contract):
-    face: float = Field(ge=0, le=1)
-    default: float = Field(ge=0, le=1)
-    px: NonNegativeInt
+    """DESIGN §2.6 / WP3: faces 15 % + 8 px, others 8 % + 8 px; a guard may pad more, never less."""
+
+    face: float = Field(ge=0.15, le=1)
+    default: float = Field(ge=0.08, le=1)
+    px: int = Field(ge=8)
 
 
 class Temporal(Contract):
-    extend: NonNegativeInt
+    extend: int = Field(ge=8)  # DESIGN §2.6: extend ±8 frames (more is allowed)
     backfill: NonNegativeInt
     gap_hold_s: float = Field(ge=0)
 
@@ -1293,6 +1295,29 @@ def _check_plan_styles(plan: Plan, decisions: Decisions, audit: Audit | None) ->
                 raise ContractError(f"plan.json frame {frame}: {item.item_id} source {entry.source} != its origin")
 
 
+SAM_OBJECT_CAP = 16  # PRE-A §1.6: SAM returns at most 16 objects per concept per frame
+
+
+def _check_crowd_fills(plan: Plan, tracks: Tracks) -> None:
+    for frame in sorted(set(tracks.crowded_frames)):
+        # The cap is SAM's 16 objects per concept: where a concept hit it, the fill covers all its objects.
+        present: dict[str, list[Box]] = {}
+        for t in tracks.tracks:
+            if t.first <= frame <= t.last and (box := _box_near(t, frame)) is not None:
+                present.setdefault(t.concept, []).append(box)
+        for concept, boxes in present.items():
+            if len(boxes) < SAM_OBJECT_CAP:
+                continue
+            union = (
+                min(b[0] for b in boxes),
+                min(b[1] for b in boxes),
+                max(b[2] for b in boxes),
+                max(b[3] for b in boxes),
+            )
+            if not any(frame in fill.frames and _contains(fill.box, union) for fill in plan.crowd_fills):
+                raise ContractError(f"plan.json frame {frame}: no crowd fill covers the {len(boxes)} {concept} objects")
+
+
 def _check_plan_geometry(plan: Plan, decisions: Decisions, tracks: Tracks, job: Job) -> None:
     """What the plan draws really hides each track (the guard pads outward and clamps, never shrinks): a track's
     box on a planned frame lies inside one of its item's box entries or a crowd fill (a mask entry must overlap
@@ -1302,6 +1327,7 @@ def _check_plan_geometry(plan: Plan, decisions: Decisions, tracks: Tracks, job: 
     unfilled = sorted(set(tracks.crowded_frames) - filled)
     if unfilled:
         raise ContractError(f"plan.json: crowded frames {unfilled[:5]} have no crowd fill")
+    _check_crowd_fills(plan, tracks)
     want = math.ceil(15 * job.fps / min(tracks.sam_fps, job.fps))
     if plan.temporal.backfill != want:
         raise ContractError(
@@ -1319,12 +1345,7 @@ def _check_plan_geometry(plan: Plan, decisions: Decisions, tracks: Tracks, job: 
                 fills = [fill.box for fill in plan.crowd_fills if frame in fill.frames]
                 # The guard pads every box by at least `padding.px` (clamped to the frame) and a mask is SAM's own
                 # outline of the object, so it spans the track box.
-                padded = _grow(box, plan.padding.px, job)
-                held = any(
-                    _contains(e.box, padded) if e.shape == "box" else e.mask is not None and _mask_spans(e.mask, box)
-                    for e in entries
-                ) or any(_contains(fill, box) for fill in fills)
-                if not held:
+                if not _held(entries, fills, box, _grow(box, plan.padding.px, job)):
                     raise ContractError(
                         f"plan.json frame {frame}: {item.item_id} doesn't cover {track.track_id}'s box {list(box)}"
                     )
@@ -1340,6 +1361,14 @@ def _check_plan_geometry(plan: Plan, decisions: Decisions, tracks: Tracks, job: 
         grids = {e.grid for entries in plan.frames.values() for e in entries if e.item_id == item.item_id and e.grid}
         if len(grids) > max(1, len(item.track_ids)):
             raise ContractError(f"plan.json: {item.item_id}'s pixelate grid moves between frames ({len(grids)} grids)")
+
+
+def _held(entries: list[PlanEntry], fills: list[Box], box: Box, padded: Box) -> bool:
+    """A box entry contains ``padded``, a mask entry's foreground spans ``box``, or a crowd fill contains ``box``."""
+    return any(
+        _contains(e.box, padded) if e.shape == "box" else e.mask is not None and _mask_spans(e.mask, box)
+        for e in entries
+    ) or any(_contains(fill, box) for fill in fills)
 
 
 def _grow(box: Box, px: int, job: Job) -> Box:
@@ -1396,6 +1425,31 @@ def _check_plan_covers(plan: Plan, decisions: Decisions, tracks: Tracks | None, 
         ]  # fmt: skip
         if missing:
             raise ContractError(f"plan.json: hidden item {item.item_id} has no entry on frames {missing[:10]}")
+        _check_held_boxes(plan, item, by_track, job)
+
+
+def _check_held_boxes(plan: Plan, item: DecisionItem, by_track: Mapping[str, Track], job: Job) -> None:
+    temporal = plan.temporal
+    # Where the guard holds a box the tracks don't carry (back-fill and extend frames, which hold the edge box;
+    # an audit patch's static box), the entry must still cover it: these frames are where leaks happen.
+    held: dict[int, list[Box]] = {}
+    if item.box is not None and item.first is not None and item.last is not None:
+        for f in range(item.first, item.last + 1):
+            held.setdefault(f, []).append(item.box)
+    for track in (by_track[tid] for tid in item.track_ids if tid in by_track):
+        edges = range(max(0, track.first - temporal.backfill), track.last + temporal.extend + 1)
+        for f in (f for f in edges if not track.first <= f <= track.last):
+            box = _box_near(track, f)
+            if box is not None:
+                held.setdefault(f, []).append(box)
+    for f, boxes in sorted(held.items()):
+        if f >= job.frames:
+            continue
+        entries = [e for e in plan.frames.get(f, []) if e.item_id == item.item_id]
+        fills = [fl.box for fl in plan.crowd_fills if f in fl.frames]
+        for box in boxes:
+            if not _held(entries, fills, box, _grow(box, plan.padding.px, job) if item.box is None else box):
+                raise ContractError(f"plan.json frame {f}: {item.item_id} doesn't cover its held box {list(box)}")
 
 
 def _box_near(track: Track, frame: int) -> Box | None:

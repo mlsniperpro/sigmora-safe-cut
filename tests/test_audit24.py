@@ -75,7 +75,7 @@ def test_containment_uses_the_rendered_box_not_the_declared_one(tmp_path: Path) 
                     entry["box"] = [0, 0, 2, 2]
 
     _edit(job_dir, "plan.json", shrink)
-    with pytest.raises(c.ContractError, match=r"p_1 doesn't cover box \[200, 200, 260, 280\] on frame 10"):
+    with pytest.raises(c.ContractError, match=r"p_1 doesn't cover (its held )?box \[200, 200, 260, 280\]"):
         c.validate_job_dir(job_dir)
 
 
@@ -613,7 +613,7 @@ def _entries(job_dir: Path, item_id: str, change: dict[str, Any]) -> None:
 def test_a_plan_entry_must_cover_its_track(tmp_path: Path) -> None:
     job_dir = _example(tmp_path)
     _entries(job_dir, "i_2", {"box": [0, 0, 2, 2]})
-    with pytest.raises(c.ContractError, match=r"i_2 doesn't cover face:2's box \[100, 300, 160, 380\]"):
+    with pytest.raises(c.ContractError, match=r"i_2 doesn't cover (face:2's|its held) box \[100, 300, 160, 380\]"):
         c.validate_job_dir(job_dir)
 
 
@@ -738,7 +738,7 @@ def test_an_empty_mask_entry_hides_nothing(tmp_path: Path) -> None:
         {"style": "person_solid"}))  # fmt: skip
     empty = {"size": [720, 1280], "counts": rle_string([720 * 1280])}
     _entries(job_dir, "i_2", {"style": "person_solid", "shape": "mask", "mask": empty, "box": [0, 0, 1280, 720]})
-    with pytest.raises(c.ContractError, match="i_2 doesn't cover face:2's box"):
+    with pytest.raises(c.ContractError, match=r"i_2 doesn't cover (face:2's|its held) box"):
         c.validate_job_dir(job_dir)
     # Foreground over face:2 (columns 100-169, rows 280-399): one run per column.
     runs: list[int] = []
@@ -788,7 +788,7 @@ def test_a_one_pixel_mask_hides_nothing(tmp_path: Path) -> None:
     runs = [130 * 720 + 340, 1, 720 * 1280 - 130 * 720 - 341]  # one pixel at the centre of face:2
     dot = {"size": [720, 1280], "counts": rle_string(runs)}
     _entries(job_dir, "i_2", {"style": "person_solid", "shape": "mask", "mask": dot, "box": [0, 0, 1280, 720]})
-    with pytest.raises(c.ContractError, match="i_2 doesn't cover face:2's box"):
+    with pytest.raises(c.ContractError, match=r"i_2 doesn't cover (face:2's|its held) box"):
         c.validate_job_dir(job_dir)
 
 
@@ -809,7 +809,7 @@ def test_an_entry_without_the_pixel_padding_is_refused(tmp_path: Path) -> None:
     job_dir = _example(tmp_path)
     _edit(job_dir, "plan.json", lambda d: next(e for e in d["frames"]["5"] if e["item_id"] == "i_2").update(
         {"box": [100, 300, 160, 380]}))  # fmt: skip  # exactly face:2's box, no padding
-    with pytest.raises(c.ContractError, match="i_2 doesn't cover face:2's box"):
+    with pytest.raises(c.ContractError, match=r"i_2 doesn't cover (face:2's|its held) box"):
         c.validate_job_dir(job_dir)
 
 
@@ -891,3 +891,66 @@ async def test_the_baseten_client_needs_no_key_in_replay(tmp_path: Path) -> None
 def test_a_base_url_with_an_empty_query_or_fragment_is_refused(url: str) -> None:
     with pytest.raises(ConfigError, match="base URLs must be"):
         load_settings({"SAFECUT_META_BASE_URL": url})
+
+
+# --- audit #45 ----------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("change", "field"),
+    [({"padding": {"face": 0, "default": 0, "px": 0}}, "padding"), ({"temporal": {"extend": 0, "backfill": 57,
+                                                                                  "gap_hold_s": 2.0}}, "extend")],
+)  # fmt: skip
+def test_the_guards_padding_is_at_least_designs(tmp_path: Path, change: dict[str, Any], field: str) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "plan.json", lambda d: d.update(change))
+    with pytest.raises(c.ContractError, match=field):
+        c.validate_job_dir(job_dir)
+
+
+def test_a_backfill_frame_must_cover_the_held_box(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)  # face:2 starts at 5: frames 0-4 are back-fill holding its first box
+    _edit(job_dir, "plan.json", lambda d: next(e for e in d["frames"]["2"] if e["item_id"] == "i_2").update(
+        {"box": [0, 0, 2, 2]}))  # fmt: skip
+    with pytest.raises(c.ContractError, match=r"frame 2: i_2 doesn't cover its held box \[100, 300, 160, 380\]"):
+        c.validate_job_dir(job_dir)
+
+
+def test_every_audit_patch_frame_covers_its_box(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "plan.json", lambda d: next(e for e in d["frames"]["3"] if e["item_id"] == "p_1").update(
+        {"box": [0, 0, 2, 2]}))  # fmt: skip
+    with pytest.raises(c.ContractError, match=r"frame 3: p_1 doesn't cover its held box \[200, 200, 260, 280\]"):
+        c.validate_job_dir(job_dir)
+
+
+def test_a_crowd_fill_covers_a_capped_concept(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+
+    def crowd(d: Any) -> None:
+        d["crowded_frames"] = [3]
+        for n in range(16):
+            d["tracks"].append({"track_id": f"face:{50 + n}", "concept": "face", "first": 3, "last": 3,
+                                "boxes": {"3": [40 * n, 600, 40 * n + 30, 640]}, "source": None, "prompt": "face",
+                                "origin": "static"})  # fmt: skip
+
+    _edit(job_dir, "tracks.json", crowd)
+
+    def items(d: Any) -> None:
+        crowd_item = {"item_id": "i_9", "track_ids": [f"face:{50 + n}" for n in range(16)], "kind": "person",
+                      "decision": "hide", "reason": "crowd", "evidence_frames": [3], "style": "solid",
+                      "decided_by": "policy", "locked": False}  # fmt: skip
+        d["items"].append(crowd_item)
+
+    _edit(job_dir, "decisions.json", items)
+
+    def plan(d: Any) -> None:
+        entry = {"item_id": "i_9", "shape": "box", "box": [0, 560, 1280, 720], "mask": None, "style": "solid",
+                 "grid": None, "source": "decision"}  # fmt: skip
+        for f in range(12):
+            d["frames"].setdefault(str(f), []).append(entry)
+        d["crowd_fills"] = [{"frames": [3], "box": [0, 0, 2, 2]}]
+
+    _edit(job_dir, "plan.json", plan)
+    with pytest.raises(c.ContractError, match="frame 3: no crowd fill covers the 17 face objects"):
+        c.validate_job_dir(job_dir)
