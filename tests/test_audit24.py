@@ -548,3 +548,26 @@ def test_an_unresolved_flagged_leaks_item_may_still_be_soft(tmp_path: Path) -> N
 
     _edit(job_dir, "audit.json", block)
     assert "audit.json" in c.validate_job_dir(job_dir)
+
+
+# --- audit #38 ----------------------------------------------------------------------------------------------
+
+
+def test_an_item_over_a_child_phrase_track_is_a_child(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "tracks.json", lambda d: next(t for t in d["tracks"] if t["track_id"] == "face:1").update(
+        {"child_phrase": True}))  # fmt: skip
+    with pytest.raises(c.ContractError, match="face:1 is a child_phrase track, so the item is kind child"):
+        c.validate_job_dir(job_dir)
+
+
+def test_a_track_ruled_a_child_is_never_kept(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+
+    def rule_child(d: Any) -> None:
+        track = next(t for t in d["tracks"] if t["track_id"] == "face:1")
+        track.update({"role": "child", "votes": ["child", "child", "child"]})
+
+    _edit(job_dir, "roles.json", rule_child)
+    with pytest.raises(c.ContractError, match="face:1 is ruled a child, and a child is never kept"):
+        c.validate_job_dir(job_dir)

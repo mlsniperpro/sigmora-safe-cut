@@ -339,3 +339,13 @@ Tests are in tests/test_audit24.py (the audit #37 section) unless named.
   - the ARCHITECTURE grid sentence is reworded.
   test_contracts' receipt item-by-item case now changes the style to `person_solid` (test_text_screens_plates_and_documents_are_never_pixelated ×3)
 - L4 no probe checked the `GET /v1/files` listing that orphan cleanup relies on (PRE-A §10.4: "its paging is checked in WP0's probes"). Fixed: probe a lists files with the cleanup's own parameters and records the keys, `has_more` and item fields, never the names. The replay test checks it (tests/test_probes_replay.py::test_all_probes_replay)
+
+## Audit 38 (independent Sonnet reviewer at fc14859): 0 critical, 0 high, 0 medium, 2 low. NOT CLEAN; both verified and fixed
+Tests are in tests/test_audit24.py (the audit #38 section). It also reproduced audit #37's plan-style gap and the pixelated screen, both already fixed in the working tree it saw.
+- L1 nothing tied decisions to child evidence across files: a kept `person` item over a `child_phrase` track, or over a track that roles.json rules a child, validated. Fixed per PRE-A §12 (WP3 rule 0) and WP3.md: an item over a `child_phrase` track must be `kind: child` (which already forces a locked hide), and an item with a track ruled `child` is never `keep` (test_an_item_over_a_child_phrase_track_is_a_child, test_a_track_ruled_a_child_is_never_kept)
+- L2 ARCHITECTURE §3 examples contradicted their own numbers. Fixed:
+  - `crowded_frames`/`crowd_fills` [312, 313] could not be a 30 → 8 fps crowded span (T11). It is now 310–315, proxy frame 83's span;
+  - the mask and `conf` key 120 isn't a T1 anchor. It is now 121;
+  - the `times` elision is now marked;
+  - the participant who says "Hi, I'm Amina" is S1, not S2.
+  The §3 rules sentence states the child rules

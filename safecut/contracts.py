@@ -1021,14 +1021,24 @@ def _check_item(item: DecisionItem, job: Job, where: str) -> None:
             _check_frame(frame, job, where)
 
 
-def _check_decisions(decisions: Decisions, job: Job, tracks: Tracks | None) -> None:
+def _check_decisions(decisions: Decisions, job: Job, tracks: Tracks | None, roles: Roles | None = None) -> None:
     known = None if tracks is None else {t.track_id for t in tracks.tracks}
+    child_phrase: set[str] = set() if tracks is None else {t.track_id for t in tracks.tracks if t.child_phrase}
+    child_role: set[str] = set() if roles is None else {t.track_id for t in roles.tracks if t.role == "child"}
     for item in decisions.items:
         where = f"decisions.json {item.item_id}"
         if known is not None:
             missing = [tid for tid in item.track_ids if tid not in known]
             if missing:
                 raise ContractError(f"{where}: unknown track {missing[0]}")
+        # PRE-A §12 (WP3 rule 0): an item over a child_phrase track is a child (a locked hide), whatever any vote
+        # says; and a track ruled a child is never kept (WP3.md).
+        phrased = [tid for tid in item.track_ids if tid in child_phrase]
+        if phrased and item.kind != "child":
+            raise ContractError(f"{where}: track {phrased[0]} is a child_phrase track, so the item is kind child")
+        ruled = [tid for tid in item.track_ids if tid in child_role]
+        if ruled and item.decision == "keep":
+            raise ContractError(f"{where}: track {ruled[0]} is ruled a child, and a child is never kept")
         _check_item(item, job, where)
 
 
@@ -1400,7 +1410,7 @@ def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:
     if isinstance(roles, Roles):
         _check_roles(roles, job, tracks)
     if decisions is not None:
-        _check_decisions(decisions, job, tracks)
+        _check_decisions(decisions, job, tracks, roles if isinstance(roles, Roles) else None)
     if isinstance(plan, Plan):
         _check_plan(plan, job, decisions)
     if audit is not None:
