@@ -15,6 +15,7 @@ import asyncio
 import base64
 import json
 import math
+import os
 import subprocess
 import sys
 import tempfile
@@ -69,14 +70,17 @@ class Probe:
     files: FileStore
     clip: Path = CLIP
     keyframes: Path | None = None
+    #: Where this run's raw files go until its summary is accepted (see `save_summary`); None writes to `out`.
+    raw: Path | None = None
 
     @property
     def synthetic(self) -> bool:
         return self.clip == CLIP
 
     def save(self, filename: str, data: Any) -> None:
-        self.out.mkdir(parents=True, exist_ok=True)
-        (self.out / filename).write_text(json.dumps(data, indent=1, ensure_ascii=False) + "\n")
+        folder = self.raw or self.out
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / filename).write_text(json.dumps(data, indent=1, ensure_ascii=False) + "\n")
 
 
 def _usage(response: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -869,8 +873,16 @@ async def run(
             continue
         files = FileStore(meta, out / "job")
         probe_clip = clip if name in ("b", "d") else CLIP
+        staged = _staging(out)
         probe = Probe(
-            name=name, out=out, settings=settings, meta=meta, files=files, clip=probe_clip, keyframes=keyframes
+            name=name,
+            out=out,
+            settings=settings,
+            meta=meta,
+            files=files,
+            clip=probe_clip,
+            keyframes=keyframes,
+            raw=staged,
         )
         try:
             results[name] = await PROBES[name](probe)
@@ -882,8 +894,16 @@ async def run(
             except (MetaError, OSError, ContractError) as exc:  # the next probes and this summary still run
                 results.setdefault(name, {})["uploads_deleted"] = f"failed: {exc}"
             await meta.aclose()
-        save_summary(out, results[name])
+        save_summary(out, results[name], staged=staged)
     return results
+
+
+def _stamp() -> str:
+    return time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+
+
+def _staging(out: Path) -> Path:
+    return out / f".run-{_stamp()}-{os.getpid()}"
 
 
 def _errors(value: object) -> int:
@@ -910,20 +930,35 @@ def _worse(result: Summary, recorded: Path) -> bool:
     return _errors(result) > _errors(cast(object, old))
 
 
-def save_summary(out: Path, result: Summary) -> Path:
+def save_summary(out: Path, result: Summary, *, staged: Path | None = None) -> Path:
     """Write ``summary.json``, unless this run only failed and an earlier run's summary (a paid, recorded result
-    that API-NOTES quotes and its raw files back) is already there: then the failure goes beside it."""
+    that API-NOTES quotes and its raw files back) is already there: then the failure goes beside it.
+
+    The run's raw files (``staged``) travel with its summary: promoted into ``out`` beside an accepted one, or
+    moved to ``failed-<ts>/`` beside a diverted one, so a recorded summary's raw files are always its own."""
     out.mkdir(parents=True, exist_ok=True)
     path = out / "summary.json"
+    staged = staged if staged is not None and staged.is_dir() else None
     if path.exists() and _worse(result, path):
         # A run that failed more (in-band per concept, call or check, or outright) never replaces a recorded one.
-        path = out / f"summary.failed-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}.json"
-    path.write_text(json.dumps(result, indent=1, ensure_ascii=False) + "\n")
+        stamp = _stamp()
+        path = out / f"summary.failed-{stamp}.json"
+        if staged is not None:
+            staged.rename(out / f"failed-{stamp}")
+    elif staged is not None:
+        for raw in staged.iterdir():
+            os.replace(raw, out / raw.name)
+        staged.rmdir()
+    # Atomic: a full disk or a kill mid-write never truncates a recorded, paid summary.
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text(json.dumps(result, indent=1, ensure_ascii=False) + "\n")
+    os.replace(tmp, path)
     return path
 
 
 async def _run_h(settings: Settings, *, job_id: str, out: Path, ledger: LocalLedger, cost_path: Path) -> Summary:
     """Probe h needs only BASETEN_API_KEY (no Meta key) and writes provider: "baseten" cost lines."""
+    staged = _staging(out)
     try:
         client = open_weight.open_weight_client(
             settings, job_id=job_id, caller=Caller(code_kind="owner"), ledger=ledger, cost_path=cost_path
@@ -932,12 +967,12 @@ async def _run_h(settings: Settings, *, job_id: str, out: Path, ledger: LocalLed
         result: Summary = {"error": f"{type(exc).__name__}: {exc}"}
     else:
         try:
-            result = await probe_h(settings, client, out)
+            result = await probe_h(settings, client, staged)
         except Exception as exc:
             result = {"error": f"{type(exc).__name__}: {exc}"}
         finally:
             await client.aclose()
-    save_summary(out, result)
+    save_summary(out, result, staged=staged)
     return result
 
 

@@ -38,3 +38,7 @@ weights/
 !fixtures/clips/*.mp4
 .coverage
 htmlcov/
+
+# Probe runs stage raw files here until their summary is accepted (scripts/probes/probes.py save_summary).
+.run-*/
+.summary.json.tmp

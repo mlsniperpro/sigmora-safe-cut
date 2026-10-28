@@ -572,6 +572,14 @@ class MetaClient:
         return call_id
 
     async def _settle(self, spec: CallSpec, call_id: str | None, attempt: int, outcome: _Attempt) -> None:
+        if outcome.usd is not None and 0 < spec.estimate_usd * config.USAGE_SANITY_FACTOR < outcome.usd:
+            # The reservation is the call's worst case: usage far past it is a malformed body, not spend. Trusted,
+            # it would poison the receipt and exhaust the daily cap for good (AGENTS rule 9: honest, not absurd).
+            log.warning(
+                "implausible usage; keeping the estimate",
+                extra={"stage": spec.stage, "usd": outcome.usd, "estimate_usd": spec.estimate_usd},
+            )
+            outcome.usd = None
         if outcome.usd is None:
             # Completed, but without usage: we can't measure it, so the reserved estimate stands.
             await self._account(spec, call_id, attempt, charged=True, rid=outcome.request_id)

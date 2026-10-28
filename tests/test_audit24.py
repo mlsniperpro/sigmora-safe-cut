@@ -36,7 +36,7 @@ from safecut.meta.files import FileStore
 from safecut.meta.retry import RetryPolicy, parse_retry_after
 from safecut.meta.status import StatusUnavailableError, fetch_status
 from scripts.probes import probes
-from tests.conftest import BASE, Harness, narrow_patch, rle_string
+from tests.conftest import BASE, Harness, completed, narrow_patch, rle_string, stream_response, text_response
 from tests.test_probes_replay import api  # noqa: F401 -- the replay server fixture, reused
 
 EXAMPLE = Path(__file__).resolve().parent.parent / "fixtures" / "contracts" / "j_example"
@@ -1651,3 +1651,43 @@ async def test_a_stream_whose_headers_never_arrive_is_bounded(
         await h.client.stream(spec, {"model": "muse-spark-1.3", "store": False}, meter=lambda _: ({}, 0.0))
     assert time.monotonic() - started < 3
     assert h.costs()[0].estimated  # sent, so the estimate is kept
+
+
+# --- audit #59 ----------------------------------------------------------------------------------------------
+
+
+async def test_absurd_reported_usage_keeps_the_estimate(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter
+) -> None:
+    h = make_harness()
+    mock_api.post("/responses").mock(return_value=stream_response(completed(text_response("{}"))))
+    spec = CallSpec(stage="s", model="muse-spark-1.3", estimate_usd=0.01, estimate_units={"output": 100},
+                    policy=RetryPolicy(attempts=1), timeout=httpx.Timeout(5.0))  # fmt: skip
+    absurd = 4_672_924.42  # what 2**40 output tokens would cost
+    result = await h.client.stream(spec, {"model": "muse-spark-1.3", "store": False},
+                                   meter=lambda _: ({"output": float(2**40)}, absurd))  # fmt: skip
+    assert result.usd == 0.01
+    [line] = h.costs()
+    assert (line.usd, line.estimated) == (0.01, True)
+    plausible = await h.client.stream(spec, {"model": "muse-spark-1.3", "store": False},
+                                      meter=lambda _: ({"output": 900.0}, 0.05))  # fmt: skip
+    assert plausible.usd == 0.05  # above the estimate but plausible: measured, as reported
+
+
+def _probe_d(router: respx.MockRouter, body: Any) -> None:
+    router.post(f"{BASE}/asr/transcribe").mock(return_value=httpx.Response(200, json=body))
+
+
+async def test_a_diverted_run_keeps_the_recorded_raw_files(api: respx.MockRouter, tmp_path: Path) -> None:  # noqa: F811 -- pytest injects the imported fixture by name
+    good = {"transcript": "hi", "audioDurationMs": 3000, "turns": [], "language": "en", "requestId": "r-1"}
+    run = functools.partial(probes.run, ["d"], settings=Settings(model_api_key=SecretStr("k")), out_root=tmp_path)
+    _probe_d(api, good)
+    await run(ledger=LocalLedger())
+    _probe_d(api, [1, 2])  # a malformed body: the run fails outright and is diverted
+    await run(ledger=LocalLedger())
+    out = tmp_path / "d"
+    assert json.loads((out / "asr.response.json").read_text()) == good  # the recorded summary's own raw file
+    [failed] = list(out.glob("failed-*"))
+    assert json.loads((failed / "asr.response.json").read_text()) == [1, 2]
+    assert not list(out.glob(".run-*"))
+    assert not list(out.glob(".*.tmp"))
