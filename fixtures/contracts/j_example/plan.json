@@ -10,6 +10,22 @@
   "gap_hold_s": 2.0
  },
  "frames": {
+  "0": [
+   {
+    "item_id": "p_1",
+    "shape": "box",
+    "box": [
+     195,
+     194,
+     265,
+     286
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "audit_patch"
+   }
+  ],
   "1": [
    {
     "item_id": "i_3",
@@ -24,6 +40,20 @@
     "style": "solid",
     "grid": null,
     "source": "decision"
+   },
+   {
+    "item_id": "p_1",
+    "shape": "box",
+    "box": [
+     195,
+     194,
+     265,
+     286
+    ],
+    "mask": null,
+    "style": "solid",
+    "grid": null,
+    "source": "audit_patch"
    }
   ],
   "2": [

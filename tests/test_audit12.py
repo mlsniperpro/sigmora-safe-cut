@@ -23,7 +23,7 @@ from safecut.meta.errors import MetaUnavailable
 from safecut.meta.retry import RetryPolicy
 from scripts.probes import probes
 from tests import test_probes_replay as replay
-from tests.conftest import stream_response
+from tests.conftest import narrow_patch, stream_response
 from tests.test_audit9 import _replay_routes  # pyright: ignore[reportPrivateUsage] -- the shared replay server
 
 EXAMPLE = Path(__file__).resolve().parent.parent / "fixtures" / "contracts" / "j_example"
@@ -76,6 +76,7 @@ def test_a_receipt_may_record_a_blocked_audit() -> None:
 def test_a_patch_must_hide_the_leak_frame(tmp_path: Path, item: str, message: str) -> None:
     job_dir = tmp_path / "j_example"
     shutil.copytree(EXAMPLE, job_dir)
+    narrow_patch(job_dir, 2)
     audit = json.loads((job_dir / "audit.json").read_text())
     frame = 1 if item == "p_1" else audit["leaks"][0]["frame"]
     audit["leaks"][0].update({"patched_item": item, "frame": frame})

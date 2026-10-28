@@ -15,6 +15,7 @@ from hypothesis import strategies as st
 from pydantic import BaseModel, ValidationError
 
 from safecut import contracts as c
+from tests.conftest import rle_string
 
 EXAMPLE = Path(__file__).resolve().parent.parent / "fixtures" / "contracts" / "j_example"
 
@@ -133,7 +134,7 @@ def test_track_ids_unique_and_static_tracks_have_no_masks() -> None:
     with pytest.raises(ValidationError, match="unique"):
         c.Tracks.model_validate(t)
     t = copy.deepcopy(data)
-    t["tracks"][3]["masks"] = {"9": {"size": [720, 1280], "counts": "x"}}
+    t["tracks"][3]["masks"] = {"9": {"size": [720, 1280], "counts": rle_string([720 * 1280])}}
     with pytest.raises(ValidationError, match="static track"):
         c.Tracks.model_validate(t)
 
@@ -456,7 +457,11 @@ def _edit_receipt(job_dir: Path, fn: Any) -> None:
     ("name", "mutate", "message"),
     [
         ("tracks.json", lambda d: d["tracks"][0]["boxes"].update({"5": [1200, 0, 1300, 50]}), "exceeds"),
-        ("tracks.json", lambda d: d["tracks"][0]["masks"]["1"].update({"size": [360, 640]}), "mask size"),
+        (
+            "tracks.json",
+            lambda d: d["tracks"][0]["masks"]["1"].update({"size": [360, 640], "counts": rle_string([360 * 640])}),
+            "mask size",
+        ),
         ("tracks.json", lambda d: d.update({"crowded_frames": [12]}), "job.frames"),
         ("plan.json", lambda d: d["frames"].update({"40": []}), "job.frames"),
         ("decisions.json", lambda d: d["items"][0].update({"track_ids": ["face:99"]}), "unknown track"),

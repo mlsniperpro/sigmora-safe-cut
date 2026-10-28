@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import wave
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -130,7 +131,7 @@ async def transcribe_raw(
         stage=stage,
         model=model,
         estimate_usd=cost.asr_estimate(seconds),
-        estimate_units={"audio_s": float(int(seconds) + 1)},
+        estimate_units={"audio_s": float(math.ceil(seconds))},  # the seconds asr_estimate prices
         policy=RetryPolicy.for_asr(),
         timeout=httpx.Timeout(config.ASR_TOTAL_TIMEOUT_S, connect=config.CONNECT_TIMEOUT_S),
         total_timeout_s=config.ASR_TOTAL_TIMEOUT_S,

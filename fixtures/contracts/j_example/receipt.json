@@ -110,7 +110,7 @@
     260,
     280
    ],
-   "first": 2,
+   "first": 0,
    "last": 11,
    "thumbnail": "thumbs/p_1.jpg"
   }
@@ -150,9 +150,9 @@
  },
  "approved_by": "creator",
  "approved_at": "2026-10-27T10:10:00Z",
- "cost_usd": 0.031848,
+ "cost_usd": 0.041848,
  "cost_usd_estimated": 0.0,
  "cost_usd_baseten": 0.0,
  "prev_hash": null,
- "hash": "39caa35e5dcfa133324a1e6fb5203d723ad7742e04eec042020d206e8ebf3f22"
+ "hash": "4d655ad3fed991fc8730293b08de86d22b6ad0e177cac1f52a65b059407e2313"
 }

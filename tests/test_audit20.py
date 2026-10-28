@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from safecut import contracts as c
 from safecut.meta.errors import MetaRefusal
 from scripts.probes import probes
+from tests.conftest import narrow_patch
 
 EXAMPLE = Path(__file__).resolve().parent.parent / "fixtures" / "contracts" / "j_example"
 HIT = {"frame": 10, "finding": "hit", "kind": "text", "text": "A", "detail": "a name", "box": [900, 500, 1000, 560],
@@ -64,6 +65,7 @@ def test_a_patch_must_cover_the_leak_box(tmp_path: Path) -> None:
 
 def test_a_spot_cover_must_hide_all_its_frames(tmp_path: Path) -> None:
     job_dir = _example(tmp_path)
+    narrow_patch(job_dir, 2)
     spot = {"spot_id": "s1", "first": 0, "last": 2, "boxes": {"2": [200, 200, 260, 280]}, "covered_by": "p_1"}
     _edit_audit(job_dir, lambda d: d["spots"].append(spot))
     with pytest.raises(c.ContractError, match=r"spot s1 cover: p_1 doesn't hide frames \[0, 1\]"):

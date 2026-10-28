@@ -28,7 +28,7 @@ from safecut.meta.errors import MetaBadRequest, MetaConfigError, MetaUnavailable
 from safecut.meta.files import FileStore
 from safecut.meta.retry import RetryPolicy
 from scripts.probes import probes
-from tests.conftest import BASE, Harness
+from tests.conftest import BASE, Harness, rle_string
 from tests.test_probes_replay import api  # noqa: F401 -- the replay server fixture, reused
 
 EXAMPLE = Path(__file__).resolve().parent.parent / "fixtures" / "contracts" / "j_example"
@@ -453,7 +453,7 @@ def test_a_flagged_leak_needs_its_through_item_rendered_solid(tmp_path: Path) ->
         ({"style": "pixelate"}, "solid and decided by policy"),
         ({"decided_by": "creator"}, "solid and decided by policy"),
         ({"evidence_frames": []}, "one evidence frame inside first..last"),
-        ({"evidence_frames": [0]}, "one evidence frame inside first..last"),
+        ({"evidence_frames": [10], "first": 11}, "one evidence frame inside first..last"),
     ],
 )
 def test_an_audit_patch_follows_its_spec_row(change: dict[str, Any], message: str) -> None:
@@ -529,7 +529,7 @@ def test_an_audit_patch_entry_is_marked_as_one(tmp_path: Path) -> None:
 def test_text_screens_plates_and_documents_are_never_pixelated(kind: str) -> None:
     items = json.loads((EXAMPLE / "decisions.json").read_text())["items"]
     screen = next(i for i in items if i["item_id"] == "i_3")
-    with pytest.raises(ValueError, match=f"a {kind} is always solid"):
+    with pytest.raises(ValueError, match=f"a {kind} item is always solid"):
         c.DecisionItem.model_validate(screen | {"kind": kind, "style": "pixelate"})
 
 
@@ -561,13 +561,37 @@ def test_an_item_over_a_child_phrase_track_is_a_child(tmp_path: Path) -> None:
         c.validate_job_dir(job_dir)
 
 
-def test_a_track_ruled_a_child_is_never_kept(tmp_path: Path) -> None:
+@pytest.mark.parametrize(("role", "votes"), [("child", ["child", "child", "child"]),
+                                            ("unsure", ["participant", "child", "participant"])])  # fmt: skip
+def test_a_track_with_a_child_vote_or_ruling_is_a_child(tmp_path: Path, role: str, votes: list[str]) -> None:
+    # escalation.md rule 1: any child vote makes the track a child (locked, hidden), never kept.
     job_dir = _example(tmp_path)
-
-    def rule_child(d: Any) -> None:
-        track = next(t for t in d["tracks"] if t["track_id"] == "face:1")
-        track.update({"role": "child", "votes": ["child", "child", "child"]})
-
-    _edit(job_dir, "roles.json", rule_child)
-    with pytest.raises(c.ContractError, match="face:1 is ruled a child, and a child is never kept"):
+    _edit(job_dir, "roles.json", lambda d: next(t for t in d["tracks"] if t["track_id"] == "face:1").update(
+        {"role": role, "votes": votes}))  # fmt: skip
+    with pytest.raises(c.ContractError, match="face:1 has a child vote or ruling, so the item is kind child"):
         c.validate_job_dir(job_dir)
+
+
+# --- audit #40 ----------------------------------------------------------------------------------------------
+
+
+def test_a_mask_must_cover_the_whole_frame() -> None:
+    assert c.rle_runs(rle_string([5, 3, 92])) == [5, 3, 92]
+    assert c.Rle(size=(10, 10), counts=rle_string([5, 3, 92]))
+    with pytest.raises(ValueError, match="cover 100 pixels, not the 720x1280 frame"):
+        c.Rle(size=(720, 1280), counts=rle_string([5, 3, 92]))  # a box-sized mask labelled frame-sized
+    with pytest.raises(ValueError, match="aren't COCO compressed RLE"):
+        c.Rle(size=(10, 10), counts="~~~notrle")
+
+
+def test_only_people_are_pixelated() -> None:
+    items = json.loads((EXAMPLE / "decisions.json").read_text())["items"]
+    envelope = next(i for i in items if i["item_id"] == "i_4")
+    with pytest.raises(ValueError, match="a other item is always solid"):
+        c.DecisionItem.model_validate(envelope | {"style": "pixelate"})
+
+
+def test_load_infers_the_job_file_model() -> None:
+    assert isinstance(c.load(EXAMPLE / "tracks.json"), c.Tracks)
+    with pytest.raises(c.ContractError, match="not a job file"):
+        c.load(EXAMPLE.parent / "README.md")

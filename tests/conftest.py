@@ -110,3 +110,33 @@ def text_response(text: str, *, usage: dict[str, Any] | None = None, rid: str = 
 
 def stream_response(*events: dict[str, Any], status: int = 200) -> httpx.Response:
     return httpx.Response(status, content=sse(*events), headers={"content-type": "text/event-stream"})
+
+
+def rle_string(runs: list[int]) -> str:
+    """Encode run lengths as a COCO compressed RLE string (cocoapi ``rleToString``)."""
+    out: list[str] = []
+    for i, run in enumerate(runs):
+        x = run - runs[i - 2] if i > 2 else run
+        more = True
+        while more:
+            c = x & 0x1F
+            x >>= 5
+            more = (x != -1) if c & 0x10 else (x != 0)
+            if more:
+                c |= 0x20
+            out.append(chr(c + 48))
+    return "".join(out)
+
+
+def narrow_patch(job_dir: Path, first: int) -> None:
+    """Start the example's audit patch p_1 at ``first`` (it spans the whole 12-frame clip), so a test can put a
+    frame outside it. Drops the receipt, which would (rightly) disagree with the edit."""
+    decisions = json.loads((job_dir / "decisions.json").read_text())
+    next(i for i in decisions["items"] if i["item_id"] == "p_1")["first"] = first
+    (job_dir / "decisions.json").write_text(json.dumps(decisions))
+    plan = json.loads((job_dir / "plan.json").read_text())
+    for frame, entries in plan["frames"].items():
+        if int(frame) < first:
+            entries[:] = [e for e in entries if e["item_id"] != "p_1"]
+    (job_dir / "plan.json").write_text(json.dumps(plan))
+    (job_dir / "receipt.json").unlink(missing_ok=True)

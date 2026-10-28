@@ -17,7 +17,7 @@ from collections import Counter
 from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, overload
 
 from pydantic import (
     AfterValidator,
@@ -115,6 +115,40 @@ class Rle(Contract):
 
     size: tuple[PositiveInt, PositiveInt]
     counts: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _covers_the_frame(self) -> Rle:
+        # A box-sized mask labelled frame-sized decodes silently into the top-left corner (pycocotools treats a
+        # run deficit as background), leaving the item exposed: its runs must cover exactly H x W pixels.
+        runs = rle_runs(self.counts)
+        if any(r < 0 for r in runs) or sum(runs) != self.size[0] * self.size[1]:
+            raise ValueError(f"mask runs cover {sum(runs)} pixels, not the {self.size[0]}x{self.size[1]} frame")
+        return self
+
+
+def rle_runs(counts: str) -> list[int]:
+    """The run lengths of a COCO compressed RLE string (cocoapi ``rleFrString``)."""
+    runs: list[int] = []
+    p = 0
+    while p < len(counts):
+        x = k = 0
+        more = True
+        while more:
+            if p >= len(counts):
+                raise ValueError("mask counts end inside a run")
+            c = ord(counts[p]) - 48
+            if not 0 <= c < 64:
+                raise ValueError("mask counts aren't COCO compressed RLE")
+            x |= (c & 0x1F) << (5 * k)
+            more = bool(c & 0x20)
+            p += 1
+            k += 1
+            if not more and c & 0x10:
+                x |= -1 << (5 * k)
+        if len(runs) > 2:
+            x += runs[-2]
+        runs.append(x)
+    return runs
 
 
 class Point(Contract):
@@ -411,10 +445,10 @@ class DecisionItem(Contract):
     def _rules(self) -> DecisionItem:
         if (self.decision == "keep") != (self.style is None):
             raise ValueError(f"{self.item_id}: style is null exactly for keep items")
-        if self.style == "pixelate" and self.kind in ("plate", "screen", "document"):
+        if self.style == "pixelate" and self.kind not in ("person", "child"):
             # DESIGN §2.7 / WP3.md: text, screens, plates and documents are always solid (a fine mosaic on text
             # is legible, redteam.md case 1); pixelate is only for faces and people.
-            raise ValueError(f"{self.item_id}: a {self.kind} is always solid, never pixelate")
+            raise ValueError(f"{self.item_id}: a {self.kind} item is always solid, never pixelate")
         if self.kind == "child" and (self.decision != "hide" or not self.locked):
             raise ValueError(f"{self.item_id}: children are always hidden and locked")
         if self.origin == "audit_patch":
@@ -838,9 +872,18 @@ class ContractError(ValueError):
     """A job-directory file is missing, malformed, or inconsistent with another file."""
 
 
-def load[M: BaseModel](path: str | Path, model: type[M]) -> M:
-    """Read ``path`` and validate it as ``model``; raise :class:`ContractError` with the file name."""
+@overload
+def load[M: BaseModel](path: str | Path, model: type[M]) -> M: ...
+@overload
+def load(path: str | Path) -> BaseModel: ...
+def load(path: str | Path, model: type[BaseModel] | None = None) -> BaseModel:
+    """Read ``path`` and validate it as ``model`` (by default, the job file its name says, ``JOB_FILES``); raise
+    :class:`ContractError` with the file name."""
     path = Path(path)
+    if model is None:
+        if path.name not in JOB_FILES:
+            raise ContractError(f"{path.name}: not a job file; pass the model to validate it as")
+        model = JOB_FILES[path.name]
     try:
         raw = path.read_bytes()
     except FileNotFoundError:
@@ -1024,7 +1067,10 @@ def _check_item(item: DecisionItem, job: Job, where: str) -> None:
 def _check_decisions(decisions: Decisions, job: Job, tracks: Tracks | None, roles: Roles | None = None) -> None:
     known = None if tracks is None else {t.track_id for t in tracks.tracks}
     child_phrase: set[str] = set() if tracks is None else {t.track_id for t in tracks.tracks if t.child_phrase}
-    child_role: set[str] = set() if roles is None else {t.track_id for t in roles.tracks if t.role == "child"}
+    # escalation.md rules 1-2: any child vote, or a child ruling, makes the track a child (locked, hidden).
+    child_role: set[str] = (
+        set() if roles is None else {t.track_id for t in roles.tracks if t.role == "child" or "child" in t.votes}
+    )
     for item in decisions.items:
         where = f"decisions.json {item.item_id}"
         if known is not None:
@@ -1037,8 +1083,8 @@ def _check_decisions(decisions: Decisions, job: Job, tracks: Tracks | None, role
         if phrased and item.kind != "child":
             raise ContractError(f"{where}: track {phrased[0]} is a child_phrase track, so the item is kind child")
         ruled = [tid for tid in item.track_ids if tid in child_role]
-        if ruled and item.decision == "keep":
-            raise ContractError(f"{where}: track {ruled[0]} is ruled a child, and a child is never kept")
+        if ruled and item.kind != "child":
+            raise ContractError(f"{where}: track {ruled[0]} has a child vote or ruling, so the item is kind child")
         _check_item(item, job, where)
 
 

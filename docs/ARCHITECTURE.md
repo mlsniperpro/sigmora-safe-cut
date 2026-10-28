@@ -84,14 +84,14 @@ This is the same shape as DESIGN §2.3, plus vote detail:
 ```json
 {"status": "ok", "model": "muse-spark-1.3",
  "tracks": [{"track_id": "face:7", "role": "participant|bystander|child|unsure",
-             "votes": ["participant", "participant", "participant"], "escalated": false,
-             "evidence": "introduced at frame 90, speaks to camera 120–600", "frames": [90, 120, 150],
+             "votes": ["bystander", "bystander", "bystander"], "escalated": false,
+             "evidence": "walks behind the guest at frames 150–300, never addresses camera", "frames": [150, 300],
              "failed_votes": 0, "matches_participant": 0, "suggested_role": null,
              "escalation_evidence": null, "escalation_frames": null}],
  "objects": [{"track_id": "screen:2", "sensitive": true, "content": "email inbox with names", "frames": [300]}],
  "missed": [{"what": "addressed envelope", "sam_phrase": "envelope", "frame": 420, "point": {"x": 512, "y": 640},
              "box": null, "recurs": false, "track_ids": []}],
- "keyframes": ["som/000090.jpg"]}
+ "keyframes": ["som/000150.jpg", "som/000300.jpg"]}
 ```
 
 ### 3.6 `decisions.json` (decide)
@@ -114,7 +114,7 @@ Children are `locked: true` and `hide`; the creator can't un-hide them (DESIGN �
 
 ### 3.8 `audit.json` (audit)
 ```json
-{"frames_scanned": 900, "egoblur": {"model": "egoblur-gen2", "faces": 0, "plates": 0},
+{"frames_scanned": 900, "egoblur": {"model": "egoblur-gen2", "faces": 1, "plates": 0},
  "leaks": [{"frame": 401, "box": [x1, y1, x2, y2], "kind": "face", "detector": "egoblur|redteam|redteam_open", "patched_item": "p_1"}],
  "redteam": [{"frame": 0, "finding": "none"}, {"frame": 30, "finding": "none"}, /* … one entry per frame sent: pass 1's full 1 fps set (≥ frames // sample_step = 30 frames), kept across later passes */],
  "unresolved": 0, "passes": 2,

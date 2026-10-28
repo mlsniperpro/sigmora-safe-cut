@@ -349,3 +349,16 @@ Tests are in tests/test_audit24.py (the audit #38 section). It also reproduced a
   - the `times` elision is now marked;
   - the participant who says "Hi, I'm Amina" is S1, not S2.
   The §3 rules sentence states the child rules
+
+## Audit 40 (independent Sonnet reviewer at 338a20c): 0 critical, 0 high, 1 medium, 6 low. NOT CLEAN; all verified and fixed
+Tests are in tests/test_audit24.py (the audit #38 and #40 sections) unless named.
+- M1 the child rule looked only at `role == "child"`. escalation.md rule 1: any role-pass `child` vote (role `unsure`) makes the track a child, locked and hidden, and so does an escalation ruling. Fixed: a track with a child vote or a child ruling makes its item `kind: child`, which forces a locked hide (test_a_track_with_a_child_vote_or_ruling_is_a_child ×2, replacing audit #38's keep-only test)
+- L1 `Rle` didn't enforce "frame-sized": a box-sized mask labelled `[720, 1280]` decodes silently into the top-left corner, and arbitrary `counts` passed. Fixed: `rle_runs` decodes the compressed string (cocoapi `rleFrString`) and the runs must cover exactly H×W. Every fixture mask passes. Tests build masks with a `rle_string` encoder in conftest (test_a_mask_must_cover_the_whole_frame; test_contracts' mask cases now use valid masks)
+- L2 `kind: other` (e.g. an addressed envelope) could be pixelated. Pixelate is now allowed only for `person` and `child` (test_only_people_are_pixelated)
+- L3 WP0.md's `load(path)` needed a model. `load` now infers it from `JOB_FILES` by file name, and the explicit form still works (test_load_infers_the_job_file_model)
+- L4 ASR reserved `audio_s` as `int(s) + 1` while the price uses `ceil(s)`, so a whole-second clip logged one second extra. Now `math.ceil`
+- L5 the example job contradicted its own rules. Fixed, with the receipt re-sealed (cost_usd $0.041848):
+  - `sam_frames` 4 for 12 frames at 30 → 8 fps should be 3 (PRE-A §5b);
+  - only one of the two $0.01 SAM requests had a cost line;
+  - p_1's span should start at frame 0 (10 − 15 − 8, clamped), with plan entries on frames 0–1.
+- L6 the ARCHITECTURE §3.5 example told a different story from §3.2 and §3.6 for face:7. Its votes, evidence, frames and keyframes now match the bystander in §3.6 and the track's own 120–410 span. §3.8's `egoblur.faces` is 1 beside its face leak
