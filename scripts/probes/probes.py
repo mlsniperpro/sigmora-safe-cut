@@ -165,6 +165,32 @@ async def probe_a(p: Probe) -> Summary:
         "model_ids": ids,
         "missing": [m for m in wanted if m not in ids],
         "contributor_ids_listed": [m for m in ids if m.endswith("-contributor")],
+        "files_listing": await _files_listing(p, spec),
+    }
+
+
+async def _files_listing(p: Probe, spec: CallSpec) -> Summary:
+    """PRE-A §10.4: orphan cleanup lists ``GET /v1/files`` exactly as FileStore does and fails closed on any other
+    shape, so record the shape (keys, ``has_more``, item fields), never the team's file names."""
+    params = {"purpose": "user_data", "limit": "10000", "order": "desc"}
+    try:
+        listing = await p.meta.request("GET", "files", spec, meter=lambda _: ({}, 0.0), params=params)
+    except Exception as exc:  # recorded, not fatal: the rest of probe a stands
+        return {"error": f"{type(exc).__name__}: {exc}"}
+    body: Any = listing.body
+    top = cast(dict[str, Any], body) if isinstance(body, dict) else {}
+    data: Any = top.get("data")
+    rows: list[Any] = cast(list[Any], data) if isinstance(data, list) else []
+    fields = sorted({k for r in rows if isinstance(r, dict) for k in cast(dict[str, Any], r)})
+    return {
+        "params": params,
+        "keys": sorted(top),
+        "has_more": top.get("has_more"),
+        "items": len(rows),
+        "item_fields": fields,
+        "documented_fields_present": all(f in fields for f in ("id", "filename", "bytes", "created_at"))
+        if rows
+        else None,
     }
 
 

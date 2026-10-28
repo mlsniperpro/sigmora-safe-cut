@@ -420,21 +420,30 @@ async def test_a_baseten_client_never_defaults_to_the_meta_key(tmp_path: Path) -
 # --- audit #34 ----------------------------------------------------------------------------------------------
 
 
-def test_a_flagged_leak_needs_its_through_item_rendered_solid(tmp_path: Path) -> None:
-    job_dir = _example(tmp_path)  # i_3 (the screen) is pixelate in plan.json
-    leak = {"frame": 3, "box": [900, 400, 1000, 500], "kind": "text", "detector": "redteam", "patched_item": "i_3",
-            "flag": "redaction_too_weak", "through_item": "i_3"}  # fmt: skip
-    _edit(job_dir, "audit.json", lambda d: d["leaks"].append(leak))
-    with pytest.raises(c.ContractError, match=r"i_3 was read through but isn't solid on frames \[1, 2, 3, 4, 5\]"):
-        c.validate_job_dir(job_dir)
+def _restyle(job_dir: Path, item_id: str, style: str) -> None:
+    grid = [91, 288, 16] if style == "pixelate" else None
 
-    def solid(d: Any) -> None:
+    def plan(d: Any) -> None:
         for entries in d["frames"].values():
             for entry in entries:
-                if entry["item_id"] == "i_3":
-                    entry.update({"style": "solid", "grid": None})
+                if entry["item_id"] == item_id:
+                    entry.update({"style": style, "grid": grid})
 
-    _edit(job_dir, "plan.json", solid)
+    _edit(job_dir, "plan.json", plan)
+
+
+def test_a_flagged_leak_needs_its_through_item_rendered_solid(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "decisions.json", lambda d: next(i for i in d["items"] if i["item_id"] == "i_2").update(
+        {"style": "pixelate"}))  # fmt: skip
+    _restyle(job_dir, "i_2", "pixelate")  # i_2 (face:2) as a mosaic, frames 5-9
+    assert "plan.json" in c.validate_job_dir(job_dir)
+    leak = {"frame": 9, "box": [110, 300, 170, 380], "kind": "text", "detector": "redteam", "patched_item": "i_2",
+            "flag": "redaction_too_weak", "through_item": "i_2"}  # fmt: skip
+    _edit(job_dir, "audit.json", lambda d: d["leaks"].append(leak))
+    with pytest.raises(c.ContractError, match=r"i_2 renders pixelate, but its decision says solid"):
+        c.validate_job_dir(job_dir)  # the guard must upgrade it on the re-plan
+    _restyle(job_dir, "i_2", "solid")
     assert "audit.json" in c.validate_job_dir(job_dir)
 
 
@@ -489,3 +498,53 @@ def test_probe_f_compares_the_named_pair() -> None:
     source = Path(probes.__file__).read_text()
     assert '"muse-spark-1.3"' not in source
     assert '"muse-wonder-1.0"' not in source
+
+
+# --- audit #37 ----------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("item", "style"), [("p_1", "pixelate"), ("i_3", "person_solid")])
+def test_a_plan_entry_renders_its_decisions_style(tmp_path: Path, item: str, style: str) -> None:
+    job_dir = _example(tmp_path)
+    _restyle(job_dir, item, style)
+    with pytest.raises(c.ContractError, match=f"{item} renders {style}, but its decision says solid"):
+        c.validate_job_dir(job_dir)
+
+
+def test_an_audit_patch_entry_is_marked_as_one(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+
+    def unmark(d: Any) -> None:
+        for entries in d["frames"].values():
+            for entry in entries:
+                if entry["item_id"] == "p_1":
+                    entry["source"] = "decision"
+
+    _edit(job_dir, "plan.json", unmark)
+    with pytest.raises(c.ContractError, match="p_1 source decision != its origin"):
+        c.validate_job_dir(job_dir)
+
+
+@pytest.mark.parametrize("kind", ["plate", "screen", "document"])
+def test_text_screens_plates_and_documents_are_never_pixelated(kind: str) -> None:
+    items = json.loads((EXAMPLE / "decisions.json").read_text())["items"]
+    screen = next(i for i in items if i["item_id"] == "i_3")
+    with pytest.raises(ValueError, match=f"a {kind} is always solid"):
+        c.DecisionItem.model_validate(screen | {"kind": kind, "style": "pixelate"})
+
+
+def test_an_unresolved_flagged_leaks_item_may_still_be_soft(tmp_path: Path) -> None:
+    # Found by the last pass, after the last re-plan: the job is blocked, and the plan isn't rebuilt yet.
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "decisions.json", lambda d: next(i for i in d["items"] if i["item_id"] == "i_2").update(
+        {"style": "pixelate"}))  # fmt: skip
+    _restyle(job_dir, "i_2", "pixelate")
+    leak = {"frame": 9, "box": [110, 300, 170, 380], "kind": "text", "detector": "redteam", "patched_item": None,
+            "unresolved": True, "flag": "redaction_too_weak", "through_item": "i_2"}  # fmt: skip
+
+    def block(d: Any) -> None:
+        d["leaks"].append(leak)
+        d.update({"unresolved": 1, "blocked_reason": "unresolved_leaks"})
+
+    _edit(job_dir, "audit.json", block)
+    assert "audit.json" in c.validate_job_dir(job_dir)

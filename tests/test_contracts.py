@@ -652,7 +652,7 @@ def _edit_decisions_and_receipt_item(job_dir: Path, field: str, value: Any) -> N
     ("field", "value"),
     [
         ("reason", "a different reason"),
-        ("style", "solid"),
+        ("style", "person_solid"),
         ("decided_by", "creator"),
         ("locked", True),
         ("evidence_frames", [1, 2]),

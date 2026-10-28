@@ -39,7 +39,7 @@
    "style": "solid",
    "decided_by": "policy",
    "locked": false,
-   "hold": "no_roles",
+   "hold": null,
    "origin": "sam",
    "audit_label": null,
    "box": null,
@@ -58,7 +58,7 @@
    "evidence_frames": [
     1
    ],
-   "style": "pixelate",
+   "style": "solid",
    "decided_by": "model",
    "locked": false,
    "hold": null,
@@ -154,5 +154,5 @@
  "cost_usd_estimated": 0.0,
  "cost_usd_baseten": 0.0,
  "prev_hash": null,
- "hash": "d626dc4d788da3e5165a6e296168c7a5b78be49498baf816386c8d24050a8932"
+ "hash": "39caa35e5dcfa133324a1e6fb5203d723ad7742e04eec042020d206e8ebf3f22"
 }

@@ -19,7 +19,7 @@ This file extends PRE-A's `docs/API-NOTES.md` (PR #1, not merged yet). It become
 
 | Probe | What it measures | Clip or input | Modelled cost |
 |---|---|---|---|
-| a | `GET /v1/models`: enabled IDs, missing ones, any `-contributor` listed | none | $0 |
+| a | `GET /v1/models`: enabled IDs, missing ones, any `-contributor` listed; `GET /v1/files` with the cleanup's own parameters (`purpose=user_data`, `limit=10000`, `order=desc`): the listing's keys, `has_more` and item fields (never the team's file names), since orphan cleanup fails closed on any other shape (PRE-A §10.4 paging check) | none | $0 |
 | b | SAM 3.1 per concept (`red square`, `blue square`, `face`, `license plate`): latency, records, frame order, confidence presence, mask encoding, **mask size = box size**, `usage.video_frames_processed`, mean IoU against `truth.json`; whether `input_video.fps` is accepted and what it bills | `counter_30fps_audio.mp4` (90 frames) | 6 × 90 × $0.0002 = $0.11 (4 concepts, the store-less delete check, the fps hint) |
 | c | Muse Spark 1.3 (`medium`) on the video: **the frame-number probe** (the number visible in the bar when the red square's centre crosses the middle; truth: frame 65), whether the beep is heard and its frames (truth 30–44), input tokens (the hosted sampling rate); **max length**: 60 s (the product limit) and 180 s silent test-pattern clips, accepted or the error, and the input tokens billed | same clip, plus two generated test patterns | ≤ $0.08 + $0.23 + $0.56 |
 | d | Voice Transcribe `DIARIZATION`: request shape, `audioDurationMs`, turns on a tone (diarization quality needs speech, so hero clips) | WAV from the clip | $0.0001 |

@@ -106,11 +106,11 @@ Children are `locked: true` and `hide`; the creator can't un-hide them (DESIGN �
 
 ### 3.7 `plan.json` (guard)
 ```json
-{"padding": {"face": 0.15, "default": 0.08, "px": 8}, "temporal": {"extend": 8, "backfill": 15, "gap_hold_s": 2.0},
+{"padding": {"face": 0.15, "default": 0.08, "px": 8}, "temporal": {"extend": 8, "backfill": 57, "gap_hold_s": 2.0},
  "frames": {"150": [{"item_id": "i_3", "shape": "box|mask", "box": [x1, y1, x2, y2], "mask": null, "style": "solid", "grid": null, "source": "decision"}]},
  "crowd_fills": [{"frames": [312, 313], "box": [0, 0, 1280, 400]}]}
 ```
-`grid` locks the pixelation grid to the item's track box so it doesn't shift between frames (DESIGN §2.7): it is `[x0, y0, cell_px]`, the grid origin (the track box's top-left, fixed for the item) and the cell size in pixels, set only when `style` is `pixelate`. For a face the cell is large enough that the face spans ≤ 6 blocks across (DESIGN §2.7); for other items, such as the fixture's screen, the guard picks the cell.
+`grid` locks the pixelation grid to the item's track box so it doesn't shift between frames (DESIGN §2.7): it is `[x0, y0, cell_px]`, the grid origin (the track box's top-left, fixed for the item) and the cell size in pixels, set only when `style` is `pixelate`. Only faces and people are ever pixelated (text, screens, plates and documents are always solid, DESIGN §2.7), and the cell is large enough that a face spans ≤ 6 blocks across. `temporal.backfill` is in prepared frames, `ceil(15 × job.fps / sam_fps)` (PRE-A §5b, T10: 57 at 30 → 8 fps). Each entry renders its decision's `style`, except that a flagged leak's `through_item` renders solid once re-planned; audit-patch entries carry `source: "audit_patch"`.
 
 ### 3.8 `audit.json` (audit)
 ```json

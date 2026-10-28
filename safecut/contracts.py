@@ -411,6 +411,10 @@ class DecisionItem(Contract):
     def _rules(self) -> DecisionItem:
         if (self.decision == "keep") != (self.style is None):
             raise ValueError(f"{self.item_id}: style is null exactly for keep items")
+        if self.style == "pixelate" and self.kind in ("plate", "screen", "document"):
+            # DESIGN §2.7 / WP3.md: text, screens, plates and documents are always solid (a fine mosaic on text
+            # is legible, redteam.md case 1); pixelate is only for faces and people.
+            raise ValueError(f"{self.item_id}: a {self.kind} is always solid, never pixelate")
         if self.kind == "child" and (self.decision != "hide" or not self.locked):
             raise ValueError(f"{self.item_id}: children are always hidden and locked")
         if self.origin == "audit_patch":
@@ -1152,6 +1156,32 @@ def _check_receipt_cost(receipt: Receipt, job: Job, cost_path: Path) -> None:
             raise ContractError(f"receipt.json {name} {got} != cost.jsonl {label} total {want}")
 
 
+def _check_plan_styles(plan: Plan, decisions: Decisions, audit: Audit | None) -> None:
+    """Each plan entry renders its decision's style (the guard doesn't restyle), except that an item a model read
+    through (a flagged leak's ``through_item``, once re-planned) renders solid on every frame (redteam.md: a model
+    that read through one mosaic can read through the next). An audit patch's entries are
+    solid and marked ``source: "audit_patch"`` (PRE-A §12)."""
+    by_id = {item.item_id: item for item in decisions.items}
+    # A leak left unresolved after the last pass was found after the last re-plan: its item may still be soft.
+    upgraded: set[str] = (
+        {leak.through_item for leak in audit.leaks if leak.through_item is not None and not leak.unresolved}
+        if audit is not None
+        else set()
+    )
+    for frame, entries in sorted(plan.frames.items()):
+        for entry in entries:
+            item = by_id.get(entry.item_id)
+            if item is None:
+                continue  # an unknown id is reported by _check_plan
+            want = "solid" if item.item_id in upgraded else item.style
+            if entry.style != want:
+                raise ContractError(
+                    f"plan.json frame {frame}: {item.item_id} renders {entry.style}, but its decision says {want}"
+                )
+            if (entry.source == "audit_patch") != (item.origin == "audit_patch"):
+                raise ContractError(f"plan.json frame {frame}: {item.item_id} source {entry.source} != its origin")
+
+
 def _check_plan_covers(plan: Plan, decisions: Decisions, tracks: Tracks | None, job: Job) -> None:
     """Every hidden item (``hide``, or ``needs_you``, which renders hidden) has a plan entry on every frame its
     tracks are present (each track's own first..last, so a merged item's gap between tracks needs none), or
@@ -1236,18 +1266,6 @@ def _regions(item: DecisionItem, frame: int, plan: Plan | None) -> list[tuple[in
     return planned or ([item.box] if item.box is not None else [])
 
 
-def _check_solid(through: DecisionItem | None, plan: Plan | None, where: str) -> None:
-    """redteam.md: the item a model read through is re-rendered solid (the guard reads the flag on every
-    re-plan), because a model that read through one mosaic can read through the next."""
-    if through is None or plan is None:
-        return
-    soft = sorted(f for f, es in plan.frames.items() for e in es if e.item_id == through.item_id and e.style != "solid")
-    if soft:
-        raise ContractError(
-            f"audit.json {where}: {through.item_id} was read through but isn't solid on frames {soft[:5]}"
-        )
-
-
 def _check_patches(audit: Audit, decisions: Decisions, tracks: Tracks | None, plan: Plan | None) -> None:
     """A leak's ``patched_item`` and ``through_item``, and a spot's ``covered_by``, are hidden items that hide
     the leak's (or spot's) frames and region: an audit patch's box contains the leak's box; a track item's
@@ -1294,8 +1312,6 @@ def _check_patches(audit: Audit, decisions: Decisions, tracks: Tracks | None, pl
                 f"audit.json {where} patch: {patch.item_id} is neither an audit patch nor the flagged through_item"
             )
         check(leak.through_item, {leak.frame: leak.box}, f"{where} through_item", contain=False)
-        if not leak.unresolved:
-            _check_solid(by_id.get(leak.through_item or ""), plan, where)
     for spot in audit.spots:
         where = f"spot {spot.spot_id} cover"
         check(spot.covered_by, spot.boxes, where, contain=True)  # cover_spot's patch is the union of the boxes
@@ -1391,6 +1407,7 @@ def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:
         _check_audit(audit, job)
     if isinstance(plan, Plan) and decisions is not None:
         _check_plan_covers(plan, decisions, tracks, job)
+        _check_plan_styles(plan, decisions, audit)
     scene = loaded.get("scene.json")
     _check_links(
         scene if isinstance(scene, Scene) else None,

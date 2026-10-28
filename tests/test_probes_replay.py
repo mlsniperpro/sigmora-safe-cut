@@ -93,6 +93,10 @@ def api(tmp_path: Path) -> Iterator[respx.MockRouter]:
         router.post(f"{BASE}/files").mock(
             side_effect=lambda _: httpx.Response(200, json={"id": f"file-{next(uploads)}"})
         )
+        listed = {"id": "file-9", "filename": "other-job-a.mp4", "bytes": 1, "created_at": 1, "purpose": "user_data"}
+        router.get(f"{BASE}/files").mock(
+            return_value=httpx.Response(200, json={"object": "list", "data": [listed], "has_more": False})
+        )
         router.delete(url__regex=rf"{BASE}/files/file-\d+").mock(
             return_value=httpx.Response(200, json={"deleted": True})
         )
@@ -116,6 +120,8 @@ async def test_all_probes_replay(api: respx.MockRouter, tmp_path: Path) -> None:
     out = tmp_path / "probes"
     results = await probes.run(list("abcdefgh"), settings=cfg, out_root=out, ledger=LocalLedger())
     assert all("error" not in r for r in results.values()), results
+    assert results["a"]["files_listing"]["documented_fields_present"] is True
+    assert "other-job-a.mp4" not in json.dumps(results["a"]["files_listing"])  # the shape, never the names
     assert results["a"]["missing"] == ["muse-wonder-1.0", "muse-voice-transcribe-1.0", "muse-spark-1.2"]
     red = results["b"]["concepts"]["red square"]
     assert red["records"] == 1
