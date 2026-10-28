@@ -32,6 +32,12 @@
 - **Request for WP1 (AGENTS rule 2):** `safecut/meta/sam.py` is in WP1's owned paths. WP0 added `ResponseLog`, `video_body` and `segment_video` there, with PRE-A §12's response deletion; WP1 must extend the file with its stream parser, never replace it (also in PR #3). WP1 and WP2 must wrap every call that references an uploaded file in `FileStore.call_with_reupload` (PRE-A R10). WP4 must keep pass 1's full red-team sample set in `audit.redteam[]` across later passes and re-runs: the publish gate requires entries on at least `frames // sample_step` frames.
 - **Trend:** recent rounds find 0 high and 1–2 medium, all in the newest publish-gate rules of `safecut/contracts.py` (region, exclusion and frame accounting). Audit those hardest, and check that no rule refuses valid PRE-A writer output.
 
+## Wind-down of session_01WnishMnDJVAWBsWqAexyow (2026-10-28 ~20:45 UTC, owner's usage-limit wind-down)
+- **Lease:** this session wrote LEASE as `status=released`, as the wind-down order required. The last active holder was **session_01FE6cwwWXD1E2eCpwUV9ftx** (`active since=2026-10-27T13:34:51Z`; it pushed 925fc82 at 20:29Z). If that session, or any successor, continues, rewrite LEASE to claim it.
+- **In-flight work:** this session's uncommitted audit #5 fixes were built on 207cd90. They duplicated what origin had already done in 8cc543c ("close audit #5 findings; implement the new PRE-A §12 rows") and in audits #6–#59. They were not merged, to avoid regressing newer code. No code changed in this commit.
+- **Gate:** run once on this head before the push. Its last line is in PR #3's Status.
+- **State and next steps:** the state section above and the next steps below (from session_01FE6cwwWXD1E2eCpwUV9ftx) are current.
+
 ## Next steps, in order
 1. Claim the lease, then run `bash .agent/win/SAFECUT-WP0/checks.sh`; expect 672 passed.
 2. Run two fresh full audits in parallel with Sonnet subagents (effort high, read-only). Give them PRE-A from `git show origin/pre-a-research:docs/API-NOTES.md`, plus `docs/prompts/redteam.md` from the same branch.
