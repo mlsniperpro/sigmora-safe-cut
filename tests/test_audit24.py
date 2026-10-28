@@ -1374,3 +1374,99 @@ def test_a_job_file_that_is_a_directory_is_a_contract_error(tmp_path: Path) -> N
     (job_dir / "tracks.json").mkdir()
     with pytest.raises(c.ContractError, match=r"tracks\.json: unreadable"):
         c.validate_job_dir(job_dir)
+
+
+# --- audit #55 ----------------------------------------------------------------------------------------------
+
+
+def test_an_outline_mask_between_anchors_hides_nothing(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)  # screen:1 has anchors on frames 1 and 5 only
+    runs: list[int] = []
+    end = 0
+    for col in (884, 1115):  # two one-pixel columns at the box's edges: it spans the box but fills ~1 %
+        runs += [col * 720 + 384 - end, 232]
+        end = col * 720 + 616
+    runs.append(720 * 1280 - end)
+    outline = {"size": [720, 1280], "counts": rle_string(runs)}
+    _edit(job_dir, "plan.json", lambda d: next(e for e in d["frames"]["3"] if e["item_id"] == "i_3").update(
+        {"shape": "mask", "mask": outline}))  # fmt: skip
+    with pytest.raises(c.ContractError, match="frame 3: i_3 is nowhere near screen:1"):
+        c.validate_job_dir(job_dir)
+
+
+def test_the_store_claim_covers_every_meta_model(tmp_path: Path) -> None:
+    job_dir = tmp_path / "j_example"
+    shutil.copytree(EXAMPLE, job_dir)
+    data = json.loads((job_dir / "receipt.json").read_text())
+    data.pop("hash")
+    data["data_handling"]["no_store_param"] = []  # the ASR model ran, but nothing says how it was stored
+    sealed = c.Receipt.seal(c.ReceiptBody.model_validate(data))
+    (job_dir / "receipt.json").write_text(sealed.model_dump_json())
+    with pytest.raises(c.ContractError, match="says nothing about the store setting of"):
+        c.validate_job_dir(job_dir)
+
+
+def test_an_egoblur_leak_needs_the_detector_to_have_run(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "audit.json", lambda d: d["egoblur"].update({"faces": None, "plates": None}))
+    with pytest.raises(c.ContractError, match=r"an egoblur leak, but egoblur\.faces is null"):
+        c.validate_job_dir(job_dir)
+
+
+def _baseten_line(**overrides: Any) -> c.CostLine:
+    line: dict[str, Any] = {
+        "ts": "2026-10-27T10:05:00Z",
+        "provider": "baseten",
+        "job_id": "j_example",
+        "stage": "audit",
+        "model": "m",
+        "attempt": 1,
+        "units": {"frames": 2.0},
+        "usd": 0.01,
+        "estimated": False,
+        "request_id": "b_1",
+        "code_kind": "owner",
+        "code_id": None,
+    }
+    return c.CostLine.model_validate(line | overrides)
+
+
+def test_frames_go_to_baseten_only_with_consent(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    c.append_cost_line(_baseten_line(), job_dir / "cost.jsonl")
+    with pytest.raises(c.ContractError, match="without a consented, recorded second opinion"):
+        c.validate_job_dir(job_dir)
+    _edit(job_dir, "job.json", lambda d: d.update({"consented": True, "open_weight_attempted": True}))
+    with pytest.raises(c.ContractError, match="without a consented, recorded second opinion"):
+        c.validate_job_dir(job_dir)  # the opinion is still recorded as off
+    _edit(job_dir, "audit.json", lambda d: d.update({"open_weight": {"model": "m", "status": "failed"}}))
+    c.validate_job_dir(job_dir)
+    c.append_cost_line(_baseten_line(request_id="b_2", code_kind="eval"), job_dir / "cost.jsonl")
+    with pytest.raises(c.ContractError, match=r"for \['eval'\] code kinds"):
+        c.validate_job_dir(job_dir)
+
+
+def test_an_open_weight_read_through_carries_the_flag(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)  # i_3 (the screen) is hidden on frame 3; the open model reads text through it
+    hit = {
+        "frame": 3,
+        "finding": "hit",
+        "kind": "text",
+        "text": "AB",
+        "detail": "a name on the screen",
+        "box": [950, 450, 1050, 500],
+        "confidence": "high",
+        "excluded_by": None,
+    }
+    _edit(job_dir, "job.json", lambda d: d.update({"consented": True, "open_weight_attempted": True}))
+
+    def add(d: Any) -> None:
+        d["open_weight"] = {"model": "m", "status": "ok", "frames": 1, "findings": 1}
+        d["redteam_open"] = [hit]
+
+    _edit(job_dir, "audit.json", add)
+    c.validate_job_dir(job_dir)  # advisory: the grid never confirmed it, so there is no leak to flag
+    leak = {"frame": 3, "box": [950, 450, 1050, 500], "kind": "text", "detector": "redteam_open", "patched_item": "p_1"}
+    _edit(job_dir, "audit.json", lambda d: d["leaks"].append(leak))
+    with pytest.raises(c.ContractError, match="reads through a hidden region"):
+        c.validate_job_dir(job_dir)

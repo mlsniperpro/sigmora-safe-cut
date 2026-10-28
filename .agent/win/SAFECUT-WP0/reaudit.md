@@ -483,3 +483,11 @@ Its 6,000 hostile-env runs raised only `ConfigError`, and 4,500 extreme mutation
 - L4 `request_part` turned a bare `"English"` into letters. A string is now refused, and every entry must be one of the 25 ASR languages (test_the_asr_language_bias_is_a_list_of_known_languages ×2)
 - L5 a WAV header reporting 0 frames priced the call at $0, so it skipped the ledger and caps, yet was sent. It is now refused before any spend (test_a_wav_reporting_no_frames_is_refused_before_any_spend)
 - L6 `load` raised `IsADirectoryError`/`PermissionError` for an unreadable job file. Any `OSError` is now a `ContractError` (test_a_job_file_that_is_a_directory_is_a_contract_error)
+
+## Audit 55 (independent Sonnet reviewer at 6ab7100): 0 critical, 0 high, 0 medium, 5 low. NOT CLEAN; all verified and fixed
+About 60 realistic jobs produced no false refusals. Tests are in tests/test_audit24.py (the audit #55 section).
+- L1 a sparse or outline-only mask spanned its box and so counted as "near" between anchors while hiding almost nothing. The foreground inside the box must now also fill `share × 0.3125` of it (an inscribed ellipse fills 78 %, a SAM person mask about half) (test_an_outline_mask_between_anchors_hides_nothing)
+- L2 the receipt's store claim could leave out a Meta model that ran. Every non-auditor model in `models` must now appear in `store_by_model` or `no_store_param` (AGENTS rule 9) (test_the_store_claim_covers_every_meta_model)
+- L3 a `provider: "baseten"` cost line (frames sent to a third party) wasn't tied to PRE-A §3.8's gate. It now needs a consented, attempted job, an opinion not recorded as off, and an owner or recording code kind; the check runs whether or not audit.json exists yet (test_frames_go_to_baseten_only_with_consent)
+- L4 an `egoblur` leak with `egoblur.faces: null` (a detector that never ran) was accepted. It is refused (test_an_egoblur_leak_needs_the_detector_to_have_run)
+- L5 the read-through flag rule ignored `redteam_open` hits. A confirmed open-weight leak through a hidden region now needs its flag too; an advisory hit with no leak stays advisory (test_an_open_weight_read_through_carries_the_flag)

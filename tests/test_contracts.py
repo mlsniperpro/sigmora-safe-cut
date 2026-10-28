@@ -581,8 +581,15 @@ def test_files_deleted_needs_every_upload_deleted(tmp_path: Path) -> None:
     assert "receipt.json" in c.validate_job_dir(job_dir)
 
 
+def _consent_second_opinion(job_dir: Path) -> None:
+    """Baseten lines need a consented job whose second opinion ran (PRE-A §3.8, audit #55)."""
+    _edit(job_dir / "job.json", lambda d: d.update({"consented": True, "open_weight_attempted": True}))
+    _edit(job_dir / "audit.json", lambda d: d.update({"open_weight": {"model": "m", "status": "failed"}}))
+
+
 def test_receipt_cost_must_match_the_measured_meta_total(tmp_path: Path) -> None:
     job_dir = _copy_example(tmp_path)
+    _consent_second_opinion(job_dir)
     cost = job_dir / "cost.jsonl"
     cost.unlink()
     _edit_receipt(job_dir, lambda d: d.update({"cost_usd": 0.91}))
@@ -590,7 +597,7 @@ def test_receipt_cost_must_match_the_measured_meta_total(tmp_path: Path) -> None
         _cost(job_id="j_example", usd=0.5),
         _cost(job_id="j_example", usd=0.41),
         _cost(job_id="j_example", usd=0.25, estimated=True),
-        _cost(job_id="j_example", usd=7.0, provider="baseten"),
+        _cost(job_id="j_example", usd=7.0, provider="baseten", code_kind="owner"),
     ):
         c.append_cost_line(line, cost)
     with pytest.raises(c.ContractError, match=r"cost_usd_estimated 0\.0 != cost\.jsonl"):
@@ -615,7 +622,9 @@ def test_example_cost_jsonl_matches_the_example_receipt() -> None:
 
 def test_receipt_baseten_cost_must_match_the_measured_baseten_total(tmp_path: Path) -> None:
     job_dir = _copy_example(tmp_path)
-    c.append_cost_line(_cost(job_id="j_example", usd=0.5, provider="baseten", stage="audit"), job_dir / "cost.jsonl")
+    _consent_second_opinion(job_dir)
+    baseten = _cost(job_id="j_example", usd=0.5, provider="baseten", stage="audit", code_kind="owner")
+    c.append_cost_line(baseten, job_dir / "cost.jsonl")
     with pytest.raises(c.ContractError, match=r"cost_usd_baseten 0\.0 != cost\.jsonl Baseten total 0\.5"):
         c.validate_job_dir(job_dir)
     _edit_receipt(job_dir, lambda d: d.update({"cost_usd_baseten": 0.5}))

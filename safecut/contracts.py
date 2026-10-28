@@ -1180,11 +1180,34 @@ def _check_audit_reasons(audit: Audit, job: Job, *, unscanned: int, open_leaks: 
         raise ContractError("audit.json: blocked_reason unresolved_leaks needs an unresolved leak")
 
 
-def _check_audit(audit: Audit, job: Job) -> None:
-    # EgoBlur scans every output frame; a frame no pass ran on counts in `unresolved` (PRE-A §12, vector L10).
+def _check_baseten_sent(audit: Audit | None, job: Job, cost_path: Path) -> None:
+    """A `provider: "baseten"` cost line is the independent record that frames went to a third party: PRE-A §3.8's
+    gate (a consented owner or recording job, attempted once, with an opinion recorded) must hold for it."""
+    if not cost_path.exists():
+        return
+    lines = read_cost_lines(cost_path)
+    sent = [line for line in lines if line.provider == "baseten" and not line.stage.startswith("budget:")]
+    if not sent:
+        return
+    opinion_off = audit is not None and audit.open_weight.status == "off"
+    if not (job.consented and job.open_weight_attempted) or opinion_off:
+        raise ContractError("cost.jsonl: frames went to Baseten for a job without a consented, recorded second opinion")
+    kinds = sorted({line.code_kind for line in sent} - {"owner", "recording"})
+    if kinds:
+        raise ContractError(f"cost.jsonl: frames went to Baseten for {kinds} code kinds (owner and recording only)")
+
+
+def _check_egoblur_ran(audit: Audit) -> None:
+    if audit.egoblur.faces is None and any(leak.detector == "egoblur" for leak in audit.leaks):
+        raise ContractError("audit.json: an egoblur leak, but egoblur.faces is null (the detector never ran)")
     if audit.egoblur.faces is None and audit.frames_scanned:
         # PRE-A §12: a detector that never ran reports `faces: null` and frames_scanned 0 (its frames unresolved).
         raise ContractError("audit.json: egoblur.faces is null (the detector never ran), so frames_scanned is 0")
+
+
+def _check_audit(audit: Audit, job: Job) -> None:
+    # EgoBlur scans every output frame; a frame no pass ran on counts in `unresolved` (PRE-A §12, vector L10).
+    _check_egoblur_ran(audit)
     if audit.frames_scanned > job.frames:
         raise ContractError(f"audit.json: frames_scanned {audit.frames_scanned} > the job's {job.frames} frames")
     unscanned = job.frames - audit.frames_scanned
@@ -1464,6 +1487,19 @@ def _held(entries: list[PlanEntry], fills: list[Box], box: Box, padded: Box) -> 
     ) or any(_contains(fill, box) for fill in fills)
 
 
+def _mask_area(mask: Rle, box: Box) -> int:
+    """Foreground pixels of a column-major COCO RLE mask inside ``box``."""
+    height = mask.size[0]
+    x1, y1, x2, y2 = box
+    total, start = 0, 0
+    for i, run in enumerate(rle_runs(mask.counts)):
+        if i % 2 and run:
+            for col in range(max(start // height, x1), min((start + run - 1) // height, x2 - 1) + 1):
+                total += max(0, min(start + run, col * height + y2) - max(start, col * height + y1))
+        start += run
+    return total
+
+
 def _grow(box: Box, px: int, job: Job) -> Box:
     return (max(0, box[0] - px), max(0, box[1] - px), min(job.width, box[2] + px), min(job.height, box[3] + px))
 
@@ -1487,7 +1523,10 @@ def _mask_spans(mask: Rle, box: Box, share: float = 0.8) -> bool:
         start += run
     if not xs:
         return False
-    return max(xs) - min(xs) + 1 >= share * (x2 - x1) and max(ys) - min(ys) + 1 >= share * (y2 - y1)
+    spans = max(xs) - min(xs) + 1 >= share * (x2 - x1) and max(ys) - min(ys) + 1 >= share * (y2 - y1)
+    # A sparse or outline-only mask spans the box but hides nothing: it must also fill a quarter of it (an
+    # inscribed ellipse fills 78 %, a SAM person mask about half its box).
+    return spans and _mask_area(mask, box) >= share * 0.3125 * (x2 - x1) * (y2 - y1)
 
 
 def _contains(outer: Box, inner: Box) -> bool:
@@ -1722,7 +1761,8 @@ def _check_read_through(audit: Audit, decisions: Decisions, plan: Plan) -> None:
     # An existing redaction: a hidden *decision* item. The audit patch WP4 drew for the finding itself (in the
     # re-planned plan.json) is the fix, not the region read through.
     hidden = {i.item_id for i in decisions.items if i.decision in ("hide", "needs_you") and i.origin != "audit_patch"}
-    for hit in audit.redteam:
+    hits = [("redteam", h) for h in audit.redteam] + [("redteam_open", h) for h in audit.redteam_open]
+    for detector, hit in hits:
         if (
             not isinstance(hit, RedteamHit)
             or hit.excluded_by is not None
@@ -1732,10 +1772,14 @@ def _check_read_through(audit: Audit, decisions: Decisions, plan: Plan) -> None:
         regions = [e.box for e in plan.frames.get(hit.frame, []) if e.item_id in hidden]
         if not any(boxes_overlap(r, hit.box) for r in regions):
             continue
-        if not any(
-            leak.detector == "redteam" and leak.frame == hit.frame and boxes_overlap(leak.box, hit.box) and leak.flag
+        mine = [
+            leak
             for leak in audit.leaks
-        ):
+            if leak.detector == detector and leak.frame == hit.frame and boxes_overlap(leak.box, hit.box)
+        ]
+        if detector == "redteam_open" and not mine:
+            continue  # an advisory open-weight finding (grid unconfirmed) has no leak to flag
+        if not any(leak.flag for leak in mine):
             raise ContractError(
                 f"audit.json red-team {hit.kind} hit at frame {hit.frame} reads through a hidden region, so its leak"
                 " carries flag redaction_too_weak"
@@ -1808,6 +1852,7 @@ def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:
         _check_plan(plan, job, decisions)
     if audit is not None:
         _check_audit(audit, job)
+    _check_baseten_sent(audit, job, job_dir / "cost.jsonl")
     if isinstance(plan, Plan) and decisions is not None:
         _check_plan_covers(plan, decisions, tracks, job)
         _check_plan_styles(plan, decisions, audit)
@@ -1945,3 +1990,8 @@ def _check_receipt_models(
         raise ContractError(
             f"receipt.json audit.auditor {receipt.audit.auditor!r} != audit.json {audit.egoblur.model!r}"
         )
+    # AGENTS rule 9: the store claim covers every Meta model that ran (the auditor runs locally).
+    stated = set(receipt.data_handling.store_by_model) | set(receipt.data_handling.no_store_param)
+    unstated = sorted({m for stage, m in receipt.models.items() if stage != "auditor"} - stated)
+    if unstated:
+        raise ContractError(f"receipt.json data_handling says nothing about the store setting of {unstated}")
