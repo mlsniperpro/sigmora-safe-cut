@@ -122,3 +122,20 @@ export function MessagePage({ message, actions }: { message: string; actions: Ar
     </section>
   );
 }
+
+/**
+ * A delete's error next to its control. It takes focus when it appears: the control may be
+ * disabled by then (a cooldown, a request in flight), and focus must not fall to the page (WCAG 2.4.3).
+ */
+export function ActionError({ message, className }: { message: string; className?: string }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    ref.current?.focus();
+  }, [message]);
+  return (
+    <p ref={ref} role="alert" tabIndex={-1} className={`text-danger ${className ?? ""}`.trim()}>
+      {message}
+    </p>
+  );
+}
+

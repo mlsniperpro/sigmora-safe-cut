@@ -119,3 +119,10 @@ Round 7 (fixes in the round-7 commit; details in `reaudit.md`):
 - [x] R7-n2 one delete at a time
 - [-] R7-n3 "Keep Plate 1 clear" naming: kept "Keep clear Plate 1" for WCAG 2.5.3
 
+Round 8 (fixes in the round-8 commit; details in `reaudit.md`):
+
+- [x] R8-1 (med) §3.1 desktop layout: capped player with the switch beside it, chips on the first screen: e2e
+- [x] R8-2 (low) the open tab is scrolled into its strip on narrow phones: e2e 320/390
+- [x] R8-3 (low) a failed delete's error takes focus: JobPage test
+- [x] R8-4 (low) stray debug screenshot removed and ignored
+

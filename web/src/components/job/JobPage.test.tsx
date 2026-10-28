@@ -369,6 +369,8 @@ describe("job states", () => {
     await user.click(screen.getByRole("button", { name: "Delete now" }));
     await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Delete now" })).toBeDisabled());
+    // The disabled button can't keep focus, so the error takes it rather than the page (WCAG 2.4.3).
+    await waitFor(() => expect(screen.getByText("Too many tries in a short time. Wait a minute and try again.", { selector: "p[role=alert]" })).toHaveFocus());
   });
 
   it("a rate-limited Cancel and delete while processing waits out Retry-After", async () => {

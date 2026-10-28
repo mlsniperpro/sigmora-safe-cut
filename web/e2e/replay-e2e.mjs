@@ -250,6 +250,12 @@ try {
     await page.getByText(/hidden · /).waitFor();
     const position = await page.locator("video").first().evaluate((el) => getComputedStyle(el.closest("[class*='bg-bg']")).position);
     check(`${label}: the desktop player isn't sticky`, position !== "sticky", position);
+    // §3.1: chips start on the first screen, beside a player that is still in view.
+    const firstChipTop = await page.getByRole("article").first().evaluate((el) => Math.round(el.getBoundingClientRect().top));
+    check(`${label}: the first chip row starts on the first screen`, firstChipTop < viewport.height - 120, `top=${firstChipTop}`);
+    await page.getByRole("article").first().focus();
+    const playerVisible = await page.locator("video").first().evaluate((el) => el.getBoundingClientRect().bottom > 80);
+    check(`${label}: the player is still in view with the first chip focused`, playerVisible);
     const buttons = page.locator("article button");
     const n = Math.min(await buttons.count(), 12);
     let hidden = 0;
@@ -263,6 +269,25 @@ try {
       if (covered) hidden += 1;
     }
     check(`${label}: focused chip buttons aren't covered by the player or the bar`, hidden === 0, `${hidden} of ${n} covered`);
+    await context.close();
+  }
+
+  // Narrow phones: the open tab (often "Needs you", the last) is scrolled fully into its strip.
+  for (const width of [320, 390]) {
+    const context = await browser.newContext({ viewport: { width, height: 700 } });
+    const page = await context.newPage();
+    await page.goto(`${BASE}/jobs/job-review-200-items`, { waitUntil: "networkidle" });
+    await page.getByText(/hidden · /).waitFor();
+    await page.waitForTimeout(100);
+    const inside = await page.evaluate(() => {
+      const tab = document.querySelector('[role="tab"][aria-selected="true"]');
+      const strip = tab?.parentElement;
+      if (!tab || !strip) return null;
+      const t = tab.getBoundingClientRect();
+      const s = strip.getBoundingClientRect();
+      return t.left >= s.left - 1 && t.right <= s.right + 1;
+    });
+    check(`${width} px: the open tab is fully visible in the tab strip`, inside === true);
     await context.close();
   }
 

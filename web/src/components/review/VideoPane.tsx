@@ -141,10 +141,15 @@ export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function Vi
   );
 
   return (
-    <div>
+    // Desktop (§3.1): the player on the left with the Raw/Safe Cut switch beside it, at most 40% of the
+    // viewport tall, so the chip columns start on the first screen and the preview stays in view.
+    <div
+      className="lg:grid lg:grid-cols-[auto_minmax(0,1fr)] lg:items-start lg:gap-x-6"
+      style={{ ["--player-lg-w" as string]: `min(calc(40vh * ${width} / ${height}), 52rem)` }}
+    >
       {/* Below 1024 px the player is at most 40% of the viewport tall, so chips stay reachable at 200% zoom and in landscape. */}
       <div
-        className="relative mx-auto w-[min(100%,var(--player-max-w))] overflow-hidden rounded-xl bg-black lg:w-full"
+        className="relative mx-auto w-[min(100%,var(--player-max-w))] overflow-hidden rounded-xl bg-black lg:mx-0 lg:w-[var(--player-lg-w)]"
         style={{ aspectRatio: `${width} / ${height}`, ["--player-max-w" as string]: `calc(40vh * ${width} / ${height})` }}
       >
         {failed ? (
@@ -178,7 +183,7 @@ export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function Vi
         )}
         <canvas ref={canvas} aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full" />
       </div>
-      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm lg:col-start-2 lg:row-start-1 lg:mt-0 lg:flex-col lg:items-start">
         <div role="radiogroup" aria-label="Preview" className="inline-flex rounded-lg border border-border bg-surface-2 p-0.5">
           {(["raw", "safecut"] as const).map((m) => (
             <button
@@ -206,8 +211,9 @@ export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function Vi
         <p className="text-muted">Preview. The final render covers the same areas.</p>
         {!rvfc && <p className="text-muted">Preview may lag by a frame in this browser. The final render isn&apos;t affected.</p>}
       </div>
-      <div aria-hidden="true" className="relative mt-2 hidden flex-col gap-0.5 lg:flex">
-        {timeline.slice(0, 60).map((t) => (
+      {/* Decorative (the chips carry the same spans): the first 24 items, so a long list can't push the chips away. */}
+      <div aria-hidden="true" className="relative mt-2 hidden flex-col gap-0.5 lg:col-start-1 lg:flex lg:w-[var(--player-lg-w)]">
+        {timeline.slice(0, 24).map((t) => (
           <div key={t.id} className="relative h-1.5 rounded bg-surface-2">
             <div
               className={`absolute h-full rounded ${t.id === selected ? "bg-accent" : t.covered ? "bg-hidden-fg/40" : "bg-kept-fg/40"}`}

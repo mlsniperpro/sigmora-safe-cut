@@ -17,7 +17,7 @@ import { useJob } from "@/hooks/useJob";
 import { CheckIcon, WarningIcon } from "../icons";
 import { useMode, useReportMode } from "../mode";
 import { StageList } from "../StageList";
-import { ConfirmDialog, MessagePage, btn } from "../ui";
+import { ActionError, ConfirmDialog, MessagePage, btn } from "../ui";
 import { FailedJob } from "./FailedJob";
 import { JobSkeleton, loadMessage } from "./JobPage";
 
@@ -287,11 +287,7 @@ export function ResultPage() {
       <div className="mt-10 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-6">
         <p className="text-sm text-muted">This clip and everything Safe Cut made from it will be deleted from Safe Cut&apos;s servers by {formatLocal(r.deletes_at)}.</p>
         <div className="flex items-center gap-3">
-          {deleteError && (
-            <p role="alert" className="text-sm text-danger">
-              {deleteError}
-            </p>
-          )}
+          {deleteError && <ActionError message={deleteError} className="text-sm" />}
           <button type="button" className={btn.danger} disabled={coolingDown} onClick={() => setConfirm(true)}>
             Delete everything now
           </button>

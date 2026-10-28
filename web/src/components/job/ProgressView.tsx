@@ -9,7 +9,7 @@ import { getClient } from "@/lib/client";
 import { useCooldown } from "@/hooks/useCooldown";
 import { COPY } from "@/lib/copy";
 import { StageList } from "../StageList";
-import { ConfirmDialog, btn } from "../ui";
+import { ActionError, ConfirmDialog, btn } from "../ui";
 
 export function fmtDuration(s: number): string {
   const whole = Math.round(s);
@@ -138,11 +138,7 @@ export function ProgressView({
         </span>
       </div>
       <div className="mt-4 flex flex-wrap items-center justify-end gap-3">
-        {deleteError && (
-          <p role="alert" className="text-danger">
-            {deleteError}
-          </p>
-        )}
+        {deleteError && <ActionError message={deleteError} />}
         <button type="button" className={btn.danger} disabled={coolingDown || deleting} onClick={() => setConfirm(true)}>
           Cancel and delete
         </button>

@@ -9,7 +9,7 @@ import { ApiError } from "@/lib/api";
 import { getClient } from "@/lib/client";
 import type { JobResponse } from "@/lib/contracts";
 import { COPY, expiresBefore, failureView, formatLocal, jobRefusalMessage } from "@/lib/copy";
-import { ConfirmDialog, btn } from "../ui";
+import { ActionError, ConfirmDialog, btn } from "../ui";
 
 export function FailedJob({ jobId, job, onResume, onDeleted }: { jobId: string; job: JobResponse; onResume: () => void; onDeleted: () => void }) {
   const view = failureView(job);
@@ -116,11 +116,7 @@ export function FailedJob({ jobId, job, onResume, onDeleted }: { jobId: string; 
           {note}
         </p>
       )}
-      {deleteError && (
-        <p role="alert" className="mt-3 text-danger">
-          {deleteError}
-        </p>
-      )}
+      {deleteError && <ActionError message={deleteError} className="mt-3" />}
       <ConfirmDialog
         open={confirm}
         title={job.has_render ? "Delete everything now?" : "Delete this clip?"}

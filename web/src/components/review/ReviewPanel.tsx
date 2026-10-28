@@ -20,7 +20,7 @@ import { useCaptions } from "@/hooks/useCaptions";
 import { useNow } from "@/hooks/useNow";
 import { HiddenIcon, KeptIcon, NeedsIcon, WarningIcon } from "../icons";
 import { StageList } from "../StageList";
-import { ConfirmDialog, Dialog, btn } from "../ui";
+import { ActionError, ConfirmDialog, Dialog, btn } from "../ui";
 import { Chip, Thumbnail, type ChipHandlers } from "./Chip";
 import { VideoPane, type VideoPaneHandle } from "./VideoPane";
 import { WhyDrawer } from "./WhyDrawer";
@@ -63,6 +63,17 @@ export interface ReviewPanelProps {
   onRenderStarted: () => void;
   /** Query parameters kept across links (`from`, `demo`), e.g. "?from=sigmora". */
   query: string;
+}
+
+/** Scrolls a tab strip sideways so `tab` is fully in it (focus ring included); never the page. */
+function revealTab(tab: HTMLElement): void {
+  const strip = tab.parentElement;
+  if (!strip) return;
+  const s = strip.getBoundingClientRect();
+  const t = tab.getBoundingClientRect();
+  const margin = 16;
+  if (t.left < s.left + margin) strip.scrollLeft -= s.left + margin - t.left;
+  else if (t.right > s.right - margin) strip.scrollLeft += t.right - (s.right - margin);
 }
 
 export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRefreshMedia, onDeleted, onRenderStarted, query }: ReviewPanelProps) {
@@ -458,6 +469,12 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
   const firstTab: Column = columns.needs_you.length > 0 ? "needs_you" : "hide";
   const [tab, setTab] = useState<Column | null>(null);
   const activeTab = tab ?? firstTab;
+  // The open tab is often the last one ("Needs you"), past the edge of a narrow strip: bring it in.
+  useEffect(() => {
+    if (desktop) return;
+    const el = document.getElementById(`tab-${activeTab}`);
+    if (el) revealTab(el);
+  }, [activeTab, desktop]);
   const thumbSize = desktop ? 64 : 96;
   const duration = job.job ? formatFrame(job.job.frames, job.job.fps) : "";
   const empty = chips.length === 0;
@@ -562,6 +579,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
                   tabIndex={activeTab === col.key ? 0 : -1}
                   className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-4 ${activeTab === col.key ? "border-accent bg-accent text-accent-text" : "border-border bg-surface"}`}
                   onClick={() => setTab(col.key)}
+                  onFocus={(e) => revealTab(e.currentTarget)}
                   onKeyDown={(e) => {
                     if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
                       e.preventDefault();
@@ -914,11 +932,7 @@ function BottomBar({
         <div className="flex flex-wrap items-center gap-2">
           {main}
           <span className="flex-1" />
-          {deleteError && (
-            <p role="alert" className="text-sm text-danger">
-              {deleteError}
-            </p>
-          )}
+          {deleteError && <ActionError message={deleteError} className="text-sm" />}
           {error && (
             <p role="alert" className="text-sm text-danger">
               {error}

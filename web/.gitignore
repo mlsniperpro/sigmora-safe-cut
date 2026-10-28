@@ -46,3 +46,6 @@ next-env.d.ts
 !/public/sample/redacted.mp4
 # The root jobs/ rule is for pipeline job directories; this is the /jobs route.
 !/src/app/jobs/
+
+# The e2e run's failure screenshot (written next to the app when --shots is not given)
+/e2e-failure.png

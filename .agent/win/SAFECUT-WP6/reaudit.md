@@ -1,4 +1,4 @@
-AUDITED_COMMIT: d4bb6a1
+AUDITED_COMMIT: a847826
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -150,3 +150,14 @@ Fresh-clone README run also found: `pnpm typecheck` failed before any build (Nex
 | note | — | A double-confirmed Delete could race; nothing showed while a DELETE was pending | fixed: Cancel and delete is disabled until the DELETE answers |
 | note | — | §3.8's example name "Keep Plate 1 clear" | kept "Keep clear Plate 1": the accessible name must contain the visible label "Keep clear" (WCAG 2.5.3 Label in Name), which the spec's wording would break |
 | note | — | "This version hasn't been fully checked." sits in the §5.3 banner rather than the bar | kept: it shows once, directly under the §5.3 message as the row says; the bar repeats it only when no audit banner exists |
+
+## Round 8 (audited a847826 by a Sonnet reviewer; real-browser probes at 17 viewports including live resizes; each finding traced here; fixes in the next commit)
+
+0 critical, 0 high, 1 medium, 3 low. The round-7 layout changes held: no horizontal scroll, footer reachable and focus never hidden at any probed size.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | med | On desktop the static player was full container width (about 750 px tall at 1280×720), so no chip showed on the first screen and the preview scrolled away while editing (§3.1) | fixed: the §3.1 layout. The player is on the left, at most 40% of the viewport tall; the Raw/Safe Cut switch and note sit beside it; the decorative timeline is capped at 24 rows. e2e at 1280×720 and 1366×768: the first chip row starts on screen (top 568 and 587) and the player stays in view with a chip focused |
+| 2 | low | On narrow phones the open tab ("Needs you", the last) was clipped and focusing it didn't scroll it in | fixed: the strip scrolls sideways so the open or focused tab, focus ring included, is fully in it (never the page). e2e at 320 and 390 px |
+| 3 | low | After a rate-limited or failed delete the trigger was disabled and focus fell to `<body>` (WCAG 2.4.3) | fixed: the delete error (`ActionError`) takes focus when it appears, on progress, failed, result and review. JobPage test |
+| 4 | low | A stray `web/e2e-failure.png` from a debug run was committed | removed and git-ignored |

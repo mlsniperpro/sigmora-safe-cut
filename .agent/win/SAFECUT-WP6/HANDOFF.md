@@ -35,6 +35,11 @@
   - The first frame on step C.
 - On the round-7 commit: 801 tests (27 files), e2e 81/81, `checks.sh` exit 0. Screenshots refreshed.
 - The audit agent hit the usage limit once (19:5x to 23:20 UTC). It resumed with SendMessage, keeping its saved work.
+- Audit round 8 (on a847826): 1 medium and 3 low, all fixed in the round-8 commit. Highlights:
+  - The §3.1 desktop layout, with the player capped and the chips on the first screen.
+  - The tab strip reveals the open tab.
+  - A delete error takes focus.
+- On the round-8 commit: 801 tests, e2e 87/87, `checks.sh` exit 0. Screenshots refreshed.
 - CLEAN_AUDITS_IN_A_ROW is 0. Two clean full audits are still needed, then a fresh break-it.md (fresh clone + FUZZ_RUNS=100000).
 
 ## Next steps, in order
