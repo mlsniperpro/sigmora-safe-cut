@@ -9,13 +9,13 @@ export function Footer() {
         <p>
           New work: Safe Cut was built during the hackathon (Oct 26 – Nov 4, 2026); the commit history shows every change. Sigmora is the existing product it plugs into.
         </p>
-        <p className="flex flex-wrap gap-x-4 gap-y-1">
+        <p className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <span>Uploads are deleted from Safe Cut&apos;s servers after 24 hours.</span>
-          <Link href="/privacy" className="underline underline-offset-2">
+          <Link href="/privacy" className="inline-flex min-h-11 items-center underline underline-offset-2 lg:min-h-8">
             Privacy
           </Link>
           <span>MIT licence</span>
-          <a href={SITE.repoUrl} className="underline underline-offset-2" rel="noopener noreferrer" target="_blank">
+          <a href={SITE.repoUrl} className="inline-flex min-h-11 items-center underline underline-offset-2 lg:min-h-8" rel="noopener noreferrer" target="_blank">
             Source on GitHub
           </a>
         </p>

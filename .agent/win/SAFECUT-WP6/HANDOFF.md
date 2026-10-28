@@ -40,6 +40,13 @@
   - The tab strip reveals the open tab.
   - A delete error takes focus.
 - On the round-8 commit: 801 tests, e2e 87/87, `checks.sh` exit 0. Screenshots refreshed.
+- Audit round 9 (on da3d5da): 1 medium and 4 low, all fixed in the round-9 commit. Highlights:
+  - Refused actions are announced and take focus.
+  - An in-flight delete keeps focus.
+  - The selected item always has a timeline row.
+  - Bigger link targets.
+- On the round-9 commit: 804 tests (28 files), e2e 87/87, `checks.sh` exit 0.
+- Known stale asset: `web/docs/screenshots/review-flow.gif` predates the round-8 desktop layout; the JPG screenshots are current.
 - CLEAN_AUDITS_IN_A_ROW is 0. Two clean full audits are still needed, then a fresh break-it.md (fresh clone + FUZZ_RUNS=100000).
 
 ## Next steps, in order

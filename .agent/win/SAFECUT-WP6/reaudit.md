@@ -1,4 +1,4 @@
-AUDITED_COMMIT: a847826
+AUDITED_COMMIT: da3d5da
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -161,3 +161,15 @@ Fresh-clone README run also found: `pnpm typecheck` failed before any build (Nex
 | 2 | low | On narrow phones the open tab ("Needs you", the last) was clipped and focusing it didn't scroll it in | fixed: the strip scrolls sideways so the open or focused tab, focus ring included, is fully in it (never the page). e2e at 320 and 390 px |
 | 3 | low | After a rate-limited or failed delete the trigger was disabled and focus fell to `<body>` (WCAG 2.4.3) | fixed: the delete error (`ActionError`) takes focus when it appears, on progress, failed, result and review. JobPage test |
 | 4 | low | A stray `web/e2e-failure.png` from a debug run was committed | removed and git-ignored |
+
+## Round 9 (audited da3d5da by a Sonnet reviewer; mock build and a live-API build against a faked https API; tabbed 45–70 stops per page at 11 viewports; axe on 28 pages, light and dark, 0 violations; about 1,200 random UI actions with 0 page errors; each finding traced here; fixes in the next commit)
+
+0 critical, 0 high, 1 medium, 4 low.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | med | A refused Approve & render or Run the audit again (429, 401) was silent: the bar's text wasn't in a live region, and the disabled button dropped focus to `<body>`. A failed job's Try again lost focus too (WCAG 4.1.3, 2.4.3) | fixed: refusals, the cap line and action errors render as `ActionError` (`role=alert`, takes focus; `tone="plain"` for refusals). On a failed job the answers sit before the buttons, so Tab moves on from an answer to its button. JobPage test |
+| 2 | low | While a confirmed delete was in flight on the progress page, focus sat on `<body>` (the opener was disabled before the dialog returned focus) | fixed: in flight the button is `aria-disabled` (looks disabled, ignores presses, keeps focus). The test setup's `dialog.close()` polyfill now fires `close` from a queued task as browsers do; it was synchronous, so focus return was never exercised in unit tests. JobPage test |
+| 3 | low | The 24-row timeline cap dropped the selected item's bars past row 24 (§3.3) | fixed: the selection always gets a row (`timelineRows`); test |
+| 4 | low | The top of a mobile tab's focus ring was clipped by the scrolling strip | fixed: the strip has top padding |
+| 5 | low | Footer and landing bottom links were 20–24 px tall; §3.8/§9 ask 44 px on mobile, 32 px on desktop | fixed: `min-h-11 lg:min-h-8` |

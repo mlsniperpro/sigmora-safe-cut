@@ -49,13 +49,13 @@ export default function Home() {
 
       <section aria-label="Next steps" className="mx-auto max-w-6xl px-4">
         <p className="flex flex-wrap gap-x-6 gap-y-2 rounded-xl border border-border bg-surface p-5 font-medium">
-          <Link href="/try" className="underline underline-offset-4">
+          <Link href="/try" className="inline-flex min-h-11 items-center underline underline-offset-4 lg:min-h-8">
             Try it
           </Link>
-          <a href={SITE.repoUrl} className="underline underline-offset-4" rel="noopener noreferrer" target="_blank">
+          <a href={SITE.repoUrl} className="inline-flex min-h-11 items-center underline underline-offset-4 lg:min-h-8" rel="noopener noreferrer" target="_blank">
             Source on GitHub
           </a>
-          <a href={SITE.sigmoraUrl} className="underline underline-offset-4" rel="noopener noreferrer" target="_blank">
+          <a href={SITE.sigmoraUrl} className="inline-flex min-h-11 items-center underline underline-offset-4 lg:min-h-8" rel="noopener noreferrer" target="_blank">
             Use it inside Sigmora
           </a>
         </p>

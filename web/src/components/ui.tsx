@@ -6,7 +6,7 @@ import { useEffect, useRef } from "react";
 export const btn = {
   primary: "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-accent px-4 font-semibold text-accent-text hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50 lg:min-h-9",
   secondary: "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 font-medium hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50 lg:min-h-8",
-  danger: "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-danger px-3 font-medium text-danger hover:bg-danger-bg disabled:cursor-not-allowed disabled:opacity-50 lg:min-h-8",
+  danger: "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-danger px-3 font-medium text-danger hover:bg-danger-bg disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 lg:min-h-8",
   link: "inline-flex min-h-11 items-center underline underline-offset-4 lg:min-h-8",
 } as const;
 
@@ -124,16 +124,17 @@ export function MessagePage({ message, actions }: { message: string; actions: Ar
 }
 
 /**
- * A delete's error next to its control. It takes focus when it appears: the control may be
- * disabled by then (a cooldown, a request in flight), and focus must not fall to the page (WCAG 2.4.3).
+ * The answer to an action (a delete's error, a refused render), next to its control. It takes
+ * focus when it appears: the control may be disabled by then (a cooldown, a refusal, a request in
+ * flight), and focus must not fall to the page (WCAG 2.4.3). `plain` is for refusals that aren't errors.
  */
-export function ActionError({ message, className }: { message: string; className?: string }) {
+export function ActionError({ message, className, tone = "danger" }: { message: string; className?: string; tone?: "danger" | "plain" }) {
   const ref = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
     ref.current?.focus();
   }, [message]);
   return (
-    <p ref={ref} role="alert" tabIndex={-1} className={`text-danger ${className ?? ""}`.trim()}>
+    <p ref={ref} role="alert" tabIndex={-1} className={`${tone === "danger" ? "text-danger" : ""} ${className ?? ""}`.trim()}>
       {message}
     </p>
   );

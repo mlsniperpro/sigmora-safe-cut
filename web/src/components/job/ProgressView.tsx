@@ -139,7 +139,14 @@ export function ProgressView({
       </div>
       <div className="mt-4 flex flex-wrap items-center justify-end gap-3">
         {deleteError && <ActionError message={deleteError} />}
-        <button type="button" className={btn.danger} disabled={coolingDown || deleting} onClick={() => setConfirm(true)}>
+        <button type="button" className={btn.danger} disabled={coolingDown}
+          // In flight it only looks disabled: the dialog hands focus back to it, and a disabled
+          // button would drop focus to the page (WCAG 2.4.3).
+          aria-disabled={deleting || undefined}
+          onClick={() => {
+            if (!deleting) setConfirm(true);
+          }}
+        >
           Cancel and delete
         </button>
       </div>

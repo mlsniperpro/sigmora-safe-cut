@@ -28,6 +28,16 @@ export interface VideoPaneProps {
 
 const noSubscribe = () => () => undefined;
 
+export const TIMELINE_ROWS = 24;
+
+/** The timeline's rows: the first `TIMELINE_ROWS` items, the last swapped for the selection if it's further down. */
+export function timelineRows<T extends { id: string }>(timeline: readonly T[], selected: string | null): T[] {
+  const rows = timeline.slice(0, TIMELINE_ROWS);
+  if (!selected || rows.some((t) => t.id === selected)) return rows;
+  const pick = timeline.find((t) => t.id === selected);
+  return pick ? [...rows.slice(0, TIMELINE_ROWS - 1), pick] : rows;
+}
+
 export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function VideoPane(props, ref) {
   const { src, captionsUrl, fps, frames, width, height, timeline, selected, onMediaError } = props;
   const video = useRef<HTMLVideoElement>(null);
@@ -211,9 +221,10 @@ export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function Vi
         <p className="text-muted">Preview. The final render covers the same areas.</p>
         {!rvfc && <p className="text-muted">Preview may lag by a frame in this browser. The final render isn&apos;t affected.</p>}
       </div>
-      {/* Decorative (the chips carry the same spans): the first 24 items, so a long list can't push the chips away. */}
+      {/* Decorative (the chips carry the same spans): 24 rows at most, so a long list can't push the
+          chips away, always including the selected item so its bars light up (§3.3). */}
       <div aria-hidden="true" className="relative mt-2 hidden flex-col gap-0.5 lg:col-start-1 lg:flex lg:w-[var(--player-lg-w)]">
-        {timeline.slice(0, 24).map((t) => (
+        {timelineRows(timeline, selected).map((t) => (
           <div key={t.id} className="relative h-1.5 rounded bg-surface-2">
             <div
               className={`absolute h-full rounded ${t.id === selected ? "bg-accent" : t.covered ? "bg-hidden-fg/40" : "bg-kept-fg/40"}`}

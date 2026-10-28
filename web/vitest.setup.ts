@@ -31,7 +31,8 @@ if (typeof window !== "undefined") {
   };
   proto.close ??= function close(this: HTMLDialogElement) {
     this.removeAttribute("open");
-    this.dispatchEvent(new Event("close"));
+    // Browsers fire `close` from a queued task, not synchronously inside close().
+    setTimeout(() => this.dispatchEvent(new Event("close")), 0);
   };
 
   Object.defineProperty(HTMLMediaElement.prototype, "play", { configurable: true, value: vi.fn(() => Promise.resolve()) });

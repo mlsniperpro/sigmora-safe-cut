@@ -126,3 +126,11 @@ Round 8 (fixes in the round-8 commit; details in `reaudit.md`):
 - [x] R8-3 (low) a failed delete's error takes focus: JobPage test
 - [x] R8-4 (low) stray debug screenshot removed and ignored
 
+Round 9 (fixes in the round-9 commit; details in `reaudit.md`):
+
+- [x] R9-1 (med) refused actions announced and focused: JobPage test
+- [x] R9-2 (low) focus kept during an in-flight delete; test dialog polyfill matches browsers: JobPage test
+- [x] R9-3 (low) the selected item always has a timeline row: `timeline.test.ts`
+- [x] R9-4 (low) tab focus ring not clipped
+- [x] R9-5 (low) footer and landing link targets 44/32 px
+

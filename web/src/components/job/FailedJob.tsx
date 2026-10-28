@@ -83,6 +83,9 @@ export function FailedJob({ jobId, job, onResume, onDeleted }: { jobId: string; 
       <div role="alert">
         <h1 className="text-xl font-medium">{view.message}</h1>
       </div>
+      {/* Answers to the buttons below come before them, so Tab moves on from an answer to its button. */}
+      {note && <ActionError message={note} className="mt-3" tone="plain" />}
+      {deleteError && <ActionError message={deleteError} className="mt-3" />}
       <div className="mt-6 flex flex-wrap items-center gap-3">
         {view.actions.includes("try_again") && (
           <button type="button" className={btn.primary} disabled={busy || blocked || waiting} onClick={() => void retry()}>
@@ -111,12 +114,6 @@ export function FailedJob({ jobId, job, onResume, onDeleted }: { jobId: string; 
           Delete now
         </button>
       </div>
-      {note && (
-        <p role="status" className="mt-3">
-          {note}
-        </p>
-      )}
-      {deleteError && <ActionError message={deleteError} className="mt-3" />}
       <ConfirmDialog
         open={confirm}
         title={job.has_render ? "Delete everything now?" : "Delete this clip?"}

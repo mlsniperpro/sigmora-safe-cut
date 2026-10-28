@@ -567,7 +567,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
           <div className="grid grid-cols-3 gap-5">{COLUMNS.map(renderColumn)}</div>
         ) : (
           <div>
-            <div role="tablist" aria-label="Decisions" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-2">
+            <div role="tablist" aria-label="Decisions" className="-mx-4 -mt-1 flex gap-2 overflow-x-auto px-4 pt-1 pb-2">
               {COLUMNS.map((col) => (
                 <button
                   key={col.key}
@@ -927,17 +927,15 @@ function BottomBar({
     // nearly everything, so it sits at the end of the panel instead (WCAG 2.4.11, 1.4.10).
     <div ref={barRef} className="mt-6 border-t border-border bg-surface/95 backdrop-blur [@media(min-height:480px)]:fixed [@media(min-height:480px)]:inset-x-0 [@media(min-height:480px)]:bottom-0 [@media(min-height:480px)]:z-20 [@media(min-height:480px)]:mt-0">
       <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-3">
-        {state.capNote && <p className="text-sm">{COPY.codeCapJob}</p>}
-        {text && <p className="font-medium">{text}</p>}
+        {/* An answer to the button just pressed is announced and takes focus: that button may now be
+            disabled, and focus must not fall to the page (WCAG 4.1.3, 2.4.3). */}
+        {state.capNote && <ActionError message={COPY.codeCapJob} className="text-sm" tone="plain" />}
+        {text && (bar.kind === "refused" ? <ActionError message={text} className="font-medium" tone="plain" /> : <p className="font-medium">{text}</p>)}
         <div className="flex flex-wrap items-center gap-2">
           {main}
           <span className="flex-1" />
           {deleteError && <ActionError message={deleteError} className="text-sm" />}
-          {error && (
-            <p role="alert" className="text-sm text-danger">
-              {error}
-            </p>
-          )}
+          {error && <ActionError message={error} className="text-sm" />}
           <button type="button" className={btn.danger} onClick={onDelete} disabled={deleteDisabled}>
             Delete everything now
           </button>

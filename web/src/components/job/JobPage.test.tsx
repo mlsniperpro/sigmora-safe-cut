@@ -370,7 +370,34 @@ describe("job states", () => {
     await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Delete now" })).toBeDisabled());
     // The disabled button can't keep focus, so the error takes it rather than the page (WCAG 2.4.3).
-    await waitFor(() => expect(screen.getByText("Too many tries in a short time. Wait a minute and try again.", { selector: "p[role=alert]" })).toHaveFocus());
+    // Try again's answer and the delete's share their copy: the delete's is the newer one, and has focus.
+    await waitFor(() => expect(screen.getAllByText("Too many tries in a short time. Wait a minute and try again.", { selector: "p[role=alert]" }).at(-1)).toHaveFocus());
+  });
+
+  it("a refused Approve & render is announced and takes focus, since its button is now disabled", async () => {
+    const user = setup("job-review-hero1");
+    await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
+    backend.inject(/\/render$/, "error-429-rate");
+    await user.click(screen.getByRole("button", { name: "Approve & render" }));
+    const alert = await screen.findByText("Too many tries in a short time. Wait a minute and try again.", { selector: "p[role=alert]" });
+    await waitFor(() => expect(alert).toHaveFocus());
+    expect(screen.getByRole("button", { name: "Approve & render" })).toBeDisabled();
+  });
+
+  it("while a confirmed delete is in flight, its button keeps focus and only looks disabled", async () => {
+    const user = setup("job-processing-track");
+    const original = backend.request.bind(backend);
+    vi.spyOn(backend, "request").mockImplementation(async (init) => {
+      if (init.method === "DELETE") await new Promise((r) => setTimeout(r, 400));
+      return original(init);
+    });
+    const button = await screen.findByRole("button", { name: "Cancel and delete" });
+    await user.click(button);
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(button).toHaveAttribute("aria-disabled", "true"));
+    await waitFor(() => expect(button).toHaveFocus());
+    await user.click(button);
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("a rate-limited Cancel and delete while processing waits out Retry-After", async () => {
