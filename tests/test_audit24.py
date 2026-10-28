@@ -30,7 +30,7 @@ from safecut.meta.errors import MetaBadRequest, MetaConfigError, MetaUnavailable
 from safecut.meta.files import FileStore
 from safecut.meta.retry import RetryPolicy
 from scripts.probes import probes
-from tests.conftest import BASE, Harness, rle_string
+from tests.conftest import BASE, Harness, narrow_patch, rle_string
 from tests.test_probes_replay import api  # noqa: F401 -- the replay server fixture, reused
 
 EXAMPLE = Path(__file__).resolve().parent.parent / "fixtures" / "contracts" / "j_example"
@@ -1288,4 +1288,44 @@ def test_a_red_team_read_through_carries_the_flag(tmp_path: Path) -> None:
 
     _edit(job_dir, "audit.json", add)
     with pytest.raises(c.ContractError, match="reads through a hidden region"):
+        c.validate_job_dir(job_dir)
+
+
+# --- audit #53 ----------------------------------------------------------------------------------------------
+
+
+def test_a_text_hit_patched_by_its_own_audit_patch_needs_no_flag(tmp_path: Path) -> None:
+    # The re-planned plan.json carries p_1 over the finding; that is the fix, not a region read through.
+    job_dir = _example(tmp_path)
+
+    def text(d: Any) -> None:
+        for entry in [*d["leaks"], *d["redteam"]]:
+            if entry.get("kind") == "face" and entry.get("detector", "redteam") == "redteam":
+                entry["kind"] = "text"
+
+    _edit(job_dir, "audit.json", text)
+    assert "audit.json" in c.validate_job_dir(job_dir)
+
+
+@pytest.mark.parametrize(("quote", "valid"), [("I'm", False), ("Im Amina", True)])
+def test_an_introduction_quote_is_normalised_as_pre_a_says(tmp_path: Path, quote: str, valid: bool) -> None:
+    # "I'm" is one word ("im"), so no evidence (P11c); "Im Amina" is in "hi im amina, and today…".
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "scene.json", lambda d: d["participants"][0].update(
+        {"speaker": None, "introduced_in_turn": 0, "introduction_quote": quote}))  # fmt: skip
+    if valid:
+        assert "decisions.json" in c.validate_job_dir(job_dir)
+    else:
+        with pytest.raises(c.ContractError, match="no_speech_link"):
+            c.validate_job_dir(job_dir)
+
+
+def test_an_audit_patch_spans_its_finding(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    narrow_patch(job_dir, 10)
+    _edit(job_dir, "decisions.json", lambda d: next(i for i in d["items"] if i["item_id"] == "p_1").update(
+        {"last": 10}))  # fmt: skip
+    _edit(job_dir, "plan.json", lambda d: d["frames"].update(
+        {"11": [e for e in d["frames"]["11"] if e["item_id"] != "p_1"]}))  # fmt: skip
+    with pytest.raises(c.ContractError, match="audit patch for frame 10 spans at least 0-11, not 10-10"):
         c.validate_job_dir(job_dir)

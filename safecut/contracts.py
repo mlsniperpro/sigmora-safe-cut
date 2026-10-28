@@ -1307,6 +1307,24 @@ def _check_receipt_cost(receipt: Receipt, job: Job, cost_path: Path) -> None:
             raise ContractError(f"receipt.json {name} {got} != cost.jsonl {label} total {want}")
 
 
+def _check_patch_spans(decisions: Decisions | None, audit: Audit | None, plan: Plan | None, job: Job) -> None:
+    """redteam.md: an audit patch is held over `f − half − extend … f + half + extend` (clamped; a merged run or a
+    covered spot spans wider), `half = ceil(sample_step / 2)`, with `f` its evidence frame."""
+    if decisions is None or audit is None or plan is None:
+        return
+    half = math.ceil(audit.sample_step / 2)
+    for item in decisions.items:
+        if item.origin != "audit_patch" or item.first is None or item.last is None or not item.evidence_frames:
+            continue
+        f = item.evidence_frames[0]
+        first, last = max(0, f - half - plan.temporal.extend), min(job.frames - 1, f + half + plan.temporal.extend)
+        if item.first > first or item.last < last:
+            raise ContractError(
+                f"decisions.json {item.item_id}: an audit patch for frame {f} spans at least {first}-{last}, not"
+                f" {item.first}-{item.last}"
+            )
+
+
 def _check_plan_styles(plan: Plan, decisions: Decisions, audit: Audit | None) -> None:
     """Each plan entry renders its decision's style (the guard doesn't restyle), except that an item a model read
     through (a flagged leak's ``through_item``, once re-planned) renders solid on every frame (redteam.md: a model
@@ -1699,7 +1717,9 @@ def _check_read_through(audit: Audit, decisions: Decisions, plan: Plan) -> None:
     """redteam.md: a text finding on a redacted region (any overlap with a hidden item's planned region on that
     frame) is a leak *and* a `redaction_too_weak` flag, so the item is re-rendered solid. A writer that records it
     unflagged would leave the mosaic that was read through."""
-    hidden = {i.item_id for i in decisions.items if i.decision in ("hide", "needs_you")}
+    # An existing redaction: a hidden *decision* item. The audit patch WP4 drew for the finding itself (in the
+    # re-planned plan.json) is the fix, not the region read through.
+    hidden = {i.item_id for i in decisions.items if i.decision in ("hide", "needs_you") and i.origin != "audit_patch"}
     for hit in audit.redteam:
         if (
             not isinstance(hit, RedteamHit)
@@ -1801,6 +1821,7 @@ def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:
         tracks=tracks,
         plan=plan if isinstance(plan, Plan) else None,
     )
+    _check_patch_spans(decisions, audit, plan if isinstance(plan, Plan) else None, job)
     _check_auto_keeps(
         decisions,
         job,
@@ -1831,7 +1852,8 @@ def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:
 
 
 def _normal_words(text: str) -> str:
-    return " ".join("".join(ch if ch.isalnum() or ch.isspace() else " " for ch in text.lower()).split())
+    """PRE-A §12: lowercased, punctuation removed (so "I'm" is one word, "im"), spaces collapsed."""
+    return " ".join("".join(ch for ch in text.lower() if ch.isalnum() or ch.isspace()).split())
 
 
 def _speech_evidence(k: int | None, scene: Scene, transcript: Transcript) -> bool:

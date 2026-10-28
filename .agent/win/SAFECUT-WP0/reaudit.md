@@ -468,3 +468,9 @@ It built many realistic 60 s jobs, with merged and pixelated faces, ellipse mask
 - L (#51 L8) malformed WAVs leaked untyped errors from `transcribe_raw`. They are now `MetaBadRequest` before any spend (test_an_unreadable_wav_is_refused_before_any_spend ×3)
 - Doc (#52 L6) the duplicated "1 per second" parenthetical is removed; ARCHITECTURE §3 states the new rules
 - Process: an edit script of mine truncated contracts.py while I applied these fixes; it was restored from HEAD and every change re-applied, then re-verified (607 → 624 tests)
+
+## Audit 53 (independent Sonnet reviewer at dda693a): 0 critical, 1 high, 0 medium, 2 low. NOT CLEAN; all verified and fixed
+It confirmed the audit #51/#52 holds against realistic jobs: introduction-only participants, silent clips, music-only transcripts and re-entry children. Tests are in tests/test_audit24.py (the audit #53 section).
+- H1 (a regression from my audit #52 fix) the read-through rule counted the audit patch WP4 drew for the finding itself, so every ordinary text, screen or plate hit patched by its own `p_n` was refused unless falsely flagged. Only hidden *decision* items (`origin != "audit_patch"`) are existing redactions now (test_a_text_hit_patched_by_its_own_audit_patch_needs_no_flag)
+- L2 the introduction quote's normalisation replaced punctuation with spaces ("I'm" became two words). PRE-A §12 removes punctuation, so "I'm" is one word, "im", and is no evidence (P11c) (test_an_introduction_quote_is_normalised_as_pre_a_says ×2)
+- L3 an audit patch's span wasn't enforced. With plan.json and audit.json present, a patch must now cover at least `f − ceil(sample_step/2) − extend … f + ceil(sample_step/2) + extend` around its evidence frame, clamped. A merged run or a covered spot spans wider and still passes (test_an_audit_patch_spans_its_finding)
