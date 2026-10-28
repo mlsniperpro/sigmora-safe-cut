@@ -399,8 +399,12 @@ def _matching_uploads(body: Any, remote_name: str, size: int | None, not_before:
     for item in cast(list[Any], data):
         entry = cast(dict[str, Any], item) if isinstance(item, dict) else {}
         if not isinstance(entry.get("filename"), str) or not isinstance(entry.get("id"), str):
-            # An item we can't read could be our copy under another shape (PRE-A: the item shape is unverified).
-            raise MetaConfigError("the /files listing has an item without a string filename and id")
+            # The listing is team-wide, so an unreadable item is usually another job's and is skipped. One that
+            # carries our job-unique name under any key may be our copy in another shape (the item shape is
+            # unverified, PRE-A §10.4): fail closed on it.
+            if remote_name in (v for v in entry.values() if isinstance(v, str)):
+                raise MetaConfigError("the /files listing has our file without a string filename and id")
+            continue
         if entry.get("filename") != remote_name:
             continue  # the multipart name is job-unique: anything else is another job's file
         # Ours by name. Skip it only on a field that proves it's another upload (a different size, or created

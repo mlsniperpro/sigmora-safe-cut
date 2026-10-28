@@ -20,7 +20,7 @@ from pydantic import SecretStr
 from safecut import config
 from safecut import contracts as c
 from safecut import open_weight as ow
-from safecut.config import Settings
+from safecut.config import ConfigError, Settings, load_settings
 from safecut.meta import responses, sam
 from safecut.meta.budget import LocalLedger
 from safecut.meta.client import CallSpec
@@ -328,8 +328,9 @@ async def test_a_listing_item_of_another_shape_keeps_the_orphan_open(
     h = make_harness()
     store = _orphan_store(h, tmp_path)
     item = {"id": "file-777", "name": "j_test-a.mp4", "size": 300, "created_at": "2026-10-27T10:00:00Z"}
-    mock_api.get("/files").mock(return_value=httpx.Response(200, json={"data": [item], "has_more": False}))
-    with pytest.raises(MetaConfigError, match="without a string filename and id"):
+    other = {"id": 5, "filename": None}  # another job's unreadable item is skipped
+    mock_api.get("/files").mock(return_value=httpx.Response(200, json={"data": [other, item], "has_more": False}))
+    with pytest.raises(MetaConfigError, match="our file without a string filename and id"):
         await store.delete_all()
     assert not store.index().all_deleted
 
@@ -357,3 +358,22 @@ async def test_r4_a_sam_sweep_that_times_out_twice_keeps_both_charges(
     lines = [line for line in h.costs() if line.usd > 0]
     assert len(lines) == 2
     assert all(line.estimated for line in lines)
+
+
+# --- audit #32 ----------------------------------------------------------------------------------------------
+
+
+async def test_an_unrelated_unreadable_item_never_blocks_cleanup(
+    make_harness: Callable[..., Harness], mock_api: respx.MockRouter, tmp_path: Path
+) -> None:
+    h = make_harness()
+    store = _orphan_store(h, tmp_path)
+    listing = {"data": [{"id": "file-5", "filename": None}, {"name": "other-job.mp4"}], "has_more": False}
+    mock_api.get("/files").mock(return_value=httpx.Response(200, json=listing))
+    assert await store.delete_all()  # nothing of ours is listed, so the orphan is resolved
+
+
+@pytest.mark.parametrize("url", ["https://api.meta.ai/v1\n", "https://api.meta.ai/v1 ", "https://api.meta.ai/\tv1"])
+def test_a_base_url_with_whitespace_is_refused_at_load(url: str) -> None:
+    with pytest.raises(ConfigError, match="whitespace or control"):
+        load_settings({"SAFECUT_META_BASE_URL": url})

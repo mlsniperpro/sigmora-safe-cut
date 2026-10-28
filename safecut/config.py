@@ -58,6 +58,10 @@ class ConfigError(ValueError):
 
 def trusted_base_url(value: str, allowed: frozenset[str]) -> str:
     """The bearer key goes to this host, so only the provider's own HTTPS host is accepted."""
+    if any(ch.isspace() or not ch.isprintable() for ch in value):
+        # urlsplit strips a pasted newline for parsing but the value keeps it: httpx would refuse every request
+        # only after it was marked sent (and billed as estimated).
+        raise ValueError("base URLs must not contain whitespace or control characters")
     parts = urlsplit(value)
     if (
         parts.scheme != "https"
