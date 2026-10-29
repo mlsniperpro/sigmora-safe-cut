@@ -622,7 +622,8 @@ def _entries(job_dir: Path, item_id: str, change: dict[str, Any]) -> None:
 def test_a_plan_entry_must_cover_its_track(tmp_path: Path) -> None:
     job_dir = _example(tmp_path)
     _entries(job_dir, "i_2", {"box": [0, 0, 2, 2]})
-    with pytest.raises(c.ContractError, match=r"i_2 doesn't cover (face:2's|its held) box \[100, 300, 160, 380\]"):
+    held = r"i_2 doesn't cover (face:2's padded|its held) box \[100, 300, 160, 380\]"
+    with pytest.raises(c.ContractError, match=held):
         c.validate_job_dir(job_dir)
 
 
@@ -737,7 +738,7 @@ def test_a_grid_that_moves_between_frames_is_refused(tmp_path: Path) -> None:
                     e["grid"] = [83 + int(frame), 280, 12]
 
     _edit(job_dir, "plan.json", shift)
-    with pytest.raises(c.ContractError, match="i_2's pixelate grid moves between frames"):
+    with pytest.raises(c.ContractError, match=r"i_2's pixelate grid (for face:2 )?moves between frames"):
         c.validate_job_dir(job_dir)
 
 
@@ -747,7 +748,7 @@ def test_an_empty_mask_entry_hides_nothing(tmp_path: Path) -> None:
         {"style": "person_solid"}))  # fmt: skip
     empty = {"size": [720, 1280], "counts": rle_string([720 * 1280])}
     _entries(job_dir, "i_2", {"style": "person_solid", "shape": "mask", "mask": empty, "box": [0, 0, 1280, 720]})
-    with pytest.raises(c.ContractError, match=r"i_2 doesn't cover (face:2's|its held) box"):
+    with pytest.raises(c.ContractError, match=r"i_2 doesn't cover (face:2's padded|its held) box"):
         c.validate_job_dir(job_dir)
     # Foreground over face:2 (columns 100-169, rows 280-399): one run per column.
     runs: list[int] = []
@@ -797,7 +798,7 @@ def test_a_one_pixel_mask_hides_nothing(tmp_path: Path) -> None:
     runs = [130 * 720 + 340, 1, 720 * 1280 - 130 * 720 - 341]  # one pixel at the centre of face:2
     dot = {"size": [720, 1280], "counts": rle_string(runs)}
     _entries(job_dir, "i_2", {"style": "person_solid", "shape": "mask", "mask": dot, "box": [0, 0, 1280, 720]})
-    with pytest.raises(c.ContractError, match=r"i_2 doesn't cover (face:2's|its held) box"):
+    with pytest.raises(c.ContractError, match=r"i_2 doesn't cover (face:2's padded|its held) box"):
         c.validate_job_dir(job_dir)
 
 
@@ -818,7 +819,7 @@ def test_an_entry_without_the_pixel_padding_is_refused(tmp_path: Path) -> None:
     job_dir = _example(tmp_path)
     _edit(job_dir, "plan.json", lambda d: next(e for e in d["frames"]["5"] if e["item_id"] == "i_2").update(
         {"box": [100, 300, 160, 380]}))  # fmt: skip  # exactly face:2's box, no padding
-    with pytest.raises(c.ContractError, match=r"i_2 doesn't cover (face:2's|its held) box"):
+    with pytest.raises(c.ContractError, match=r"i_2 doesn't cover (face:2's padded|its held) box"):
         c.validate_job_dir(job_dir)
 
 
@@ -948,7 +949,7 @@ def test_a_crowd_fill_covers_a_capped_concept(tmp_path: Path) -> None:
     def items(d: Any) -> None:
         crowd_item = {"item_id": "i_9", "track_ids": [f"face:{50 + n}" for n in range(16)], "kind": "person",
                       "decision": "hide", "reason": "crowd", "evidence_frames": [3], "style": "solid",
-                      "decided_by": "policy", "locked": False}  # fmt: skip
+                      "decided_by": "policy", "locked": False, "origin": "static"}  # fmt: skip
         d["items"].append(crowd_item)
 
     _edit(job_dir, "decisions.json", items)
@@ -1031,7 +1032,7 @@ def test_split_crowd_fills_may_cover_a_capped_concept(tmp_path: Path) -> None:
     _edit(job_dir, "tracks.json", crowd)
     item = {"item_id": "i_9", "track_ids": [f"face:{50 + n}" for n in range(16)], "kind": "person",
             "decision": "hide", "reason": "crowd", "evidence_frames": [3], "style": "solid", "decided_by": "policy",
-            "locked": False}  # fmt: skip
+            "locked": False, "origin": "static"}  # fmt: skip
     _edit(job_dir, "decisions.json", lambda d: d["items"].append(item))
     every = list(range(12))
     tiles = [{"frames": every, "box": [0, 590, 330, 650]}, {"frames": every, "box": [710, 590, 1040, 650]}]
@@ -1995,3 +1996,124 @@ async def test_every_summary_names_its_own_cost_lines(
     assert lines
     assert {line.job_id for line in lines} == {job_id}
     assert json.loads((tmp_path / "d" / "summary.json").read_text())["run"]["job_id"] == job_id
+
+
+# --- audit #65 ----------------------------------------------------------------------------------------------
+
+
+def _track(**change: Any) -> c.Track:
+    base = {"track_id": "face:9", "concept": "face", "first": 0, "last": 1, "boxes": {"0": [0, 0, 10, 10]},
+            "source": "sam-3.1", "prompt": "face"}  # fmt: skip
+    return c.Track.model_validate(base | change)
+
+
+def _kept(track_id: str) -> c.DecisionItem:
+    return c.DecisionItem.model_validate({"item_id": "i_9", "track_ids": [track_id], "kind": "person",
+                                          "decision": "keep", "reason": "x", "evidence_frames": [0], "style": None,
+                                          "decided_by": "model", "locked": False})  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ({"track_id": "screen:9", "concept": "screen"}, "is a screen, not a person"),
+        ({"reentry_of": "face:1"}, "is a re-entry"),
+        ({"origin": "static", "source": None}, "is static"),
+    ],
+)
+def test_only_a_sam_face_or_person_is_kept_without_the_creator(change: dict[str, Any], message: str) -> None:
+    track = _track(**change)
+    kept = _kept(track.track_id).model_copy(update={"origin": track.origin})
+    with pytest.raises(c.ContractError, match=message):
+        c._check_item_tracks(kept, [track], "decisions.json i_9")  # pyright: ignore[reportPrivateUsage] -- the unit under test
+    creator = _kept(track.track_id).model_copy(update={"decided_by": "creator"})
+    if "origin" not in change:
+        c._check_item_tracks(creator, [track], "decisions.json i_9")  # pyright: ignore[reportPrivateUsage] -- the creator may keep it
+
+
+def test_a_track_is_in_exactly_one_item(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "decisions.json", lambda d: d["items"][2]["track_ids"].append("face:2"))
+    with pytest.raises(c.ContractError, match=r"track face:2 is in 2 items"):
+        c.validate_job_dir(job_dir)
+
+
+def test_an_item_is_static_exactly_when_its_tracks_are(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)  # i_4 is the static item over the static envelope:1
+    _edit(job_dir, "decisions.json", lambda d: d["items"][3].update({"origin": "sam"}))
+    with pytest.raises(c.ContractError, match="i_4: origin sam, but its tracks are all static"):
+        c.validate_job_dir(job_dir)
+    _edit(job_dir, "decisions.json", lambda d: d["items"][2].update({"origin": "static"}))  # i_3 over SAM's screen
+    _edit(job_dir, "decisions.json", lambda d: d["items"][3].update({"origin": "static"}))
+    with pytest.raises(c.ContractError, match="i_3: origin static, but its tracks are not all static"):
+        c.validate_job_dir(job_dir)
+
+
+def test_an_entry_padded_by_pixels_alone_leaves_the_face_edge(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    boxes = next(t for t in json.loads((job_dir / "tracks.json").read_text())["tracks"] if t["track_id"] == "face:2")[
+        "boxes"
+    ]
+
+    def px_only(d: Any) -> None:
+        for frame, box in boxes.items():
+            for entry in d["frames"].get(frame, []):
+                if entry["item_id"] == "i_2":
+                    entry["box"] = [box[0] - 8, box[1] - 8, box[2] + 8, box[3] + 8]
+
+    _edit(job_dir, "plan.json", px_only)
+    with pytest.raises(c.ContractError, match="i_2 doesn't cover face:2's padded box"):
+        c.validate_job_dir(job_dir)
+
+
+def test_voice_transcribe_takes_no_store_parameter(tmp_path: Path) -> None:
+    job_dir = tmp_path / "j_example"
+    shutil.copytree(EXAMPLE, job_dir)
+    data = json.loads((job_dir / "receipt.json").read_text())
+    data.pop("hash")
+    handling = data["data_handling"]
+    handling["no_store_param"] = []
+    handling["store_by_model"]["muse-voice-transcribe-1.0"] = False
+    (job_dir / "receipt.json").write_text(c.Receipt.seal(c.ReceiptBody.model_validate(data)).model_dump_json())
+    with pytest.raises(c.ContractError, match="takes no store parameter"):
+        c.validate_job_dir(job_dir)
+
+
+def test_over_budget_needs_a_budget_stop(tmp_path: Path) -> None:
+    audit = c.Audit.model_construct(blocked_reason="over_budget")
+    cost = tmp_path / "cost.jsonl"
+    c.append_cost_line(c.CostLine.model_validate_json((EXAMPLE / "cost.jsonl").read_text().splitlines()[0]), cost)
+    with pytest.raises(c.ContractError, match="records no budget: stop"):
+        c._check_budget_stop(audit, cost)  # pyright: ignore[reportPrivateUsage] -- the unit under test
+    stop = {"ts": "2026-10-27T10:05:00Z", "provider": "meta", "job_id": "j_example", "stage": "budget:audit",
+            "model": None, "attempt": 0, "units": {}, "usd": 0.0, "estimated": False, "request_id": None,
+            "cap": "job", "code_kind": "owner", "code_id": None}  # fmt: skip
+    c.append_cost_line(c.CostLine.model_validate(stop), cost)
+    c._check_budget_stop(audit, cost)  # pyright: ignore[reportPrivateUsage] -- the unit under test
+
+
+def test_a_symlinked_job_dir_keeps_its_name(tmp_path: Path) -> None:
+    real = tmp_path / "real"
+    shutil.copytree(EXAMPLE, real)
+    (tmp_path / "j_example").symlink_to(real)
+    assert "job.json" in c.validate_job_dir(tmp_path / "j_example")
+
+
+@pytest.mark.parametrize("stamp", [0, "1788998400"])
+def test_config_timestamps_are_never_numbers(stamp: Any) -> None:
+    with pytest.raises(ValidationError, match="never numbers"):
+        config.AccessCode.model_validate({"code": "abcd1234", "kind": "owner", "valid_until": stamp})
+
+
+# --- audit #67 ----------------------------------------------------------------------------------------------
+
+
+async def test_each_probe_run_tracks_its_own_uploads(
+    api: respx.MockRouter,  # noqa: F811 -- pytest injects the imported fixture by name
+    tmp_path: Path,
+) -> None:
+    cfg = Settings(model_api_key=SecretStr("k"))
+    first = await probes.run(["e"], settings=cfg, out_root=tmp_path, ledger=LocalLedger())
+    second = await probes.run(["e"], settings=cfg, out_root=tmp_path, ledger=LocalLedger())
+    indexes = sorted((tmp_path / "e" / "job").glob("*/files.json"))
+    assert [p.parent.name for p in indexes] == sorted([first["e"]["run"]["job_id"], second["e"]["run"]["job_id"]])

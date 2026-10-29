@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections.abc import Mapping
 from datetime import datetime
 from typing import Annotated, Any, Literal
@@ -18,6 +19,7 @@ from pydantic import (
     AfterValidator,
     AwareDatetime,
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Field,
     SecretStr,
@@ -208,6 +210,19 @@ class OpenWeightPrice(BaseModel):
     output: float = Field(alias="out", gt=0)
 
 
+def _iso_only(value: object) -> object:
+    """ISO 8601 UTC is the only accepted form: pydantic would also read ``0`` or ``"1788998400"`` as Unix
+    seconds, so a typo'd window would quietly become a real date."""
+    if value is None or isinstance(value, datetime):
+        return value
+    if not isinstance(value, str) or not re.match(r"^\d{4}-\d{2}-\d{2}[Tt ]\d{2}:\d{2}", value):
+        raise ValueError("timestamps are ISO 8601 strings with a zone ('2026-11-04T18:00:00Z'), never numbers")
+    return value
+
+
+IsoDatetime = Annotated[AwareDatetime, BeforeValidator(_iso_only)]
+
+
 class AccessCode(BaseModel):
     """One ``SAFECUT_ACCESS_CODES`` entry (PRE-A §12, PR #2 UI-SPEC request 20)."""
 
@@ -216,8 +231,8 @@ class AccessCode(BaseModel):
     code: SecretStr = Field(min_length=4)
     kind: AccessCodeKind
     cap_usd: float | None = Field(default=None, ge=0, allow_inf_nan=False)
-    valid_from: AwareDatetime | None = None
-    valid_until: AwareDatetime | None = None
+    valid_from: IsoDatetime | None = None
+    valid_until: IsoDatetime | None = None
 
     @model_validator(mode="after")
     def _window_order(self) -> AccessCode:
@@ -240,8 +255,8 @@ class CodeWindow(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    start: AwareDatetime | None
-    until: AwareDatetime | None
+    start: IsoDatetime | None
+    until: IsoDatetime | None
 
 
 def _utc(text: str) -> datetime:
@@ -454,8 +469,8 @@ class Settings(BaseModel):
         return sorted(pairs)
 
 
-_WINDOW_PAIRS: TypeAdapter[dict[WindowKind, tuple[AwareDatetime | None, AwareDatetime | None]]] = TypeAdapter(
-    dict[WindowKind, tuple[AwareDatetime | None, AwareDatetime | None]]
+_WINDOW_PAIRS: TypeAdapter[dict[WindowKind, tuple[IsoDatetime | None, IsoDatetime | None]]] = TypeAdapter(
+    dict[WindowKind, tuple[IsoDatetime | None, IsoDatetime | None]]
 )
 
 

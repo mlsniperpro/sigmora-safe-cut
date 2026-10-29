@@ -1191,6 +1191,26 @@ def _check_item(item: DecisionItem, job: Job, where: str) -> None:
             _check_frame(frame, job, where)
 
 
+def _check_item_tracks(item: DecisionItem, tracks: list[Track], where: str) -> None:
+    """An item is static exactly when all its tracks are (PRE-A §12; the UI tells static items apart). What policy
+    or a model may keep: only face and person tracks (WP3: screens and documents never), never a re-entry (a
+    re-acquired object starts hidden, ARCHITECTURE §3.2) and never a static track (PRE-A §12)."""
+    if item.origin != "audit_patch" and tracks:
+        static = all(t.origin == "static" for t in tracks)
+        if static != (item.origin == "static"):
+            state = "all" if static else "not all"
+            raise ContractError(f"{where}: origin {item.origin}, but its tracks are {state} static")
+    if item.decision != "keep" or item.decided_by == "creator":
+        return
+    for t in tracks:
+        if t.concept not in ("face", "person"):
+            raise ContractError(f"{where}: kept by {item.decided_by}, but {t.track_id} is a {t.concept}, not a person")
+        if t.reentry_of is not None:
+            raise ContractError(f"{where}: kept by {item.decided_by}, but {t.track_id} is a re-entry (starts hidden)")
+        if t.origin == "static":
+            raise ContractError(f"{where}: kept by {item.decided_by}, but {t.track_id} is static (never auto-kept)")
+
+
 def _check_decisions(decisions: Decisions, job: Job, tracks: Tracks | None, roles: Roles | None = None) -> None:
     known = None if tracks is None else {t.track_id for t in tracks.tracks}
     child_phrase: set[str] = set() if tracks is None else {t.track_id for t in tracks.tracks if t.child_phrase}
@@ -1200,6 +1220,11 @@ def _check_decisions(decisions: Decisions, job: Job, tracks: Tracks | None, role
     )
     votes = {} if roles is None else {t.track_id: t for t in roles.tracks}
     concepts = None if tracks is None else {t.track_id: t.concept for t in tracks.tracks}
+    by_track = {} if tracks is None else {t.track_id: t for t in tracks.tracks}
+    owners = Counter(tid for item in decisions.items for tid in item.track_ids)
+    if shared := sorted(tid for tid, n in owners.items() if n > 1):
+        # One decision per track: a track in a keep and a hide at once leaves the render to whichever wins.
+        raise ContractError(f"decisions.json: track {shared[0]} is in {owners[shared[0]]} items (one each)")
     for item in decisions.items:
         where = f"decisions.json {item.item_id}"
         if known is not None:
@@ -1236,6 +1261,7 @@ def _check_decisions(decisions: Decisions, job: Job, tracks: Tracks | None, role
                 raise ContractError(
                     f"{where}: kept by {item.decided_by}, but {doubtful[0]} isn't a unanimous participant"
                 )
+        _check_item_tracks(item, [by_track[t] for t in item.track_ids if t in by_track], where)
         _check_item(item, job, where)
     if known is not None:
         # Deny by default: every track is in an item, so nothing found is left undecided (and unhidden).
@@ -1284,6 +1310,15 @@ def _check_egoblur_ran(audit: Audit) -> None:
     if audit.egoblur.faces is None and audit.frames_scanned:
         # PRE-A §12: a detector that never ran reports `faces: null` and frames_scanned 0 (its frames unresolved).
         raise ContractError("audit.json: egoblur.faces is null (the detector never ran), so frames_scanned is 0")
+
+
+def _check_budget_stop(audit: Audit | None, cost_path: Path) -> None:
+    """`over_budget` means a cap stopped a call, and every such stop writes a `budget:<stage>` line (AGENTS rule 9):
+    with this job's cost.jsonl present, the block must be backed by one."""
+    if audit is None or audit.blocked_reason != "over_budget" or not cost_path.exists():
+        return
+    if not any(line.stage.startswith("budget:") for line in read_cost_lines(cost_path)):
+        raise ContractError("audit.json: blocked over_budget, but cost.jsonl records no budget: stop")
 
 
 def _check_audit(audit: Audit, job: Job) -> None:
@@ -1519,37 +1554,74 @@ def _check_plan_geometry(plan: Plan, decisions: Decisions, tracks: Tracks, job: 
         )
     by_track = {t.track_id: t for t in tracks.tracks}
     fills_on = _fills_by_frame(plan)
+    on = _entries_by_frame_item(plan)
+    item_grids: dict[str, set[tuple[int, int, int]]] = {}
+    for (_, item_id), entries in on.items():
+        for e in entries:
+            if e.grid is not None:
+                item_grids.setdefault(item_id, set()).add(cast(tuple[int, int, int], tuple(e.grid)))
     for item in decisions.items:
         if item.decision not in ("hide", "needs_you"):
             continue
         for track in (by_track[tid] for tid in item.track_ids if tid in by_track):
-            for frame, box in sorted(track.boxes.items()):
-                entries = [e for e in plan.frames.get(frame, []) if e.item_id == item.item_id]
-                if not entries:
-                    continue  # coverage is _check_plan_covers'
-                fills = fills_on.get(frame, [])
-                # The guard pads every box by at least `padding.px` (clamped to the frame) and a mask is SAM's own
-                # outline of the object, so it spans the track box.
-                if not _held(entries, fills, box, _grow(box, plan.padding.px, job)):
-                    raise ContractError(
-                        f"plan.json frame {frame}: {item.item_id} doesn't cover {track.track_id}'s box {list(box)}"
-                    )
-                if track.concept != "face":
-                    continue  # DESIGN §2.7's ≤ 6 blocks is about the face
-                for e in entries:
-                    if e.grid is not None and _contains(e.box, box) and e.grid[2] * 6 < box[2] - box[0]:
-                        raise ContractError(
-                            f"plan.json frame {frame}: {item.item_id}'s {e.grid[2]} px grid leaves"
-                            f" {track.track_id} more than 6 blocks across"
-                        )
-            _check_between_anchors(plan, item, track, fills_on)
+            _check_track_geometry(plan, job, item, track, fills_on=fills_on, on=on)
         # A shifting grid leaks detail across frames (DESIGN §2.7): one fixed grid per track of the item.
-        grids = {e.grid for entries in plan.frames.values() for e in entries if e.item_id == item.item_id and e.grid}
+        grids = item_grids.get(item.item_id, set())
         if len(grids) > max(1, len(item.track_ids)):
             raise ContractError(f"plan.json: {item.item_id}'s pixelate grid moves between frames ({len(grids)} grids)")
 
 
-def _check_between_anchors(plan: Plan, item: DecisionItem, track: Track, fills_on: dict[int, list[Box]]) -> None:
+def _check_track_geometry(
+    plan: Plan,
+    job: Job,
+    item: DecisionItem,
+    track: Track,
+    *,
+    fills_on: dict[int, list[Box]],
+    on: dict[tuple[int, str], list[PlanEntry]],
+) -> None:
+    """One hidden track against what the plan draws: its padded box held on every frame it has a box, a face
+    pixelated at most 6 blocks across under one fixed grid, and the frames between its anchors covered."""
+    ratio = plan.padding.face if track.concept == "face" else plan.padding.default
+    grids: set[tuple[int, int, int]] = set()
+    for frame, box in sorted(track.boxes.items()):
+        entries = on.get((frame, item.item_id), [])
+        if not entries:
+            continue  # coverage is _check_plan_covers'
+        fills = fills_on.get(frame, [])
+        # DESIGN §2.6: the guard pads by the kind's ratio plus `padding.px` (clamped to the frame). Whether
+        # the ratio is per side or in total isn't fixed, so the check takes the smaller reading (half
+        # of it each side); a mask is SAM's own outline of the object, so it spans the track box.
+        if not _held(entries, fills, box, _pad(box, ratio, plan.padding.px, job)):
+            raise ContractError(
+                f"plan.json frame {frame}: {item.item_id} doesn't cover {track.track_id}'s padded box {list(box)}"
+            )
+        holding = [e for e in entries if e.grid is not None and _contains(e.box, box)]
+        if holding:
+            # The track's own entry is the smallest one holding it (a merged face's, not its person's).
+            own = min(holding, key=lambda e: (e.box[2] - e.box[0]) * (e.box[3] - e.box[1]))
+            grids.add(cast(tuple[int, int, int], tuple(cast(list[int], own.grid))))
+        if track.concept != "face":
+            continue  # DESIGN §2.7's ≤ 6 blocks is about the face
+        for e in entries:
+            if e.grid is not None and _contains(e.box, box) and e.grid[2] * 6 < box[2] - box[0]:
+                raise ContractError(
+                    f"plan.json frame {frame}: {item.item_id}'s {e.grid[2]} px grid leaves"
+                    f" {track.track_id} more than 6 blocks across"
+                )
+    if len(grids) > 1:
+        # A shifting grid leaks detail across frames (DESIGN §2.7): each track keeps one fixed grid.
+        raise ContractError(f"plan.json: {item.item_id}'s pixelate grid for {track.track_id} moves between frames")
+    _check_between_anchors(plan, item, track, fills_on, on)
+
+
+def _check_between_anchors(
+    plan: Plan,
+    item: DecisionItem,
+    track: Track,
+    fills_on: dict[int, list[Box]],
+    on: dict[tuple[int, str], list[PlanEntry]],
+) -> None:
     """A track with boxes only on some frames (SAM anchors; gaps the guard holds through): on the frames in
     between, the item's entry must at least overlap the box interpolated between the neighbouring anchors. The
     guard's held or grown box may differ, so containment would refuse valid output; a box moved away won't pass."""
@@ -1557,7 +1629,7 @@ def _check_between_anchors(plan: Plan, item: DecisionItem, track: Track, fills_o
     for before, after in itertools.pairwise(keys):
         a, b = track.boxes[before], track.boxes[after]
         for frame in range(before + 1, after):
-            entries = [e for e in plan.frames.get(frame, []) if e.item_id == item.item_id]
+            entries = on.get((frame, item.item_id), [])
             if not entries:
                 continue  # coverage (and a crowd fill instead) is _check_plan_covers'
             w = (frame - before) / (after - before)
@@ -1628,6 +1700,21 @@ def _mask_area(mask: Rle, box: Box) -> int:
     return _mask_stats(mask, box)[0]
 
 
+def _entries_by_frame_item(plan: Plan) -> dict[tuple[int, str], list[PlanEntry]]:
+    """``plan.frames`` indexed once by ``(frame, item_id)``: a crowded frame holds hundreds of entries."""
+    on: dict[tuple[int, str], list[PlanEntry]] = {}
+    for frame, entries in plan.frames.items():
+        for e in entries:
+            on.setdefault((frame, e.item_id), []).append(e)
+    return on
+
+
+def _pad(box: Box, ratio: float, px: int, job: Job) -> Box:
+    """``box`` grown by half of ``ratio`` of its size each side, plus ``px``, clamped to the frame."""
+    dx, dy = int(ratio / 2 * (box[2] - box[0])) + px, int(ratio / 2 * (box[3] - box[1])) + px
+    return (max(0, box[0] - dx), max(0, box[1] - dy), min(job.width, box[2] + dx), min(job.height, box[3] + dy))
+
+
 def _grow(box: Box, px: int, job: Job) -> Box:
     return (max(0, box[0] - px), max(0, box[1] - px), min(job.width, box[2] + px), min(job.height, box[3] + px))
 
@@ -1657,6 +1744,7 @@ def _check_plan_covers(plan: Plan, decisions: Decisions, tracks: Tracks | None, 
     by_track = {t.track_id: t for t in tracks.tracks} if tracks is not None else {}
     planned = {(frame, e.item_id) for frame, entries in plan.frames.items() for e in entries}
     fills = _fills_by_frame(plan)
+    on = _entries_by_frame_item(plan)
     temporal = plan.temporal
     for item in decisions.items:
         if item.decision not in ("hide", "needs_you"):
@@ -1680,11 +1768,17 @@ def _check_plan_covers(plan: Plan, decisions: Decisions, tracks: Tracks | None, 
         ]
         if missing:
             raise ContractError(f"plan.json: hidden item {item.item_id} has no entry on frames {missing[:10]}")
-        _check_held_boxes(plan, item, by_track, job, fills)
+        _check_held_boxes(plan, item, by_track, job, fills_on=fills, on=on)
 
 
 def _check_held_boxes(
-    plan: Plan, item: DecisionItem, by_track: Mapping[str, Track], job: Job, fills_on: dict[int, list[Box]]
+    plan: Plan,
+    item: DecisionItem,
+    by_track: Mapping[str, Track],
+    job: Job,
+    *,
+    fills_on: dict[int, list[Box]],
+    on: dict[tuple[int, str], list[PlanEntry]],
 ) -> None:
     temporal = plan.temporal
     # Where the guard holds a box the tracks don't carry (back-fill and extend frames, which hold the edge box;
@@ -1702,7 +1796,7 @@ def _check_held_boxes(
     for f, boxes in sorted(held.items()):
         if f >= job.frames:
             continue
-        entries = [e for e in plan.frames.get(f, []) if e.item_id == item.item_id]
+        entries = on.get((f, item.item_id), [])
         fills = fills_on.get(f, [])
         for box in boxes:
             if not _held(entries, fills, box, _grow(box, plan.padding.px, job) if item.box is None else box):
@@ -1936,7 +2030,7 @@ def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:
     """
     job_dir = Path(job_dir)
     job = load(job_dir / "job.json", Job)
-    dir_name = job_dir.resolve().name
+    dir_name = Path(os.path.abspath(job_dir)).name  # the name as given: a symlinked job dir keeps its own name
     if job.job_id != dir_name:
         raise ContractError(f"job.json: job_id {job.job_id!r} != job directory name {dir_name!r}")
     loaded: dict[str, BaseModel] = {"job.json": job}
@@ -1968,6 +2062,7 @@ def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:
     if audit is not None:
         _check_audit(audit, job)
     _check_baseten_sent(audit, job, job_dir / "cost.jsonl")
+    _check_budget_stop(audit, job_dir / "cost.jsonl")
     if isinstance(plan, Plan) and decisions is not None:
         _check_plan_covers(plan, decisions, tracks, job)
         _check_plan_styles(plan, decisions, audit)
@@ -2113,6 +2208,10 @@ def _check_receipt_models(
             f"receipt.json audit.auditor {receipt.audit.auditor!r} != audit.json {audit.egoblur.model!r}"
         )
     # AGENTS rule 9: the store claim covers every Meta model that ran (the auditor runs locally).
+    asr = receipt.models.get("asr")
+    if asr is not None and asr in receipt.data_handling.store_by_model:
+        # PRE-A §12: Voice Transcribe takes no `store` parameter, so its claim is `no_store_param`, never false.
+        raise ContractError(f"receipt.json: {asr!r} takes no store parameter, so it belongs in no_store_param")
     stated = set(receipt.data_handling.store_by_model) | set(receipt.data_handling.no_store_param)
     named = {m for stage, m in receipt.models.items() if stage != "auditor"}
     if cost_path is not None:

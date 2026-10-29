@@ -16,6 +16,7 @@ import base64
 import json
 import math
 import os
+import secrets
 import subprocess
 import sys
 import tempfile
@@ -881,7 +882,7 @@ async def run(
     results: dict[str, Summary] = {}
     for name in names:
         # A job id per run: a summary (recorded, superseded or set aside) names the cost lines that are its own.
-        run_id = f"{_stamp()}-{os.getpid()}"
+        run_id = f"{_stamp()}-{secrets.token_hex(3)}"  # unique even for two runs in one second
         job_id = f"probe_{name}_{run_id}"
         record = _run_record(job_id)
         # Only the hero-clip probes (b, d) write to the git-ignored hero folder; the rest stay fixtures.
@@ -899,7 +900,9 @@ async def run(
             results[name] = {"error": f"{type(exc).__name__}: {exc}", "run": record}
             save_summary(out, results[name])
             continue
-        files = FileStore(meta, out / "job")
+        # One files.json per job id (as in a real job dir): the remote name carries the job id, so an earlier
+        # run's open orphan is only ever reconciled under its own id, never "resolved" by a later run's listing.
+        files = FileStore(meta, out / "job" / job_id)
         probe_clip = clip if name in ("b", "d") else CLIP
         staged = _staging(out)
         probe = Probe(
