@@ -168,6 +168,7 @@ Round 14 (fixes in the round-14 commit; details in `reaudit.md`):
 - [x] R15-1 (low) a late fresh URL brings the review player back: JobPage test
 - [x] R15-2 (low) an action's GET isn't made quiet by a cut-short refresh: useJob test
 - [x] Self-found: fixture dates shift with the clock, so the mock and the tests hold on any date: mock-backend tests, suite run at clock shifts up to +400 days
+- [x] R27-1..3 (low) control labels keep whole words beside long text: e2e split-word check
 - [x] R26-1 (low) long tokens wrap everywhere (body overflow-wrap: anywhere): e2e sweep on 6 pages + Why drawer
 - [x] Build clears .next/cache so CSS is never stale
 - [x] R25-1 (low) long tokens in chip reasons wrap: e2e

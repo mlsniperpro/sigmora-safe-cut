@@ -98,6 +98,15 @@ body {
   padding-bottom: var(--sticky-bottom, 0px);
 }
 
+/* Controls keep whole words: `anywhere` would let a short label in a tight flex row shrink and split ("Dismis/s"). */
+button,
+a,
+[role="tab"],
+[role="radio"],
+[role="menuitem"] {
+  overflow-wrap: normal;
+}
+
 /* One visible focus ring everywhere: 2 px, ≥ 3:1 on light and dark surfaces. */
 :focus-visible {
   outline: 2px solid var(--focus);

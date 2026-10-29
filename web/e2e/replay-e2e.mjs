@@ -77,6 +77,21 @@ async function longTokenOverflow(page) {
       el.append(` ${token}`);
     }
     const out = [];
+    // Next to long text, a control's label still keeps whole words (no "Dismis/s").
+    for (const el of document.querySelectorAll("button, a, [role=tab], [role=radio], [role=menuitem]")) {
+      if (el.getClientRects().length === 0) continue;
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        for (const m of node.data.matchAll(/\S+/g)) {
+          if (m[0].includes(token)) continue;
+          const range = document.createRange();
+          range.setStart(node, m.index);
+          range.setEnd(node, m.index + m[0].length);
+          const lines = new Set([...range.getClientRects()].map((r) => Math.round(r.top)));
+          if (lines.size > 1) out.push(`"${m[0]}" split in ${el.tagName.toLowerCase()}`);
+        }
+      }
+    }
     if (document.documentElement.scrollWidth > document.documentElement.clientWidth + 1) out.push(`page +${document.documentElement.scrollWidth - document.documentElement.clientWidth}px`);
     for (const el of document.querySelectorAll("*")) {
       if (el.closest("[role=tablist]")) continue;
@@ -410,6 +425,7 @@ try {
       check(`320 px: long tokens wrap on ${path}`, wide.length === 0, wide.slice(0, 4).join("; "));
     }
     await page.goto(`${BASE}/jobs/job-review-sample`, { waitUntil: "networkidle" });
+    await page.getByRole("tab", { name: /Hidden/ }).click();
     await page.getByRole("button", { name: /^Why\? / }).first().click();
     await page.getByRole("dialog").waitFor();
     const drawer = await longTokenOverflow(page);

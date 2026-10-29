@@ -1,4 +1,4 @@
-AUDITED_COMMIT: ae9fca4
+AUDITED_COMMIT: 98d7555
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -360,3 +360,15 @@ Noted, not counted: the edit toast can cover part of a just-moved chip at 320×6
 | 1 | low | A long unbroken token (URL or ID) in API text scrolled the Why drawer sideways at 320 px (reason, Muse Spark's words, escalation evidence, transcript lines) | fixed for the whole class: `body` has `overflow-wrap: anywhere`, so any API text wraps, and flex and grid items can shrink around it. A new e2e sweep appends a long URL to every text block on six pages and in the Why drawer at 320 px, and fails if the page or any panel scrolls sideways. On ae9fca4 it failed all seven (up to +863 px); 7/7 pass now, with axe and the 44 px targets unchanged |
 
 Found while fixing: an incremental `next build` (Turbopack's cache, with the Tailwind loader) once served stale CSS after a globals.css edit. It didn't reproduce on demand, but it can make local evidence wrong and could ship stale CSS from a cached deploy. `pnpm build` now clears `.next/cache` first, so every build compiles the CSS from source.
+
+## Round 27 (audited 98d7555 by a Sonnet reviewer: mid-word breaks diffed against `overflow-wrap: normal` on ~100 routes at 8 widths; interactive states at 5 widths; a live build with fault injection on edits, renders and deletes; 87 routes × 3 widths × light/dark with axe; text-spacing; fix in the next commit)
+
+0 critical, 0 high, 0 medium, 3 low. All three were regressions from round 26's `body { overflow-wrap: anywhere }`.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | low | The failed-edit toast split "Dismiss" ("Dismis/s") and squeezed "Try again" on phones | fixed: buttons, links, tabs, radios and menu items keep `overflow-wrap: normal`, so a control can't shrink below its longest word, while API text still wraps anywhere |
+| 2 | low | The Why drawer's Close split ("Clos/e") at 320 px when the title wraps | fixed (same rule). The long-token e2e sweep now also fails if any control's label is split inside a word, and opens the drawer on a chip whose title wraps. It catches "Close" with the rule removed |
+| 3 | low | "Delete everything now" split beside a failed-delete message at 320 px | fixed (same rule). The failed toast and failed delete can't be produced in the mock production build, so the e2e covers the class through the drawer case and the six-page sweep |
+
+Lesson: a global text rule needs a check that controls stay whole, not just that text wraps. The sweep now checks both.

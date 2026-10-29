@@ -69,10 +69,11 @@
 - Audit round 24 (on 9dc64d8): 1 low (chip reasons clamped at 320 px), fixed in the round-24 commit. The reason now shows in full. On that commit: 858 tests, e2e 114/114.
 - Audit round 25 (on b42eb33): 1 low (a long token in an unclamped reason widened the page), fixed in the round-25 commit with `overflow-wrap: anywhere`. On that commit: 858 tests, e2e 115/115.
 - Audit round 26 (on ae9fca4): 1 low (the same long-token class, in the Why drawer). Fixed for the whole app in the round-26 commit (`body { overflow-wrap: anywhere }`), with an e2e sweep. Gotcha: an incremental build once served stale CSS, so `pnpm build` now clears `.next/cache`. On that commit: 858 tests, e2e 122/122.
+- Audit round 27 (on 98d7555): 3 low, all from round 26's global wrap (button labels split mid-word in tight rows). Fixed in the round-27 commit: controls keep `overflow-wrap: normal`, and the e2e sweep checks for split labels. On that commit: 858 tests, e2e 122/122.
 - CLEAN_AUDITS_IN_A_ROW is 0. Two clean full audits are still needed, then a fresh break-it.md (fresh clone + FUZZ_RUNS=100000).
 
 ## Next steps, in order
-1. Run the next full audit round on HEAD (round 27 is next). If it finds anything, fix it and reset CLEAN_AUDITS_IN_A_ROW to 0. Repeat until two consecutive audits find nothing. Then set AUDITED_COMMIT to the last code commit and CLEAN_AUDITS_IN_A_ROW to 2.
+1. Run the next full audit round on HEAD (round 28 is next). If it finds anything, fix it and reset CLEAN_AUDITS_IN_A_ROW to 0. Repeat until two consecutive audits find nothing. Then set AUDITED_COMMIT to the last code commit and CLEAN_AUDITS_IN_A_ROW to 2.
 2. After the last code change, run the fresh-clone `checks.sh` (`git clone --branch wp6-web` into an empty dir) and the FUZZ_RUNS=100000 agreement soak. Rewrite break-it.md with TESTED_COMMIT set to that commit.
 3. Run the gate until it prints `GATE: PASS` on the pushed HEAD. Then post the final status on PR #4, including the gate's last line.
 4. If time remains: live deployment (owner sets up Vercel), Safari/Firefox runs.
