@@ -19,6 +19,9 @@ if (typeof window !== "undefined") {
     dispatchEvent: () => false,
   })) as typeof window.matchMedia;
 
+  // jsdom doesn't lay out, so there is nothing to scroll.
+  Element.prototype.scrollIntoView ??= () => undefined;
+
   globalThis.ResizeObserver ??= class {
     observe() {}
     unobserve() {}

@@ -458,9 +458,20 @@ try {
       await trigger.click();
       const box = await page.getByRole("menu").boundingBox();
       if (!box || box.x < 0 || box.x + box.width > viewport.width) off.push(`${await trigger.getAttribute("aria-label")} x=${box ? Math.round(box.x) : "?"}`);
+      // Every item is visible, not under the fixed bottom bar.
+      const hidden = await page.getByRole("menuitem").evaluateAll((items) =>
+        items.filter((el) => {
+          const r = el.getBoundingClientRect();
+          return !el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+        }).length,
+      );
+      if (hidden) off.push(`${await trigger.getAttribute("aria-label")}: ${hidden} item(s) covered`);
       await page.keyboard.press("Escape");
     }
-    check(`${label} px: every chip's ⋯ menu opens on screen`, off.length === 0, off.slice(0, 3).join("; "));
+    check(`${label} px: every chip's ⋯ menu opens on screen, all items visible`, off.length === 0, off.slice(0, 3).join("; "));
+    // The merge button reads as one phrase, with its space ("Same as Face 1…", not "Same asFace 1…").
+    const mergeText = await page.locator("[data-btn=merge]").evaluateAll((els) => els.filter((e) => e.getClientRects().length).map((e) => e.innerText.trim()));
+    check(`${label} px: the merge button reads "Same as …"`, mergeText.every((t) => /^Same as \S/.test(t)), mergeText.join(" | "));
     await context.close();
   }
 

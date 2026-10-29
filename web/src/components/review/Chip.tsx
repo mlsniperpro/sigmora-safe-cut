@@ -94,7 +94,10 @@ function OverflowMenu({ chip, onRemove, onJump }: { chip: ChipModel; onRemove: (
   const button = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLUListElement>(null);
   useEffect(() => {
-    if (open) menu.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    if (!open) return;
+    menu.current?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
+    // The whole menu comes into view, above the fixed bottom bar (the page's scroll-padding), not just its first item.
+    menu.current?.scrollIntoView({ block: "nearest" });
   }, [open]);
   const close = () => {
     setOpen(false);
@@ -257,10 +260,8 @@ export function Chip({
           )}
           {merge && (
             <button type="button" data-btn="merge" className={actionClass} onClick={(e) => handlers.onMergeMenu(chip, e.currentTarget)}>
-              Same as{" "}
-              <span data-api-text className="[overflow-wrap:anywhere]">
-                {merge.targetLabel}…
-              </span>
+              {/* One text run: inside the inline-flex button, a space between two runs would collapse ("Same asFace 1…"). */}
+              <span data-api-text className="[overflow-wrap:anywhere]">Same as {merge.targetLabel}…</span>
             </button>
           )}
           {chip.buttons.hide && (

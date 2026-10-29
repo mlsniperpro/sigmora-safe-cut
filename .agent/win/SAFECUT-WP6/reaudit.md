@@ -1,4 +1,4 @@
-AUDITED_COMMIT: b01cfee
+AUDITED_COMMIT: 99cf743
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -381,3 +381,12 @@ Lesson: a global text rule needs a check that controls stay whole, not just that
 |---|---|---|---|
 | 1 | medium | A chip's ⋯ menu opened off the left edge of the screen when its trigger wrapped onto its own line (Face 8 at 1280, a full Needs-you row at 320): the menu is right-anchored and the trigger landed on the left (pre-existing, missed by rounds 1–27) | fixed: the trigger's wrapper is `ml-auto`, so a wrapped trigger stays at the row's right and the 256 px menu fits inside the chip. e2e opens every visible ⋯ at 320 (cafe, Needs you) and 1280 (sample) and requires the menu on screen. It fails on b01cfee at x=−183 and x=−131 |
 | 2 | low | Round 27's `overflow-wrap: normal` on controls also stopped API text inside a control from wrapping, so a long token in a merge target's description or label overflowed (needs a URL or ID in Muse Spark text) | fixed: the API part of those labels sits in a `data-api-text` span that wraps anywhere. The long-token sweep now fills those spans and also runs in the merge dialog. That check can't fail on the old code (it had no such span to fill); the menu-name check shows the labels keep their exact accessible names |
+
+## Round 29 (audited 99cf743 by a Sonnet reviewer: 819 menu opens over 15 fixtures at 13 widths in both columns and all tabs, 477 chip action rows at 9 widths, 378 route×viewport×scheme axe runs, text-spacing, forced colours, a live build, region rewrite, all /try codes; fixes in the next commit)
+
+0 critical, 0 high, 0 medium, 2 low. Round 28's menu fix held at every width.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | low | The merge button rendered "Same asFace 1…": in the inline-flex button, round 28's two text runs became two flex items and the space between them collapsed (the accessible name was right) | fixed: the whole label is one run inside the wrapping span. e2e checks the rendered text reads "Same as …" (fails on 99cf743) |
+| 2 | low | The ⋯ menu opens downward, so near the bottom its second item sat under the fixed bottom bar (about 65 of 819 opens; keyboard could reach it, a mouse had to scroll) | fixed: the open menu scrolls into view with `block: "nearest"`, which honours the page's scroll-padding for the bar. The menu e2e also requires every item to be uncovered (fails on 99cf743 for Face 4 at 1280) |
