@@ -341,6 +341,28 @@ try {
     await context.close();
   }
 
+  // Forced colours (Windows High Contrast): selection and the primary button stay visible without colour or shadow.
+  {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, forcedColors: "active" });
+    const page = await context.newPage();
+    await page.goto(`${BASE}/jobs/job-review-hero1`, { waitUntil: "networkidle" });
+    await page.getByText(/hidden · /).waitFor();
+    const tabBg = async (name) => page.getByRole("tab", { name }).evaluate((el) => getComputedStyle(el).backgroundColor);
+    const selected = (await page.getByRole("tab", { name: /Needs you/ }).getAttribute("aria-selected")) === "true" ? /Needs you/ : /Hidden/;
+    const other = selected.source === "Needs you" ? /Hidden/ : /Needs you/;
+    check("forced colours: the open tab looks different from the others", (await tabBg(selected)) !== (await tabBg(other)));
+    const primary = await page.getByRole("button", { name: "Approve & render" }).evaluate((el) => parseFloat(getComputedStyle(el).borderTopWidth));
+    check("forced colours: the primary button has a visible edge", primary > 0, `${primary}px`);
+    // Hidden holds two chips here: select one and compare it with the other.
+    await page.getByRole("tab", { name: /Hidden/ }).click();
+    await page.getByRole("article").first().click({ position: { x: 4, y: 4 } });
+    const widths = await page.evaluate(() => [...document.querySelectorAll("[data-chip-id]")].map((el) => [el.hasAttribute("data-selected"), getComputedStyle(el).borderTopWidth]));
+    const sel = widths.find(([s]) => s)?.[1];
+    const unsel = widths.find(([s]) => !s)?.[1];
+    check("forced colours: the selected chip stands out", !!sel && !!unsel && sel !== unsel, `${sel} vs ${unsel}`);
+    await context.close();
+  }
+
   // A short landscape screen (or 200% zoom): the player isn't sticky, so the chips can scroll into view.
   {
     const context = await browser.newContext({ viewport: { width: 844, height: 390 } });

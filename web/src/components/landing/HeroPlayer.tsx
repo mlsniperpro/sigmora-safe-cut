@@ -147,7 +147,7 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["au
               aria-checked={version === v}
               tabIndex={version === v ? 0 : -1}
               disabled={!demo}
-              className={`min-h-11 rounded-md px-3 font-medium lg:min-h-9 ${version === v ? "bg-surface text-text shadow-sm" : "text-muted"}`}
+              className={`min-h-11 rounded-md px-3 font-medium lg:min-h-9 ${version === v ? "bg-surface text-text shadow-sm forced-color-adjust-none forced-colors:bg-[Highlight] forced-colors:text-[HighlightText]" : "text-muted"}`}
               onClick={() => switchTo(v)}
               onKeyDown={(e) => {
                 if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) {

@@ -191,8 +191,9 @@ export function Chip({
     <article
       aria-label={chip.accessibleName}
       data-chip-id={chip.id}
+      data-selected={selected || undefined}
       tabIndex={0}
-      className={`rounded-xl border bg-surface p-3 ${selected ? "border-accent ring-2 ring-accent" : "border-border"}`}
+      className={`rounded-xl border bg-surface p-3 ${selected ? "border-accent ring-2 ring-accent forced-colors:border-[3px]" : "border-border"}`}
       onClick={(e) => {
         if ((e.target as HTMLElement).closest("button,a")) return;
         handlers.onSelect(chip);

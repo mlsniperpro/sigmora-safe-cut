@@ -1,4 +1,4 @@
-AUDITED_COMMIT: a706ad0
+AUDITED_COMMIT: e78b343
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -322,3 +322,13 @@ Fresh-clone README run also found: `pnpm typecheck` failed before any build (Nex
 | # | Sev | Finding | Status |
 |---|---|---|---|
 | 1 | low | A tracked item with no evidence frames (the roles stage failed, so there were no votes or keyframes) got the static-item caption, wrongly saying SAM 3.1 couldn't follow it | fixed: the caption goes by origin only. Audit-added and static items keep their §4.3 captions, and anything else reads "There's no keyframe for this item." JobPage test (fails on a706ad0) |
+
+## Round 23 (audited e78b343 by a Sonnet reviewer: about 75 routes × 320/390/1280 × light/dark with axe, text-spacing and 200% font, a live build against a fake https API with fault injection, the region rewrite, Tab sweeps of 90 stops, drag-and-drop validation, and the main components read in full; fix in the next commit)
+
+0 critical, 0 high, 0 medium, 1 low. The e78b343 caption change was confirmed correct.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | low | In forced colours (Windows High Contrast) the open mobile tab, the checked Raw/Safe Cut radio, the selected chip and the evidence-frame number lost their selected cue, and the accent buttons lost their edge: all were drawn with background colour or shadow | fixed with Tailwind's `forced-colors:` variant: the selected tab, radio and frame number use the system Highlight colours, the selected chip gets a 3 px border, and the accent buttons get a ButtonText border. (A plain `@media (forced-colors: active)` block in globals.css is dropped by the Tailwind build, so the variants carry it.) e2e in a `forcedColors: "active"` context (3 checks, all fail on e78b343) |
+
+Noted, not counted: at 320×640 with a tall bottom bar the 6 s edit toast overlaps the bar text; Undo stays reachable (seen before in round 21).

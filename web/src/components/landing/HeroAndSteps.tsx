@@ -41,7 +41,7 @@ export function HeroAndSteps() {
             Safe Cut works out who&apos;s part of your story and hides everyone and everything else: passers-by, children, number plates, private screens. You approve every decision.
           </p>
           <div className="mt-6 flex flex-wrap items-center gap-4">
-            <Link href="/try" className="flex min-h-11 items-center rounded-lg bg-accent px-5 font-semibold text-accent-text hover:bg-accent-hover">
+            <Link href="/try" className="flex min-h-11 items-center rounded-lg bg-accent px-5 font-semibold forced-colors:border-2 forced-colors:border-[ButtonText] text-accent-text hover:bg-accent-hover">
               Try it with an access code
             </Link>
             <a href="#results" className="flex min-h-11 items-center underline underline-offset-4">

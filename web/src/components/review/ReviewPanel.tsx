@@ -665,7 +665,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
                   aria-selected={activeTab === col.key}
                   aria-controls={`panel-${col.key}`}
                   tabIndex={activeTab === col.key ? 0 : -1}
-                  className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-4 ${activeTab === col.key ? "border-accent bg-accent text-accent-text" : "border-border bg-surface"}`}
+                  className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-4 ${activeTab === col.key ? "border-accent bg-accent text-accent-text forced-color-adjust-none forced-colors:bg-[Highlight] forced-colors:text-[HighlightText]" : "border-border bg-surface"}`}
                   onClick={() => setTab(col.key)}
                   onFocus={(e) => revealTab(e.currentTarget)}
                   onKeyDown={(e) => {

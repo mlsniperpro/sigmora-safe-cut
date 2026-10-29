@@ -232,7 +232,7 @@ export function WhyDrawer({
                   <ol className="flex flex-wrap gap-2" aria-label="Evidence frames">
                     {frames.map((f, i) => (
                       <li key={f}>
-                        <button type="button" aria-current={i === safeIndex ? "true" : undefined} className={`min-h-11 min-w-11 rounded-md px-2 tabular-nums lg:min-h-8 lg:min-w-8 ${i === safeIndex ? "bg-accent text-accent-text" : "bg-surface-2"}`} onClick={() => setIndex(i)}>
+                        <button type="button" aria-current={i === safeIndex ? "true" : undefined} className={`min-h-11 min-w-11 rounded-md px-2 tabular-nums lg:min-h-8 lg:min-w-8 ${i === safeIndex ? "bg-accent text-accent-text forced-color-adjust-none forced-colors:bg-[Highlight] forced-colors:text-[HighlightText]" : "bg-surface-2"}`} onClick={() => setIndex(i)}>
                           {formatFrame(f, fps)}
                         </button>
                       </li>
