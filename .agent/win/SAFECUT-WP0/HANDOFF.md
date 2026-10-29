@@ -27,7 +27,7 @@
 - **Last fully green head:** the head of this push (709 passed, ruff and pyright clean).
 
 ## State (session_01FE6cwwWXD1E2eCpwUV9ftx, ~19:45 UTC 2026-10-27)
-- **Head:** green and pushed. Audits #1–#69 and #68 are all fixed with tests: 709 passed, ruff and pyright strict clean. Every finding is verified, and each one is in reaudit.md with its test.
+- **Head:** green and pushed. Audits #1–#69 are all closed (fixed with a named test, or a recorded decision in reaudit.md): 709 passed, ruff and pyright strict clean. Every finding is verified, and each one is in reaudit.md with its test.
 - **In flight:** the final-head pair of audits, the soak and the fresh-clone run. Each counts only at the final head.
 - **Request for WP1 (AGENTS rule 2):** `safecut/meta/sam.py` is in WP1's owned paths. WP0 added `ResponseLog`, `video_body` and `segment_video` there, with PRE-A §12's response deletion; WP1 must extend the file with its stream parser, never replace it (also in PR #3). WP1 and WP2 must wrap every call that references an uploaded file in `FileStore.call_with_reupload` (PRE-A R10). WP4 must keep pass 1's full red-team sample set in `audit.redteam[]` across later passes and re-runs: the publish gate requires entries on at least `frames // sample_step` frames.
 - **Trend:** recent rounds find 0 high and 1–2 medium, all in the newest publish-gate rules of `safecut/contracts.py` (region, exclusion and frame accounting). Audit those hardest, and check that no rule refuses valid PRE-A writer output.
@@ -55,7 +55,7 @@
    - put the `fixtures/probes/cost.jsonl` total (≤ $6) in the PR.
 
 ## Open findings
-None open. Every finding from audits #1–#69 and #68 and the code review is fixed with a named test, or is a recorded decision (reaudit.md).
+None open. Every finding from audits #1–#69 and the code review is fixed with a named test, or is a recorded decision (reaudit.md).
 
 ## Key decisions (the full list is in PR #3)
 - Built to PRE-A's spec (PR #1, unmerged); prices re-read live on 2026-10-26.
