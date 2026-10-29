@@ -15,6 +15,7 @@ import itertools
 import json
 import math
 import os
+import re
 import tempfile
 from collections import Counter
 from collections.abc import Iterator, Mapping
@@ -27,6 +28,7 @@ from numpy.typing import NDArray
 from pydantic import (
     AfterValidator,
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Field,
     NonNegativeInt,
@@ -101,6 +103,19 @@ RESPONSE_ID_PATTERN = r"^[A-Za-z0-9_-]{1,128}$"
 SHA256_PATTERN = r"^[0-9a-f]{64}$"
 
 
+def _iso_timestamp(value: object) -> object:
+    """PRE-A §12 timestamps are ISO 8601 strings with a zone: pydantic would also read a bare number (or a
+    numeric string) as Unix seconds, so a C-style ``deleted_at: 0`` would pass as a real deletion time."""
+    if isinstance(value, datetime):
+        return value
+    if not isinstance(value, str) or not _ISO_DATE.match(value):
+        raise ValueError("timestamps are ISO 8601 strings with a zone ('2026-10-27T10:00:00Z'), never numbers")
+    return value
+
+
+_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}[Tt ]\d{2}:\d{2}")
+
+
 def _utc_datetime(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("timestamps must carry a timezone (ISO 8601 UTC, '…Z')")
@@ -110,7 +125,7 @@ def _utc_datetime(value: datetime) -> datetime:
         raise ValueError("timestamp is outside the representable range in UTC") from exc
 
 
-UtcDatetime = Annotated[datetime, AfterValidator(_utc_datetime)]
+UtcDatetime = Annotated[datetime, BeforeValidator(_iso_timestamp), AfterValidator(_utc_datetime)]
 
 
 class Contract(BaseModel):

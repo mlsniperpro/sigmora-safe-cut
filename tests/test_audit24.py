@@ -1889,3 +1889,24 @@ async def test_a_probe_b_rerun_reports_only_its_own_responses(
         check = results["b"]["delete_without_store"]
         assert check["delete_requested"] == len(check["response_ids"]) == 1
         assert len(check["repeat_delete"]) == 1
+
+
+# --- audit #63 ----------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("stamp", [0, "0", 1.5, -1, "1700000000", True])
+def test_a_timestamp_is_never_a_number(stamp: Any) -> None:
+    with pytest.raises(ValidationError, match="never numbers"):
+        c.ResponseEntry.model_validate({"response_id": "resp_1", "requested_at": stamp})
+
+
+def test_a_numeric_deleted_at_never_counts_as_deleted(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)
+    _edit(job_dir, "files.json", lambda d: d[0].update({"deleted_at": 0}))
+    with pytest.raises(c.ContractError, match="never numbers"):
+        c.validate_job_dir(job_dir)
+
+
+def test_iso_timestamps_still_load() -> None:
+    for stamp in ("2026-10-27T10:00:00Z", "2026-10-27T10:00:00+02:00", "2026-10-27T10:00:00.123456Z"):
+        assert c.ResponseEntry.model_validate({"response_id": "r", "requested_at": stamp}).requested_at is not None
