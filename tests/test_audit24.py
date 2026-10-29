@@ -1947,7 +1947,7 @@ def test_a_killed_runs_staging_is_set_aside_by_the_next_run(tmp_path: Path) -> N
     (orphan / "paid.json").write_text("{}")
     live = tmp_path / f".run-20261029T010000Z-{os.getpid()}"
     live.mkdir()
-    probes._staging(tmp_path)  # pyright: ignore[reportPrivateUsage] -- the unit under test
+    probes._staging(tmp_path, {"job_id": "probe_b_x"})  # pyright: ignore[reportPrivateUsage] -- the unit under test
     [aside] = list(tmp_path.glob("failed-*"))
     assert (aside / "paid.json").exists()
     assert live.exists()  # this process's own staging is never taken
@@ -2117,3 +2117,67 @@ async def test_each_probe_run_tracks_its_own_uploads(
     second = await probes.run(["e"], settings=cfg, out_root=tmp_path, ledger=LocalLedger())
     indexes = sorted((tmp_path / "e" / "job").glob("*/files.json"))
     assert [p.parent.name for p in indexes] == sorted([first["e"]["run"]["job_id"], second["e"]["run"]["job_id"]])
+
+
+# --- audit #69 ----------------------------------------------------------------------------------------------
+
+
+async def test_an_interrupted_runs_raw_files_name_its_job_id(
+    api: respx.MockRouter,  # noqa: F811 -- pytest injects the imported fixture by name
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def interrupted(p: probes.Probe) -> probes.Summary:
+        p.save("paid.json", {"answer": 1})
+        raise KeyboardInterrupt
+
+    monkeypatch.setitem(probes.PROBES, "d", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        await probes.run(
+            ["d"], settings=Settings(model_api_key=SecretStr("k")), out_root=tmp_path, ledger=LocalLedger()
+        )
+    [aside] = list((tmp_path / "d").glob("failed-*"))
+    assert json.loads((aside / "run.json").read_text())["job_id"].startswith("probe_d_")
+
+
+async def test_two_probe_h_runs_in_one_second_have_their_own_job_ids(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(probes, "_stamp", lambda: "T")
+    seen: list[str] = []
+
+    async def fake_h(_: Settings, client: MetaClient, out: Path) -> probes.Summary:
+        seen.append(cast(str, client.job_id))
+        return {"ok": True}
+
+    monkeypatch.setattr(probes, "probe_h", fake_h)
+    cfg = Settings(baseten_api_key=SecretStr("b"))
+    for _ in range(2):
+        await probes.run(["h"], settings=cfg, out_root=tmp_path, ledger=LocalLedger())
+    assert len(set(seen)) == 2
+    assert all(j.startswith("probe_h_T-") for j in seen)
+
+
+def test_a_set_aside_never_takes_a_diverted_summarys_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(probes, "_stamp", lambda: "T")
+    probes.save_summary(tmp_path, {"ok": True})
+    probes.save_summary(tmp_path, {"error": "down"})  # summary.failed-T.json, no raw files
+    staged = tmp_path / ".run-x"
+    staged.mkdir()
+    probes._set_aside(tmp_path, staged)  # pyright: ignore[reportPrivateUsage] -- the unit under test
+    assert (tmp_path / "summary.failed-T.json").exists()
+    assert not (tmp_path / "failed-T").exists()
+    assert (tmp_path / "failed-T-2").is_dir()
+
+
+def test_a_killed_runs_pending_response_isnt_counted_as_this_runs(tmp_path: Path) -> None:
+    log = sam.ResponseLog(tmp_path / "job")
+    log.path.parent.mkdir(parents=True)
+    log.path.write_text(json.dumps([{"response_id": "resp_killed", "requested_at": None}]))
+    earlier = probes._logged_ids(log)  # pyright: ignore[reportPrivateUsage] -- the unit under test
+    entries = [
+        {"response_id": "resp_killed", "requested_at": "2026-10-29T02:00:00Z"},
+        {"response_id": "resp_mine", "requested_at": "2026-10-29T02:00:01Z"},
+    ]
+    log.path.write_text(json.dumps(entries))
+    assert probes._requested_since(log, earlier) == 1  # pyright: ignore[reportPrivateUsage] -- the unit under test

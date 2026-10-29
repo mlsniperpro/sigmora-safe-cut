@@ -81,7 +81,9 @@ class Probe:
     def save(self, filename: str, data: Any) -> None:
         folder = self.raw or self.out
         folder.mkdir(parents=True, exist_ok=True)
-        (folder / filename).write_text(json.dumps(data, indent=1, ensure_ascii=False) + "\n")
+        tmp = folder / f".{filename}.tmp"
+        tmp.write_text(json.dumps(data, indent=1, ensure_ascii=False) + "\n")
+        os.replace(tmp, folder / filename)  # a kill mid-write never leaves a torn raw file
 
 
 def _usage(response: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -290,13 +292,14 @@ async def probe_b(p: Probe) -> Summary:
         "concepts": {},
     }
     log = sam.ResponseLog(p.out / "job")
-    before = _requested_so_far(log)  # the log outlives a run: report this run's requests only
+    earlier = _logged_ids(log)  # the log outlives a run (a killed run's pending ids too): count this run's only
     try:
         await _probe_b_calls(p, file_id, frames, concepts=concepts, log=log, out=out)
     finally:
-        # Every noted response is deleted, whatever failed above (PRE-A §10.4).
+        # Every noted response is deleted, whatever failed above (PRE-A §10.4), an earlier run's included.
         if p.settings.delete_sam_responses:
-            out["responses_delete_requested"] = await log.delete_pending(p.meta) - before
+            await log.delete_pending(p.meta)
+            out["responses_delete_requested"] = _requested_since(log, earlier)
             out["response_ids_refused"] = len(log.refused)
     return out
 
@@ -334,13 +337,13 @@ async def _sam_delete_check(p: Probe, file_id: str, frames: int) -> Summary:
         settings, job_id=p.meta.job_id, caller=p.meta.caller, ledger=p.meta.ledger, cost_path=p.meta.cost_path
     )
     log = sam.ResponseLog(p.out / "job-nostore")
-    earlier = {e.response_id for e in log.index().root}  # an earlier run's responses aren't this run's
-    before = _requested_so_far(log)
+    earlier = _logged_ids(log)  # an earlier run's responses aren't this run's
     first: int | None = None
     try:
         body = sam.video_body(settings, file_id=file_id, text="red square")
         await sam.segment_video(client, body, sam_frames=frames, stage="probe_b", responses=log)
-        first = await log.delete_pending(client) - before
+        await log.delete_pending(client)
+        first = _requested_since(log, earlier)
         ids = [e.response_id for e in log.index().root if e.response_id not in earlier]
         repeat = {rid: await _delete_again(client, rid) for rid in ids}
     except MetaError as exc:
@@ -357,9 +360,15 @@ async def _sam_delete_check(p: Probe, file_id: str, frames: int) -> Summary:
     }
 
 
-def _requested_so_far(log: sam.ResponseLog) -> int:
-    """What ``delete_pending`` would report before this run made any request (it counts the log's lifetime)."""
-    return log.requested() + log.unrecorded()
+def _logged_ids(log: sam.ResponseLog) -> set[str]:
+    return {e.response_id for e in log.index().root}
+
+
+def _requested_since(log: sam.ResponseLog, earlier: set[str]) -> int:
+    """Deletes requested for the responses this run created (``earlier`` holds every id logged before it),
+    plus requests Meta accepted whose record failed (in memory, so this run's)."""
+    mine = sum(1 for e in log.index().root if e.response_id not in earlier and e.requested_at is not None)
+    return mine + log.unrecorded()
 
 
 async def _delete_again(client: MetaClient, response_id: str) -> str:
@@ -526,9 +535,14 @@ async def _role_calls(p: Probe, keyframes: Path) -> Summary:
     """
     calls = [RoleCall.model_validate(c) for c in json.loads((keyframes / "role_calls.json").read_text())]
     out: Summary = {}
+    progress: dict[str, list[Summary]] = {}
     for model in (config.COMPARE_SPARK_MODEL, config.COMPARE_WONDER_MODEL):
         rows: list[Summary] = []
+        progress[model] = rows
         for call in calls:
+            # Each paid answer is on disk before the next call: an interrupt keeps what was bought (no evidence
+            # text, which describes the cast).
+            p.save("role_calls.partial.json", progress)
             try:
                 data = base64.b64encode((keyframes / call.image).read_bytes()).decode()
             except OSError as exc:
@@ -561,6 +575,7 @@ async def _role_calls(p: Probe, keyframes: Path) -> Summary:
                     "latency_s": round(time.monotonic() - started, 2),
                 }
             )
+        p.save("role_calls.partial.json", progress)
         answered = [r for r in rows if "correct" in r]
         out[model] = {
             "calls": rows,
@@ -891,8 +906,7 @@ async def run(
         out = (cast(Path, hero_root) / clip.stem if hero else out_root) / name
         if name == "h":
             # A fresh job per run: the $0.50 baseten_job cap is per run, not accumulated across re-runs.
-            run_id = f"probe_h_{time.strftime('%Y%m%dT%H%M%S', time.gmtime())}"
-            results[name] = await _run_h(settings, job_id=run_id, out=out, ledger=ledger, cost_path=cost_path)
+            results[name] = await _run_h(settings, job_id=job_id, out=out, ledger=ledger, cost_path=cost_path)
             continue
         try:
             meta = MetaClient(settings, job_id=job_id, caller=caller, ledger=ledger, cost_path=cost_path, http=http)
@@ -904,7 +918,7 @@ async def run(
         # run's open orphan is only ever reconciled under its own id, never "resolved" by a later run's listing.
         files = FileStore(meta, out / "job" / job_id)
         probe_clip = clip if name in ("b", "d") else CLIP
-        staged = _staging(out)
+        staged = _staging(out, record)
         probe = Probe(
             name=name,
             out=out,
@@ -946,9 +960,14 @@ def _stamp() -> str:
     return time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
 
 
-def _staging(out: Path) -> Path:
+def _staging(out: Path, record: Summary) -> Path:
+    """This run's staging folder, holding ``run.json`` from the start: whatever happens to the run (accepted,
+    diverted, interrupted, killed and adopted later), its raw files travel with the job id of their cost lines."""
     _adopt_orphans(out)
-    return out / f".run-{_stamp()}-{os.getpid()}"
+    staged = out / f".run-{_stamp()}-{os.getpid()}"
+    staged.mkdir(parents=True, exist_ok=True)
+    (staged / "run.json").write_text(json.dumps(record, indent=1) + "\n")
+    return staged
 
 
 def _free_suffix(out: Path, patterns: Sequence[str]) -> str:
@@ -968,7 +987,8 @@ def _aside(out: Path, stem: str) -> Path:
 def _set_aside(out: Path, staged: Path) -> None:
     """Move a run's staged raw files to ``failed-<ts>/``, beside the recorded results (never over them)."""
     if staged.is_dir():
-        staged.rename(_aside(out, "failed"))
+        # Never a name a diverted summary already holds: a `failed-<ts>/` pairs with `summary.failed-<ts>.json`.
+        staged.rename(out / f"failed-{_free_suffix(out, ('failed-{}', 'summary.failed-{}.json'))}")
 
 
 def _adopt_orphans(out: Path) -> None:
@@ -1062,8 +1082,8 @@ def save_summary(out: Path, result: Summary, *, staged: Path | None = None) -> P
 
 async def _run_h(settings: Settings, *, job_id: str, out: Path, ledger: LocalLedger, cost_path: Path) -> Summary:
     """Probe h needs only BASETEN_API_KEY (no Meta key) and writes provider: "baseten" cost lines."""
-    staged = _staging(out)
     record = _run_record(job_id)
+    staged = _staging(out, record)
     try:
         client = open_weight.open_weight_client(
             settings, job_id=job_id, caller=Caller(code_kind="owner"), ledger=ledger, cost_path=cost_path

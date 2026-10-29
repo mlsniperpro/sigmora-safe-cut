@@ -24,10 +24,10 @@
   - `docs/ARCHITECTURE.md` §3/§4, synced with the contracts and config;
   - `docs/OFFICIAL-GUIDE.md`.
 - **Gate files** in `.agent/win/SAFECUT-WP0/`: `checks.sh`, `WIN-CHECKLIST.md`, `BLOCKED.md`, `reaudit.md`, `break-it.md`.
-- **Last fully green head:** the head of this push (702 passed, ruff and pyright clean).
+- **Last fully green head:** the head of this push (706 passed, ruff and pyright clean).
 
 ## State (session_01FE6cwwWXD1E2eCpwUV9ftx, ~19:45 UTC 2026-10-27)
-- **Head:** green and pushed. Audits #1–#67 are all fixed with tests: 702 passed, ruff and pyright strict clean. Every finding is verified, and each one is in reaudit.md with its test.
+- **Head:** green and pushed. Audits #1–#69 are all fixed with tests: 706 passed, ruff and pyright strict clean. Every finding is verified, and each one is in reaudit.md with its test.
 - **In flight:** the final-head pair of audits, the soak and the fresh-clone run. Each counts only at the final head.
 - **Request for WP1 (AGENTS rule 2):** `safecut/meta/sam.py` is in WP1's owned paths. WP0 added `ResponseLog`, `video_body` and `segment_video` there, with PRE-A §12's response deletion; WP1 must extend the file with its stream parser, never replace it (also in PR #3). WP1 and WP2 must wrap every call that references an uploaded file in `FileStore.call_with_reupload` (PRE-A R10). WP4 must keep pass 1's full red-team sample set in `audit.redteam[]` across later passes and re-runs: the publish gate requires entries on at least `frames // sample_step` frames.
 - **Trend:** recent rounds find 0 high and 1–2 medium, all in the newest publish-gate rules of `safecut/contracts.py` (region, exclusion and frame accounting). Audit those hardest, and check that no rule refuses valid PRE-A writer output.
@@ -40,7 +40,7 @@
 - **Lease re-claimed** by session_01FE6cwwWXD1E2eCpwUV9ftx at merge time; it continues the audit loop (audits #60 and #61 closed at 80654da).
 
 ## Next steps, in order
-1. Claim the lease, then run `bash .agent/win/SAFECUT-WP0/checks.sh`; expect 702 passed.
+1. Claim the lease, then run `bash .agent/win/SAFECUT-WP0/checks.sh`; expect 706 passed.
 2. Run two fresh full audits in parallel with Sonnet subagents (effort high, read-only). Give them PRE-A from `git show origin/pre-a-research:docs/API-NOTES.md`, plus `docs/prompts/redteam.md` from the same branch.
    - Verify every finding before fixing it, and record it in reaudit.md.
    - When both audits come back clean at the same head, set `AUDITED_COMMIT` to that head and `CLEAN_AUDITS_IN_A_ROW: 2`.
@@ -55,7 +55,7 @@
    - put the `fixtures/probes/cost.jsonl` total (≤ $6) in the PR.
 
 ## Open findings
-None open. Every finding from audits #1–#67 and the code review is fixed with a named test, or is a recorded decision (reaudit.md).
+None open. Every finding from audits #1–#69 and the code review is fixed with a named test, or is a recorded decision (reaudit.md).
 
 ## Key decisions (the full list is in PR #3)
 - Built to PRE-A's spec (PR #1, unmerged); prices re-read live on 2026-10-26.
