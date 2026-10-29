@@ -1,13 +1,14 @@
-TESTED_COMMIT: ee0fc9a
+TESTED_COMMIT: 538675a
 
-# Break-it log (every run below is at ee0fc9a, the current code)
+# Break-it log (every run below is at 538675a, the current code)
 
-- **Soak** (`HYPOTHESIS_PROFILE=soak uv run pytest -m "not live" -q`, 20,000 examples per property): **460 passed in 44 min 37 s**, no failure. Started 14:45 UTC, finished ~15:30 UTC on 2026-10-27. Covers:
+- **Soak** (`HYPOTHESIS_PROFILE=soak uv run pytest -m "not live" -q`, 20,000 examples per property): **724 passed in 38 min 24 s**, no failure. Started 11:28 UTC, finished 12:07 UTC on 2026-10-29. Covers:
   - the chaos property (random failure sequences keep the ledger equal to Σ cost.jsonl);
   - the fuzz properties: the SSE decoder; the SSE line splitter against a reference splitter over random chunkings; the error classifier; contract loaders and models; meters; Retry-After;
   - every example-based test below.
-- **Fresh clone**: clone, `uv sync --locked`, ruff, pyright strict (0 errors), `pytest -m "not live"` → 460 passed in 75 s, 105 s from clone to green on 4 CPUs (two read-only auditors were running alongside).
-- **Clip determinism**: `make_synthetic_clips.py` on all CPUs and under `taskset -c 0` gives identical sha256 for every file, and matches the committed `fixtures/clips/` byte for byte.
+- **Fresh clone** (2026-10-29): clone, `uv sync --locked`, ruff, pyright strict (0 errors), `pytest -m "not live"` → 724 passed in 79 s, 97 s from clone to green.
+- **Clip determinism** (2026-10-29): `make_synthetic_clips.py` on all CPUs and under `taskset -c 0` gives identical sha256 for every file, and matches the committed `fixtures/clips/` byte for byte.
+- **Auditors' harnesses at 538675a and the heads just before it** (audits #73–#79): the Meta client chaos run (900 seeds of 1–4 concurrent streams, every failure kind, absurd usage, cost.jsonl write faults) kept the ledger equal to Σ cost.jsonl with no open reservation. The Files chaos run (1,500 seeds) never returned `all_deleted` with a copy left. The SAM ResponseLog run (150 seeds) never left a stored response untracked. The probe-runner sequences (40 random runs, interrupts, kills and same-second stamps) never lost or misattributed a paid file. The PRE-A writer emulator and the pixel-coverage oracle found no false refusal and no exposure.
 - **Replay e2e**: probes a–h run against mocked Meta and Baseten APIs (`tests/test_probes_replay.py`, `tests/test_audit9/12/14/16.py`):
   - the replay server mints a unique SAM response id per call, and the tests assert every created response is deleted, on success and failure paths;
   - probe c's 60 s / 180 s length check runs;
