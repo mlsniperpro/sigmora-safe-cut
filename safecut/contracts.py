@@ -1950,7 +1950,10 @@ def _check_patches(audit: Audit, decisions: Decisions, tracks: Tracks | None, pl
         missing = [f for f in range(spot.first, spot.last + 1) if hidden is not None and f not in hidden]
         if missing:
             raise ContractError(f"audit.json {where}: {spot.covered_by} doesn't hide frames {missing[:5]}")
-    for name, entries in (("redteam", audit.redteam), ("redteam_open", audit.redteam_open)):
+    # Only the current red team's exclusions are checked against today's decisions: `redteam_open` is advisory and,
+    # on a re-run, copied verbatim from the first audit (redteam.md "Re-runs"), so its `excluded_by` may name an item
+    # the creator has hidden since. _check_links still checks that the id exists.
+    for name, entries in (("redteam", audit.redteam),):
         for entry in entries:
             if not isinstance(entry, RedteamHit) or entry.excluded_by is None:
                 continue
@@ -2222,14 +2225,19 @@ def _check_receipt_models(
         raise ContractError(f"receipt.json: {asr!r} takes no store parameter, so it belongs in no_store_param")
     # PRE-A §12: Voice Transcribe has no store parameter, and SAM is sent none when it rejects `store` (§10.6: its
     # kept responses are in responses.json); every other model's setting is stated in store_by_model.
-    allowed: set[str | None] = {asr, receipt.models.get("sam") if sam_unstored else None}
+    # The open-weight model is a Baseten chat call: no `store` field exists, so it may be listed in no_store_param,
+    # or stated nowhere (its Baseten cost and terms are the receipt's own fields), never as store: false.
+    opinion = audit.open_weight.model if audit is not None and audit.open_weight.status != "off" else None
+    if opinion is not None and opinion in receipt.data_handling.store_by_model:
+        raise ContractError(f"receipt.json: {opinion!r} runs on Baseten, which takes no store parameter")
+    allowed: set[str | None] = {asr, opinion, receipt.models.get("sam") if sam_unstored else None}
     if odd := sorted(set(receipt.data_handling.no_store_param) - allowed):
         listed = set(receipt.models.values())
         if idle := [m for m in odd if m not in listed]:
             raise ContractError(f"receipt.json: no_store_param names {idle}, which aren't in models (they didn't run)")
         raise ContractError(f"receipt.json: {odd} take a store parameter, so they belong in store_by_model")
     stated = set(receipt.data_handling.store_by_model) | set(receipt.data_handling.no_store_param)
-    named = {m for stage, m in receipt.models.items() if stage != "auditor"}
+    named = {m for stage, m in receipt.models.items() if stage != "auditor" and m != opinion}
     if cost_path is not None:
         # cost.jsonl is the independent record of what Meta was sent: each model it billed is named and stated.
         billed = {

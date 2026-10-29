@@ -2278,3 +2278,44 @@ def test_a_model_that_never_ran_isnt_told_it_takes_a_store_parameter(tmp_path: P
     _reseal_handling(job_dir, lambda d: d["data_handling"]["no_store_param"].append("muse-voice-transcribe-0.9"))
     with pytest.raises(c.ContractError, match=r"no_store_param names \['muse-voice-transcribe-0\.9'\].*didn't run"):
         c.validate_job_dir(job_dir)
+
+
+# --- audit #72 ----------------------------------------------------------------------------------------------
+
+OPEN_MODEL = "meta-models/muse-spark-open-1026"
+
+
+def test_a_copied_open_weight_exclusion_may_name_an_item_hidden_since(tmp_path: Path) -> None:
+    job_dir = _example(tmp_path)  # i_3 is a hidden screen; the copied first-audit entry excluded it while kept
+    _edit(job_dir, "job.json", lambda d: d.update({"consented": True, "open_weight_attempted": True}))
+    hit = {"frame": 3, "finding": "hit", "kind": "screen", "text": None, "detail": "a screen",
+           "box": [950, 450, 1050, 500], "confidence": "low", "excluded_by": "i_3"}  # fmt: skip
+
+    def copied(d: Any) -> None:
+        d["open_weight"] = {"model": OPEN_MODEL, "status": "ok", "frames": 1, "findings": 1}
+        d["redteam_open"] = [hit]
+
+    _edit(job_dir, "audit.json", copied)
+    c.validate_job_dir(job_dir)  # redteam.md "Re-runs": copied verbatim, advisory, never checked against today
+    _edit(job_dir, "audit.json", lambda d: d["redteam_open"][0].update({"excluded_by": "i_99"}))
+    with pytest.raises(c.ContractError, match="i_99"):
+        c.validate_job_dir(job_dir)  # the id must still exist
+
+
+def test_the_receipt_can_name_the_open_weight_model_honestly(tmp_path: Path) -> None:
+    job_dir = tmp_path / "j_example"
+    shutil.copytree(EXAMPLE, job_dir)
+    _edit(job_dir, "job.json", lambda d: d.update({"consented": True, "open_weight_attempted": True}))
+    _edit(job_dir, "audit.json", lambda d: d.update({"open_weight": {"model": OPEN_MODEL, "status": "failed"}}))
+    _reseal_handling(job_dir, lambda d: d["models"].update({"open_weight": OPEN_MODEL}))
+    c.validate_job_dir(job_dir)  # named, with no store claim: a Baseten call has no store field
+    _reseal_handling(job_dir, lambda d: d["data_handling"]["no_store_param"].append(OPEN_MODEL))
+    c.validate_job_dir(job_dir)
+
+    def claimed_false(d: dict[str, Any]) -> None:
+        d["data_handling"]["no_store_param"].remove(OPEN_MODEL)
+        d["data_handling"]["store_by_model"][OPEN_MODEL] = False
+
+    _reseal_handling(job_dir, claimed_false)
+    with pytest.raises(c.ContractError, match="runs on Baseten, which takes no store parameter"):
+        c.validate_job_dir(job_dir)

@@ -120,7 +120,9 @@ def test_a_kept_item_present_on_the_frame_excludes_a_hit(tmp_path: Path) -> None
     assert "audit.json" in c.validate_job_dir(job_dir)
 
 
-@pytest.mark.parametrize("name", ["redteam", "redteam_open"])
+# Only the current red team's exclusions: `redteam_open` is copied verbatim on a re-run (redteam.md "Re-runs"), so
+# its `excluded_by` isn't held to today's decisions (audit #72 L1; test_audit24's copied-exclusion test).
+@pytest.mark.parametrize("name", ["redteam"])
 def test_a_kept_item_absent_on_the_frame_cannot_exclude(tmp_path: Path, name: str) -> None:
     job_dir = _example(tmp_path)
 
