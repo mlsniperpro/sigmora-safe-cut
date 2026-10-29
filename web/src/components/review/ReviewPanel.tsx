@@ -335,7 +335,8 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
     const ro = new ResizeObserver(measure);
     if (stickyTop.current) ro.observe(stickyTop.current);
     if (bottomBar.current) ro.observe(bottomBar.current);
-    const heights = [window.matchMedia("(min-height: 640px)"), window.matchMedia("(min-height: 480px)")];
+    // In em, like the classes: a larger default text size raises the bars, so the gates rise with it (WCAG 1.4.4).
+    const heights = [window.matchMedia("(min-height: 40em)"), window.matchMedia("(min-height: 30em)")];
     for (const q of heights) q.addEventListener("change", measure);
     measure();
     return () => {
@@ -615,7 +616,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
         </p>
       </div>
 
-      <div ref={stickyTop} className="-mx-4 mt-3 bg-bg px-4 pb-2 lg:mx-0 lg:px-0 max-lg:[@media(min-height:640px)]:sticky max-lg:[@media(min-height:640px)]:top-0 max-lg:[@media(min-height:640px)]:z-10">
+      <div ref={stickyTop} className="-mx-4 mt-3 bg-bg px-4 pb-2 lg:mx-0 lg:px-0 max-lg:[@media(min-height:40em)]:sticky max-lg:[@media(min-height:40em)]:top-0 max-lg:[@media(min-height:40em)]:z-10">
         <VideoPane
           ref={video}
           src={job.job?.prepared_url}
@@ -1027,7 +1028,7 @@ function BottomBar({
   return (
     // Fixed only where it leaves room to work: on a very short screen (400% zoom) it would cover
     // nearly everything, so it sits at the end of the panel instead (WCAG 2.4.11, 1.4.10).
-    <div ref={barRef} className="mt-6 border-t border-border bg-surface/95 backdrop-blur [@media(min-height:480px)]:fixed [@media(min-height:480px)]:inset-x-0 [@media(min-height:480px)]:bottom-0 [@media(min-height:480px)]:z-20 [@media(min-height:480px)]:mt-0">
+    <div ref={barRef} className="mt-6 border-t border-border bg-surface/95 backdrop-blur [@media(min-height:30em)]:fixed [@media(min-height:30em)]:inset-x-0 [@media(min-height:30em)]:bottom-0 [@media(min-height:30em)]:z-20 [@media(min-height:30em)]:mt-0">
       <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-3">
         {/* An answer to the button just pressed is announced and takes focus: that button may now be
             disabled, and focus must not fall to the page (WCAG 4.1.3, 2.4.3). */}

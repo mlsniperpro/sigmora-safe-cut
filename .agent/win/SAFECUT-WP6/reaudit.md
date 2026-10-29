@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 99cf743
+AUDITED_COMMIT: 140bac7
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -390,3 +390,13 @@ Lesson: a global text rule needs a check that controls stay whole, not just that
 |---|---|---|---|
 | 1 | low | The merge button rendered "Same asFace 1…": in the inline-flex button, round 28's two text runs became two flex items and the space between them collapsed (the accessible name was right) | fixed: the whole label is one run inside the wrapping span. e2e checks the rendered text reads "Same as …" (fails on 99cf743) |
 | 2 | low | The ⋯ menu opens downward, so near the bottom its second item sat under the fixed bottom bar (about 65 of 819 opens; keyboard could reach it, a mouse had to scroll) | fixed: the open menu scrolls into view with `block: "nearest"`, which honours the page's scroll-padding for the bar. The menu e2e also requires every item to be uncovered (fails on 99cf743 for Face 4 at 1280) |
+
+## Round 30 (audited 140bac7 by a Sonnet reviewer: the ⋯ menu placed near the top, middle and bottom of the band at 12 widths with keyboard open/close, 93 routes × 3 widths × light/dark with axe, forced colours, text-spacing, a live build with fault injection, region rewrite, and large default text sizes; fix in the next commit)
+
+0 critical, 0 high, 1 medium, 0 low. Round 29's two changes were clean.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | medium | At a large default text size (a browser font setting, not zoom), the review page's sticky player and fixed bar left no room on a phone: at 200% on 390×844 the free band was −48 px and no chip could be reached (WCAG 1.4.4). The px height gates (640/480 px) didn't grow with the rem-sized layers | fixed: the gates are in em (40em/30em) in the classes and in the matchMedia that measures them, so they rise with the text size. At 100% text nothing changes. e2e launches Chromium at 200% default text: the band and tab checks fail on 140bac7 (−48 px) and pass now (844 px free). A positive check keeps the phone's player sticky at 100% |
+
+Noted, not counted: at 320 px with 200% text the header scrolls 8 px sideways (no content lost).

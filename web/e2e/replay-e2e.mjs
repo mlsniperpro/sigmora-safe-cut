@@ -475,6 +475,37 @@ try {
     await context.close();
   }
 
+  // 200% default text (a browser font setting, not zoom): the sticky player and fixed bar step aside on a phone (WCAG 1.4.4).
+  {
+    const big = await chromium.launch({ args: ["--blink-settings=defaultFontSize=32,minimumFontSize=0"] });
+    const page = await (await big.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+    await page.goto(`${BASE}/jobs/job-review-cafe`, { waitUntil: "networkidle" });
+    await page.getByText(/hidden · /).waitFor();
+    await page.waitForTimeout(300);
+    const band = await page.evaluate(() => {
+      const css = getComputedStyle(document.documentElement);
+      const top = parseFloat(css.getPropertyValue("--sticky-top")) || 0;
+      const bottom = parseFloat(css.getPropertyValue("--sticky-bottom")) || 0;
+      return { free: innerHeight - top - bottom, height: innerHeight };
+    });
+    check("200% text: the review page leaves room for the chips", band.free >= band.height * 0.4, `${Math.round(band.free)} of ${band.height}px free`);
+    const tab = page.getByRole("tab", { name: /Needs you/ });
+    await tab.scrollIntoViewIfNeeded();
+    const reachable = await tab.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+    });
+    check("200% text: the column tabs aren't covered", reachable);
+    await big.close();
+    // At the default text size the phone layout keeps its sticky player.
+    const normal = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+    await normal.goto(`${BASE}/jobs/job-review-cafe`, { waitUntil: "networkidle" });
+    await normal.getByText(/hidden · /).waitFor();
+    const position = await normal.locator("video").first().evaluate((el) => getComputedStyle(el.closest("[class*='bg-bg']")).position);
+    check("100% text: the phone's player stays sticky", position === "sticky", position);
+    await normal.context().close();
+  }
+
   // A short landscape screen (or 200% zoom): the player isn't sticky, so the chips can scroll into view.
   {
     const context = await browser.newContext({ viewport: { width: 844, height: 390 } });
