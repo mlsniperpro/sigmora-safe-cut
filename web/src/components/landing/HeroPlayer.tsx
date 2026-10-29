@@ -4,7 +4,7 @@
  * labelled toggle that keeps the playback time (UI-SPEC §1.1, §1.5).
  */
 import { useEffect, useRef, useState } from "react";
-import { isMockMode } from "@/lib/api";
+import { ApiError, isMockMode } from "@/lib/api";
 import { SAMPLE_MEDIA_BASE, getClient } from "@/lib/client";
 import type { DemoResponse } from "@/lib/contracts";
 import { SITE } from "@/lib/site";
@@ -14,6 +14,7 @@ import { useReportMode } from "../mode";
 import { PlayCircleIcon } from "../icons";
 
 type Version = "raw" | "safecut";
+const DEMO_RETRY_MS = 2_000;
 
 export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["audit"]) => void }) {
   const [demo, setDemo] = useState<DemoResponse | null>(null);
@@ -30,6 +31,8 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["au
   const retried = useRef(false);
   /** The URL that failed: a refetch that gives it back means it won't play, so say so (§1.4). */
   const failedSrc = useRef<string | null>(null);
+  /** A cold start's 5xx on the demo gets one quiet retry before the page says it didn't load. */
+  const demoRetried = useRef(false);
   // The sample hero in mock mode isn't a real run, so it doesn't claim demo mode.
   useReportMode(isMockMode() ? null : demo?.mode);
 
@@ -44,8 +47,15 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["au
         setDemo(d);
         onAuditor?.(d.audit);
       })
-      .catch(() => {
-        if (!controller.signal.aborted) setFailed(true);
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        if (error instanceof ApiError && (error.status ?? 0) >= 500 && !demoRetried.current) {
+          demoRetried.current = true;
+          // Not cleared with the request: the retry must come even if this effect re-runs first.
+          setTimeout(() => setRefreshes((n) => n + 1), DEMO_RETRY_MS);
+          return;
+        }
+        setFailed(true);
       });
     return () => controller.abort();
   }, [onAuditor, refreshes]);

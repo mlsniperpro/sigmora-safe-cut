@@ -151,12 +151,15 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
   const tryPendingFocus = useCallback(() => {
     const p = pendingFocus.current;
     if (!p) return;
+    // A lapsed request is dropped before anything else, even if its chip has just turned up.
+    if (performance.now() - p.at > FOCUS_WAIT_MS) {
+      pendingFocus.current = null;
+      return;
+    }
     const el = document.querySelector<HTMLElement>(`[data-chip-id="${CSS.escape(p.id)}"]`);
     if (el) {
       pendingFocus.current = null;
       el.focus();
-    } else if (performance.now() - p.at > FOCUS_WAIT_MS) {
-      pendingFocus.current = null;
     }
   }, []);
   const focusChip = useCallback(

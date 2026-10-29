@@ -106,6 +106,31 @@ describe("hero and steps (UI-SPEC §1)", () => {
     }
   });
 
+  it("retries the demo once after a 5xx (a cold start), and says it didn't load only if that fails too", async () => {
+    const once = new MockBackend({ latencyMs: 0 });
+    once.inject(/^GET \/v1\/demo\//, "error-500");
+    setClientForTests(new SafeCutClient({ transport: once }));
+    const { unmount } = render(
+      <ModeProvider>
+        <HeroAndSteps />
+      </ModeProvider>,
+    );
+    expect(await screen.findByLabelText("The demo clip after Safe Cut", undefined, { timeout: 4_000 })).toBeInTheDocument();
+    expect(screen.queryByText(/The demo video didn't load/)).toBeNull();
+    unmount();
+
+    const twice = new MockBackend({ latencyMs: 0 });
+    twice.inject(/^GET \/v1\/demo\//, "error-500", 2);
+    setClientForTests(new SafeCutClient({ transport: twice }));
+    render(
+      <ModeProvider>
+        <HeroAndSteps />
+      </ModeProvider>,
+    );
+    expect(await screen.findByText(/The demo video didn't load/, undefined, { timeout: 4_000 })).toBeInTheDocument();
+    expect(twice.log.filter((l) => l.path.startsWith("/v1/demo/"))).toHaveLength(2);
+  });
+
   it("a refetch that gives back the same URL says the video didn't load, with the poster kept", async () => {
     setClientForTests(new SafeCutClient({ transport: new MockBackend({ latencyMs: 0 }) }));
     render(

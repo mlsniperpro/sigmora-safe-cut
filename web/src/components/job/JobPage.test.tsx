@@ -299,6 +299,43 @@ describe("review panel", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: "Working on your clip" })).toHaveFocus());
   });
 
+  it("a focus request that lapsed doesn't pull focus when its chip shows up later", async () => {
+    const real = window.matchMedia;
+    window.matchMedia = ((query: string) => ({ ...real(query), matches: false })) as typeof window.matchMedia;
+    onTestFinished(() => void (window.matchMedia = real));
+    const user = setup("result-unresolved-review", "view=review");
+    // The cover's ack is late, so it lands after the viewer has moved to another tab.
+    let ack: () => void = () => undefined;
+    const original = backend.request.bind(backend);
+    vi.spyOn(backend, "request").mockImplementation(async (init) => {
+      if (init.method === "POST" && init.path.endsWith("/review")) await new Promise<void>((resolve) => (ack = resolve));
+      return original(init);
+    });
+    await user.click(await screen.findByRole("button", { name: "Cover it Unfixed spot U1" }));
+    await user.click(screen.getByRole("tab", { name: /^Needs you/ }));
+    (document.activeElement as HTMLElement | null)?.blur();
+    // The ack asks to focus the covering item, which isn't in the open tab.
+    await act(async () => ack());
+    await new Promise((resolve) => setTimeout(resolve, 1_200));
+    const hidden = screen.getByRole("tab", { name: /^Hidden/ });
+    hidden.focus();
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(hidden).toHaveAttribute("aria-selected", "true"));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(hidden).toHaveFocus();
+  });
+
+  it.each([
+    ["error-404-expired", "This clip has been deleted · Safe Cut"],
+    ["nope", "We couldn't find that clip · Safe Cut"],
+    ["job-processing-track", "Working on your clip · Safe Cut"],
+    ["job-failed-roles", "Something went wrong while working out who's part of the story · Safe Cut"],
+    ["job-review-hero1", "Review what Safe Cut hides · Safe Cut"],
+  ])("the tab title follows the state the page shows (WCAG 2.4.2): %s", async (id, title) => {
+    setup(id);
+    await waitFor(() => expect(document.title).toBe(title));
+  });
+
   it("deletes everything after the confirm and ignores late responses", async () => {
     const user = setup("job-review-hero1");
     await screen.findByText("2 hidden · 1 kept clear · 1 needs you");

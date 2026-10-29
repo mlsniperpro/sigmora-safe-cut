@@ -1,4 +1,4 @@
-AUDITED_COMMIT: b7ab493
+AUDITED_COMMIT: a743ea2
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -272,3 +272,13 @@ Fresh-clone README run also found: `pnpm typecheck` failed before any build (Nex
 | 2 | low | Undo of a covered spot targeted the covering item, which the undo removes, so focus fell to `<body>` (and the mobile tab stayed on Hidden) | fixed: an undo that removes the item it created focuses the spot that comes back. JobPage test (fails on b7ab493) |
 | 3 | low | On mobile, closing the Why sheet after its edit was rejected focused a chip that wasn't in the open tab | fixed: closing the sheet follows the chip, opening its tab. JobPage regression test (jsdom doesn't make the page behind a modal inert, so this test passes on the old code too; the change is one call, `follow` instead of `focusChip`) |
 | 4 | low | A failed job's successful Try again unmounted the focused button with the failed view | fixed: once the job leaves `failed`, focus moves to the new view's progress unless the viewer moved on. JobPage test (fails on b7ab493) |
+
+## Round 19 (audited a743ea2 by a Sonnet reviewer: 67 routes × 320/390/1280 × light/dark with axe and target sizes; a live build against a fake https API with fault injection on every job, result, /try and review request, plus signed-URL expiry; every /try mock code; the region rewrite; seeded focus fuzz watching every focusin; each finding traced here; fixes in the next commit)
+
+0 critical, 0 high, 0 medium, 3 low. The round-18 fixes held, except that a lapsed focus request could still fire (#2).
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | low | The result page never re-armed its 10-minute link refresh after one failed, so the download links went stale (403) | fixed: a failed refresh re-arms the next one. ResultPage test (fails on a743ea2) |
+| 2 | low | A focus request older than its 1 s lapse still fired if its chip mounted before any other commit cleared it (a late cover ack, then a tab change) | fixed: the lapse is checked first. JobPage test (fails on a743ea2) |
+| 3 | low | Tab titles didn't follow the state shown (WCAG 2.4.2): the 404 page had the landing title, and every job and result state kept one static title. Also, a single 5xx on the demo left the hero on "didn't load" | fixed: the 404 page has its own title; job, result and error pages take their tab title from the h1 they show. The hero retries the demo once, 2 s after a 5xx. JobPage tests, a landing test and two e2e checks (each fails on the old code) |

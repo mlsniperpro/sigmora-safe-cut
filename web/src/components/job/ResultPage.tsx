@@ -13,6 +13,7 @@ import type { ResultResponse } from "@/lib/contracts";
 import { COPY, auditSummary, formatLocal } from "@/lib/copy";
 import { SITE, fromSigmora, keptQuery } from "@/lib/site";
 import { useCooldown } from "@/hooks/useCooldown";
+import { useHeadingTitle } from "@/hooks/useHeadingTitle";
 import { useJob } from "@/hooks/useJob";
 import { useRemoteCaptions } from "@/hooks/useRemoteCaptions";
 import { CheckIcon, WarningIcon } from "../icons";
@@ -85,6 +86,8 @@ export function ResultPage() {
     }, RECEIPT_TIMEOUT_MS);
     return () => clearTimeout(t);
   }, [latest, receiptLoaded]);
+  /** A failed link refresh keeps the result it had, so this re-arms the next refresh (§10.7). */
+  const [refreshMisses, setRefreshMisses] = useState(0);
   useEffect(() => {
     if (!latest) return;
     const t = setTimeout(() => {
@@ -92,7 +95,7 @@ export function ResultPage() {
       setLinkRefreshes((n) => n + 1);
     }, URL_REFRESH_MS);
     return () => clearTimeout(t);
-  }, [latest]);
+  }, [latest, refreshMisses]);
   const [published, setPublished] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [confirm, setConfirm] = useState(false);
@@ -100,6 +103,7 @@ export function ResultPage() {
   const { coolingDown, coolDown } = useCooldown();
   const { replay } = useMode();
   useReportMode(job?.mode ?? (result.kind === "ready" ? result.result.mode : null));
+  useHeadingTitle("Loading your clip");
 
   const status = job?.status;
   const redirect = status === "processing" || status === "review" || status === "needs_you" || status === "retry_later";
@@ -129,6 +133,7 @@ export function ResultPage() {
         if (controller.signal.aborted) return;
         // A failed link refresh keeps the page; only the receipt it was retrying gives up.
         if (keep && receiptRetried.current && !receiptLoadedRef.current) setReceiptFailed(true);
+        if (keep) setRefreshMisses((n) => n + 1);
         setResult((prev) => (keep && prev.kind === "ready" ? prev : { kind: "error", error }));
       });
     return () => controller.abort();

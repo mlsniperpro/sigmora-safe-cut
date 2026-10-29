@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { COPY } from "@/lib/copy";
 import { keptQuery } from "@/lib/site";
 import { checkTimeline } from "@/lib/time";
+import { useHeadingTitle } from "@/hooks/useHeadingTitle";
 import { useJob, type JobLoad } from "@/hooks/useJob";
 import { useReportMode } from "../mode";
 import { ReviewPanel } from "../review/ReviewPanel";
@@ -52,6 +53,7 @@ export function JobPage() {
   const { load, resume, refreshUrls, patch, markDeleted } = useJob(id);
   const job = load.kind === "ready" ? load.job : null;
   useReportMode(job?.mode);
+  useHeadingTitle("Loading your clip");
 
   // A render this page started moves on to the result when it's done, even from ?view=review (§3.5).
   const [renderedHere, setRenderedHere] = useState(false);

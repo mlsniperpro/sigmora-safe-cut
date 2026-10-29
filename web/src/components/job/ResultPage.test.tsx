@@ -155,7 +155,7 @@ describe("signed URLs expire (UI-SPEC §10.7)", () => {
     expect(receipt().getAttribute("src")).toMatch(/v=1$/);
   });
 
-  it("a failed link refresh keeps the page", async () => {
+  it("a failed link refresh keeps the page, and the next refresh still comes", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     setupSigned("result-clean");
     await settle();
@@ -165,6 +165,8 @@ describe("signed URLs expire (UI-SPEC §10.7)", () => {
     await advance(URL_REFRESH_MS);
     expect(screen.getByText("No leaks found.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Download video" }).getAttribute("href")).toMatch(/v=1$/);
+    await advance(URL_REFRESH_MS);
+    expect(screen.getByRole("link", { name: "Download video" }).getAttribute("href")).toMatch(/v=2$/);
   });
 
   it("a video error refetches once for a fresh URL, then shows the error page", async () => {

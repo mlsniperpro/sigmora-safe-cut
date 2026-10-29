@@ -168,6 +168,9 @@ Round 14 (fixes in the round-14 commit; details in `reaudit.md`):
 - [x] R15-1 (low) a late fresh URL brings the review player back: JobPage test
 - [x] R15-2 (low) an action's GET isn't made quiet by a cut-short refresh: useJob test
 - [x] Self-found: fixture dates shift with the clock, so the mock and the tests hold on any date: mock-backend tests, suite run at clock shifts up to +400 days
+- [x] R19-1 (low) the result page's link refresh re-arms after a failure: ResultPage test
+- [x] R19-2 (low) a lapsed focus request never fires: JobPage test
+- [x] R19-3 (low) tab titles follow the shown state; the hero retries a 5xx once: JobPage, landing tests, e2e
 - [x] R18-1 (low) focus waits for the commit that mounts its chip: JobPage test
 - [x] R18-2 (low) undoing a cover focuses its spot: JobPage test
 - [x] R18-3 (low) closing the Why sheet follows the chip's tab: JobPage test

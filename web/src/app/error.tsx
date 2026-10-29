@@ -1,9 +1,11 @@
 "use client";
 import Link from "next/link";
 import { useEffect } from "react";
+import { useHeadingTitle } from "@/hooks/useHeadingTitle";
 
 /** §7 "Unexpected error": never a stack trace, request ID or raw model output. */
 export default function ErrorPage({ error, retry }: { error: unknown; retry: () => void }) {
+  useHeadingTitle("Something went wrong");
   useEffect(() => {
     const digest = error instanceof Error && "digest" in error ? String((error as { digest?: unknown }).digest ?? "") : "";
     console.error(`unexpected error${digest ? ` (${digest})` : ""}`);

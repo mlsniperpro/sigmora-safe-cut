@@ -225,6 +225,11 @@ try {
     await page.goto(`${BASE}/nope`, { waitUntil: "networkidle" });
     check(`${v}: unknown routes get the 404 copy`, await page.getByText("We couldn't find that page.").isVisible());
     if (v === "desktop") {
+      check("the 404 page has its own tab title", (await page.title()) === "Page not found · Safe Cut", await page.title());
+      await page.goto(`${BASE}/jobs/error-404-expired`, { waitUntil: "networkidle" });
+      await page.getByText(/This clip has been deleted/).waitFor();
+      await page.waitForTimeout(300);
+      check("a job page's tab title follows its state", (await page.title()) === "This clip has been deleted · Safe Cut", await page.title());
       const cut = await page.goto(`${BASE}/jobs/abc%E0`, { waitUntil: "networkidle" });
       check("a job link cut off mid-escape gets the 404 page, not a 500", cut?.status() === 404 && (await page.getByText("We couldn't find that page.").isVisible()), String(cut?.status()));
     }
