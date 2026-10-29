@@ -1404,11 +1404,16 @@ def _check_receipt(
         )
     if responses is not None and responses.root:
         # PRE-A §10.4: responses.json holds entries only when SAM ran without `store: false`, so Meta kept them.
+        # PRE-A §10.6 names that model in `no_store_param` (no store setting was sent); `store_by_model: true` says
+        # the same. Claiming `false` would say nothing was stored.
         sam_model = receipt.models.get("sam")
-        if sam_model is None or receipt.data_handling.store_by_model.get(sam_model) is not True:
+        handling = receipt.data_handling
+        if sam_model is None or not (
+            handling.store_by_model.get(sam_model) is True or sam_model in handling.no_store_param
+        ):
             raise ContractError(
-                f"receipt.json: responses.json holds {len(responses.root)} SAM responses Meta kept, but"
-                f" store_by_model says {sam_model!r} stored nothing"
+                f"receipt.json: responses.json holds {len(responses.root)} SAM responses Meta kept, but the receipt"
+                f" says {sam_model!r} stored nothing (no_store_param, PRE-A §10.6, or store_by_model true)"
             )
     if cost_path.exists():
         _check_receipt_cost(receipt, job, cost_path)
@@ -2106,6 +2111,7 @@ def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:
             roles=roles if isinstance(roles, Roles) else None,
             transcript=transcript if isinstance(transcript, Transcript) else None,
             cost_path=job_dir / "cost.jsonl",
+            sam_unstored=isinstance(responses, ResponsesIndex) and bool(responses.root),
         )
     return loaded
 
@@ -2191,6 +2197,7 @@ def _check_receipt_models(
     roles: Roles | None,
     transcript: Transcript | None,
     cost_path: Path | None = None,
+    sam_unstored: bool = False,
 ) -> None:
     """The receipt names the models that actually ran (AGENTS rule 9; PRE-A: a YuNet fallback is never sealed as
     EgoBlur): each stage's model in ``models`` and the audit's ``auditor`` match the job file that recorded it."""
@@ -2213,8 +2220,13 @@ def _check_receipt_models(
     if asr is not None and asr in receipt.data_handling.store_by_model:
         # PRE-A §12: Voice Transcribe takes no `store` parameter, so its claim is `no_store_param`, never false.
         raise ContractError(f"receipt.json: {asr!r} takes no store parameter, so it belongs in no_store_param")
-    if odd := sorted(set(receipt.data_handling.no_store_param) - {asr}):
-        # PRE-A §12: only Voice Transcribe lacks a store parameter; every Responses model's setting is stated.
+    # PRE-A §12: Voice Transcribe has no store parameter, and SAM is sent none when it rejects `store` (§10.6: its
+    # kept responses are in responses.json); every other model's setting is stated in store_by_model.
+    allowed: set[str | None] = {asr, receipt.models.get("sam") if sam_unstored else None}
+    if odd := sorted(set(receipt.data_handling.no_store_param) - allowed):
+        listed = set(receipt.models.values())
+        if idle := [m for m in odd if m not in listed]:
+            raise ContractError(f"receipt.json: no_store_param names {idle}, which aren't in models (they didn't run)")
         raise ContractError(f"receipt.json: {odd} take a store parameter, so they belong in store_by_model")
     stated = set(receipt.data_handling.store_by_model) | set(receipt.data_handling.no_store_param)
     named = {m for stage, m in receipt.models.items() if stage != "auditor"}

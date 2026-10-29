@@ -36,7 +36,7 @@ from meta_sam_parser import (
     parse_responses_stream,
     video_segmentation_format,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from safecut import config, open_weight
 from safecut.config import OpenWeightPrice, Settings, load_settings
@@ -533,7 +533,12 @@ async def _role_calls(p: Probe, keyframes: Path) -> Summary:
     ``keyframes/role_calls.json`` lists :class:`RoleCall` entries; images sit next to it. The boxes may be
     hand-drawn (WP0.md). Only consented hero keyframes may be used (AGENTS rule 5).
     """
-    calls = [RoleCall.model_validate(c) for c in json.loads((keyframes / "role_calls.json").read_text())]
+    try:
+        calls = [RoleCall.model_validate(c) for c in json.loads((keyframes / "role_calls.json").read_text())]
+    except ValidationError as exc:
+        # The summary is committed (fixtures/probes/f/): never echo an entry, whose `context` describes the cast.
+        where = sorted({".".join(str(p) for p in e["loc"]) for e in exc.errors(include_input=False)})
+        raise ValueError(f"role_calls.json is malformed at {where}") from None
     out: Summary = {}
     progress: dict[str, list[Summary]] = {}
     for model in (config.COMPARE_SPARK_MODEL, config.COMPARE_WONDER_MODEL):

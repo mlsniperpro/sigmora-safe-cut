@@ -2229,3 +2229,52 @@ def test_a_baseten_stop_never_backs_an_over_budget_block(tmp_path: Path) -> None
     c.append_cost_line(c.CostLine.model_validate(stop), cost)
     with pytest.raises(c.ContractError, match="records no budget: stop"):
         c._check_budget_stop(audit, cost)  # pyright: ignore[reportPrivateUsage] -- the unit under test
+
+
+# --- audits #70 and #71 -------------------------------------------------------------------------------------
+
+
+async def test_a_malformed_role_call_never_echoes_its_context(tmp_path: Path) -> None:
+    frames = tmp_path / "kf"
+    frames.mkdir()
+    secret = "the girl in the red coat, Amina's daughter, at school gate"
+    (frames / "role_calls.json").write_text(json.dumps([{"image": "f1.jpg", "label": 3, "context": secret}]))
+    p = probes.Probe(name="f", out=tmp_path / "out", settings=Settings(model_api_key=SecretStr("k")),
+                     meta=cast(MetaClient, None), files=cast(FileStore, None))  # fmt: skip
+    with pytest.raises(ValueError, match=r"role_calls\.json is malformed") as raised:
+        await probes._role_calls(p, frames)  # pyright: ignore[reportPrivateUsage] -- the unit under test
+    assert "daughter" not in str(raised.value)
+    assert "school" not in str(raised.value)
+
+
+def _reseal_handling(job_dir: Path, change: Callable[[dict[str, Any]], None]) -> None:
+    data = json.loads((job_dir / "receipt.json").read_text())
+    data.pop("hash")
+    change(data)
+    (job_dir / "receipt.json").write_text(c.Receipt.seal(c.ReceiptBody.model_validate(data)).model_dump_json())
+
+
+def test_sam_sent_without_store_may_be_in_no_store_param_as_pre_a_says(tmp_path: Path) -> None:
+    job_dir = tmp_path / "j_example"
+    shutil.copytree(EXAMPLE, job_dir)
+
+    def unstored(d: dict[str, Any]) -> None:
+        handling = d["data_handling"]
+        handling["store_by_model"].pop("sam-3.1")
+        handling["no_store_param"].append("sam-3.1")
+
+    _reseal_handling(job_dir, unstored)
+    with pytest.raises(c.ContractError, match=r"\['sam-3\.1'\] take a store parameter"):
+        c.validate_job_dir(job_dir)  # no responses.json entries: SAM was sent `store: false`
+    entry = {"response_id": "resp_1", "requested_at": "2026-10-27T10:05:00Z"}
+    (job_dir / "responses.json").write_text(json.dumps([entry]))
+    _reseal_handling(job_dir, lambda d: d["data_handling"].update({"responses_delete_requested": 1}))
+    c.validate_job_dir(job_dir)  # PRE-A §10.6: kept responses, SAM named in no_store_param
+
+
+def test_a_model_that_never_ran_isnt_told_it_takes_a_store_parameter(tmp_path: Path) -> None:
+    job_dir = tmp_path / "j_example"
+    shutil.copytree(EXAMPLE, job_dir)
+    _reseal_handling(job_dir, lambda d: d["data_handling"]["no_store_param"].append("muse-voice-transcribe-0.9"))
+    with pytest.raises(c.ContractError, match=r"no_store_param names \['muse-voice-transcribe-0\.9'\].*didn't run"):
+        c.validate_job_dir(job_dir)
