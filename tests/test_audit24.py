@@ -2319,3 +2319,30 @@ def test_the_receipt_can_name_the_open_weight_model_honestly(tmp_path: Path) -> 
     _reseal_handling(job_dir, claimed_false)
     with pytest.raises(c.ContractError, match="runs on Baseten, which takes no store parameter"):
         c.validate_job_dir(job_dir)
+
+
+# --- audit #73 ----------------------------------------------------------------------------------------------
+
+
+async def test_an_unreadable_keyframe_never_publishes_the_owners_path(tmp_path: Path) -> None:
+    frames = tmp_path / "Zawadi-school-gate-keyframes"
+    frames.mkdir()
+    (frames / "role_calls.json").write_text(
+        json.dumps([{"image": "f1.jpg", "label": "face:3", "context": "x", "expected": "bystander"}])
+    )
+    p = probes.Probe(name="f", out=tmp_path / "out", settings=Settings(model_api_key=SecretStr("k")),
+                     meta=cast(MetaClient, None), files=cast(FileStore, None))  # fmt: skip
+    result = await probes._role_calls(p, frames)  # pyright: ignore[reportPrivateUsage] -- the unit under test
+    assert "Zawadi" not in json.dumps(result)
+    assert result["muse-spark-1.3"]["calls"][0] == {"image": "f1.jpg", "error": "FileNotFoundError"}
+
+
+@pytest.mark.parametrize("payload", ["5", "null", "true", '{"image": "f1.jpg"}'])
+async def test_a_role_calls_file_that_isnt_a_list_is_a_typed_refusal(tmp_path: Path, payload: str) -> None:
+    frames = tmp_path / "kf"
+    frames.mkdir()
+    (frames / "role_calls.json").write_text(payload)
+    p = probes.Probe(name="f", out=tmp_path / "out", settings=Settings(model_api_key=SecretStr("k")),
+                     meta=cast(MetaClient, None), files=cast(FileStore, None))  # fmt: skip
+    with pytest.raises(ValueError, match="must be a list"):
+        await probes._role_calls(p, frames)  # pyright: ignore[reportPrivateUsage] -- the unit under test

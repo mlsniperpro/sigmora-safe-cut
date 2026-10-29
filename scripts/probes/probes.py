@@ -498,7 +498,7 @@ async def probe_f(p: Probe) -> Summary:
         try:
             out["role_calls"] = await _role_calls(p, p.keyframes)
         except (OSError, ValueError) as exc:  # a bad role_calls.json never costs the paid video answers
-            out["role_calls"] = {"error": f"{type(exc).__name__}: {exc}"}
+            out["role_calls"] = {"error": _committed_error(exc)}
     return out
 
 
@@ -522,6 +522,12 @@ class RoleCall(BaseModel):
     expected: str
 
 
+def _committed_error(exc: Exception) -> str:
+    """An error for probe f's committed summary: an OSError's text holds the owner's keyframe path (a folder that
+    may name the cast), so only its type is kept; other errors here are this module's own messages."""
+    return type(exc).__name__ if isinstance(exc, OSError) else f"{type(exc).__name__}: {exc}"
+
+
 class _RoleAnswer(BaseModel):
     role: str
     evidence: str
@@ -534,7 +540,10 @@ async def _role_calls(p: Probe, keyframes: Path) -> Summary:
     hand-drawn (WP0.md). Only consented hero keyframes may be used (AGENTS rule 5).
     """
     try:
-        calls = [RoleCall.model_validate(c) for c in json.loads((keyframes / "role_calls.json").read_text())]
+        listed: Any = json.loads((keyframes / "role_calls.json").read_text())
+        if not isinstance(listed, list):
+            raise ValueError("role_calls.json must be a list of role calls")  # noqa: TRY004 -- one refusal, typed as the caller expects
+        calls = [RoleCall.model_validate(c) for c in cast(list[Any], listed)]
     except ValidationError as exc:
         # The summary is committed (fixtures/probes/f/): never echo an entry, whose `context` describes the cast.
         where = sorted({".".join(str(p) for p in e["loc"]) for e in exc.errors(include_input=False)})
@@ -551,7 +560,7 @@ async def _role_calls(p: Probe, keyframes: Path) -> Summary:
             try:
                 data = base64.b64encode((keyframes / call.image).read_bytes()).decode()
             except OSError as exc:
-                rows.append({"image": call.image, "error": f"{type(exc).__name__}: {exc}"})
+                rows.append({"image": call.image, "error": _committed_error(exc)})
                 continue
             prompt = (
                 f"Decide the role of the person marked {call.label} in this frame of a creator's video: participant "
