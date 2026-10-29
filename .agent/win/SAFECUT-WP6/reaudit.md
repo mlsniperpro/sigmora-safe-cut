@@ -1,4 +1,4 @@
-AUDITED_COMMIT: d4976bf
+AUDITED_COMMIT: a706ad0
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -314,3 +314,11 @@ Fresh-clone README run also found: `pnpm typecheck` failed before any build (Nex
 | 6 | low | Durations rounded to nearest, so 59.6 s read "1:00" | fixed: whole seconds round down (§0). Unit test |
 | 7 | low | The toast's focus ring was 2.57:1 (light) and 1.65:1 (dark) on its inverse surface | fixed: inside the toast the ring takes the toast's text colour (15.9:1). e2e reached by Tab, requiring `:focus-visible` (fails on the old CSS with 2.57) |
 | 8 | low | The chip's kind had no icon, and the placeholder tile drew the state icon (§3.3) | fixed: six kind icons beside the kind word and on the placeholder tile (a pending cover keeps the state icon). JobPage test (fails on d4976bf) |
+
+## Round 22 (audited a706ad0 by a Sonnet reviewer: contracts.ts against WP0 contracts.py, ARCHITECTURE §3, API-NOTES §12 and UI-SPEC §8 field by field, a live build fed WP0-shaped responses including a cover-spot ack with no `spot_id`, 87 routes × 320/390/1280 × light/dark with axe; each finding traced here; fix in the next commit)
+
+0 critical, 0 high, 0 medium, 1 low. The contract check found no mismatch that would fail a real page, and round 21's fixes held.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | low | A tracked item with no evidence frames (the roles stage failed, so there were no votes or keyframes) got the static-item caption, wrongly saying SAM 3.1 couldn't follow it | fixed: the caption goes by origin only. Audit-added and static items keep their §4.3 captions, and anything else reads "There's no keyframe for this item." JobPage test (fails on a706ad0) |

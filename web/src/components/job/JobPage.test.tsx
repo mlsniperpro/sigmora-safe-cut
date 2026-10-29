@@ -362,6 +362,22 @@ describe("review panel", () => {
     expect(kind.querySelector("svg")).not.toBeNull();
   });
 
+  it("a tracked item with no evidence frames (roles didn't run) doesn't claim SAM 3.1 couldn't follow it", async () => {
+    // Serve the job as if the roles stage had failed: no votes, no keyframes, no evidence frames.
+    const original = MockBackend.prototype.request;
+    vi.spyOn(MockBackend.prototype, "request").mockImplementation(async function (this: MockBackend, init) {
+      const raw = await original.call(this, init);
+      if (init.method !== "GET" || init.path !== "/v1/jobs/job-review-hero1" || raw.status !== 200) return raw;
+      const body = raw.body as { items: Array<{ evidence_frames: number[] }> };
+      return { ...raw, body: { ...body, items: body.items.map((i) => ({ ...i, evidence_frames: [] })), roles: { status: "failed", model: null, tracks: [], objects: [], missed: [], keyframes: [] }, keyframe_urls: {} } };
+    });
+    const user = setup("job-review-hero1");
+    await user.click(await screen.findByRole("button", { name: /^Why\? Plate 1,/ }));
+    const drawer = await screen.findByRole("dialog");
+    expect(within(drawer).getByText("There's no keyframe for this item.")).toBeInTheDocument();
+    expect(within(drawer).queryByText(/SAM 3.1 couldn't follow it/)).toBeNull();
+  });
+
   it("deletes everything after the confirm and ignores late responses", async () => {
     const user = setup("job-review-hero1");
     await screen.findByText("2 hidden · 1 kept clear · 1 needs you");

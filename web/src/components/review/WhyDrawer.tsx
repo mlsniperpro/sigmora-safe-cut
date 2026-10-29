@@ -216,9 +216,12 @@ export function WhyDrawer({
                 </div>
               ) : (
                 <p className="rounded-lg bg-surface-2 p-4 text-sm">
+                  {/* By origin (§4.3); an item with no evidence frames for another reason (roles didn't run) claims neither. */}
                   {model.origin === "audit_patch"
                     ? "Added by the audit after rendering. There's no keyframe for it."
-                    : "Muse Spark spotted this, but SAM 3.1 couldn't follow it, so there's no keyframe for it."}
+                    : model.origin === "static"
+                      ? "Muse Spark spotted this, but SAM 3.1 couldn't follow it, so there's no keyframe for it."
+                      : "There's no keyframe for this item."}
                 </p>
               )}
               {frames.length > 1 && (

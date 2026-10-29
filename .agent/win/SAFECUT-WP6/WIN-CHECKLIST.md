@@ -168,6 +168,7 @@ Round 14 (fixes in the round-14 commit; details in `reaudit.md`):
 - [x] R15-1 (low) a late fresh URL brings the review player back: JobPage test
 - [x] R15-2 (low) an action's GET isn't made quiet by a cut-short refresh: useJob test
 - [x] Self-found: fixture dates shift with the clock, so the mock and the tests hold on any date: mock-backend tests, suite run at clock shifts up to +400 days
+- [x] R22-1 (low) no-keyframe caption by origin, neutral otherwise: JobPage test
 - [x] R21-1 (high) open_weight with model null parses: WP0 j_example contract test + ARCHITECTURE §3.8 example
 - [x] R21-2 (medium) a box-only miss (point null) and an absent covered_by parse: contract test
 - [x] R21-3 (low) no-keyframe items show their origin caption only: JobPage tests
