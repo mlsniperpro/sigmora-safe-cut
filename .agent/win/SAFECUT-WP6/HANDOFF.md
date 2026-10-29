@@ -66,10 +66,11 @@
 - Audit round 21 (on d4976bf, re-diffed against WP0's contracts): 1 high, 1 medium and 6 low, all fixed in the round-21 commit. CLEAN_AUDITS_IN_A_ROW is back to 0. Lesson: the client's schemas are now tested against WP0's own `j_example` fixtures, so a contract mismatch fails `pnpm test`. On that commit: 857 tests, e2e 110/110, `checks.sh` exit 0. The break-it run on d4976bf (fresh clone and FUZZ_RUNS=100000, both passing) has to be redone on the final commit.
 - Audit round 22 (on a706ad0): 1 low (the no-keyframe caption for a tracked item when the roles stage failed), fixed in the round-22 commit. The field-by-field contract check was clean. On that commit: 858 tests, e2e 110/110.
 - Audit round 23 (on e78b343): 1 low (forced-colours selection cues), fixed in the round-23 commit with `forced-colors:` variants. Gotcha: a plain `@media (forced-colors: active)` block in globals.css is dropped by the Tailwind build. On that commit: 858 tests, e2e 113/113.
+- Audit round 24 (on 9dc64d8): 1 low (chip reasons clamped at 320 px), fixed in the round-24 commit. The reason now shows in full. On that commit: 858 tests, e2e 114/114.
 - CLEAN_AUDITS_IN_A_ROW is 0. Two clean full audits are still needed, then a fresh break-it.md (fresh clone + FUZZ_RUNS=100000).
 
 ## Next steps, in order
-1. Run the next full audit round on HEAD (round 24 is next). If it finds anything, fix it and reset CLEAN_AUDITS_IN_A_ROW to 0. Repeat until two consecutive audits find nothing. Then set AUDITED_COMMIT to the last code commit and CLEAN_AUDITS_IN_A_ROW to 2.
+1. Run the next full audit round on HEAD (round 25 is next). If it finds anything, fix it and reset CLEAN_AUDITS_IN_A_ROW to 0. Repeat until two consecutive audits find nothing. Then set AUDITED_COMMIT to the last code commit and CLEAN_AUDITS_IN_A_ROW to 2.
 2. After the last code change, run the fresh-clone `checks.sh` (`git clone --branch wp6-web` into an empty dir) and the FUZZ_RUNS=100000 agreement soak. Rewrite break-it.md with TESTED_COMMIT set to that commit.
 3. Run the gate until it prints `GATE: PASS` on the pushed HEAD. Then post the final status on PR #4, including the gate's last line.
 4. If time remains: live deployment (owner sets up Vercel), Safari/Firefox runs.

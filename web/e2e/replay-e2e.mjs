@@ -338,6 +338,15 @@ try {
     await page.getByText(name, { exact: false }).waitFor();
     const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     check("320 px: a long file name doesn't scroll the page sideways", over <= 0, `${over}px`);
+    // Every chip reason shows in full on a phone (no clamp hides its end).
+    await page.goto(`${BASE}/jobs/job-review-sample`, { waitUntil: "networkidle" });
+    await page.getByText(/hidden · /).waitFor();
+    let clipped = 0;
+    for (const tab of await page.getByRole("tab").all()) {
+      await tab.click();
+      clipped += await page.evaluate(() => [...document.querySelectorAll("[data-chip-id] p")].filter((p) => p.scrollHeight > p.clientHeight + 1).length);
+    }
+    check("320 px: no chip reason is cut off", clipped === 0, `${clipped} clipped`);
     await context.close();
   }
 

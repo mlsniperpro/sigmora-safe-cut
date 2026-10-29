@@ -1,4 +1,4 @@
-AUDITED_COMMIT: e78b343
+AUDITED_COMMIT: 9dc64d8
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -332,3 +332,11 @@ Fresh-clone README run also found: `pnpm typecheck` failed before any build (Nex
 | 1 | low | In forced colours (Windows High Contrast) the open mobile tab, the checked Raw/Safe Cut radio, the selected chip and the evidence-frame number lost their selected cue, and the accent buttons lost their edge: all were drawn with background colour or shadow | fixed with Tailwind's `forced-colors:` variant: the selected tab, radio and frame number use the system Highlight colours, the selected chip gets a 3 px border, and the accent buttons get a ButtonText border. (A plain `@media (forced-colors: active)` block in globals.css is dropped by the Tailwind build, so the variants carry it.) e2e in a `forcedColors: "active"` context (3 checks, all fail on e78b343) |
 
 Noted, not counted: at 320×640 with a tall bottom bar the 6 s edit toast overlaps the bar text; Undo stays reachable (seen before in round 21).
+
+## Round 24 (audited 9dc64d8 by a Sonnet reviewer: side-by-side screenshots of 9dc64d8 and e78b343 in light and dark (no change outside forced colours); 67 routes × 320/390/1280 × light/dark with axe and targets; overlays; a live build against a fake https API covering every edit, render, poll, /try and demo failure; text-spacing overrides; fix in the next commit)
+
+0 critical, 0 high, 0 medium, 1 low.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | low | The chip reason was clamped to two lines, so at 320 px 5 of 7 reasons on the sample were cut off (and some at 1280 under a text-spacing override); the full text was only in a hover title, the accessible name and the Why drawer | fixed: the reason shows in full. Decision: UI-SPEC §3.3's "One or two lines" describes the reasons' length, not a licence to hide text (WCAG 1.4.10/1.4.12), so a longer reason makes the chip taller. e2e at 320 px counts clipped reasons across all tabs (5 on the old code, 0 now) |
