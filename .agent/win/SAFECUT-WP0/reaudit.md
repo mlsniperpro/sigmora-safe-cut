@@ -1,7 +1,7 @@
-AUDITED_COMMIT: 5c72c49
+AUDITED_COMMIT: 538675a
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
-CLEAN_AUDITS_IN_A_ROW: 0
+CLEAN_AUDITS_IN_A_ROW: 2
 
 # Re-audit log
 
@@ -637,3 +637,6 @@ It covered the Meta client, Files and SAM-response cleanup, open_weight, config,
 - M1 (a gap my audit #74 M1 fix opened) where a SAM mask existed, containment replaced the span floor. An empty or sliver SAM mask (SAM zeroes low-score masklets while the object is still there, PRE-A §2.6) was contained by any entry, including an empty one. A mask entry must now pass the span floor always, and contain SAM's own mask where one exists (test_an_empty_sam_mask_excuses_no_plan_mask)
 - L1 the file wrote `responses_delete_pending: 0`, which the hash left out, so the documented `sha256(prev_hash + canonical_json(body))` over the file's own body failed. The key is now omitted from the serialized receipt while 0, so the file's body is exactly the hashed body and earlier receipts still verify (test_the_receipt_file_body_is_the_hashed_body)
 - L2 the exact-equality checks refused a sealed receipt once the hourly sweeper requested a pending delete (PRE-A §10.4), blocking publish over a harmless lag. Now `requested + pending` must equal the entries and `requested` may not exceed what responses.json shows requested: the receipt may lag but never understate what is still stored (test_the_receipt_says_how_many_sam_responses_remain_unrequested, extended)
+
+## Audits 78 and 79 (two independent Sonnet reviewers at 538675a, run in parallel): CLEAN, CLEAN
+#78 audited contracts.py: every cross-file check in `validate_job_dir`, the publish gate and the receipt (hash chain, file body = hashed body, store claim, SAM response counts, cost), including the #76/#77 fixes. It reused the PRE-A writer emulator and the pixel-coverage oracle. #79 audited the Meta client and its failure paths, Files and SAM-response cleanup, open_weight, config, status, asr, the probe runner (paid results, uploads and SAM responses findable and attributed, nothing private in a committed path) and the receipt serialization. Neither found a verified defect. These are two consecutive clean full audits at the same code head, 538675a, so CLEAN_AUDITS_IN_A_ROW is 2 at AUDITED_COMMIT 538675a.
