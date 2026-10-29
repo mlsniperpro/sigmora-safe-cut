@@ -88,6 +88,8 @@ html {
 }
 
 body {
+  /* Text from the API can hold a long URL or ID: it wraps instead of widening the page (WCAG 1.4.10). */
+  overflow-wrap: anywhere;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);

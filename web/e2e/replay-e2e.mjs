@@ -65,6 +65,29 @@ async function targets(page, label) {
   check(`mobile 44 px targets: ${label}`, small.length === 0, small.slice(0, 6).join("; "));
 }
 
+/**
+ * Reflow (WCAG 1.4.10) for text the API sends: a long URL or ID in any text block, inline label or
+ * caption must wrap, not widen the page or a panel. Returns the elements that scroll sideways.
+ */
+async function longTokenOverflow(page) {
+  return page.evaluate(() => {
+    const token = "https://example.com/watch?v=dQw4w9WgXcQ&list=PLabcdefghijklmnopqrstuvwxyz0123456789&index=12345";
+    for (const el of document.querySelectorAll("main p, main li, main blockquote, main dd, main h1, main h2, main h3, dialog p, dialog li, dialog blockquote, dialog h2, dialog h3")) {
+      if (el.closest("button, a, [role=tablist], video")) continue;
+      el.append(` ${token}`);
+    }
+    const out = [];
+    if (document.documentElement.scrollWidth > document.documentElement.clientWidth + 1) out.push(`page +${document.documentElement.scrollWidth - document.documentElement.clientWidth}px`);
+    for (const el of document.querySelectorAll("*")) {
+      if (el.closest("[role=tablist]")) continue;
+      const style = getComputedStyle(el);
+      if (!/(auto|scroll)/.test(style.overflowX) || el.clientWidth === 0) continue;
+      if (el.scrollWidth > el.clientWidth + 1) out.push(`${el.tagName.toLowerCase()}.${String(el.className).split(" ")[0]} +${el.scrollWidth - el.clientWidth}px`);
+    }
+    return out;
+  });
+}
+
 async function shot(page, name, fullPage = true) {
   if (!SHOTS) return;
   await page.screenshot({ path: join(SHOTS, `${name}.png`), fullPage });
@@ -373,6 +396,24 @@ try {
     const sel = widths.find(([s]) => s)?.[1];
     const unsel = widths.find(([s]) => !s)?.[1];
     check("forced colours: the selected chip stands out", !!sel && !!unsel && sel !== unsel, `${sel} vs ${unsel}`);
+    await context.close();
+  }
+
+  // 320 px: long URLs or IDs in API text wrap everywhere, in pages and in the Why drawer.
+  {
+    const context = await browser.newContext({ viewport: { width: 320, height: 640 } });
+    const page = await context.newPage();
+    for (const path of ["/", "/jobs/job-review-why-rows", "/jobs/result-fixed/result", "/jobs/job-failed-roles", "/jobs/job-processing-track", "/privacy"]) {
+      await page.goto(`${BASE}${path}`, { waitUntil: "networkidle" });
+      await page.locator("main h1").first().waitFor({ state: "attached" });
+      const wide = await longTokenOverflow(page);
+      check(`320 px: long tokens wrap on ${path}`, wide.length === 0, wide.slice(0, 4).join("; "));
+    }
+    await page.goto(`${BASE}/jobs/job-review-sample`, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: /^Why\? / }).first().click();
+    await page.getByRole("dialog").waitFor();
+    const drawer = await longTokenOverflow(page);
+    check("320 px: long tokens wrap in the Why drawer", drawer.length === 0, drawer.slice(0, 4).join("; "));
     await context.close();
   }
 

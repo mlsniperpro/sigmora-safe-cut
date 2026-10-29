@@ -1,4 +1,4 @@
-AUDITED_COMMIT: b42eb33
+AUDITED_COMMIT: ae9fca4
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -350,3 +350,13 @@ Noted, not counted: at 320×640 with a tall bottom bar the 6 s edit toast overla
 | 1 | low | With the clamp gone, one long unbroken token in a chip reason (a URL or an ID) widened the page on phones: 29 px for a realistic URL at 320 px | fixed: the reason and the line below it wrap anywhere (`overflow-wrap: anywhere`). An e2e check at 320 px puts a long URL into a chip reason (253 px of sideways scroll on b42eb33, 0 now) |
 
 Noted, not counted: the edit toast can cover part of a just-moved chip at 320×640 for its 6 s (the known transient overlap, Undo reachable). At 320×640, a chip taller than the ~179 px between the sticky player and the bar is centred when focused (it existed before round 24).
+
+## Round 26 (audited ae9fca4 by a Sonnet reviewer: 87 routes × 320/390/1280 × light/dark with axe, overflow, one h1 and targets; text-spacing on every route; a live build with long-token reasons; region proxy; fix in the next commit)
+
+0 critical, 0 high, 0 medium, 1 low. This is the same class as round 25, on a surface that fix didn't cover.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | low | A long unbroken token (URL or ID) in API text scrolled the Why drawer sideways at 320 px (reason, Muse Spark's words, escalation evidence, transcript lines) | fixed for the whole class: `body` has `overflow-wrap: anywhere`, so any API text wraps, and flex and grid items can shrink around it. A new e2e sweep appends a long URL to every text block on six pages and in the Why drawer at 320 px, and fails if the page or any panel scrolls sideways. On ae9fca4 it failed all seven (up to +863 px); 7/7 pass now, with axe and the 44 px targets unchanged |
+
+Found while fixing: an incremental `next build` (Turbopack's cache, with the Tailwind loader) once served stale CSS after a globals.css edit. It didn't reproduce on demand, but it can make local evidence wrong and could ship stale CSS from a cached deploy. `pnpm build` now clears `.next/cache` first, so every build compiles the CSS from source.
