@@ -347,6 +347,10 @@ try {
       clipped += await page.evaluate(() => [...document.querySelectorAll("[data-chip-id] p")].filter((p) => p.scrollHeight > p.clientHeight + 1).length);
     }
     check("320 px: no chip reason is cut off", clipped === 0, `${clipped} clipped`);
+    // A reason with a long URL or ID wraps inside its chip instead of widening the page.
+    await page.locator("[data-chip-id] p.text-sm").first().evaluate((p) => (p.textContent = "Screen shows www.somebank-online-banking.example/login/session?id=12345678901234567890123456789012345678901234567890"));
+    const wide = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    check("320 px: a long token in a chip reason doesn't scroll the page sideways", wide <= 0, `${wide}px`);
     await context.close();
   }
 

@@ -228,9 +228,9 @@ export function Chip({
             {chip.isNew && <span className="rounded bg-needs-bg px-1.5 text-xs font-semibold text-needs-fg">NEW</span>}
             {chip.changedByYou && <span className="rounded bg-surface-2 px-1.5 text-xs">Changed by you</span>}
           </p>
-          {/* In full: a clamp hid the end of longer reasons at 320 px and under text-spacing overrides (WCAG 1.4.10, 1.4.12). */}
-          <p className="mt-1 text-sm">{chip.reason}</p>
-          {chip.newLine && <p className="mt-1 text-sm text-muted">{chip.newLine}</p>}
+          {/* In full: a clamp hid the end of longer reasons at 320 px and under text-spacing overrides (WCAG 1.4.10, 1.4.12); a long URL or ID wraps. */}
+          <p className="mt-1 text-sm [overflow-wrap:anywhere]">{chip.reason}</p>
+          {chip.newLine && <p className="mt-1 text-sm text-muted [overflow-wrap:anywhere]">{chip.newLine}</p>}
           {chip.range && <p className="mt-1 text-xs text-muted tabular-nums">{chip.range}</p>}
         </div>
       </div>

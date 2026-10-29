@@ -168,6 +168,7 @@ Round 14 (fixes in the round-14 commit; details in `reaudit.md`):
 - [x] R15-1 (low) a late fresh URL brings the review player back: JobPage test
 - [x] R15-2 (low) an action's GET isn't made quiet by a cut-short refresh: useJob test
 - [x] Self-found: fixture dates shift with the clock, so the mock and the tests hold on any date: mock-backend tests, suite run at clock shifts up to +400 days
+- [x] R25-1 (low) long tokens in chip reasons wrap: e2e
 - [x] R24-1 (low) chip reasons show in full at 320 px: e2e
 - [x] R23-1 (low) selection and accent buttons visible in forced colours: e2e
 - [x] R22-1 (low) no-keyframe caption by origin, neutral otherwise: JobPage test

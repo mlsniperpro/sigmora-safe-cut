@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 9dc64d8
+AUDITED_COMMIT: b42eb33
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -340,3 +340,13 @@ Noted, not counted: at 320×640 with a tall bottom bar the 6 s edit toast overla
 | # | Sev | Finding | Status |
 |---|---|---|---|
 | 1 | low | The chip reason was clamped to two lines, so at 320 px 5 of 7 reasons on the sample were cut off (and some at 1280 under a text-spacing override); the full text was only in a hover title, the accessible name and the Why drawer | fixed: the reason shows in full. Decision: UI-SPEC §3.3's "One or two lines" describes the reasons' length, not a licence to hide text (WCAG 1.4.10/1.4.12), so a longer reason makes the chip taller. e2e at 320 px counts clipped reasons across all tabs (5 on the old code, 0 now) |
+
+## Round 25 (audited b42eb33 by a Sonnet reviewer: long-reason builds at 11 viewports with real-Tab sweeps sampling every focused element against the sticky player and bar; 47 routes × 320/390/1280 × light/dark with axe; a live build; region rewrite; fix in the next commit)
+
+0 critical, 0 high, 0 medium, 1 low (a regression from round 24's fix).
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | low | With the clamp gone, one long unbroken token in a chip reason (a URL or an ID) widened the page on phones: 29 px for a realistic URL at 320 px | fixed: the reason and the line below it wrap anywhere (`overflow-wrap: anywhere`). An e2e check at 320 px puts a long URL into a chip reason (253 px of sideways scroll on b42eb33, 0 now) |
+
+Noted, not counted: the edit toast can cover part of a just-moved chip at 320×640 for its 6 s (the known transient overlap, Undo reachable). At 320×640, a chip taller than the ~179 px between the sticky player and the bar is centred when focused (it existed before round 24).
