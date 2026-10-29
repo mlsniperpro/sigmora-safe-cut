@@ -1,7 +1,7 @@
 AUDITED_COMMIT: d4976bf
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
-CLEAN_AUDITS_IN_A_ROW: 1
+CLEAN_AUDITS_IN_A_ROW: 0
 
 # Re-audit log: SAFECUT-WP6
 
@@ -299,3 +299,18 @@ Fresh-clone README run also found: `pnpm typecheck` failed before any build (Nex
 - **Two design limits, noted and not counted (no change, so the audited code stays as it is):**
   - A receipt URL answering 403/404 still fires the iframe's `load`, so the error body shows in the frame. Only a hung receipt reaches the "didn't load" message; the 10-minute refresh keeps URLs from expiring in normal use.
   - Some failed-job tab titles are long (the whole first sentence of the §2.6 copy).
+
+## Round 21 (audited d4976bf by a Sonnet reviewer, re-diffed against UI-SPEC, WP0 `contracts.py`, ARCHITECTURE §3 and PRE-A API-NOTES §12, with a live build against a fake https API; each finding traced here; fixes in the next commit)
+
+0 critical, 1 high, 1 medium, 6 low. This resets the clean count to 0. Earlier rounds checked behaviour, and the repo's own fixtures never used these WP0 values. Checking the contract field by field found #1 and #2.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | high | `audit.open_weight.model` was required as a string, but WP0's default is `{"model": null, "status": "off", …}` (ARCHITECTURE §3.8). Any live audit with the second opinion off would have failed the demo, job and result pages | fixed: `model` nullable, status ok/failed/off, counts default 0; an open_weight that can't be read counts as absent (it never blocks a job). WP0's `j_example` fixtures are now copied in and parsed by a contract test, with the §3.8 example verbatim (fails on d4976bf) |
+| 2 | medium | `roles.missed[].point: null` (a box-only miss, valid in WP0) failed the whole job parse | fixed: `point` and `box` nullable. Also `Spot.covered_by` may be absent (WP0 defaults it). Same contract test (fails on d4976bf) |
+| 3 | low | The Why drawer for audit-added and static items said "The keyframe didn't load" and showed keyframe captions for a frame Muse Spark was never shown | fixed: items with no keyframe (origin `audit_patch`, a review-time cover, or `static`) show only their origin's §4.3 caption. Two JobPage tests (fail on d4976bf) |
+| 4 | low | A long unbroken file name scrolled the page sideways at 320 px (/try, progress, review header) | fixed: the names wrap. e2e at 320 px (fails on the old TryFlow by 91 px) |
+| 5 | low | Two unfixed spots starting on the same frame both took the later leak's kind | fixed: a spot's kind comes from the leak rows that overlap its own box within its span (`spotKind`). view test (fails on d4976bf) |
+| 6 | low | Durations rounded to nearest, so 59.6 s read "1:00" | fixed: whole seconds round down (§0). Unit test |
+| 7 | low | The toast's focus ring was 2.57:1 (light) and 1.65:1 (dark) on its inverse surface | fixed: inside the toast the ring takes the toast's text colour (15.9:1). e2e reached by Tab, requiring `:focus-visible` (fails on the old CSS with 2.57) |
+| 8 | low | The chip's kind had no icon, and the placeholder tile drew the state icon (§3.3) | fixed: six kind icons beside the kind word and on the placeholder tile (a pending cover keeps the state icon). JobPage test (fails on d4976bf) |

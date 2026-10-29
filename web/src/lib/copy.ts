@@ -180,19 +180,19 @@ export function budgetCauseLine(cause: string | null | undefined, retryAt: strin
 }
 
 /** Display name for the open-weight second opinion (copy notes, §1.3). */
-export function openWeightName(model: string): string | null {
-  return model.startsWith("meta-models/muse-spark-open") ? "Muse Spark Open" : null;
+export function openWeightName(model: string | null): string | null {
+  return model?.startsWith("meta-models/muse-spark-open") ? "Muse Spark Open" : null;
 }
 
 /** The open-weight second opinion's line (§1.3 copy notes), only when it ran (`status: "ok"`). */
-export function openWeightSentence(openWeight: { model: string; status: string } | null | undefined): string | null {
+export function openWeightSentence(openWeight: { model: string | null; status: string } | null | undefined): string | null {
   if (openWeight?.status !== "ok") return null;
   const name = openWeightName(openWeight.model);
   return `${name ? `${name}, an open-weight model running on Baseten, gives` : "An open-weight model running on Baseten gives"} a second opinion and can only add covers.`;
 }
 
 /** Landing step 3 copy, by the auditor-name rule (§1.3), plus the open-weight line when it ran. */
-export function auditStepBody(model: string | null, openWeight?: { model: string; status: string } | null): string {
+export function auditStepBody(model: string | null, openWeight?: { model: string | null; status: string } | null): string {
   const detector =
     model === "yunet-face"
       ? "a face detector (YuNet) checks the final render for faces; number plates are checked by Muse Spark only"

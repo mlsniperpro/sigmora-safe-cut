@@ -89,3 +89,41 @@ export const ChevronIcon = (p: IconProps) => (
     <path d="M9 18l6-6-6-6" />
   </Svg>
 );
+
+// Item kinds (§3.3: "Person / Child / Number plate / Screen / Document / Other item, with its icon").
+export const PersonIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="12" cy="7" r="4" />
+    <path d="M4 21v-1a7 7 0 0 1 16 0v1" />
+  </Svg>
+);
+export const ChildIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="12" cy="9" r="3" />
+    <path d="M7 21v-1a5 5 0 0 1 10 0v1" />
+  </Svg>
+);
+export const PlateIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="2" y="7" width="20" height="10" rx="2" />
+    <path d="M6 12h3M11 12h2M15 12h3" />
+  </Svg>
+);
+export const ScreenIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="3" y="4" width="18" height="12" rx="2" />
+    <path d="M8 20h8M12 16v4" />
+  </Svg>
+);
+export const DocumentIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+    <path d="M14 3v6h6M8 13h8M8 17h5" />
+  </Svg>
+);
+export const OtherIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M8 12h.01M12 12h.01M16 12h.01" />
+  </Svg>
+);

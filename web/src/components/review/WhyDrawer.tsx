@@ -157,7 +157,8 @@ export function WhyDrawer({
     return () => d.removeEventListener("close", close);
   }, [onClose]);
 
-  const frames = model?.evidenceFrames ?? [];
+  // An item with no keyframe shows only its origin's caption (§4.3), never a frame Muse Spark wasn't shown.
+  const frames = model?.hasKeyframe ? model.evidenceFrames : [];
   const safeIndex = Math.min(index, Math.max(0, frames.length - 1));
   const frame = frames[safeIndex];
   const { Icon, word } = STATE[decision];
@@ -239,10 +240,10 @@ export function WhyDrawer({
                   </button>
                 </div>
               )}
-              <p className="mt-2 text-sm text-muted">
-                {frame !== undefined ? `Frame at ${formatFrameTenths(frame, fps)}. ` : ""}This is the frame Muse Spark was shown. The labels are the objects SAM 3.1 tracked.
-              </p>
-              {model.primaryTrack && (
+              {frame !== undefined && (
+                <p className="mt-2 text-sm text-muted">Frame at {formatFrameTenths(frame, fps)}. This is the frame Muse Spark was shown. The labels are the objects SAM 3.1 tracked.</p>
+              )}
+              {frame !== undefined && model.primaryTrack && (
                 <p className="mt-1 font-mono text-xs text-muted">
                   On the keyframe: {model.primaryTrack}
                   {model.otherTracks.map((t) => ` · also ${t}`).join("")}

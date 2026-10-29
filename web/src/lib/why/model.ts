@@ -29,6 +29,8 @@ export interface WhyModel {
   primaryTrack: string | null;
   otherTracks: string[];
   evidenceFrames: number[];
+  /** False for items with no SoM keyframe (§4.3): added by the audit, or static areas SAM 3.1 couldn't track. */
+  hasKeyframe: boolean;
   details: { decidedBy: string; cover: string; tracks: string; frames: string | null; museWords: string | null; models: string };
 }
 
@@ -66,9 +68,12 @@ export function buildWhy(job: JobResponse, itemId: string, local: LocalItemState
   const span = itemSpan({ track_ids: local.track_ids, first: item.first ?? null, last: item.last ?? null }, tracksById);
   const evidence = item.evidence_frames.length > 0 ? item.evidence_frames : primary?.frames ?? [];
   const escalationFrames = primary?.escalated ? primary.escalation_frames ?? [] : [];
+  // A cover the creator added in review has no track, only its spot: it is the audit's too.
+  const origin = item.origin ?? (item.track_ids.length === 0 && item.spot_id ? "audit_patch" : null);
+  const evidenceFrames = [...new Set([...evidence, ...escalationFrames])].sort((a, b) => a - b);
   return {
     label,
-    origin: item.origin ?? null,
+    origin,
     kindWord: KIND_WORD[item.kind],
     heading: WHY_HEADING[local.decision],
     reason: item.origin === "audit_patch" ? null : capitalise(rewriteFrameRefs(item.reason, clock)),
@@ -77,7 +82,8 @@ export function buildWhy(job: JobResponse, itemId: string, local: LocalItemState
     speech: speechSection(label, span, clock.fps, job.job.audio, job.transcript, linkedSpeaker(primary, job.scene)),
     primaryTrack: primaryId,
     otherTracks: local.track_ids.filter((t) => t !== primaryId),
-    evidenceFrames: [...new Set([...evidence, ...escalationFrames])].sort((a, b) => a - b),
+    evidenceFrames,
+    hasKeyframe: origin !== "audit_patch" && origin !== "static" && evidenceFrames.length > 0,
     details: {
       decidedBy: `Decided by ${DECIDED_BY_WORD[local.decided_by]}`,
       cover: local.decision === "keep" || item.style === null ? "Cover: none (kept clear)" : `Cover: ${STYLE_WORD[local.removed ? "person_solid" : item.style]}`,

@@ -2,7 +2,7 @@
  * The review panel's view model: chips per column (UI-SPEC §3.3, §3.9),
  * header counts and the item index the overlay and drawer share.
  */
-import type { Box, Item, JobResponse, Track } from "../contracts";
+import type { Box, Item, JobResponse, Spot, Track } from "../contracts";
 import { KIND_WORD, capitalise, isObjectKind, itemSpan, primaryTrackId } from "../labels";
 import { formatFrameRange, spokenFrameRange } from "../time";
 import { rewriteFrameRefs } from "../why/rewrite";
@@ -128,10 +128,10 @@ export function buildChips(state: ReviewState, job: JobResponse): Chip[] {
 
   // Unfixed audit spots (U chips): Needs you while uncovered.
   const labels = spotLabels(state.spots);
-  const leakKinds = new Map((job.audit?.leaks ?? []).filter((l) => l.unresolved).map((l) => [l.frame, l.kind]));
+  const unresolvedLeaks = (job.audit?.leaks ?? []).filter((l) => l.unresolved);
   for (const [spotId, spot] of Object.entries(state.spots)) {
     if (spot.covered_by !== null) continue;
-    const kind: Item["kind"] = ((k) => (k === "face" || k === "person" ? "person" : k === "plate" ? "plate" : "other"))(leakKinds.get(spot.first));
+    const kind = spotKind(spot, unresolvedLeaks);
     const box = spot.boxes[String(spot.first)];
     const label = labels[spotId] ?? spotId;
     const reason = "The final check found this and couldn't cover it automatically";
@@ -187,4 +187,20 @@ export function mergeTargets(state: ReviewState, srcId: string): Array<{ id: str
 
 export function isObjectChip(chip: Chip): boolean {
   return isObjectKind(chip.kind);
+}
+
+/**
+ * A U chip's kind, by the audit-item rule over its spot's leak rows (§0, PRE-A §12): the unresolved
+ * leaks inside the spot's span whose box overlaps the spot's box on that frame. Any face or person
+ * row makes it a person, else any plate a plate, else other. Two spots on one frame keep their own.
+ */
+export function spotKind(spot: Pick<Spot, "first" | "last" | "boxes">, leaks: ReadonlyArray<{ frame: number; box: Box; kind: string }>): Item["kind"] {
+  const overlaps = (a: Box, b: Box) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+  const rows = leaks.filter((l) => {
+    const box = spot.boxes[String(l.frame)];
+    return l.frame >= spot.first && l.frame <= spot.last && box !== undefined && overlaps(l.box, box);
+  });
+  if (rows.some((l) => l.kind === "face" || l.kind === "person")) return "person";
+  if (rows.some((l) => l.kind === "plate")) return "plate";
+  return "other";
 }

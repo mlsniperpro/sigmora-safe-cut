@@ -336,6 +336,32 @@ describe("review panel", () => {
     await waitFor(() => expect(document.title).toBe(title));
   });
 
+  it("items with no keyframe show only their origin's caption in the Why drawer (§4.3)", async () => {
+    const user = setup("result-unresolved-review", "view=review");
+    await user.click(await screen.findByRole("button", { name: "Cover it Unfixed spot U1" }));
+    await user.click(await screen.findByRole("button", { name: /^Why\? A1,/ }));
+    const audit = await screen.findByRole("dialog");
+    expect(within(audit).getByText("Added by the audit after rendering. There's no keyframe for it.")).toBeInTheDocument();
+    expect(within(audit).queryByText(/This is the frame Muse Spark was shown/)).toBeNull();
+    expect(within(audit).queryByText(/didn't load/)).toBeNull();
+  });
+
+  it("a static area's Why drawer says SAM 3.1 couldn't follow it, with no keyframe captions", async () => {
+    const user = setup("job-review-why-rows");
+    await user.click(await screen.findByRole("button", { name: /^Why\? Envelope 1,/ }));
+    const drawer = await screen.findByRole("dialog");
+    expect(within(drawer).getByText("Muse Spark spotted this, but SAM 3.1 couldn't follow it, so there's no keyframe for it.")).toBeInTheDocument();
+    expect(within(drawer).queryByText(/This is the frame Muse Spark was shown/)).toBeNull();
+    expect(within(drawer).queryByText(/^On the keyframe:/)).toBeNull();
+  });
+
+  it("each chip shows its kind with an icon (§3.3)", async () => {
+    setup("job-review-hero1");
+    await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
+    const kind = within(chip("Face 6")).getByText(/·\s*Person/);
+    expect(kind.querySelector("svg")).not.toBeNull();
+  });
+
   it("deletes everything after the confirm and ignores late responses", async () => {
     const user = setup("job-review-hero1");
     await screen.findByText("2 hidden · 1 kept clear · 1 needs you");

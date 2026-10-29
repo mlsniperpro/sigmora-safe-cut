@@ -7,7 +7,10 @@ import { useEffect, useRef, useState } from "react";
 import type { KeyframeGeometry } from "@/lib/contracts";
 import { thumbnailCrop } from "@/lib/keyframe";
 import type { Chip as ChipModel } from "@/lib/review/view";
-import { DotsIcon, HiddenIcon, KeptIcon, LockIcon, NeedsIcon } from "../icons";
+import { ChildIcon, DocumentIcon, DotsIcon, HiddenIcon, KeptIcon, LockIcon, NeedsIcon, OtherIcon, PersonIcon, PlateIcon, ScreenIcon } from "../icons";
+
+/** Each kind's icon, shown with its word (§3.3) and on the placeholder tile when there's no thumbnail. */
+const KIND_ICON = { person: PersonIcon, child: ChildIcon, plate: PlateIcon, screen: ScreenIcon, document: DocumentIcon, other: OtherIcon } as const;
 
 const COLUMN_ICON = { hide: HiddenIcon, keep: KeptIcon, needs_you: NeedsIcon } as const;
 const COLUMN_WORD = { hide: "Hidden", keep: "Kept clear", needs_you: "Needs you" } as const;
@@ -46,7 +49,8 @@ export function Thumbnail({
   // Keyed by URL: a refetched job's fresh signed URL gets a new try.
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const failed = failedUrl !== null && failedUrl === url;
-  const Icon = COLUMN_ICON[chip.column];
+  // A pending cover has no kind yet (§10.5 COVER_SPOT), so its tile keeps the state's icon.
+  const Icon = chip.id.startsWith("pending:") ? COLUMN_ICON[chip.column] : KIND_ICON[chip.kind];
   const alt = `${chip.label}, ${chip.kindWord}, ${COLUMN_WORD[chip.column].toLowerCase()}`;
   if (!chip.thumb || !url || !geometry || failed) {
     return (
@@ -179,6 +183,7 @@ export function Chip({
   readOnlyNote: boolean;
 }) {
   const Icon = COLUMN_ICON[chip.column];
+  const KindIcon = KIND_ICON[chip.kind];
   const merge = chip.buttons.merge;
   const confirmText = chip.kind === "screen" || chip.kind === "document" ? "Only keep this clear if nothing on it is personal." : "Only keep this clear if nothing on it reveals who someone is.";
   const actionClass = "inline-flex min-h-11 items-center rounded-lg border border-border px-3 text-sm font-medium hover:bg-surface-2 disabled:opacity-50 lg:min-h-8";
@@ -207,7 +212,11 @@ export function Chip({
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="font-semibold">{chip.label}</span>
             {/* A pending covered spot shows no kind until the server's answer brings it (§10.5 COVER_SPOT). */}
-            {!chip.id.startsWith("pending:") && <span className="text-sm text-muted">· {chip.kindWord}</span>}
+            {!chip.id.startsWith("pending:") && (
+              <span className="inline-flex items-center gap-1 text-sm text-muted">
+                · <KindIcon size={12} /> {chip.kindWord}
+              </span>
+            )}
             <span className="sr-only">{COLUMN_WORD[chip.column]}</span>
             <Icon size={12} className="text-muted" />
             {chip.locked && (

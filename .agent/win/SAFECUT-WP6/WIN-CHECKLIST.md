@@ -168,6 +168,14 @@ Round 14 (fixes in the round-14 commit; details in `reaudit.md`):
 - [x] R15-1 (low) a late fresh URL brings the review player back: JobPage test
 - [x] R15-2 (low) an action's GET isn't made quiet by a cut-short refresh: useJob test
 - [x] Self-found: fixture dates shift with the clock, so the mock and the tests hold on any date: mock-backend tests, suite run at clock shifts up to +400 days
+- [x] R21-1 (high) open_weight with model null parses: WP0 j_example contract test + ARCHITECTURE §3.8 example
+- [x] R21-2 (medium) a box-only miss (point null) and an absent covered_by parse: contract test
+- [x] R21-3 (low) no-keyframe items show their origin caption only: JobPage tests
+- [x] R21-4 (low) long file names wrap at 320 px: e2e
+- [x] R21-5 (low) spot kind from its own leak rows: view test
+- [x] R21-6 (low) durations round down: unit test
+- [x] R21-7 (low) toast focus ring ≥ 3:1: e2e
+- [x] R21-8 (low) kind icons: JobPage test
 - [x] R19-1 (low) the result page's link refresh re-arms after a failure: ResultPage test
 - [x] R19-2 (low) a lapsed focus request never fires: JobPage test
 - [x] R19-3 (low) tab titles follow the shown state; the hero retries a 5xx once: JobPage, landing tests, e2e

@@ -603,7 +603,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
     <div className="mx-auto max-w-6xl px-4 pt-6 pb-8">
       <h1 className="sr-only">Review what Safe Cut hides</h1>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="font-medium">
+        <p className="min-w-0 font-medium [overflow-wrap:anywhere]">
           {job.job?.source_name ?? "Your clip"}
           {duration ? ` · ${duration}` : ""}
         </p>

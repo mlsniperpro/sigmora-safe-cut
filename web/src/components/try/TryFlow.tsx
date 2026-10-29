@@ -464,7 +464,8 @@ export function TryFlow() {
               }}
             />
             {file && (
-              <p className="font-medium">
+              // A long unbroken file name wraps rather than widening the page at 320 px (§9).
+              <p className="font-medium [overflow-wrap:anywhere]">
                 {file.name}
                 {duration !== null ? ` · ${fmtDuration(duration)}` : ""}
               </p>

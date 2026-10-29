@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ProgressView } from "./ProgressView";
+import { ProgressView, fmtDuration } from "./ProgressView";
 
 function setup() {
   // user-event installs its own clipboard; tests replace it after setup.
@@ -45,5 +45,14 @@ describe("Copy link (UI-SPEC §2.5)", () => {
     await user.click(screen.getByRole("button", { name: "Copy link" }));
     expect(await screen.findByText("Couldn't copy. The link is selected: copy it from there.")).toBeInTheDocument();
     expect(window.getSelection()?.toString()).toBe(`${window.location.origin}/jobs/job-1`);
+  });
+});
+
+describe("clip duration (§0: whole seconds round down)", () => {
+  it("never rounds up to the limit", () => {
+    expect(fmtDuration(59.6)).toBe("0:59");
+    expect(fmtDuration(60)).toBe("1:00");
+    expect(fmtDuration(8)).toBe("0:08");
+    expect(fmtDuration(0.4)).toBe("0:00");
   });
 });

@@ -100,7 +100,9 @@ export const missedSchema = z.object({
   what: z.string(),
   sam_phrase: z.string().optional(),
   frame: frame.optional(),
-  point: z.object({ x: z.number(), y: z.number() }).optional(),
+  // WP0's Missed: `point` is required but nullable (a box-only miss), `box` optional; one of them is set.
+  point: z.object({ x: z.number(), y: z.number() }).nullable().optional(),
+  box: boxSchema.nullable().optional(),
   track_ids: z.array(z.string()).optional(),
 });
 
@@ -185,7 +187,8 @@ export const spotSchema = z.object({
   first: frame,
   last: frame,
   boxes: z.record(z.string(), boxSchema),
-  covered_by: z.string().nullable(),
+  // WP0 defaults it to None, so its JSON may leave the key out.
+  covered_by: z.string().nullable().default(null),
 });
 export type Spot = z.infer<typeof spotSchema>;
 
@@ -213,7 +216,18 @@ export const auditSchema = z.object({
   blocked_reason: blockedReasonSchema.nullable().default(null),
   sample_step: z.number().int().positive().optional(),
   spots: z.array(spotSchema).default([]),
-  open_weight: z.object({ model: z.string(), status: z.string(), frames: z.number().int().nonnegative().optional(), findings: z.number().int().nonnegative().optional() }).nullable().optional(),
+  // WP0's OpenWeightSummary; its default is `{"model": null, "status": "off", "frames": 0, "findings": 0}`
+  // (ARCHITECTURE §3.8). The second opinion never blocks a job, so one that doesn't parse reads as absent.
+  open_weight: z
+    .object({
+      model: z.string().nullable().default(null),
+      status: z.enum(["ok", "failed", "off"]).default("off"),
+      frames: z.number().int().nonnegative().default(0),
+      findings: z.number().int().nonnegative().default(0),
+    })
+    .nullable()
+    .optional()
+    .catch(null),
   audit_budget_cause: budgetCauseSchema.nullable().optional(),
 });
 export type Audit = z.infer<typeof auditSchema>;

@@ -11,8 +11,9 @@ import { COPY } from "@/lib/copy";
 import { StageList } from "../StageList";
 import { ActionError, ConfirmDialog, btn } from "../ui";
 
+/** Whole seconds round down (§0), so a 59.6 s clip never reads as the 1:00 limit. */
 export function fmtDuration(s: number): string {
-  const whole = Math.round(s);
+  const whole = Math.floor(s);
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
 }
 
@@ -86,7 +87,7 @@ export function ProgressView({
   return (
     <div className="mt-8">
       {fileName && (
-        <p className="font-medium">
+        <p className="font-medium [overflow-wrap:anywhere]">
           {fileName}
           {duration !== null ? ` · ${fmtDuration(duration)}` : ""}
         </p>

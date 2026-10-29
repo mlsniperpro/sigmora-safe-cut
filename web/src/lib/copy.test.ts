@@ -24,10 +24,10 @@ describe("audit summary (UI-SPEC §5.3, §5.6)", () => {
   it("clean, fixed (distinct items), unresolved", () => {
     expect(auditSummary(audit(cleanResult), 12)).toMatchObject({ state: "clean", lines: ["12 of 12 frames checked.", "No leaks found."], publishable: true });
     // The open-weight line joins the §5.3 detail only when the second opinion ran (§1.3 copy notes).
-    const withOpen = (status: string, model = "meta-models/muse-spark-open-1026") => ({ ...audit(cleanResult), open_weight: { model, status } });
+    const withOpen = (status: "ok" | "off" | "failed", model: string | null = "meta-models/muse-spark-open-1026") => ({ ...audit(cleanResult), open_weight: { model, status, frames: 0, findings: 0 } });
     expect(auditSummary(withOpen("ok"), 12).detail).toContain("Muse Spark looked at sampled frames and tried to read or recognise anything. Muse Spark Open, an open-weight model running on Baseten, gives a second opinion and can only add covers. Anything they found");
     expect(auditSummary(withOpen("ok", "other/model"), 12).detail).toContain("An open-weight model running on Baseten gives a second opinion and can only add covers.");
-    for (const status of ["off", "failed"]) expect(auditSummary(withOpen(status), 12).detail).not.toContain("Baseten");
+    for (const status of ["off", "failed"] as const) expect(auditSummary(withOpen(status), 12).detail).not.toContain("Baseten");
     expect(auditSummary(audit(cleanResult), 12).detail).not.toContain("Baseten");
     expect(auditSummary(audit(fixedResult), 12)).toMatchObject({ state: "fixed", leaksFixed: 1, lines: ["12 of 12 frames checked.", "1 leak found and fixed. Nothing left to fix."] });
     expect(auditSummary(audit(unresolvedResult), 12)).toMatchObject({ state: "unresolved", publishable: false, lines: ["12 of 12 frames checked.", "1 spot couldn't be fixed automatically. Publishing is off until each is fixed."] });

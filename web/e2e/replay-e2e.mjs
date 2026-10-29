@@ -169,6 +169,20 @@ try {
     await page.getByText("Face 6 will be hidden.").waitFor();
     check(`${v}: one tap hides an item with a toast`, true);
     if (v === "mobile") await targets(page, "review with the toast open");
+    // The toast's focus ring keeps ≥ 3:1 against the toast's own (inverse) surface (§9).
+    // Reached with Tab, so it has the keyboard's :focus-visible ring.
+    const undo = page.getByRole("button", { name: "Undo" });
+    for (let i = 0; i < 80 && !(await undo.evaluate((el) => document.activeElement === el)); i += 1) await page.keyboard.press("Tab");
+    const ringRatio = await undo.evaluate((el) => {
+      if (!el.matches(":focus-visible")) return 0;
+      const rgb = (c) => (c.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+      const lum = ([r, g, b]) => [r, g, b].map((x) => ((x /= 255) <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4)).reduce((acc, x, i) => acc + x * [0.2126, 0.7152, 0.0722][i], 0);
+      let surface = el.parentElement;
+      while (surface && getComputedStyle(surface).backgroundColor === "rgba(0, 0, 0, 0)") surface = surface.parentElement;
+      const [a, b] = [lum(rgb(getComputedStyle(el).outlineColor)), lum(rgb(getComputedStyle(surface).backgroundColor))];
+      return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    });
+    check(`${v}: the toast's focus ring is at least 3:1 on the toast`, ringRatio >= 3, ringRatio.toFixed(2));
     await page.getByRole("button", { name: "Undo" }).click({ timeout: 5_000 });
     await page.getByText("Undone.").waitFor();
     check(`${v}: undo works`, true);
@@ -308,6 +322,22 @@ try {
     await page.keyboard.press("Enter");
     const held = await again.evaluate((el) => document.activeElement === el && el.getAttribute("aria-disabled") === "true");
     check("failed job: Try again keeps focus while the retry is out", held);
+    await context.close();
+  }
+
+  // 320 px: a long unbroken file name wraps instead of widening the page (§9, WCAG 1.4.10).
+  {
+    const context = await browser.newContext({ viewport: { width: 320, height: 640 } });
+    const page = await context.newPage();
+    await page.goto(`${BASE}/try`, { waitUntil: "networkidle" });
+    await page.getByLabel("Access code").fill("judge");
+    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("button", { name: "Choose a file" }).waitFor();
+    const name = "my_street_interview_final_cut_v2_export_1080p_hevc_master.mp4";
+    await page.locator('input[type="file"]').setInputFiles({ name, mimeType: "video/mp4", buffer: readFileSync(join(ROOT, "public", "sample", "prepared.mp4")) });
+    await page.getByText(name, { exact: false }).waitFor();
+    const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    check("320 px: a long file name doesn't scroll the page sideways", over <= 0, `${over}px`);
     await context.close();
   }
 

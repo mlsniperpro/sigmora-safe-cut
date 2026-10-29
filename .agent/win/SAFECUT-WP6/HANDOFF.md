@@ -62,11 +62,12 @@
 - Self-found from that sweep: a failed job's Try again was `disabled` while its request was out, dropping focus in a real browser. Now aria-disabled, with an e2e check (fails on the old code). Every other `disabled` that changes under focus was checked: each is followed by an alert that takes focus. On that commit: 829 tests, e2e 105/105.
 - Audit round 18 (on b7ab493): 4 low focus findings, fixed in the round-18 commit. Root cause of #1: the one-frame focus could run before the commit that mounts the chip; `focusChip` now waits for that commit. On that commit: 833 tests, e2e 105/105, `checks.sh` exit 0.
 - Audit round 19 (on a743ea2): 3 low, fixed in the round-19 commit (the result link refresh re-arms after a failure, the focus lapse is checked first, tab titles follow the h1, the hero retries a 5xx once). On that commit: 840 tests, e2e 107/107, `checks.sh` exit 0.
-- Audit round 20 (on d4976bf): CLEAN, the first. CLEAN_AUDITS_IN_A_ROW is 1. Round 21 runs on the same code. If it is clean too, set CLEAN_AUDITS_IN_A_ROW to 2 and do break-it on d4976bf: a fresh clone `checks.sh` and the FUZZ_RUNS=100000 soak.
+- Audit round 20 (on d4976bf): CLEAN, the first.
+- Audit round 21 (on d4976bf, re-diffed against WP0's contracts): 1 high, 1 medium and 6 low, all fixed in the round-21 commit. CLEAN_AUDITS_IN_A_ROW is back to 0. Lesson: the client's schemas are now tested against WP0's own `j_example` fixtures, so a contract mismatch fails `pnpm test`. On that commit: 857 tests, e2e 110/110, `checks.sh` exit 0. The break-it run on d4976bf (fresh clone and FUZZ_RUNS=100000, both passing) has to be redone on the final commit.
 - CLEAN_AUDITS_IN_A_ROW is 0. Two clean full audits are still needed, then a fresh break-it.md (fresh clone + FUZZ_RUNS=100000).
 
 ## Next steps, in order
-1. Run the next full audit round on HEAD (round 21 is next, on d4976bf; no code changes until it reports). If it finds anything, fix it and reset CLEAN_AUDITS_IN_A_ROW to 0. Repeat until two consecutive audits find nothing. Then set AUDITED_COMMIT to the last code commit and CLEAN_AUDITS_IN_A_ROW to 2.
+1. Run the next full audit round on HEAD (round 22 is next). If it finds anything, fix it and reset CLEAN_AUDITS_IN_A_ROW to 0. Repeat until two consecutive audits find nothing. Then set AUDITED_COMMIT to the last code commit and CLEAN_AUDITS_IN_A_ROW to 2.
 2. After the last code change, run the fresh-clone `checks.sh` (`git clone --branch wp6-web` into an empty dir) and the FUZZ_RUNS=100000 agreement soak. Rewrite break-it.md with TESTED_COMMIT set to that commit.
 3. Run the gate until it prints `GATE: PASS` on the pushed HEAD. Then post the final status on PR #4, including the gate's last line.
 4. If time remains: live deployment (owner sets up Vercel), Safari/Firefox runs.

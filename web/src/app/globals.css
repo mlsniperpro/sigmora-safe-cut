@@ -102,6 +102,11 @@ body {
   outline-offset: 2px;
 }
 
+/* The toast sits on the inverse surface, where --focus is under 3:1: its ring takes the toast's text colour. */
+[data-toast] :focus-visible {
+  outline-color: currentColor;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

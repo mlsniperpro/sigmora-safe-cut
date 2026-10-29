@@ -7,7 +7,7 @@ import unresolvedMock from "../../../mocks/result-unresolved-review.json";
 import auditFailedLeak from "../../../mocks/result-audit-failed-with-leak.json";
 import { jobResponseSchema, type JobResponse } from "../contracts";
 import { initialState, step } from "./reducer";
-import { buildChips, columnsOf, headerCounts, mergeTargets } from "./view";
+import { buildChips, columnsOf, headerCounts, mergeTargets, spotKind } from "./view";
 
 const load = (raw: unknown) => {
   const job: JobResponse = jobResponseSchema.parse(raw);
@@ -57,6 +57,25 @@ describe("review view model (UI-SPEC §3.3, §3.9)", () => {
     expect(chips[0]!.span).toEqual({ first: 0, last: 11 });
   });
 
+  it("two unfixed spots that start on the same frame take their kinds from their own leaks", () => {
+    const audit = unresolvedMock.audit;
+    const two = {
+      ...unresolvedMock,
+      audit: {
+        ...audit,
+        unresolved: 2,
+        spots: [audit.spots[0]!, { spot_id: "s2", first: 7, last: 7, boxes: { "7": [100, 600, 180, 640] }, covered_by: null }],
+        leaks: [audit.leaks[0]!, { frame: 7, box: [100, 600, 180, 640], kind: "plate", detector: "egoblur", patched_item: null, unresolved: true }],
+      },
+    };
+    const u = load(two);
+    const spots = buildChips(u.state, u.job).filter((c) => c.type === "spot");
+    expect(spots.map((c) => [c.label, c.kindWord])).toEqual([
+      ["Unfixed spot U1", "Person"],
+      ["Unfixed spot U2", "Number plate"],
+    ]);
+  });
+
   it("shows an unfixed spot as a U chip with Cover it, read-only in needs_you", () => {
     const u = load(unresolvedMock);
     const spot = columnsOf(buildChips(u.state, u.job)).needs_you.find((c) => c.type === "spot")!;
@@ -65,5 +84,19 @@ describe("review view model (UI-SPEC §3.3, §3.9)", () => {
     const roSpot = buildChips(ro.state, ro.job).find((c) => c.type === "spot")!;
     expect(roSpot.buttons.cover).toBe(false);
     expect(buildChips(ro.state, ro.job).every((c) => !c.buttons.hide && !c.buttons.keep)).toBe(true);
+  });
+});
+
+describe("an unfixed spot's kind follows its own leak rows (§0)", () => {
+  const leaks = [
+    { frame: 15, box: [10, 10, 60, 60] as [number, number, number, number], kind: "face" },
+    { frame: 15, box: [400, 300, 480, 340] as [number, number, number, number], kind: "plate" },
+  ];
+  it("two spots on the same first frame keep their own kinds", () => {
+    expect(spotKind({ first: 15, last: 20, boxes: { "15": [12, 12, 58, 58] } }, leaks)).toBe("person");
+    expect(spotKind({ first: 15, last: 20, boxes: { "15": [405, 305, 470, 335] } }, leaks)).toBe("plate");
+  });
+  it("a spot no leak row overlaps is other", () => {
+    expect(spotKind({ first: 15, last: 20, boxes: { "15": [700, 10, 760, 60] } }, leaks)).toBe("other");
   });
 });
