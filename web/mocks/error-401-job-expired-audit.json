@@ -4,8 +4,8 @@
     "error": {
       "code": "code_not_active",
       "message": "code_not_active (for logs only)",
-      "valid_from": "2026-11-05T00:00:00Z",
-      "valid_until": "2026-11-10T23:59:59Z"
+      "valid_from": "2026-10-19T00:00:00Z",
+      "valid_until": "2026-10-25T23:59:59Z"
     }
   }
 }

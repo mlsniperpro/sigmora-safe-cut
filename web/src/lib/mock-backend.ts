@@ -83,8 +83,10 @@ const STORAGE_KEY = "safecut.mock-jobs";
 const DAY_MS = 24 * 60 * 60 * 1000;
 /**
  * The moment the fixtures were written as of (their jobs' `created_at`). Every timestamp in a
- * fixture moves by (now − this), so a cap's "tomorrow" stays ahead and a code that "isn't active
- * yet" stays so however late the mock runs; the fixtures' own dates passed on 2026-10-28.
+ * fixture moves by whole days until this moment is no earlier than now, so what a fixture put
+ * after it (a cap's retry at midnight, a code not active yet) stays ahead, what it put over a
+ * day before it (an expired code) stays behind, and times of day are kept. The fixtures' own
+ * dates started to pass on 2026-10-28.
  */
 export const FIXTURE_NOW = Date.parse("2026-10-27T10:00:00Z");
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
@@ -238,8 +240,7 @@ export class MockBackend implements Transport {
 
   private async fixture(name: MockName): Promise<unknown> {
     const mod = (await MOCK_LOADERS[name]()) as { default: unknown };
-    // Whole minutes, so a shifted time reads like one a server would send.
-    return shiftTimes(mod.default, Math.round((this.now() - FIXTURE_NOW) / 60_000) * 60_000);
+    return shiftTimes(mod.default, Math.ceil((this.now() - FIXTURE_NOW) / DAY_MS) * DAY_MS);
   }
 
   private checkCode(body: unknown): Promise<RawResponse> | RawResponse {

@@ -136,6 +136,25 @@ describe("review panel", () => {
     expect(within(column(/^Hidden/)).getByRole("article", { name: /^Face 6,/ })).toBeInTheDocument();
   });
 
+  it("a rejected edit takes focus back to the chip in the column it returned to (§3.8)", async () => {
+    const user = setup("job-review-hero1");
+    await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
+    // The refusal lands after focus has followed the chip to Hidden.
+    let refuse: () => void = () => undefined;
+    const original = backend.request.bind(backend);
+    vi.spyOn(backend, "request").mockImplementation(async (init) => {
+      if (init.method === "POST" && init.path.endsWith("/review")) await new Promise<void>((resolve) => (refuse = resolve));
+      return original(init);
+    });
+    backend.inject(/\/review$/, "error-500");
+    chip("Face 6").focus();
+    await user.keyboard("h");
+    await waitFor(() => expect(within(column(/^Hidden/)).getByRole("article", { name: /^Face 6,/ })).toHaveFocus());
+    act(() => refuse());
+    expect(await screen.findByText("That change didn't save. Check your connection and try again.")).toBeInTheDocument();
+    await waitFor(() => expect(within(column(/^Needs you/)).getByRole("article", { name: /^Face 6,/ })).toHaveFocus());
+  });
+
   it("removes a person after the dialog", async () => {
     const user = setup("job-review-hero1");
     await screen.findByText("2 hidden · 1 kept clear · 1 needs you");

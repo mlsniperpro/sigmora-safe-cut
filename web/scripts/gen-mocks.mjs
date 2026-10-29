@@ -406,9 +406,11 @@ mocks["code-check-ok"] = { status: 200, body: { kind: "judge", valid_from: "2026
 mocks["code-check-ok-open-weight"] = { status: 200, body: { kind: "owner", valid_from: null, valid_until: "2026-11-10T23:59:59Z", open_weight: true } };
 mocks["error-401"] = err(401, "unauthorized");
 mocks["error-401-job-render"] = err(401, "unauthorized");
-mocks["error-401-job-expired-audit"] = err(401, "code_not_active", { valid_from: "2026-11-05T00:00:00Z", valid_until: "2026-11-10T23:59:59Z" });
+// Expired codes end over a day before the fixtures' moment (2026-10-27T10:00Z), so the mock's
+// whole-day time shift keeps them expired on any date.
+mocks["error-401-job-expired-audit"] = err(401, "code_not_active", { valid_from: "2026-10-19T00:00:00Z", valid_until: "2026-10-25T23:59:59Z" });
 mocks["error-401-not-yet-active"] = err(401, "code_not_active", { valid_from: "2026-11-05T00:00:00Z", valid_until: "2026-11-10T23:59:59Z" });
-mocks["error-401-expired"] = err(401, "code_not_active", { valid_from: null, valid_until: "2026-11-03T23:59:59Z" });
+mocks["error-401-expired"] = err(401, "code_not_active", { valid_from: null, valid_until: "2026-10-25T23:59:59Z" });
 mocks["error-401-revoked-start"] = err(401, "unauthorized");
 mocks["error-429-cap"] = err(429, "daily_cap", { retry_at: "2026-10-28T00:00:00Z" });
 mocks["error-429-rate"] = err(429, "rate_limited", {}, { "Retry-After": "30" });

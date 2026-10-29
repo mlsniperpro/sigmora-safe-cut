@@ -96,28 +96,46 @@ describe("MockBackend storage", () => {
 });
 
 describe("MockBackend fixture times", () => {
+  const refusal = async (now: number, code: string) => {
+    const backend = new MockBackend({ latencyMs: 0, now: () => now });
+    const res = await backend.request({ method: "POST", path: code === "not-yet" ? "/v1/codes/check" : "/v1/jobs", body: { code, size_bytes: 1000 } });
+    return (res.body as { error: { valid_from: string | null; valid_until: string } }).error;
+  };
   const retryAt = async (now: number) => {
     const backend = new MockBackend({ latencyMs: 0, now: () => now });
     backend.inject(/\/render$/, "error-429-render-daily-cap");
     const res = await backend.request({ method: "POST", path: "/v1/jobs/job-review-hero1/render" });
-    return Date.parse((res.body as { error: { retry_at: string } }).error.retry_at);
+    return (res.body as { error: { retry_at: string } }).error.retry_at;
   };
+  // Through a day and well past the fixtures' own dates.
+  const times = ["2026-10-27T10:00:00Z", "2026-10-28T00:30:00Z", "2026-11-03T09:59:00Z", "2026-11-04T23:59:00Z", "2027-03-01T08:30:00Z"].map(Date.parse);
 
-  it("keep their distance from now, so a daily cap's retry stays ahead however late the mock runs", async () => {
-    // As written: retry_at is 14 hours after the fixtures' moment.
-    expect(await retryAt(FIXTURE_NOW)).toBe(Date.parse("2026-10-28T00:00:00Z"));
-    const later = Date.parse("2027-03-01T08:30:00Z");
-    expect((await retryAt(later)) - later).toBe(14 * 60 * 60 * 1000);
+  it("as written at the fixtures' moment", async () => {
+    expect(await retryAt(FIXTURE_NOW)).toBe("2026-10-28T00:00:00.000Z");
   });
 
-  it("keep a code's window where the fixture put it, and leave other strings alone", async () => {
-    const now = Date.parse("2026-12-01T12:00:00Z");
-    const backend = new MockBackend({ latencyMs: 0, now: () => now });
-    const res = await backend.request({ method: "POST", path: "/v1/codes/check", body: { code: "not-yet" } });
-    const error = (res.body as { error: { code: string; valid_from: string; valid_until: string } }).error;
-    expect(error.code).toBe("code_not_active");
-    expect(Date.parse(error.valid_from) - now).toBe(Date.parse("2026-11-05T00:00:00Z") - FIXTURE_NOW);
-    expect(Date.parse(error.valid_until)).toBeGreaterThan(Date.parse(error.valid_from));
+  it("move by whole days: a daily cap's retry is always a midnight still ahead, at most a day and a half away", async () => {
+    for (const now of times) {
+      const at = Date.parse(await retryAt(now));
+      expect(new Date(at).toISOString()).toMatch(/T00:00:00\.000Z$/);
+      expect(at).toBeGreaterThan(now);
+      expect(at - now).toBeLessThanOrEqual(1.5 * 24 * 60 * 60 * 1000);
+    }
+  });
+
+  it("keep a code not active yet ahead, with its day-boundary times, and an expired code behind", async () => {
+    for (const now of times) {
+      const notYet = await refusal(now, "not-yet");
+      expect(Date.parse(notYet.valid_from!)).toBeGreaterThan(now);
+      expect(notYet.valid_from).toMatch(/T00:00:00\.000Z$/);
+      expect(notYet.valid_until).toMatch(/T23:59:59\.000Z$/);
+      const expired = await refusal(now, "expired");
+      expect(Date.parse(expired.valid_until)).toBeLessThan(now);
+    }
+  });
+
+  it("leave strings that aren't timestamps alone", async () => {
+    const backend = new MockBackend({ latencyMs: 0, now: () => Date.parse("2026-12-01T12:00:00Z") });
     const job = (await backend.request({ method: "GET", path: "/v1/jobs/job-review-hero1" })).body as { job_id: string; job: { prepared_url: string } };
     expect(job.job_id).toBe("j_hero1");
     expect(job.job.prepared_url).not.toMatch(/^\d{4}-/);

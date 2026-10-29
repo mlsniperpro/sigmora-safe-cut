@@ -209,19 +209,19 @@ export function WhyDrawer({
               )}
               {frames.length > 1 && (
                 <div className="mt-2 flex items-center gap-2 text-sm">
-                  <button type="button" className="min-h-11 rounded-lg border border-border px-3 disabled:opacity-40 lg:min-h-8" disabled={safeIndex === 0} onClick={() => setIndex(safeIndex - 1)} aria-label="Previous evidence frame">
+                  <button type="button" className="min-h-11 min-w-11 rounded-lg border border-border px-3 disabled:opacity-40 lg:min-h-8 lg:min-w-8" disabled={safeIndex === 0} onClick={() => setIndex(safeIndex - 1)} aria-label="Previous evidence frame">
                     ◀
                   </button>
                   <ol className="flex flex-wrap gap-2" aria-label="Evidence frames">
                     {frames.map((f, i) => (
                       <li key={f}>
-                        <button type="button" aria-current={i === safeIndex ? "true" : undefined} className={`min-h-11 rounded-md px-2 tabular-nums lg:min-h-8 ${i === safeIndex ? "bg-accent text-accent-text" : "bg-surface-2"}`} onClick={() => setIndex(i)}>
+                        <button type="button" aria-current={i === safeIndex ? "true" : undefined} className={`min-h-11 min-w-11 rounded-md px-2 tabular-nums lg:min-h-8 lg:min-w-8 ${i === safeIndex ? "bg-accent text-accent-text" : "bg-surface-2"}`} onClick={() => setIndex(i)}>
                           {formatFrame(f, fps)}
                         </button>
                       </li>
                     ))}
                   </ol>
-                  <button type="button" className="min-h-11 rounded-lg border border-border px-3 disabled:opacity-40 lg:min-h-8" disabled={safeIndex === frames.length - 1} onClick={() => setIndex(safeIndex + 1)} aria-label="Next evidence frame">
+                  <button type="button" className="min-h-11 min-w-11 rounded-lg border border-border px-3 disabled:opacity-40 lg:min-h-8 lg:min-w-8" disabled={safeIndex === frames.length - 1} onClick={() => setIndex(safeIndex + 1)} aria-label="Next evidence frame">
                     ▶
                   </button>
                 </div>

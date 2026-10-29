@@ -158,6 +158,8 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
 
   /** The chip an edit moved, so focus follows it to its new column (§3.8). */
   const [edited, setEdited] = useState<string | null>(null);
+  /** The open column tab on mobile; null until the viewer picks one (then the first with chips). */
+  const [tab, setTab] = useState<Column | null>(null);
   /** A covered spot's optimistic chip, until the server's ack gives it its real ID. */
   const coverFor = useRef<{ pending: string; spot: string } | null>(null);
   /**
@@ -236,6 +238,19 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
   useEffect(() => {
     if (lastToast?.kind === "edit" && edited) focusChip(edited);
   }, [lastToast, edited]);
+  // A rejected edit puts the chip back, which unmounts the one focus followed: follow it home
+  // (a refused cover goes back to its spot), unless the viewer has already moved on.
+  useEffect(() => {
+    if (lastToast?.kind !== "failed" || !edited) return;
+    if (document.activeElement && document.activeElement !== document.body) return;
+    const cover = coverFor.current;
+    const spot = cover?.pending === edited ? cover.spot : null;
+    const target = spot ? `spot:${spot}` : edited;
+    // Unfixed spots always list under Needs you.
+    const column = spot ? "needs_you" : effectiveDecision(stateRef.current, target);
+    if (column && !desktop) setTab(column);
+    focusChip(target);
+  }, [lastToast, edited, desktop]);
   // The ack swaps a covered spot's optimistic chip for the server's item, which remounts it.
   const coverSpots = state.spots;
   useEffect(() => {
@@ -486,7 +501,6 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
 
   // ------------------------------------------------------------------ layout
   const firstTab: Column = columns.needs_you.length > 0 ? "needs_you" : "hide";
-  const [tab, setTab] = useState<Column | null>(null);
   const activeTab = tab ?? firstTab;
   // The open tab is often the last one ("Needs you"), past the edge of a narrow strip: bring it in.
   useEffect(() => {
@@ -983,16 +997,16 @@ function ToastView({ state, onUndo, onRetry, onDismiss }: { state: ReviewState; 
           <div className="flex items-center gap-3 rounded-lg bg-text px-4 py-2 text-sm text-bg shadow-[var(--shadow)]">
             <span>{toast.text}</span>
             {undoable && (
-              <button type="button" className="min-h-11 font-semibold underline underline-offset-2 disabled:opacity-50 lg:min-h-9" disabled={toast.edit_id in state.pending} onClick={() => onUndo(toast.edit_id)}>
+              <button type="button" className="min-h-11 min-w-11 font-semibold underline underline-offset-2 disabled:opacity-50 lg:min-h-9" disabled={toast.edit_id in state.pending} onClick={() => onUndo(toast.edit_id)}>
                 Undo
               </button>
             )}
             {toast.kind === "failed" && (
               <>
-                <button type="button" className="min-h-11 font-semibold underline underline-offset-2 lg:min-h-9" onClick={() => onRetry(toast.edit_id)}>
+                <button type="button" className="min-h-11 min-w-11 font-semibold underline underline-offset-2 lg:min-h-9" onClick={() => onRetry(toast.edit_id)}>
                   Try again
                 </button>
-                <button type="button" className="min-h-11 underline underline-offset-2 lg:min-h-9" onClick={onDismiss}>
+                <button type="button" className="min-h-11 min-w-11 underline underline-offset-2 lg:min-h-9" onClick={onDismiss}>
                   Dismiss
                 </button>
               </>

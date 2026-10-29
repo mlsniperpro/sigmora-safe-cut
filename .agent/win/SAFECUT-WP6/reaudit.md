@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 79b9b19
+AUDITED_COMMIT: c57b904
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -236,3 +236,16 @@ Fresh-clone README run also found: `pnpm typecheck` failed before any build (Nex
 | 1 | low | A fresh URL that arrived after the review player's 10 s wait had given up (a slow refetch) was switched in but left the "didn't load" message over it | fixed: a late fresh URL clears the failure and gets its try. JobPage test (fails without the fix) |
 | 2 | low | Round 14's carry-over let a quiet refresh cut short by an action's GET (resume) make that GET quiet too, so its failure was swallowed instead of retried and reported | fixed: the quiet flag carries over only while nothing polls, and resume clears it. useJob test (fails without the fix) |
 | 3 | low | With reduced motion, the hero's "Play demo" button stayed over the video while it played, covering the controls | fixed: it shows only while the clip is paused, and pressing it moves focus to the player. Landing test (fails without the fix) and e2e checks for focus and visibility in Chromium |
+
+## Round 16 (audited c57b904 by a Sonnet reviewer: about 60 routes at 320/390/1280 in light and dark with axe, every control measured with the drawer, toast, menu and dialogs open, a live build against a faked https API, URL edge cases and a 3×6×70-action random fuzz; each finding traced here; fixes in the next commit)
+
+0 critical, 0 high, 0 medium, 6 low. The round-15 fixes and the c57b904 fixture-time shift held. Three findings (3–5) came from that shift.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | low | A rejected review edit put the chip back in its old column and unmounted the one focus had followed, so focus fell to `<body>` (and on mobile the tab stayed on the column the chip had left) | fixed: on a failed edit, if focus was lost it goes back to the chip, or to its spot for a refused cover, and on mobile that chip's tab opens. JobPage test (fails without the fix) |
+| 2 | low | Toast Undo (36 px) and the Why drawer's evidence ◀/▶ (39 px) were under 44 px wide on mobile | fixed with `min-w-11` (also the toast's other actions and the frame numbers). Root cause of a finding that recurred in rounds 9, 13 and 14: e2e now measures every control on mobile on landing, /try, review with the toast open, both Why drawers, result and privacy (fails on the old code with the auditor's exact sizes) |
+| 3 | low | The shift kept the `expired` mock code's `valid_until` (Nov 3) ahead of now forever, so it could never say "expired" | fixed: expired codes end before the fixtures' moment (gen-mocks), and an e2e check reads "This code has expired." |
+| 4 | low | Minute-rounded shifting turned day-boundary times into arbitrary clock times ("Nov 6, 10:24 AM") | fixed: the shift is whole days, rounded up, so midnights stay midnights and the cap's retry is always the next midnight ahead. mock-backend tests at five times of day; the suite passes with the clock moved −1, 0, +0.6, +10, +40 and +400 days |
+| 5 | low | README still said fixture dates are the fixtures' own | fixed |
+| 6 | low | A job link cut off mid-escape (`/jobs/abc%E0`) gave a bare 500 from Next's param decoding | fixed: `proxy.ts` sends an undecodable path to the not-found page (404). e2e check (fails on the old proxy with 500) |

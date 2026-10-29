@@ -10,6 +10,13 @@ import { isRestricted, loadTerritories } from "./lib/region";
 const territories = loadTerritories(process.env.SAFECUT_BLOCKED_TERRITORIES);
 
 export function proxy(request: NextRequest) {
+  // A link cut off mid-escape (`/jobs/abc%E0`) would fail Next's own param decoding with a bare
+  // 500; it names no job, so it gets the not-found page (§7) instead.
+  try {
+    decodeURIComponent(request.nextUrl.pathname);
+  } catch {
+    return NextResponse.rewrite(new URL("/_not-found", request.url));
+  }
   // Vercel's edge headers; `request.geo` no longer exists in Next 15+.
   const country = request.headers.get("x-vercel-ip-country");
   const region = request.headers.get("x-vercel-ip-country-region");

@@ -48,6 +48,23 @@ async function axe(page, label) {
   check(`axe WCAG 2.2 AA: ${label}`, violations.length === 0, violations.join("; "));
 }
 
+/** §9: every control on a phone is at least 44×44 px (inline links in running text are exempt, as in WCAG 2.5.8). */
+async function targets(page, label) {
+  const small = await page.evaluate(() => {
+    const out = [];
+    for (const el of document.querySelectorAll('button, a[href], [role="tab"], [role="radio"], [role="menuitem"], summary, select, input:not([type="hidden"])')) {
+      const r = el.getBoundingClientRect();
+      if (r.width <= 1 || r.height <= 1 || getComputedStyle(el).visibility === "hidden") continue;
+      if (el.tagName === "A" && el.closest("p, li") && getComputedStyle(el).display === "inline") continue;
+      // A checkbox's target is its whole label.
+      if (el.tagName === "INPUT" && el.closest("label")) continue;
+      if (r.width < 43.5 || r.height < 43.5) out.push(`"${(el.getAttribute("aria-label") || el.textContent || el.tagName).trim().slice(0, 30)}" ${Math.round(r.width)}×${Math.round(r.height)}`);
+    }
+    return out;
+  });
+  check(`mobile 44 px targets: ${label}`, small.length === 0, small.slice(0, 6).join("; "));
+}
+
 async function shot(page, name, fullPage = true) {
   if (!SHOTS) return;
   await page.screenshot({ path: join(SHOTS, `${name}.png`), fullPage });
@@ -151,6 +168,7 @@ try {
     await page.getByRole("button", { name: "Hide Face 6" }).click();
     await page.getByText("Face 6 will be hidden.").waitFor();
     check(`${v}: one tap hides an item with a toast`, true);
+    if (v === "mobile") await targets(page, "review with the toast open");
     await page.getByRole("button", { name: "Undo" }).click({ timeout: 5_000 });
     await page.getByText("Undone.").waitFor();
     check(`${v}: undo works`, true);
@@ -173,6 +191,7 @@ try {
     check(`${v}: the Why drawer rings the item on the Set-of-Mark keyframe`, ring === 1);
     await shot(page, `${v}-6-why-drawer`, false);
     await axe(page, `${v} why drawer`);
+    if (v === "mobile") await targets(page, "Why drawer");
     await page.keyboard.press("Escape");
     await drawer.waitFor({ state: "hidden" });
     check(`${v}: Esc closes the drawer`, true);
@@ -205,6 +224,10 @@ try {
     }
     await page.goto(`${BASE}/nope`, { waitUntil: "networkidle" });
     check(`${v}: unknown routes get the 404 copy`, await page.getByText("We couldn't find that page.").isVisible());
+    if (v === "desktop") {
+      const cut = await page.goto(`${BASE}/jobs/abc%E0`, { waitUntil: "networkidle" });
+      check("a job link cut off mid-escape gets the 404 page, not a 500", cut?.status() === 404 && (await page.getByText("We couldn't find that page.").isVisible()), String(cut?.status()));
+    }
 
     const real = errors.filter((e) => !e.includes("example.invalid") && !e.includes("ERR_NAME_NOT_RESOLVED") && !e.includes("ERR_TUNNEL_CONNECTION_FAILED") && !e.includes("load failed (404)") && !e.includes("Failed to load resource"));
     check(`${v}: no unexpected console errors`, real.length === 0, real.slice(0, 3).join(" | "));
@@ -240,6 +263,22 @@ try {
     check("reduced motion: focus moves to the player, not the page", await page.locator("figure video").evaluate((v) => document.activeElement === v));
     await page.locator("figure video").evaluate((v) => v.pause());
     check("reduced motion: Play demo is back once paused", await button.isVisible());
+    await context.close();
+  }
+
+  // Phone: the Why drawer's evidence frames and the landing, /try and result pages keep 44 px targets.
+  {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const page = await context.newPage();
+    for (const path of ["/", "/try", "/jobs/result-fixed/result", "/privacy"]) {
+      await page.goto(`${BASE}${path}`, { waitUntil: "networkidle" });
+      await targets(page, path);
+    }
+    await page.goto(`${BASE}/jobs/job-review-needs-you-only`, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: /^Why\? / }).first().click();
+    const drawer = page.getByRole("dialog");
+    await drawer.getByRole("button", { name: "Next evidence frame" }).waitFor();
+    await targets(page, "Why drawer with evidence frames");
     await context.close();
   }
 
@@ -315,6 +354,7 @@ try {
     await page.getByRole("button", { name: "Use a different code" }).waitFor();
     const inAlert = await page.evaluate(() => !!document.activeElement?.closest('[role="alert"]'));
     check("/try: a refusal that disables Start takes focus", inAlert && (await start.isDisabled()));
+    check("/try: the expired code says it expired, on any date", await page.getByText(/^This code has expired\. It worked until /).isVisible());
     await context.close();
   }
 

@@ -168,5 +168,11 @@ Round 14 (fixes in the round-14 commit; details in `reaudit.md`):
 - [x] R15-1 (low) a late fresh URL brings the review player back: JobPage test
 - [x] R15-2 (low) an action's GET isn't made quiet by a cut-short refresh: useJob test
 - [x] Self-found: fixture dates shift with the clock, so the mock and the tests hold on any date: mock-backend tests, suite run at clock shifts up to +400 days
+- [x] R16-1 (low) focus returns to a chip whose edit was rejected: JobPage test
+- [x] R16-2 (low) 44 px wide toast and evidence-frame buttons; e2e measures every mobile control
+- [x] R16-3 (low) the expired mock code says expired on any date: e2e
+- [x] R16-4 (low) whole-day fixture shift keeps midnights: mock-backend tests, clock sweep
+- [x] R16-5 (low) README fixture-date wording
+- [x] R16-6 (low) a cut-off percent-escape gets the 404 page, not a 500: e2e
 - [x] R15-3 (low) reduced-motion "Play demo" shows only while paused and hands focus to the player: landing test, e2e
 
