@@ -137,7 +137,7 @@ async def test_all_probes_replay(api: respx.MockRouter, tmp_path: Path) -> None:
     assert set(results["c"]["max_length"]) == {"60s", "180s"}
     assert all(r["accepted"] for r in results["c"]["max_length"].values())
     assert results["d"]["audio_duration_ms"] == 3000
-    assert set(results["f"]) - {"uploads_deleted"} == {
+    assert set(results["f"]) - {"uploads_deleted", "run"} == {
         "muse-spark-1.3@max",
         "muse-wonder-1.0@max",
         "muse-wonder-1.0@medium",

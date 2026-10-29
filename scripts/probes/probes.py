@@ -159,7 +159,11 @@ async def probe_a(p: Probe) -> Summary:
     ids = sorted(str(cast(Mapping[str, Any], m).get("id")) for m in items if isinstance(m, Mapping))
     wanted = [
         p.settings.sam_model,
+        p.settings.scene_model,
         p.settings.role_model,
+        p.settings.escalate_model,
+        p.settings.redteam_model,
+        config.COMPARE_SPARK_MODEL,
         config.COMPARE_WONDER_MODEL,
         p.settings.asr_model,
         p.settings.speech_fallback_model,
@@ -577,16 +581,15 @@ def _extract_wav(clip: Path, wav: Path) -> None:
 
 
 async def probe_d(p: Probe) -> Summary:
-    wav = p.out / "audio.wav"
-    p.out.mkdir(parents=True, exist_ok=True)
-    await asyncio.to_thread(_extract_wav, p.clip, wav)
-    started = time.monotonic()
-    try:
+    # A temporary folder, removed however extraction or the call ends: never leave a (possibly hero) voice
+    # track on disk, or among the probe's results.
+    with tempfile.TemporaryDirectory(prefix="safecut-probe-d-") as scratch:
+        wav = Path(scratch) / "audio.wav"
+        await asyncio.to_thread(_extract_wav, p.clip, wav)
+        started = time.monotonic()
         body = await asr.transcribe_raw(
             p.meta, wav, model=p.settings.asr_model, language_bias=p.settings.asr_language_bias
         )
-    finally:
-        wav.unlink(missing_ok=True)  # never leave a (possibly hero) voice track on disk
     latency = time.monotonic() - started
     p.save("asr.response.json", body)  # as Meta sent it, before parsing: probe d exists to learn the real shape
     raw = asr.parse_response(body)
@@ -877,7 +880,10 @@ async def run(
     cost_path = cost_path or out_root / "cost.jsonl"
     results: dict[str, Summary] = {}
     for name in names:
-        job_id = f"probe_{name}"
+        # A job id per run: a summary (recorded, superseded or set aside) names the cost lines that are its own.
+        run_id = f"{_stamp()}-{os.getpid()}"
+        job_id = f"probe_{name}_{run_id}"
+        record = _run_record(job_id)
         # Only the hero-clip probes (b, d) write to the git-ignored hero folder; the rest stay fixtures.
         # Each hero clip gets its own folder, so a second clip never overwrites the first's paid results.
         hero = hero_root is not None and clip != CLIP and name in ("b", "d")
@@ -890,7 +896,7 @@ async def run(
         try:
             meta = MetaClient(settings, job_id=job_id, caller=caller, ledger=ledger, cost_path=cost_path, http=http)
         except Exception as exc:
-            results[name] = {"error": f"{type(exc).__name__}: {exc}"}
+            results[name] = {"error": f"{type(exc).__name__}: {exc}", "run": record}
             save_summary(out, results[name])
             continue
         files = FileStore(meta, out / "job")
@@ -922,8 +928,15 @@ async def run(
             # Ctrl-C or a cancel after paid calls (in the probe or its cleanup): the raw files stay findable.
             _set_aside(out, staged)
             raise
+        results[name]["run"] = record
         save_summary(out, results[name], staged=staged)
     return results
+
+
+def _run_record(job_id: str) -> Summary:
+    """Which run a summary is: its cost lines carry this ``job_id`` (one per run, so a superseded or set-aside
+    summary's figures trace to their own lines)."""
+    return {"job_id": job_id, "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
 
 
 def _stamp() -> str:
@@ -931,24 +944,51 @@ def _stamp() -> str:
 
 
 def _staging(out: Path) -> Path:
+    _adopt_orphans(out)
     return out / f".run-{_stamp()}-{os.getpid()}"
 
 
-def _aside(out: Path, stem: str, suffix: str = "") -> Path:
-    """``out/<stem>-<ts><suffix>``, numbered when a run in the same second already took it."""
+def _free_suffix(out: Path, patterns: Sequence[str]) -> str:
+    """A ``<ts>`` (numbered within the same second) free in every pattern, so paired names share it."""
     stamp = _stamp()
-    path = out / f"{stem}-{stamp}{suffix}"
-    n = 2
-    while path.exists():
-        path = out / f"{stem}-{stamp}-{n}{suffix}"
-        n += 1
-    return path
+    suffix, n = stamp, 2
+    while any((out / pattern.format(suffix)).exists() for pattern in patterns):
+        suffix, n = f"{stamp}-{n}", n + 1
+    return suffix
+
+
+def _aside(out: Path, stem: str) -> Path:
+    """``out/<stem>-<ts>``, numbered when a run in the same second already took it."""
+    return out / f"{stem}-{_free_suffix(out, (stem + '-{}',))}"
 
 
 def _set_aside(out: Path, staged: Path) -> None:
     """Move a run's staged raw files to ``failed-<ts>/``, beside the recorded results (never over them)."""
     if staged.is_dir():
         staged.rename(_aside(out, "failed"))
+
+
+def _adopt_orphans(out: Path) -> None:
+    """Set aside the staging folders of runs that were killed outright (SIGKILL, a lost container): their
+    paid raw files would otherwise sit in a git-ignored ``.run-*`` folder for good."""
+    if not out.is_dir():
+        return
+    for staged in out.glob(".run-*"):
+        pid = staged.name.rsplit("-", 1)[-1]
+        if staged.is_dir() and not (pid.isdigit() and _alive(int(pid))):
+            _set_aside(out, staged)
+
+
+def _alive(pid: int) -> bool:
+    if pid == os.getpid():
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # someone else's live process
+    return True
 
 
 def _errors(value: object) -> int:
@@ -963,7 +1003,7 @@ def _errors(value: object) -> int:
 
 def _outright(summary: Summary) -> bool:
     """A run that failed before recording anything: its summary holds only the error (and the cleanup)."""
-    return "error" in summary and set(summary) <= {"error", "uploads_deleted"}
+    return "error" in summary and set(summary) <= {"error", "uploads_deleted", "run"}
 
 
 def _worse(result: Summary, recorded: Path) -> bool:
@@ -991,9 +1031,10 @@ def save_summary(out: Path, result: Summary, *, staged: Path | None = None) -> P
     staged = staged if staged is not None and staged.is_dir() else None
     if path.exists() and _worse(result, path):
         # A run that failed more (in-band per concept, call or check, or outright) never replaces a recorded one.
-        path = _aside(out, "summary.failed", ".json")
+        suffix = _free_suffix(out, ("summary.failed-{}.json", "failed-{}"))
+        path = out / f"summary.failed-{suffix}.json"
         if staged is not None:
-            _set_aside(out, staged)
+            staged.rename(out / f"failed-{suffix}")
     else:
         # The recorded run moves to `superseded-<ts>/` whole, its summary with its raw files: a paid result
         # is never overwritten, and nothing this run didn't write stays beside its summary as if it were
@@ -1019,6 +1060,7 @@ def save_summary(out: Path, result: Summary, *, staged: Path | None = None) -> P
 async def _run_h(settings: Settings, *, job_id: str, out: Path, ledger: LocalLedger, cost_path: Path) -> Summary:
     """Probe h needs only BASETEN_API_KEY (no Meta key) and writes provider: "baseten" cost lines."""
     staged = _staging(out)
+    record = _run_record(job_id)
     try:
         client = open_weight.open_weight_client(
             settings, job_id=job_id, caller=Caller(code_kind="owner"), ledger=ledger, cost_path=cost_path
@@ -1036,6 +1078,7 @@ async def _run_h(settings: Settings, *, job_id: str, out: Path, ledger: LocalLed
         except BaseException:
             _set_aside(out, staged)
             raise
+    result["run"] = record
     save_summary(out, result, staged=staged)
     return result
 

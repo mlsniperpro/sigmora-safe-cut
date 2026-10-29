@@ -23,7 +23,7 @@ from safecut.contracts import FilesIndex, load
 from safecut.meta import asr, responses, sam
 from safecut.meta.budget import job_limit
 from safecut.meta.client import FORBIDDEN_PARAMS
-from safecut.meta.errors import MetaConfigError, MetaIncomplete, MetaRefusal, MetaUnavailable
+from safecut.meta.errors import MetaBadRequest, MetaConfigError, MetaIncomplete, MetaRefusal, MetaUnavailable
 from safecut.meta.files import FileStore, sha256_file
 from safecut.meta.sse import SSEDecodeError, iter_sse
 from safecut.meta.status import StatusUnavailableError, fetch_status
@@ -387,7 +387,7 @@ async def test_asr_bad_shape_and_bad_audio(
         out.setsampwidth(2)
         out.setframerate(16_000)
         out.writeframes(b"\x00" * 64)
-    with pytest.raises(ValueError, match="mono"):
+    with pytest.raises(MetaBadRequest, match="mono"):
         await asr.transcribe(h.client, stereo, model="m", language_bias=[])
 
 

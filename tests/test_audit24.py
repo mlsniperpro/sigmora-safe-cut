@@ -1261,7 +1261,7 @@ async def test_an_unreadable_wav_is_refused_before_any_spend(
     h = make_harness()
     wav = tmp_path / "a.wav"
     wav.write_bytes(content)
-    with pytest.raises(MetaBadRequest, match="not a readable WAV"):
+    with pytest.raises(MetaBadRequest, match="not a usable WAV"):
         await responses_asr.transcribe_raw(h.client, wav, model="muse-voice-transcribe-1.0", language_bias=[])
     assert h.costs() == []
 
@@ -1934,3 +1934,64 @@ def test_probe_h_writes_each_answer_as_it_arrives(tmp_path: Path) -> None:
     answers.add({"effort": "omit", "answer": {"id": "b"}})
     assert [e["answer"]["id"] for e in json.loads(answers.path.read_text())] == ["a", "b"]
     assert not list(answers.path.parent.glob(".*.tmp"))
+
+
+# --- audit #66 ----------------------------------------------------------------------------------------------
+
+
+def test_a_killed_runs_staging_is_set_aside_by_the_next_run(tmp_path: Path) -> None:
+    dead = 2**22 + 7  # above Linux's default pid_max: never a live process
+    orphan = tmp_path / f".run-20261029T010000Z-{dead}"
+    orphan.mkdir()
+    (orphan / "paid.json").write_text("{}")
+    live = tmp_path / f".run-20261029T010000Z-{os.getpid()}"
+    live.mkdir()
+    probes._staging(tmp_path)  # pyright: ignore[reportPrivateUsage] -- the unit under test
+    [aside] = list(tmp_path.glob("failed-*"))
+    assert (aside / "paid.json").exists()
+    assert live.exists()  # this process's own staging is never taken
+
+
+def test_a_diverted_runs_summary_and_raw_files_share_one_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(probes, "_stamp", lambda: "T")
+    probes.save_summary(tmp_path, {"ok": True})
+    probes.save_summary(tmp_path, {"error": "down"})  # X: outright, no raw files -> summary.failed-T.json
+    staged = tmp_path / ".run-y"
+    staged.mkdir()
+    (staged / "raw.json").write_text("{}")
+    worse = probes.save_summary(tmp_path, {"a": {"error": "1"}, "b": {"error": "2"}}, staged=staged)  # Y
+    assert worse.name == "summary.failed-T-2.json"
+    assert (tmp_path / "failed-T-2" / "raw.json").exists()
+    assert not (tmp_path / "failed-T").exists()
+
+
+async def test_a_failed_wav_extraction_leaves_no_audio(
+    api: respx.MockRouter,  # noqa: F811 -- pytest injects the imported fixture by name
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def partial(_: Path, wav: Path) -> None:
+        wav.write_bytes(b"RIFF")
+        raise RuntimeError("ffmpeg died")
+
+    monkeypatch.setattr(probes, "_extract_wav", partial)
+    results = await probes.run(
+        ["d"], settings=Settings(model_api_key=SecretStr("k")), out_root=tmp_path, ledger=LocalLedger()
+    )
+    assert results["d"]["error"].startswith("RuntimeError")
+    assert not list(tmp_path.rglob("*.wav"))
+
+
+async def test_every_summary_names_its_own_cost_lines(
+    api: respx.MockRouter,  # noqa: F811 -- pytest injects the imported fixture by name
+    tmp_path: Path,
+) -> None:
+    results = await probes.run(
+        ["d"], settings=Settings(model_api_key=SecretStr("k")), out_root=tmp_path, ledger=LocalLedger()
+    )
+    job_id = results["d"]["run"]["job_id"]
+    assert job_id.startswith("probe_d_")
+    lines = list(c.read_cost_lines(tmp_path / "cost.jsonl"))
+    assert lines
+    assert {line.job_id for line in lines} == {job_id}
+    assert json.loads((tmp_path / "d" / "summary.json").read_text())["run"]["job_id"] == job_id
