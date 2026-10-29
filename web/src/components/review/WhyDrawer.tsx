@@ -123,6 +123,19 @@ export function WhyDrawer({
   const ref = useRef<HTMLDialogElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const why = useRef<HTMLElement>(null);
+  const actionBar = useRef<HTMLDivElement>(null);
+  /**
+   * Hide and Keep clear swap places after an edit, so the pressed button unmounts while the sheet
+   * stays open and the chips behind it are inert: focus goes to the button that took its place
+   * (or the sheet's heading if there's none).
+   */
+  const afterAction = (run: () => void) => {
+    run();
+    requestAnimationFrame(() => {
+      if (!ref.current?.open || ref.current.contains(document.activeElement)) return;
+      (actionBar.current?.querySelector("button") ?? heading.current)?.focus();
+    });
+  };
   const [index, setIndex] = useState(0);
   const [expanded, setExpanded] = useState(false);
   const desktop = useMediaQuery("(min-width: 1024px)");
@@ -209,7 +222,7 @@ export function WhyDrawer({
               )}
               {frames.length > 1 && (
                 <div className="mt-2 flex items-center gap-2 text-sm">
-                  <button type="button" className="min-h-11 min-w-11 rounded-lg border border-border px-3 disabled:opacity-40 lg:min-h-8 lg:min-w-8" disabled={safeIndex === 0} onClick={() => setIndex(safeIndex - 1)} aria-label="Previous evidence frame">
+                  <button type="button" className="min-h-11 min-w-11 rounded-lg border border-border px-3 aria-disabled:opacity-40 lg:min-h-8 lg:min-w-8" aria-disabled={safeIndex === 0} onClick={() => safeIndex > 0 && setIndex(safeIndex - 1)} aria-label="Previous evidence frame">
                     ◀
                   </button>
                   <ol className="flex flex-wrap gap-2" aria-label="Evidence frames">
@@ -221,7 +234,7 @@ export function WhyDrawer({
                       </li>
                     ))}
                   </ol>
-                  <button type="button" className="min-h-11 min-w-11 rounded-lg border border-border px-3 disabled:opacity-40 lg:min-h-8 lg:min-w-8" disabled={safeIndex === frames.length - 1} onClick={() => setIndex(safeIndex + 1)} aria-label="Next evidence frame">
+                  <button type="button" className="min-h-11 min-w-11 rounded-lg border border-border px-3 aria-disabled:opacity-40 lg:min-h-8 lg:min-w-8" aria-disabled={safeIndex === frames.length - 1} onClick={() => safeIndex < frames.length - 1 && setIndex(safeIndex + 1)} aria-label="Next evidence frame">
                     ▶
                   </button>
                 </div>
@@ -323,14 +336,14 @@ export function WhyDrawer({
           </div>
 
           {(actions.canHide || actions.canKeep) && (
-            <div className="flex gap-2 border-t border-border px-5 py-3 lg:hidden">
+            <div ref={actionBar} className="flex gap-2 border-t border-border px-5 py-3 lg:hidden">
               {actions.canHide && (
-                <button type="button" className="min-h-11 flex-1 rounded-lg border border-border font-medium" onClick={actions.onHide}>
+                <button type="button" className="min-h-11 flex-1 rounded-lg border border-border font-medium" onClick={() => afterAction(actions.onHide)}>
                   Hide
                 </button>
               )}
               {actions.canKeep && (
-                <button type="button" className="min-h-11 flex-1 rounded-lg border border-border font-medium" onClick={actions.onKeep}>
+                <button type="button" className="min-h-11 flex-1 rounded-lg border border-border font-medium" onClick={() => afterAction(actions.onKeep)}>
                   Keep clear
                 </button>
               )}

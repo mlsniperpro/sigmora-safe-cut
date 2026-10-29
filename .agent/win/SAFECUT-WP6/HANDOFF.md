@@ -57,10 +57,12 @@
 - Audit round 15 (on 79b9b19): 3 low (two were regressions from round 14), fixed in the round-15 commit (late fresh URL, quiet flag leaking into resume, reduced-motion Play demo button). On that commit: 823 tests, e2e 93/93, `checks.sh` exit 0.
 - Self-found on 2026-10-28: the fixtures' absolute dates started to pass (a daily cap's `retry_at` of 2026-10-28T00:00Z made a JobPage test flaky; the "code isn't active yet" test would have flipped on Nov 5, and the mock demo would have done the same during judging). MockBackend now shifts every fixture timestamp by (now − 2026-10-27T10:00Z), so the fixtures behave as written on any date. The suite was run with the clock moved −1, +10, +40 and +400 days: all pass. 825 tests, e2e 93/93.
 - Audit round 16 (on c57b904): 6 low, fixed in the round-16 commit (rejected-edit focus, two narrow buttons plus an e2e sweep of every mobile control, the shift now whole days with expired codes kept expired, README, a cut-off percent-escape 500). On that commit: 828 tests, e2e 102/102, `checks.sh` exit 0.
+- Audit round 17 (on bb56bbe): 5 low (one a regression from round 16), fixed in the round-17 commit (retry follows the chip on mobile, focus kept in the Why sheet and on ◀/▶, Dismiss refocuses, cap retry on the next UTC midnight). On that commit: 829 tests, e2e 104/104, `checks.sh` exit 0.
+- Lesson: focus findings keep coming from controls that unmount or disable under focus. Before pushing a UI change, check every button that can disappear or become disabled while focused.
 - CLEAN_AUDITS_IN_A_ROW is 0. Two clean full audits are still needed, then a fresh break-it.md (fresh clone + FUZZ_RUNS=100000).
 
 ## Next steps, in order
-1. Run the next full audit round on HEAD (round 17 is next). If it finds anything, fix it and reset CLEAN_AUDITS_IN_A_ROW to 0. Repeat until two consecutive audits find nothing. Then set AUDITED_COMMIT to the last code commit and CLEAN_AUDITS_IN_A_ROW to 2.
+1. Run the next full audit round on HEAD (round 18 is next). If it finds anything, fix it and reset CLEAN_AUDITS_IN_A_ROW to 0. Repeat until two consecutive audits find nothing. Then set AUDITED_COMMIT to the last code commit and CLEAN_AUDITS_IN_A_ROW to 2.
 2. After the last code change, run the fresh-clone `checks.sh` (`git clone --branch wp6-web` into an empty dir) and the FUZZ_RUNS=100000 agreement soak. Rewrite break-it.md with TESTED_COMMIT set to that commit.
 3. Run the gate until it prints `GATE: PASS` on the pushed HEAD. Then post the final status on PR #4, including the gate's last line.
 4. If time remains: live deployment (owner sets up Vercel), Safari/Firefox runs.

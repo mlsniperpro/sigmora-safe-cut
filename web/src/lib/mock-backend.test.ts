@@ -108,18 +108,16 @@ describe("MockBackend fixture times", () => {
     return (res.body as { error: { retry_at: string } }).error.retry_at;
   };
   // Through a day and well past the fixtures' own dates.
-  const times = ["2026-10-27T10:00:00Z", "2026-10-28T00:30:00Z", "2026-11-03T09:59:00Z", "2026-11-04T23:59:00Z", "2027-03-01T08:30:00Z"].map(Date.parse);
+  const times = ["2026-10-27T10:00:00Z", "2026-10-28T00:30:00Z", "2026-10-29T10:01:00Z", "2026-11-03T15:00:00Z", "2026-11-04T23:59:00Z", "2027-03-01T08:30:00Z"].map(Date.parse);
 
   it("as written at the fixtures' moment", async () => {
     expect(await retryAt(FIXTURE_NOW)).toBe("2026-10-28T00:00:00.000Z");
   });
 
-  it("move by whole days: a daily cap's retry is always a midnight still ahead, at most a day and a half away", async () => {
+  it("move by whole UTC days: a daily cap's retry is always the next midnight (UTC), whatever the time of day", async () => {
     for (const now of times) {
-      const at = Date.parse(await retryAt(now));
-      expect(new Date(at).toISOString()).toMatch(/T00:00:00\.000Z$/);
-      expect(at).toBeGreaterThan(now);
-      expect(at - now).toBeLessThanOrEqual(1.5 * 24 * 60 * 60 * 1000);
+      const nextMidnight = (Math.floor(now / DAY) + 1) * DAY;
+      expect(Date.parse(await retryAt(now))).toBe(nextMidnight);
     }
   });
 

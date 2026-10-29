@@ -279,6 +279,17 @@ try {
     const drawer = page.getByRole("dialog");
     await drawer.getByRole("button", { name: "Next evidence frame" }).waitFor();
     await targets(page, "Why drawer with evidence frames");
+    // Stepping to the last frame leaves focus on ▶ (now unavailable), inside the open sheet.
+    const next = drawer.getByRole("button", { name: "Next evidence frame" });
+    await next.focus();
+    // Two frames on this item: Enter steps to the last, and Enter again there must keep focus.
+    for (let i = 0; i < 2; i += 1) await page.keyboard.press("Enter");
+    check("Why drawer: focus stays on ▶ at the last evidence frame", await next.evaluate((el) => document.activeElement === el));
+    // Hide in the sheet swaps the button for Keep clear: focus moves to it, not out of the open sheet.
+    await drawer.getByRole("button", { name: "Hide", exact: true }).click();
+    await page.waitForTimeout(150);
+    const inSheet = await drawer.evaluate((d) => d.open && d.contains(document.activeElement) && document.activeElement !== d);
+    check("Why drawer: after Hide in the sheet, focus stays in the sheet", inSheet, await page.evaluate(() => document.activeElement?.outerHTML.slice(0, 80) ?? ""));
     await context.close();
   }
 

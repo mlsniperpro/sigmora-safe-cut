@@ -1,4 +1,4 @@
-AUDITED_COMMIT: c57b904
+AUDITED_COMMIT: bb56bbe
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -249,3 +249,15 @@ Fresh-clone README run also found: `pnpm typecheck` failed before any build (Nex
 | 4 | low | Minute-rounded shifting turned day-boundary times into arbitrary clock times ("Nov 6, 10:24 AM") | fixed: the shift is whole days, rounded up, so midnights stay midnights and the cap's retry is always the next midnight ahead. mock-backend tests at five times of day; the suite passes with the clock moved −1, 0, +0.6, +10, +40 and +400 days |
 | 5 | low | README still said fixture dates are the fixtures' own | fixed |
 | 6 | low | A job link cut off mid-escape (`/jobs/abc%E0`) gave a bare 500 from Next's param decoding | fixed: `proxy.ts` sends an undecodable path to the not-found page (404). e2e check (fails on the old proxy with 500) |
+
+## Round 17 (audited bb56bbe by a Sonnet reviewer: 87 routes × 320/390/1280 × light/dark with axe and target sizes, overlays open on six review fixtures, every /try code with 15 s hangs, a live build against a faked https API, the proxy and region rewrite, about 960 seeded random actions; each finding traced here; fixes in the next commit)
+
+0 critical, 0 high, 0 medium, 5 low. #1 was a regression from round 16's fix, and #5 shows round 16's "always the next midnight ahead" was wrong for most of each day.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | low | On mobile, Try again on a rejected edit left the tab on the column round 16's refocus had opened, while the chip moved on out of sight; focus fell to `<body>` | fixed: Try again replays the rejected edit through the same path as the first press, so the tab and focus follow the chip (a confirmed keep and an undo too). Mobile JobPage test (fails on bb56bbe) |
+| 2 | low | On mobile, Hide or Keep clear in the Why sheet swapped the pressed button away and focus left the still-open modal | fixed: focus moves to the button that took its place (the sheet's heading if none). e2e (fails on the old drawer) |
+| 3 | low | The Why drawer's ◀/▶ became `disabled` at the ends, dropping focus out of the modal | fixed: `aria-disabled`, and presses at the end are ignored. e2e (fails on the old drawer) |
+| 4 | low | Dismiss on the failed toast dropped focus to `<body>` | fixed: focus goes back to the chip the edit was about. Same JobPage test (fails without it) |
+| 5 | low | Rounding the day shift up put a daily cap's retry a day late for about 14 of every 24 UTC hours | fixed: the shift is whole UTC days that put the fixtures' moment on today, so the cap's retry is always the next UTC midnight. mock-backend test at six times of day (fails on bb56bbe); a past `retry_later` retry only means the usual busy polling |

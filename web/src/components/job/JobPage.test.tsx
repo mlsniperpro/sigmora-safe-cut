@@ -4,7 +4,7 @@
  */
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { SafeCutClient } from "@/lib/api";
 import { setClientForTests } from "@/lib/client";
 import { MockBackend } from "@/lib/mock-backend";
@@ -153,6 +153,29 @@ describe("review panel", () => {
     act(() => refuse());
     expect(await screen.findByText("That change didn't save. Check your connection and try again.")).toBeInTheDocument();
     await waitFor(() => expect(within(column(/^Needs you/)).getByRole("article", { name: /^Face 6,/ })).toHaveFocus());
+  });
+
+  it("on mobile, Try again on a rejected edit follows the chip to its new tab, and Dismiss hands focus back to the chip", async () => {
+    const real = window.matchMedia;
+    window.matchMedia = ((query: string) => ({ ...real(query), matches: false })) as typeof window.matchMedia;
+    onTestFinished(() => void (window.matchMedia = real));
+    const user = setup("job-review-hero1");
+    await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
+    const tab = (name: RegExp) => screen.getByRole("tab", { name });
+    backend.inject(/\/review$/, "error-500");
+    await user.click(screen.getByRole("button", { name: "Hide Face 6" }));
+    expect(await screen.findByText("That change didn't save. Check your connection and try again.")).toBeInTheDocument();
+    await waitFor(() => expect(tab(/^Needs you/)).toHaveAttribute("aria-selected", "true"));
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(tab(/^Hidden/)).toHaveAttribute("aria-selected", "true"));
+    await waitFor(() => expect(within(column(/^Hidden/)).getByRole("article", { name: /^Face 6,/ })).toHaveFocus());
+    // Rejected again, then dismissed from the keyboard: focus doesn't fall to the page.
+    backend.inject(/\/review$/, "error-500");
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(await screen.findByText("That change didn't save. Check your connection and try again.")).toBeInTheDocument();
+    screen.getByRole("button", { name: "Dismiss" }).focus();
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(within(column(/^Hidden/)).getByRole("article", { name: /^Face 6,/ })).toHaveFocus());
   });
 
   it("removes a person after the dialog", async () => {

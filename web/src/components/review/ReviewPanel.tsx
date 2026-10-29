@@ -165,9 +165,10 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
   /**
    * Every edit goes through here: it runs the action, then points focus at the chip it moved
    * (and, on mobile, opens the tab that chip landed in), whichever route sent it: a button,
-   * a shortcut, the drawer, a dialog or Undo.
+   * a shortcut, the drawer, a dialog, Undo or a toast's Try again (`run` is then the RETRY that
+   * replays `action`).
    */
-  const act = (action: Action) => {
+  const act = (action: Action, run: Action = action) => {
     const before = stateRef.current;
     let target: string | null = null;
     switch (action.type) {
@@ -192,14 +193,36 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
       default:
         break;
     }
-    dispatch(action);
+    dispatch(run);
     if (!target || stateRef.current === before) return;
     // An object's keep only opened its in-chip confirm, which takes focus itself.
     if (action.type === "KEEP" && stateRef.current.confirm?.item_id === target) return;
     setEdited(target);
-    const column = effectiveDecision(stateRef.current, target);
+    follow(target);
+  };
+  /** Focus a chip, opening its tab on mobile. Unfixed spots always list under Needs you. */
+  const follow = (target: string) => {
+    const column = target.startsWith("spot:") ? "needs_you" : effectiveDecision(stateRef.current, target);
     if (column && !desktop) setTab(column);
     focusChip(target);
+  };
+  /** The chip standing for the last edit now: a refused cover's chip is gone, back to its spot. */
+  const editedChip = (): string | null => {
+    const cover = coverFor.current;
+    return edited && cover?.pending === edited && !(edited in stateRef.current.items) ? `spot:${cover.spot}` : edited;
+  };
+  /** Try again replays the rejected edit as the action it was, so focus follows it like the first time. */
+  const retry = (editId: string) => {
+    const r = stateRef.current.rejected[editId];
+    const run: Action = { type: "RETRY", edit_id: editId };
+    if (r?.action) {
+      // A confirmed keep's confirm is gone by now; its target is the edit's item.
+      act(r.action.type === "CONFIRM_KEEP" && r.edit.type === "keep" ? { type: "KEEP", id: r.edit.item_id, edit_id: editId } : r.action, run);
+    } else if (r?.edit.type === "undo") {
+      act({ type: "UNDO", target: r.edit.reverts, edit_id: editId }, run);
+    } else {
+      dispatch(run);
+    }
   };
   // Signed keyframe URLs expire after 15 min: a failed image refetches the job for fresh ones
   // (§10.7), at most once a minute however many thumbnails fail together.
@@ -240,17 +263,15 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
   }, [lastToast, edited]);
   // A rejected edit puts the chip back, which unmounts the one focus followed: follow it home
   // (a refused cover goes back to its spot), unless the viewer has already moved on.
+  // Once per failed toast, so a later click on the page background isn't pulled back.
+  const rescuedFor = useRef<ReviewState["toast"]>(null);
   useEffect(() => {
-    if (lastToast?.kind !== "failed" || !edited) return;
+    if (lastToast?.kind !== "failed" || rescuedFor.current === lastToast) return;
+    rescuedFor.current = lastToast;
     if (document.activeElement && document.activeElement !== document.body) return;
-    const cover = coverFor.current;
-    const spot = cover?.pending === edited ? cover.spot : null;
-    const target = spot ? `spot:${spot}` : edited;
-    // Unfixed spots always list under Needs you.
-    const column = spot ? "needs_you" : effectiveDecision(stateRef.current, target);
-    if (column && !desktop) setTab(column);
-    focusChip(target);
-  }, [lastToast, edited, desktop]);
+    const target = editedChip();
+    if (target) follow(target);
+  });
   // The ack swaps a covered spot's optimistic chip for the server's item, which remounts it.
   const coverSpots = state.spots;
   useEffect(() => {
@@ -658,8 +679,14 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
       <ToastView
         state={state}
         onUndo={(id) => act({ type: "UNDO", target: id, edit_id: newEditId() })}
-        onRetry={(id) => dispatch({ type: "RETRY", edit_id: id })}
-        onDismiss={() => dispatch({ type: "DISMISS_TOAST" })}
+        onRetry={retry}
+        onDismiss={() => {
+          // The toast's button goes away with it: put focus back on the chip the edit was about.
+          const inToast = !!document.activeElement?.closest("[data-toast]");
+          dispatch({ type: "DISMISS_TOAST" });
+          const target = editedChip();
+          if (inToast && target) follow(target);
+        }}
       />
 
       <WhyDrawer
@@ -992,7 +1019,7 @@ function ToastView({ state, onUndo, onRetry, onDismiss }: { state: ReviewState; 
   const undoable = toast?.kind === "edit" && top?.edit.edit_id === toast.edit_id;
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-40 z-30 flex justify-center px-4 lg:bottom-28">
-      <div role="status" aria-live="polite" className="pointer-events-auto">
+      <div role="status" aria-live="polite" data-toast className="pointer-events-auto">
         {toast && (
           <div className="flex items-center gap-3 rounded-lg bg-text px-4 py-2 text-sm text-bg shadow-[var(--shadow)]">
             <span>{toast.text}</span>
