@@ -88,15 +88,16 @@ export function FailedJob({ jobId, job, onResume, onDeleted }: { jobId: string; 
       {/* Answers to the buttons below come before them, so Tab moves on from an answer to its button. */}
       {note && <ActionError message={note} className="mt-3" tone="plain" />}
       {deleteError && <ActionError message={deleteError} className="mt-3" />}
+      {/* While a retry is out the button stays focusable (aria-disabled): `disabled` would drop focus to the page. */}
       <div className="mt-6 flex flex-wrap items-center gap-3">
         {view.actions.includes("try_again") && (
-          <button type="button" className={btn.primary} disabled={busy || blocked || waiting} onClick={() => void retry()}>
+          <button type="button" className={btn.primary} disabled={blocked || waiting} aria-disabled={busy || undefined} onClick={busy ? undefined : () => void retry()}>
             Try again
           </button>
         )}
         {view.actions.includes("try_again_tomorrow") && (
           <>
-            <button type="button" className={btn.primary} disabled={busy || blocked || waiting} onClick={() => void retry()}>
+            <button type="button" className={btn.primary} disabled={blocked || waiting} aria-disabled={busy || undefined} onClick={busy ? undefined : () => void retry()}>
               Try again tomorrow
             </button>
             {waiting && view.retryAt && <span className="text-sm text-muted">Available after {formatLocal(view.retryAt)}.</span>}

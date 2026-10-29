@@ -59,6 +59,7 @@
 - Audit round 16 (on c57b904): 6 low, fixed in the round-16 commit (rejected-edit focus, two narrow buttons plus an e2e sweep of every mobile control, the shift now whole days with expired codes kept expired, README, a cut-off percent-escape 500). On that commit: 828 tests, e2e 102/102, `checks.sh` exit 0.
 - Audit round 17 (on bb56bbe): 5 low (one a regression from round 16), fixed in the round-17 commit (retry follows the chip on mobile, focus kept in the Why sheet and on ◀/▶, Dismiss refocuses, cap retry on the next UTC midnight). On that commit: 829 tests, e2e 104/104, `checks.sh` exit 0.
 - Lesson: focus findings keep coming from controls that unmount or disable under focus. Before pushing a UI change, check every button that can disappear or become disabled while focused.
+- Self-found from that sweep: a failed job's Try again was `disabled` while its request was out, dropping focus in a real browser. Now aria-disabled, with an e2e check (fails on the old code). Every other `disabled` that changes under focus was checked: each is followed by an alert that takes focus. On that commit: 829 tests, e2e 105/105.
 - CLEAN_AUDITS_IN_A_ROW is 0. Two clean full audits are still needed, then a fresh break-it.md (fresh clone + FUZZ_RUNS=100000).
 
 ## Next steps, in order

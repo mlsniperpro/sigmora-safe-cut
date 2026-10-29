@@ -293,6 +293,19 @@ try {
     await context.close();
   }
 
+  // A failed job's Try again keeps focus while its request is out (aria-disabled, not disabled).
+  {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto(`${BASE}/jobs/job-failed-upstream`, { waitUntil: "networkidle" });
+    const again = page.getByRole("button", { name: "Try again", exact: true });
+    await again.focus();
+    await page.keyboard.press("Enter");
+    const held = await again.evaluate((el) => document.activeElement === el && el.getAttribute("aria-disabled") === "true");
+    check("failed job: Try again keeps focus while the retry is out", held);
+    await context.close();
+  }
+
   // A short landscape screen (or 200% zoom): the player isn't sticky, so the chips can scroll into view.
   {
     const context = await browser.newContext({ viewport: { width: 844, height: 390 } });

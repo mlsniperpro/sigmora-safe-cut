@@ -168,6 +168,7 @@ Round 14 (fixes in the round-14 commit; details in `reaudit.md`):
 - [x] R15-1 (low) a late fresh URL brings the review player back: JobPage test
 - [x] R15-2 (low) an action's GET isn't made quiet by a cut-short refresh: useJob test
 - [x] Self-found: fixture dates shift with the clock, so the mock and the tests hold on any date: mock-backend tests, suite run at clock shifts up to +400 days
+- [x] Self-found after round 17: a failed job's Try again keeps focus while its retry is out (aria-disabled): e2e
 - [x] R17-1 (low) Try again follows the chip to its tab on mobile: JobPage test
 - [x] R17-2 (low) focus stays in the Why sheet after Hide/Keep clear: e2e
 - [x] R17-3 (low) ◀/▶ keep focus at the ends (aria-disabled): e2e
