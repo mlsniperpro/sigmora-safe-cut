@@ -1,7 +1,7 @@
-AUDITED_COMMIT: a743ea2
+AUDITED_COMMIT: d4976bf
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
-CLEAN_AUDITS_IN_A_ROW: 0
+CLEAN_AUDITS_IN_A_ROW: 1
 
 # Re-audit log: SAFECUT-WP6
 
@@ -282,3 +282,20 @@ Fresh-clone README run also found: `pnpm typecheck` failed before any build (Nex
 | 1 | low | The result page never re-armed its 10-minute link refresh after one failed, so the download links went stale (403) | fixed: a failed refresh re-arms the next one. ResultPage test (fails on a743ea2) |
 | 2 | low | A focus request older than its 1 s lapse still fired if its chip mounted before any other commit cleared it (a late cover ack, then a tab change) | fixed: the lapse is checked first. JobPage test (fails on a743ea2) |
 | 3 | low | Tab titles didn't follow the state shown (WCAG 2.4.2): the 404 page had the landing title, and every job and result state kept one static title. Also, a single 5xx on the demo left the hero on "didn't load" | fixed: the 404 page has its own title; job, result and error pages take their tab title from the h1 they show. The hero retries the demo once, 2 s after a 5xx. JobPage tests, a landing test and two e2e checks (each fails on the old code) |
+
+## Round 20 (audited d4976bf by a Sonnet reviewer): CLEAN
+
+0 critical, 0 high, 0 medium, 0 low.
+- **Round-19 fixes:** each checked in a real browser.
+  - The link refresh was driven for 35 minutes on a fake clock against a live build with failing and hanging GETs: one GET per 10 minutes, no loop.
+  - Focus lapse checked.
+  - Titles across every job, result and error fixture and a full navigation loop.
+  - The hero retry under one, two and repeated 5xx, a 404 and a hang.
+- **Also covered:**
+  - URL edge cases.
+  - 64 routes × 320/390/1280 × light/dark with axe, overflow, one h1 per page and 44 px targets (0 issues).
+  - A dev server in two time zones (no hydration errors).
+  - A full live-mode flow, keyboard shortcuts behind the open Why drawer, and the skip and hash links.
+- **Two design limits, noted and not counted (no change, so the audited code stays as it is):**
+  - A receipt URL answering 403/404 still fires the iframe's `load`, so the error body shows in the frame. Only a hung receipt reaches the "didn't load" message; the 10-minute refresh keeps URLs from expiring in normal use.
+  - Some failed-job tab titles are long (the whole first sentence of the §2.6 copy).
