@@ -793,7 +793,8 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
                     }}
                   >
                     {chip && <Thumbnail chip={chip} url={chip.thumb ? job.keyframe_urls[String(chip.thumb.frame)] ?? null : null} geometry={job.keyframe_geometry} size={48} onError={refreshKeyframes} />}
-                    <span>
+                    {/* Muse Spark's description can hold a long URL or ID: it wraps (controls otherwise keep whole words). */}
+                    <span data-api-text className="min-w-0 [overflow-wrap:anywhere]">
                       Same person as {t.label}
                       {description ? ` (${description})` : ""}
                     </span>

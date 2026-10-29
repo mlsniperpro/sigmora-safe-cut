@@ -168,6 +168,8 @@ Round 14 (fixes in the round-14 commit; details in `reaudit.md`):
 - [x] R15-1 (low) a late fresh URL brings the review player back: JobPage test
 - [x] R15-2 (low) an action's GET isn't made quiet by a cut-short refresh: useJob test
 - [x] Self-found: fixture dates shift with the clock, so the mock and the tests hold on any date: mock-backend tests, suite run at clock shifts up to +400 days
+- [x] R28-1 (medium) chip ⋯ menu stays on screen when its trigger wraps: e2e at 320 and 1280
+- [x] R28-2 (low) API text inside controls wraps: data-api-text spans + sweep in the merge dialog
 - [x] R27-1..3 (low) control labels keep whole words beside long text: e2e split-word check
 - [x] R26-1 (low) long tokens wrap everywhere (body overflow-wrap: anywhere): e2e sweep on 6 pages + Why drawer
 - [x] Build clears .next/cache so CSS is never stale

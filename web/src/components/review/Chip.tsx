@@ -106,7 +106,8 @@ function OverflowMenu({ chip, onRemove, onJump }: { chip: ChipModel; onRemove: (
   ];
   if (items.length === 0) return null;
   return (
-    <div className="relative">
+    // ml-auto keeps the trigger at the row's right edge even when it wraps, so the right-anchored menu stays on screen.
+    <div className="relative ml-auto">
       <button
         ref={button}
         type="button"
@@ -256,7 +257,10 @@ export function Chip({
           )}
           {merge && (
             <button type="button" data-btn="merge" className={actionClass} onClick={(e) => handlers.onMergeMenu(chip, e.currentTarget)}>
-              Same as {merge.targetLabel}…
+              Same as{" "}
+              <span data-api-text className="[overflow-wrap:anywhere]">
+                {merge.targetLabel}…
+              </span>
             </button>
           )}
           {chip.buttons.hide && (
@@ -279,7 +283,6 @@ export function Chip({
               Always hidden
             </button>
           )}
-          <span className="flex-1" />
           <OverflowMenu chip={chip} onRemove={() => handlers.onRemove(chip)} onJump={() => handlers.onJump(chip)} />
         </div>
       )}

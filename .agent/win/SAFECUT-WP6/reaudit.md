@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 98d7555
+AUDITED_COMMIT: b01cfee
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -372,3 +372,12 @@ Found while fixing: an incremental `next build` (Turbopack's cache, with the Tai
 | 3 | low | "Delete everything now" split beside a failed-delete message at 320 px | fixed (same rule). The failed toast and failed delete can't be produced in the mock production build, so the e2e covers the class through the drawer case and the six-page sweep |
 
 Lesson: a global text rule needs a check that controls stay whole, not just that text wraps. The sweep now checks both.
+
+## Round 28 (audited b01cfee by a Sonnet reviewer: a live build with failures injected through a fake https API, old vs new CSS diffed for mid-word breaks and overflow on ~55 routes at 8 widths with interaction states, 100 routes × 3 widths × light/dark with axe; fixes in the next commit)
+
+0 critical, 0 high, 1 medium, 1 low. Round 27's three cases are fixed at every width.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | medium | A chip's ⋯ menu opened off the left edge of the screen when its trigger wrapped onto its own line (Face 8 at 1280, a full Needs-you row at 320): the menu is right-anchored and the trigger landed on the left (pre-existing, missed by rounds 1–27) | fixed: the trigger's wrapper is `ml-auto`, so a wrapped trigger stays at the row's right and the 256 px menu fits inside the chip. e2e opens every visible ⋯ at 320 (cafe, Needs you) and 1280 (sample) and requires the menu on screen. It fails on b01cfee at x=−183 and x=−131 |
+| 2 | low | Round 27's `overflow-wrap: normal` on controls also stopped API text inside a control from wrapping, so a long token in a merge target's description or label overflowed (needs a URL or ID in Muse Spark text) | fixed: the API part of those labels sits in a `data-api-text` span that wraps anywhere. The long-token sweep now fills those spans and also runs in the merge dialog. That check can't fail on the old code (it had no such span to fill); the menu-name check shows the labels keep their exact accessible names |

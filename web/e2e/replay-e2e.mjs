@@ -76,6 +76,8 @@ async function longTokenOverflow(page) {
       if (el.closest("button, a, [role=tablist], video")) continue;
       el.append(` ${token}`);
     }
+    // API text inside a control (a merge target's description or label) wraps too.
+    for (const el of document.querySelectorAll("[data-api-text]")) el.append(` ${token}`);
     const out = [];
     // Next to long text, a control's label still keeps whole words (no "Dismis/s").
     for (const el of document.querySelectorAll("button, a, [role=tab], [role=radio], [role=menuitem]")) {
@@ -430,6 +432,35 @@ try {
     await page.getByRole("dialog").waitFor();
     const drawer = await longTokenOverflow(page);
     check("320 px: long tokens wrap in the Why drawer", drawer.length === 0, drawer.slice(0, 4).join("; "));
+    await page.keyboard.press("Escape");
+    // The merge dialog's options carry Muse Spark's description of each person.
+    await page.getByRole("button", { name: /^Same as / }).first().click();
+    await page.getByRole("dialog").waitFor();
+    const merge = await longTokenOverflow(page);
+    check("320 px: long tokens wrap in the merge dialog", merge.length === 0, merge.slice(0, 4).join("; "));
+    await context.close();
+  }
+
+  // A chip's ⋯ menu opens on screen even when its trigger wraps onto its own line.
+  for (const [label, viewport, path, tab] of [
+    ["320", { width: 320, height: 800 }, "/jobs/job-review-cafe", /Needs you/],
+    ["1280", { width: 1280, height: 900 }, "/jobs/job-review-sample", null],
+  ]) {
+    const context = await browser.newContext({ viewport });
+    const page = await context.newPage();
+    await page.goto(`${BASE}${path}`, { waitUntil: "networkidle" });
+    await page.getByText(/hidden · /).waitFor();
+    if (tab) await page.getByRole("tab", { name: tab }).click();
+    const off = [];
+    for (const trigger of await page.getByRole("button", { name: /^More actions for / }).all()) {
+      if (!(await trigger.isVisible())) continue;
+      await trigger.scrollIntoViewIfNeeded();
+      await trigger.click();
+      const box = await page.getByRole("menu").boundingBox();
+      if (!box || box.x < 0 || box.x + box.width > viewport.width) off.push(`${await trigger.getAttribute("aria-label")} x=${box ? Math.round(box.x) : "?"}`);
+      await page.keyboard.press("Escape");
+    }
+    check(`${label} px: every chip's ⋯ menu opens on screen`, off.length === 0, off.slice(0, 3).join("; "));
     await context.close();
   }
 
