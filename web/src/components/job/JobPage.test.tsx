@@ -238,6 +238,67 @@ describe("review panel", () => {
     await waitFor(() => expect(screen.getByRole("article", { name: /^A1,/ })).toHaveFocus());
   });
 
+  it("undoing a cover brings focus back to the unfixed spot's chip", async () => {
+    const user = setup("result-unresolved-review", "view=review");
+    await user.click(await screen.findByRole("button", { name: "Cover it Unfixed spot U1" }));
+    await waitFor(() => expect(screen.getByRole("article", { name: /^A1,/ })).toHaveFocus());
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(screen.getByRole("article", { name: /^Unfixed spot U1,/ })).toHaveFocus());
+  });
+
+  it("on mobile, a rejected edit's chip gets focus in the tab that opens for it, even when frames come before the commit", async () => {
+    const real = window.matchMedia;
+    window.matchMedia = ((query: string) => ({ ...real(query), matches: false })) as typeof window.matchMedia;
+    // Frame callbacks that run before React commits the new tab, as in a busy browser (a microtask
+    // beats React's flush). A frame loop that re-arms itself waits for a timer instead.
+    let inFrame = false;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+      if (inFrame) return window.setTimeout(() => cb(performance.now()), 16);
+      queueMicrotask(() => {
+        inFrame = true;
+        try {
+          cb(performance.now());
+        } finally {
+          inFrame = false;
+        }
+      });
+      return 0;
+    });
+    onTestFinished(() => void (window.matchMedia = real));
+    const user = setup("job-review-hero1");
+    await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
+    await user.click(screen.getByRole("tab", { name: /^Needs you/ }));
+    backend.inject(/\/review$/, "error-500");
+    await user.click(screen.getByRole("button", { name: "Hide Face 6" }));
+    expect(await screen.findByText("That change didn't save. Check your connection and try again.")).toBeInTheDocument();
+    // The rescue opens Needs you from an effect; the chip only mounts with that later commit.
+    await waitFor(() => expect(screen.getByRole("tab", { name: /^Needs you/ })).toHaveAttribute("aria-selected", "true"));
+    await waitFor(() => expect(within(column(/^Needs you/)).getByRole("article", { name: /^Face 6,/ })).toHaveFocus());
+  });
+
+  it("on mobile, closing the Why sheet after its edit was rejected opens the chip's tab again", async () => {
+    const real = window.matchMedia;
+    window.matchMedia = ((query: string) => ({ ...real(query), matches: false })) as typeof window.matchMedia;
+    onTestFinished(() => void (window.matchMedia = real));
+    const user = setup("job-review-hero1");
+    await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
+    await user.click(screen.getByRole("tab", { name: /^Needs you/ }));
+    await user.click(screen.getByRole("button", { name: "Why? Face 6, needs you" }));
+    const drawer = await screen.findByRole("dialog", { name: "Face 6 · Person" });
+    backend.inject(/\/review$/, "error-500");
+    await user.click(within(drawer).getByRole("button", { name: /^Hide$/ }));
+    expect(await screen.findByText("That change didn't save. Check your connection and try again.")).toBeInTheDocument();
+    await user.click(within(drawer).getByRole("button", { name: /Close/ }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: /^Needs you/ })).toHaveAttribute("aria-selected", "true"));
+    await waitFor(() => expect(within(column(/^Needs you/)).getByRole("article", { name: /^Face 6,/ })).toHaveFocus());
+  });
+
+  it("a failed job's Try again hands focus to the progress once the job runs again", async () => {
+    const user = setup("job-failed-upstream");
+    await user.click(await screen.findByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Working on your clip" })).toHaveFocus());
+  });
+
   it("deletes everything after the confirm and ignores late responses", async () => {
     const user = setup("job-review-hero1");
     await screen.findByText("2 hidden · 1 kept clear · 1 needs you");

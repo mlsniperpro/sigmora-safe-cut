@@ -31,6 +31,8 @@ const COLUMNS: ReadonlyArray<{ key: Column; title: string; Icon: typeof HiddenIc
   { key: "needs_you", title: "Needs you", Icon: NeedsIcon, empty: "Nothing needs you." },
 ];
 const TOAST_MS = 6_000;
+/** How long a focus request waits for its chip to show before it lapses. */
+const FOCUS_WAIT_MS = 1_000;
 const SHORTCUTS_KEY = "safecut.shortcuts";
 /** At most one job refetch a minute for expired keyframe URLs (§10.7). */
 const KEYFRAME_REFRESH_GAP_MS = 60_000;
@@ -140,10 +142,34 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
     return () => clearTimeout(t);
   }, []);
 
-  const focusChip = (id: string | null) => {
-    if (!id) return;
-    requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-chip-id="${CSS.escape(id)}"]`)?.focus());
-  };
+  /**
+   * Focus waits for the commit that shows the chip (an edit moves it, a tab change mounts it), so
+   * it can't run before the chip exists. A request the chip never answers lapses, so it can't
+   * pull focus back later.
+   */
+  const pendingFocus = useRef<{ id: string; at: number } | null>(null);
+  const tryPendingFocus = useCallback(() => {
+    const p = pendingFocus.current;
+    if (!p) return;
+    const el = document.querySelector<HTMLElement>(`[data-chip-id="${CSS.escape(p.id)}"]`);
+    if (el) {
+      pendingFocus.current = null;
+      el.focus();
+    } else if (performance.now() - p.at > FOCUS_WAIT_MS) {
+      pendingFocus.current = null;
+    }
+  }, []);
+  const focusChip = useCallback(
+    (id: string | null) => {
+      if (!id) return;
+      pendingFocus.current = { id, at: performance.now() };
+      // A request that changes nothing on screen gets no commit, so it also tries on the next frame.
+      requestAnimationFrame(tryPendingFocus);
+    },
+    [tryPendingFocus],
+  );
+  // Every commit tries too: the one that mounts the chip (a moved chip, an opened tab) focuses it.
+  useEffect(tryPendingFocus);
 
   const select = useCallback((chip: ChipModel) => {
     setSelected(chip.id);
@@ -183,9 +209,14 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
       case "MERGE":
         target = action.dst;
         break;
-      case "UNDO":
-        target = Object.keys(before.undo.find((u) => u.edit.edit_id === action.target)?.prev.items ?? {}).find((id) => !id.startsWith("pending:")) ?? null;
+      case "UNDO": {
+        // The chip the undone edit changed; an undone cover's item goes away, so its spot comes back.
+        const prev = before.undo.find((u) => u.edit.edit_id === action.target)?.prev;
+        const item = Object.entries(prev?.items ?? {}).find(([id, was]) => !id.startsWith("pending:") && was !== undefined)?.[0];
+        const spot = Object.keys(prev?.spots ?? {})[0];
+        target = item ?? (spot ? `spot:${spot}` : null);
         break;
+      }
       case "COVER_SPOT":
         target = `pending:${action.edit_id}`;
         coverFor.current = { pending: target, spot: action.spot_id };
@@ -260,7 +291,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
   const lastToast = state.toast;
   useEffect(() => {
     if (lastToast?.kind === "edit" && edited) focusChip(edited);
-  }, [lastToast, edited]);
+  }, [lastToast, edited, focusChip]);
   // A rejected edit puts the chip back, which unmounts the one focus followed: follow it home
   // (a refused cover goes back to its spot), unless the viewer has already moved on.
   // Once per failed toast, so a later click on the page background isn't pulled back.
@@ -281,7 +312,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
     if (!real || real === cover.pending) return;
     coverFor.current = null;
     if (document.activeElement === document.body || !document.activeElement) focusChip(real);
-  }, [coverSpots, edited]);
+  }, [coverSpots, edited, focusChip]);
 
   // Focus must never land under the sticky player or the fixed bottom bar (WCAG 2.4.11, §3.8).
   const stickyTop = useRef<HTMLDivElement>(null);
@@ -711,7 +742,8 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
         }}
         onClose={() => {
           setDrawer(null);
-          focusChip(returnFocus.current);
+          // The chip may have moved columns while the sheet was open (an edit or a rejected one).
+          if (returnFocus.current) follow(returnFocus.current);
         }}
         onKeyframeError={refreshKeyframes}
       />

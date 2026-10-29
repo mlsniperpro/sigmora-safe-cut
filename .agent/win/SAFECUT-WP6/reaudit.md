@@ -1,4 +1,4 @@
-AUDITED_COMMIT: bb56bbe
+AUDITED_COMMIT: b7ab493
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -261,3 +261,14 @@ Fresh-clone README run also found: `pnpm typecheck` failed before any build (Nex
 | 3 | low | The Why drawer's ◀/▶ became `disabled` at the ends, dropping focus out of the modal | fixed: `aria-disabled`, and presses at the end are ignored. e2e (fails on the old drawer) |
 | 4 | low | Dismiss on the failed toast dropped focus to `<body>` | fixed: focus goes back to the chip the edit was about. Same JobPage test (fails without it) |
 | 5 | low | Rounding the day shift up put a daily cap's retry a day late for about 14 of every 24 UTC hours | fixed: the shift is whole UTC days that put the fixtures' moment on today, so the cap's retry is always the next UTC midnight. mock-backend test at six times of day (fails on bb56bbe); a past `retry_later` retry only means the usual busy polling |
+
+## Round 18 (audited b7ab493 by a Sonnet reviewer: 70 routes × 320/390/1280 × light/dark with axe and target sizes, every overlay state at 320/390, and an instrumented mock that fails, delays or passes each review edit, checking retry, undo, merge, remove, confirm and cover sequences; each finding traced here; fixes in the next commit)
+
+0 critical, 0 high, 0 medium, 4 low. The round-17 sequences all held. All four findings are about where focus goes.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | low | On mobile, about 1 in 8 rejected edits left focus on `<body>`: the rescue opened the chip's tab from an effect, and the one-frame focus could run before that tab committed | fixed at the root: a focus request waits for the commit that mounts its chip (tried after every commit and on the next frame, lapsing after 1 s), so every focus path is covered, not only this one. Mobile JobPage test with frames that run before React's commit (fails on b7ab493) |
+| 2 | low | Undo of a covered spot targeted the covering item, which the undo removes, so focus fell to `<body>` (and the mobile tab stayed on Hidden) | fixed: an undo that removes the item it created focuses the spot that comes back. JobPage test (fails on b7ab493) |
+| 3 | low | On mobile, closing the Why sheet after its edit was rejected focused a chip that wasn't in the open tab | fixed: closing the sheet follows the chip, opening its tab. JobPage regression test (jsdom doesn't make the page behind a modal inert, so this test passes on the old code too; the change is one call, `follow` instead of `focusChip`) |
+| 4 | low | A failed job's successful Try again unmounted the focused button with the failed view | fixed: once the job leaves `failed`, focus moves to the new view's progress unless the viewer moved on. JobPage test (fails on b7ab493) |

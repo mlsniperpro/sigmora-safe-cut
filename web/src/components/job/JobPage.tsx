@@ -4,7 +4,7 @@
  * status. `done` moves to the result unless opened with `?view=review`.
  */
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { COPY } from "@/lib/copy";
 import { keptQuery } from "@/lib/site";
 import { checkTimeline } from "@/lib/time";
@@ -60,6 +60,18 @@ export function JobPage() {
     if (toResult) router.replace(`/jobs/${encodeURIComponent(id)}/result${keptQuery(params)}`);
   }, [toResult, router, id, params]);
 
+  // A failed job's Try again goes away with the failed view once the job moves on: focus lands on
+  // the new view's progress, unless the viewer has moved on meanwhile.
+  const focusAfterRetry = useRef(false);
+  const status = job?.status;
+  useEffect(() => {
+    if (!focusAfterRetry.current || !status || status === "failed") return;
+    focusAfterRetry.current = false;
+    const at = document.activeElement;
+    if (at && at !== document.body) return;
+    document.querySelector<HTMLElement>("[data-step-heading], [data-render-progress]")?.focus();
+  }, [status]);
+
   if (load.kind === "loading") return <JobSkeleton />;
   if (load.kind !== "ready") return loadMessage(load.kind, resume);
   const j = load.job;
@@ -88,7 +100,17 @@ export function JobPage() {
         </section>
       );
     case "failed":
-      return <FailedJob jobId={id} job={j} onResume={resume} onDeleted={markDeleted} />;
+      return (
+        <FailedJob
+          jobId={id}
+          job={j}
+          onResume={() => {
+            focusAfterRetry.current = true;
+            resume();
+          }}
+          onDeleted={markDeleted}
+        />
+      );
     case "done":
       if (toResult) return <JobSkeleton />;
       return <ReviewPanel jobId={id} job={j} viewReview onPatchJob={patch} onResume={resume} onRefreshMedia={refreshUrls} onDeleted={markDeleted} onRenderStarted={() => setRenderedHere(true)} query={keptQuery(params)} />;
