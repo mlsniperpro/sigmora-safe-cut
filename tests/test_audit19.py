@@ -60,7 +60,8 @@ def test_a_merged_item_needs_no_entry_in_its_tracks_gap(tmp_path: Path) -> None:
 
     def add_track(d: Any) -> None:
         late = json.loads(json.dumps(next(t for t in d["tracks"] if t["track_id"] == "screen:1")))
-        late.update({"track_id": "screen:2", "first": 10, "last": 11, "boxes": {"10": late["boxes"]["1"]}})
+        late.update({"track_id": "screen:2", "first": 10, "last": 11,
+                     "boxes": {"10": late["boxes"]["1"], "11": late["boxes"]["1"]}})  # fmt: skip
         late["sam_object"]["object_id"] = "7"
         d["tracks"].append(late)
 

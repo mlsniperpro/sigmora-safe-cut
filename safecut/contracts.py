@@ -282,6 +282,10 @@ class Track(Contract):
             raise ValueError(f"track {self.track_id}: last < first")
         if not self.boxes:
             raise ValueError(f"track {self.track_id} has no boxes")
+        if self.boxes and (self.first not in self.boxes or self.last not in self.boxes):
+            # ARCHITECTURE §3.2: a track has a box from its first frame to its last; frames before its first box
+            # or after its last would otherwise escape every geometry check.
+            raise ValueError(f"track {self.track_id}: boxes must include its first and last frames")
         for name, frames in (("boxes", self.boxes), ("masks", self.masks), ("conf", self.conf)):
             outside = [f for f in frames if not self.first <= f <= self.last]
             if outside:
@@ -757,7 +761,9 @@ class Audit(Contract):
         return self
 
     @property
-    def publishable(self) -> bool:
+    def no_unresolved(self) -> bool:
+        """Necessary for publishing, never sufficient: only ``validate_job_dir`` gates it (red-team coverage,
+        passes, unscanned frames and the cross-file rules live there)."""
         return self.unresolved == 0
 
 
@@ -791,6 +797,9 @@ class DataHandling(Contract):
     #: SAM responses whose deletion was requested (``responses.json`` entries with ``requested_at`` set) when
     #: ``store: false`` can't be sent; 0 when none were needed. Meta soft-deletes, so it's "deletion requested".
     responses_delete_requested: NonNegativeInt
+    #: PRE-A §10.4: how many SAM responses remain unrequested (a failed DELETE), so the receipt never hides one
+    #: still stored at Meta.
+    responses_delete_pending: NonNegativeInt = 0
     notes: list[str] = Field(default_factory=list[str])
 
     @model_validator(mode="after")
@@ -852,6 +861,9 @@ def receipt_hash(body: ReceiptBody) -> str:
     not raw JSON, means defaults and timestamp formats are normalised before hashing.
     """
     data = ReceiptBody.model_validate(body.model_dump(include=set(ReceiptBody.model_fields))).model_dump(mode="json")
+    if not data["data_handling"].get("responses_delete_pending"):
+        # Added after receipts were first sealed: left out while 0, so every earlier receipt's hash still holds.
+        data["data_handling"].pop("responses_delete_pending", None)
     prev = data.get("prev_hash") or ""
     return hashlib.sha256((prev + canonical_json(data)).encode("utf-8")).hexdigest()
 
@@ -1402,6 +1414,11 @@ def _check_receipt(
             f"receipt.json: responses_delete_requested {receipt.data_handling.responses_delete_requested}"
             f" != {responses.requested} requested in responses.json"
         )
+    if responses is not None and receipt.data_handling.responses_delete_pending != len(responses.pending):
+        raise ContractError(
+            f"receipt.json: responses_delete_pending {receipt.data_handling.responses_delete_pending}"
+            f" != {len(responses.pending)} unrequested in responses.json"
+        )
     if responses is not None and responses.root:
         # PRE-A §10.4: responses.json holds entries only when SAM ran without `store: false`, so Meta kept them.
         # PRE-A §10.6 names that model in `no_store_param` (no store setting was sent); `store_by_model: true` says
@@ -1598,7 +1615,7 @@ def _check_track_geometry(
         # DESIGN §2.6: the guard pads by the kind's ratio plus `padding.px` (clamped to the frame). Whether
         # the ratio is per side or in total isn't fixed, so the check takes the smaller reading (half
         # of it each side); a mask is SAM's own outline of the object, so it spans the track box.
-        if not _held(entries, fills, box, _pad(box, ratio, plan.padding.px, job)):
+        if not _held(entries, fills, box, _pad(box, ratio, plan.padding.px, job), track.masks.get(frame)):
             raise ContractError(
                 f"plan.json frame {frame}: {item.item_id} doesn't cover {track.track_id}'s padded box {list(box)}"
             )
@@ -1658,12 +1675,42 @@ def _near(entry: PlanEntry, box: Box) -> bool:
     return boxes_overlap(entry.box, box)
 
 
-def _held(entries: list[PlanEntry], fills: list[Box], box: Box, padded: Box) -> bool:
-    """A box entry contains ``padded``, a mask entry's foreground spans ``box``, or a crowd fill contains ``box``."""
-    return any(
-        _contains(e.box, padded) if e.shape == "box" else e.mask is not None and _mask_spans(e.mask, box)
-        for e in entries
-    ) or any(_contains(fill, box) for fill in fills)
+def _held(entries: list[PlanEntry], fills: list[Box], box: Box, padded: Box, sam: Rle | None = None) -> bool:
+    """A box entry contains ``padded``; a mask entry contains the track's own SAM mask on that frame when there is
+    one (the guard pads outward, never inward), else its foreground spans ``box``; or a crowd fill contains ``box``."""
+
+    def holds(e: PlanEntry) -> bool:
+        if e.shape == "box":
+            return _contains(e.box, padded)
+        if e.mask is None:
+            return False
+        return _mask_within(sam, e.mask) if sam is not None else _mask_spans(e.mask, box)
+
+    return any(holds(e) for e in entries) or any(_contains(fill, box) for fill in fills)
+
+
+def _fg_intervals(mask: Rle) -> tuple[NDArray[np.int64], NDArray[np.int64]]:
+    """The ``[start, end)`` pixel intervals (column-major) of a mask's non-empty foreground runs."""
+    runs = mask.runs()
+    ends = np.cumsum(runs)
+    solid = np.flatnonzero((np.arange(runs.size) % 2 == 1) & (runs > 0))
+    return ends[solid] - runs[solid], ends[solid]
+
+
+def _mask_within(inner: Rle, outer: Rle) -> bool:
+    """Whether every foreground pixel of ``inner`` is foreground in ``outer`` (same frame size)."""
+    if tuple(inner.size) != tuple(outer.size):
+        return False
+    starts, ends = _fg_intervals(inner)
+    if starts.size == 0:
+        return True
+    o_starts, o_ends = _fg_intervals(outer)
+    if o_starts.size == 0:
+        return False
+    # The outer run that could hold each inner run starts at or before it; it must also end at or after it.
+    j = np.searchsorted(o_starts, starts, side="right") - 1
+    jj = np.maximum(j, 0)
+    return bool(((j >= 0) & (o_starts[jj] <= starts) & (o_ends[jj] >= ends)).all())
 
 
 def _mask_stats(mask: Rle, box: Box) -> tuple[int, Box | None]:

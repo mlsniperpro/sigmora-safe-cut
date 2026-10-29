@@ -46,7 +46,7 @@ def test_an_unresolved_leak_must_be_counted() -> None:
     with pytest.raises(ValidationError, match="unresolved 0 is less than the 1 unresolved leaks"):
         c.Audit.model_validate(audit)
     counted = c.Audit.model_validate(audit | {"unresolved": 1, "blocked_reason": "unresolved_leaks"})
-    assert not counted.publishable
+    assert not counted.no_unresolved
 
 
 def test_a_leak_is_patched_flagged_or_unresolved() -> None:

@@ -289,11 +289,11 @@ def test_plan_entry_shape_and_grid_rules() -> None:
 
 def test_publish_gate_invariant() -> None:
     data = _raw("audit.json")
-    assert c.Audit.model_validate(data).publishable
+    assert c.Audit.model_validate(data).no_unresolved
     with pytest.raises(ValidationError, match="blocked_reason is set exactly"):
         c.Audit.model_validate(data | {"unresolved": 3})
     blocked = c.Audit.model_validate(data | {"unresolved": 3, "blocked_reason": "audit_failed"})
-    assert not blocked.publishable
+    assert not blocked.no_unresolved
     with pytest.raises(ValidationError, match="audit_budget_cause"):
         c.Audit.model_validate(data | {"unresolved": 3, "blocked_reason": "over_budget"})
     over = data | {"unresolved": 3, "blocked_reason": "over_budget", "audit_budget_cause": "job_cap"}

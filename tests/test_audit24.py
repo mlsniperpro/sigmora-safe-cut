@@ -2002,7 +2002,7 @@ async def test_every_summary_names_its_own_cost_lines(
 
 
 def _track(**change: Any) -> c.Track:
-    base = {"track_id": "face:9", "concept": "face", "first": 0, "last": 1, "boxes": {"0": [0, 0, 10, 10]},
+    base = {"track_id": "face:9", "concept": "face", "first": 0, "last": 0, "boxes": {"0": [0, 0, 10, 10]},
             "source": "sam-3.1", "prompt": "face"}  # fmt: skip
     return c.Track.model_validate(base | change)
 
@@ -2346,3 +2346,62 @@ async def test_a_role_calls_file_that_isnt_a_list_is_a_typed_refusal(tmp_path: P
                      meta=cast(MetaClient, None), files=cast(FileStore, None))  # fmt: skip
     with pytest.raises(ValueError, match="must be a list"):
         await probes._role_calls(p, frames)  # pyright: ignore[reportPrivateUsage] -- the unit under test
+
+
+# --- audit #74 ----------------------------------------------------------------------------------------------
+
+
+def _rect_mask(box: tuple[int, int, int, int], height: int = 60, width: int = 80) -> c.Rle:
+    m = np.zeros((height, width), dtype=np.uint8)
+    m[box[1] : box[3], box[0] : box[2]] = 1
+    flat = m.flatten(order="F")
+    edges = np.flatnonzero(np.diff(flat.astype(np.int8))) + 1
+    runs = np.diff(np.concatenate([[0], edges, [flat.size]])).tolist()
+    return c.Rle(size=(height, width), counts=rle_string(([0] if flat[0] else []) + runs))
+
+
+def _mask_entry(mask: c.Rle) -> c.PlanEntry:
+    return c.PlanEntry.model_validate({"item_id": "i_1", "shape": "mask", "box": [0, 0, 80, 60], "mask": mask,
+                                       "style": "solid", "grid": None, "source": "decision"})  # fmt: skip
+
+
+def test_a_mask_entry_must_contain_the_tracks_own_sam_mask() -> None:
+    sam_mask = _rect_mask((20, 10, 40, 40))  # the face's SAM outline
+    track_box = (20, 10, 40, 40)
+    padded = (10, 0, 50, 50)
+    dilated = _mask_entry(_rect_mask((16, 6, 44, 44)))
+    shifted = _mask_entry(_rect_mask((24, 10, 44, 40)))  # 4 px off: a strip of the face uncovered, yet it "spans"
+    assert c._held([dilated], [], track_box, padded, sam_mask)  # pyright: ignore[reportPrivateUsage] -- the unit under test
+    assert not c._held([shifted], [], track_box, padded, sam_mask)  # pyright: ignore[reportPrivateUsage] -- the unit under test
+    assert c._held([shifted], [], track_box, padded)  # pyright: ignore[reportPrivateUsage] -- without a SAM mask, the span rule
+
+
+def test_a_track_has_boxes_on_its_first_and_last_frames() -> None:
+    with pytest.raises(ValidationError, match="boxes must include its first and last frames"):
+        _track(first=0, last=30, boxes={"10": [0, 0, 10, 10], "30": [0, 0, 10, 10]})
+    _track(first=0, last=30, boxes={"0": [0, 0, 10, 10], "30": [0, 0, 10, 10]})
+
+
+def test_the_receipt_says_how_many_sam_responses_remain_unrequested(tmp_path: Path) -> None:
+    job_dir = tmp_path / "j_example"
+    shutil.copytree(EXAMPLE, job_dir)
+    entries = [{"response_id": "resp_1", "requested_at": "2026-10-27T10:05:00Z"},
+               {"response_id": "resp_2", "requested_at": None}]  # fmt: skip
+    (job_dir / "responses.json").write_text(json.dumps(entries))
+
+    def kept(d: dict[str, Any]) -> None:
+        d["data_handling"]["responses_delete_requested"] = 1
+        d["data_handling"]["store_by_model"]["sam-3.1"] = True
+        d["data_handling"]["store"] = True
+
+    _reseal_handling(job_dir, kept)
+    with pytest.raises(c.ContractError, match=r"responses_delete_pending 0 != 1 unrequested"):
+        c.validate_job_dir(job_dir)
+    _reseal_handling(job_dir, lambda d: d["data_handling"].update({"responses_delete_pending": 1}))
+    c.validate_job_dir(job_dir)
+
+
+def test_receipts_sealed_before_the_pending_count_still_verify() -> None:
+    receipt = c.load(EXAMPLE / "receipt.json", c.Receipt)  # sealed before responses_delete_pending existed
+    assert receipt.data_handling.responses_delete_pending == 0
+    assert c.receipt_hash(c.ReceiptBody.model_validate(receipt.model_dump(exclude={"hash"}))) == receipt.hash
