@@ -736,7 +736,7 @@ async def _open_call(
     *,
     effort: str,
     price: OpenWeightPrice,
-    raw: list[Summary],
+    raw: _Answers,
     max_images: int = open_weight.MAX_IMAGES,
 ) -> Summary:
     """One redteam.md call (the same prompt and schema WP4 uses), checked for every frame being answered."""
@@ -748,7 +748,7 @@ async def _open_call(
     except MetaError as exc:
         return {"effort": effort, "error": f"{type(exc).__name__}: {exc}"}
     answer = cast(Mapping[str, Any], result.body)
-    raw.append({"effort": effort, "frames": [n for n, _ in frames], "answer": dict(answer)})
+    raw.add({"effort": effort, "frames": [n for n, _ in frames], "answer": dict(answer)})
     usage = open_weight.chat_units(answer.get("usage")) or {}
     row: Summary = {
         "effort": effort,
@@ -775,6 +775,22 @@ def _limit_holds(eight: Summary, nine: Summary) -> bool | None:
     return True
 
 
+class _Answers:
+    """Probe h's raw Baseten answers, rewritten (atomically) after every paid call: an interrupt part-way
+    through still leaves each answered call on disk, for the set-aside to keep."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.entries: list[Summary] = []
+
+    def add(self, entry: Summary) -> None:
+        self.entries.append(entry)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.path.with_name(f".{self.path.name}.tmp")
+        tmp.write_text(json.dumps(self.entries, indent=1, ensure_ascii=False) + "\n")
+        os.replace(tmp, self.path)
+
+
 async def probe_h(settings: Settings, client: MetaClient, out: Path) -> Summary:
     """PRE-A §3.8 probe h, on synthetic frames only:
     1. one request on 4 frames;
@@ -790,7 +806,7 @@ async def probe_h(settings: Settings, client: MetaClient, out: Path) -> Summary:
     name_image, true_box = synthetic_frame(2, name=True)
     if true_box is None:
         raise RuntimeError("the name frame has no text box")
-    raw: list[Summary] = []
+    raw = _Answers(out / "baseten.answers.json")
     first = await _open_call(settings, client, four, effort=settings.open_weight_effort, price=price, raw=raw)
     many = [(i * 30, synthetic_frame(i % 4, name=False)[0]) for i in range(open_weight.MAX_IMAGES + 1)]
     eight = await _open_call(
@@ -824,8 +840,6 @@ async def probe_h(settings: Settings, client: MetaClient, out: Path) -> Summary:
     }
     if len(answered) < 3:
         summary["error"] = f"grid check not measured: {3 - len(answered)} of 3 tries failed or were invalid"
-    out.mkdir(parents=True, exist_ok=True)
-    (out / "baseten.answers.json").write_text(json.dumps(raw, indent=1, ensure_ascii=False) + "\n")
     return summary
 
 
@@ -980,19 +994,21 @@ def save_summary(out: Path, result: Summary, *, staged: Path | None = None) -> P
         path = _aside(out, "summary.failed", ".json")
         if staged is not None:
             _set_aside(out, staged)
-    elif staged is not None:
-        # The recorded run's raw files go with its summary: anything this run didn't write must not stay
-        # beside the new summary as if it were this run's (`job*/` folders are working state, not results).
-        old = [f for f in out.iterdir() if f.is_file() and f.name != "summary.json" and not f.name.startswith(".")]
+    else:
+        # The recorded run moves to `superseded-<ts>/` whole, its summary with its raw files: a paid result
+        # is never overwritten, and nothing this run didn't write stays beside its summary as if it were
+        # this run's (`job*/` folders are working state, not results).
+        old = [f for f in out.iterdir() if f.is_file() and not f.name.startswith(".")]
         old = [f for f in old if not f.name.startswith("summary.failed-")]
         if old:
             superseded = _aside(out, "superseded")
             superseded.mkdir()
             for f in old:
                 os.replace(f, superseded / f.name)
-        for raw in staged.iterdir():
-            os.replace(raw, out / raw.name)
-        staged.rmdir()
+        if staged is not None:
+            for raw in staged.iterdir():
+                os.replace(raw, out / raw.name)
+            staged.rmdir()
     # Atomic: a full disk or a kill mid-write never truncates a recorded, paid summary.
     tmp = path.with_name(f".{path.name}.tmp")
     tmp.write_text(json.dumps(result, indent=1, ensure_ascii=False) + "\n")

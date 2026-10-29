@@ -1876,7 +1876,11 @@ def test_an_accepted_run_moves_the_old_raw_files_aside(tmp_path: Path) -> None:
     assert not (tmp_path / "sam-license_plate.events.json").exists()
     assert json.loads((tmp_path / "sam-face.events.json").read_text()) == 2
     [superseded] = list(tmp_path.glob("superseded-*"))
-    assert sorted(f.name for f in superseded.iterdir()) == ["sam-face.events.json", "sam-license_plate.events.json"]
+    assert sorted(f.name for f in superseded.iterdir()) == [
+        "sam-face.events.json",
+        "sam-license_plate.events.json",
+        "summary.json",
+    ]
 
 
 async def test_a_probe_b_rerun_reports_only_its_own_responses(
@@ -1910,3 +1914,23 @@ def test_a_numeric_deleted_at_never_counts_as_deleted(tmp_path: Path) -> None:
 def test_iso_timestamps_still_load() -> None:
     for stamp in ("2026-10-27T10:00:00Z", "2026-10-27T10:00:00+02:00", "2026-10-27T10:00:00.123456Z"):
         assert c.ResponseEntry.model_validate({"response_id": "r", "requested_at": stamp}).requested_at is not None
+
+
+# --- audit #64 ----------------------------------------------------------------------------------------------
+
+
+def test_an_accepted_rerun_keeps_the_old_paid_summary(tmp_path: Path) -> None:
+    paid = {"videos": {"ok": 1}, "role_calls": [{"usd": 0.4}, {"error": "x"}]}
+    probes.save_summary(tmp_path, paid)
+    assert probes.save_summary(tmp_path, {"videos": {"ok": 1}}).name == "summary.json"  # fewer errors: accepted
+    [superseded] = list(tmp_path.glob("superseded-*"))
+    assert json.loads((superseded / "summary.json").read_text()) == paid
+
+
+def test_probe_h_writes_each_answer_as_it_arrives(tmp_path: Path) -> None:
+    answers = probes._Answers(tmp_path / ".run-1" / "baseten.answers.json")  # pyright: ignore[reportPrivateUsage] -- the unit under test
+    answers.add({"effort": "medium", "answer": {"id": "a"}})
+    assert len(json.loads(answers.path.read_text())) == 1  # on disk before the next paid call starts
+    answers.add({"effort": "omit", "answer": {"id": "b"}})
+    assert [e["answer"]["id"] for e in json.loads(answers.path.read_text())] == ["a", "b"]
+    assert not list(answers.path.parent.glob(".*.tmp"))
