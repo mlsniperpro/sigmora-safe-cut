@@ -2181,3 +2181,51 @@ def test_a_killed_runs_pending_response_isnt_counted_as_this_runs(tmp_path: Path
     ]
     log.path.write_text(json.dumps(entries))
     assert probes._requested_since(log, earlier) == 1  # pyright: ignore[reportPrivateUsage] -- the unit under test
+
+
+# --- audit #68 ----------------------------------------------------------------------------------------------
+
+
+def test_a_track_held_by_a_merged_neighbours_entry_keeps_its_one_grid() -> None:
+    job = c.load(EXAMPLE / "job.json", c.Job)
+    plan = c.load(EXAMPLE / "plan.json", c.Plan)
+    track = _track(track_id="face:7", first=0, last=1, boxes={"0": [100, 100, 120, 120], "1": [300, 100, 320, 120]})
+    item = c.DecisionItem.model_validate({"item_id": "i_7", "track_ids": ["face:7", "face:8"], "kind": "person",
+                                          "decision": "hide", "reason": "x", "evidence_frames": [0],
+                                          "style": "pixelate", "decided_by": "model", "locked": False})  # fmt: skip
+
+    def entry(box: list[int], grid: list[int]) -> c.PlanEntry:
+        return c.PlanEntry.model_validate({"item_id": "i_7", "shape": "box", "box": box, "mask": None,
+                                           "style": "pixelate", "grid": grid, "source": "decision"})  # fmt: skip
+
+    own = entry([0, 0, 600, 400], [0, 0, 8])  # face:7's fixed grid, both frames
+    neighbour = entry([80, 80, 140, 140], [80, 80, 8])  # face:8's, which happens to hold face:7 on frame 0 only
+    on = {(0, "i_7"): [own, neighbour], (1, "i_7"): [own]}
+    c._check_track_geometry(plan, job, item, track, fills_on={}, on=on)  # pyright: ignore[reportPrivateUsage] -- the unit under test
+    moved = {(0, "i_7"): [neighbour], (1, "i_7"): [own]}
+    with pytest.raises(c.ContractError, match="pixelate grid for face:7 moves"):
+        c._check_track_geometry(plan, job, item, track, fills_on={}, on=moved)  # pyright: ignore[reportPrivateUsage] -- the unit under test
+
+
+def test_only_voice_transcribe_has_no_store_parameter(tmp_path: Path) -> None:
+    job_dir = tmp_path / "j_example"
+    shutil.copytree(EXAMPLE, job_dir)
+    data = json.loads((job_dir / "receipt.json").read_text())
+    data.pop("hash")
+    handling = data["data_handling"]
+    handling["store_by_model"].pop("muse-spark-1.3")
+    handling["no_store_param"].append("muse-spark-1.3")
+    (job_dir / "receipt.json").write_text(c.Receipt.seal(c.ReceiptBody.model_validate(data)).model_dump_json())
+    with pytest.raises(c.ContractError, match=r"\['muse-spark-1\.3'\] take a store parameter"):
+        c.validate_job_dir(job_dir)
+
+
+def test_a_baseten_stop_never_backs_an_over_budget_block(tmp_path: Path) -> None:
+    audit = c.Audit.model_construct(blocked_reason="over_budget")
+    cost = tmp_path / "cost.jsonl"
+    stop = {"ts": "2026-10-27T10:05:00Z", "provider": "baseten", "job_id": "j_example", "stage": "budget:redteam_open",
+            "model": None, "attempt": 0, "units": {}, "usd": 0.0, "estimated": False, "request_id": None,
+            "cap": "baseten_job", "code_kind": "owner", "code_id": None}  # fmt: skip
+    c.append_cost_line(c.CostLine.model_validate(stop), cost)
+    with pytest.raises(c.ContractError, match="records no budget: stop"):
+        c._check_budget_stop(audit, cost)  # pyright: ignore[reportPrivateUsage] -- the unit under test

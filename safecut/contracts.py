@@ -1317,7 +1317,8 @@ def _check_budget_stop(audit: Audit | None, cost_path: Path) -> None:
     with this job's cost.jsonl present, the block must be backed by one."""
     if audit is None or audit.blocked_reason != "over_budget" or not cost_path.exists():
         return
-    if not any(line.stage.startswith("budget:") for line in read_cost_lines(cost_path)):
+    # A Meta cap: a Baseten stop never blocks the job (PRE-A §3.8), so it backs nothing here.
+    if not any(line.provider == "meta" and line.stage.startswith("budget:") for line in read_cost_lines(cost_path)):
         raise ContractError("audit.json: blocked over_budget, but cost.jsonl records no budget: stop")
 
 
@@ -1583,7 +1584,7 @@ def _check_track_geometry(
     """One hidden track against what the plan draws: its padded box held on every frame it has a box, a face
     pixelated at most 6 blocks across under one fixed grid, and the frames between its anchors covered."""
     ratio = plan.padding.face if track.concept == "face" else plan.padding.default
-    grids: set[tuple[int, int, int]] = set()
+    grids: set[tuple[int, int, int]] | None = None  # the grids that could be this track's on every frame
     for frame, box in sorted(track.boxes.items()):
         entries = on.get((frame, item.item_id), [])
         if not entries:
@@ -1596,11 +1597,11 @@ def _check_track_geometry(
             raise ContractError(
                 f"plan.json frame {frame}: {item.item_id} doesn't cover {track.track_id}'s padded box {list(box)}"
             )
-        holding = [e for e in entries if e.grid is not None and _contains(e.box, box)]
+        holding = {cast(tuple[int, int, int], tuple(e.grid)) for e in entries if e.grid and _contains(e.box, box)}
         if holding:
-            # The track's own entry is the smallest one holding it (a merged face's, not its person's).
-            own = min(holding, key=lambda e: (e.box[2] - e.box[0]) * (e.box[3] - e.box[1]))
-            grids.add(cast(tuple[int, int, int], tuple(cast(list[int], own.grid))))
+            # In a merged item another track's entry may hold this box too, so which entry is "its own" isn't
+            # known per frame: one fixed grid means one grid held it on every frame (the sets intersect).
+            grids = holding if grids is None else grids & holding
         if track.concept != "face":
             continue  # DESIGN §2.7's ≤ 6 blocks is about the face
         for e in entries:
@@ -1609,7 +1610,7 @@ def _check_track_geometry(
                     f"plan.json frame {frame}: {item.item_id}'s {e.grid[2]} px grid leaves"
                     f" {track.track_id} more than 6 blocks across"
                 )
-    if len(grids) > 1:
+    if grids is not None and not grids:
         # A shifting grid leaks detail across frames (DESIGN §2.7): each track keeps one fixed grid.
         raise ContractError(f"plan.json: {item.item_id}'s pixelate grid for {track.track_id} moves between frames")
     _check_between_anchors(plan, item, track, fills_on, on)
@@ -2212,6 +2213,9 @@ def _check_receipt_models(
     if asr is not None and asr in receipt.data_handling.store_by_model:
         # PRE-A §12: Voice Transcribe takes no `store` parameter, so its claim is `no_store_param`, never false.
         raise ContractError(f"receipt.json: {asr!r} takes no store parameter, so it belongs in no_store_param")
+    if odd := sorted(set(receipt.data_handling.no_store_param) - {asr}):
+        # PRE-A §12: only Voice Transcribe lacks a store parameter; every Responses model's setting is stated.
+        raise ContractError(f"receipt.json: {odd} take a store parameter, so they belong in store_by_model")
     stated = set(receipt.data_handling.store_by_model) | set(receipt.data_handling.no_store_param)
     named = {m for stage, m in receipt.models.items() if stage != "auditor"}
     if cost_path is not None:
