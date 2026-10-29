@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import hashlib
 import json
 import os
 import shutil
@@ -2395,13 +2396,46 @@ def test_the_receipt_says_how_many_sam_responses_remain_unrequested(tmp_path: Pa
         d["data_handling"]["store"] = True
 
     _reseal_handling(job_dir, kept)
-    with pytest.raises(c.ContractError, match=r"responses_delete_pending 0 != 1 unrequested"):
-        c.validate_job_dir(job_dir)
+    with pytest.raises(c.ContractError, match=r"requested 1 \+ responses_delete_pending 0 != the 2 SAM responses"):
+        c.validate_job_dir(job_dir)  # hides the response still stored at Meta
     _reseal_handling(job_dir, lambda d: d["data_handling"].update({"responses_delete_pending": 1}))
     c.validate_job_dir(job_dir)
+    entries[1]["requested_at"] = "2026-10-27T11:00:00Z"  # the hourly sweeper requests it after the seal
+    (job_dir / "responses.json").write_text(json.dumps(entries))
+    c.validate_job_dir(job_dir)  # a sealed receipt may lag; it never understates what is still stored
+    _reseal_handling(job_dir, lambda d: d["data_handling"].update(
+        {"responses_delete_requested": 2, "responses_delete_pending": 0}))  # fmt: skip
+    entries[1]["requested_at"] = None
+    (job_dir / "responses.json").write_text(json.dumps(entries))
+    with pytest.raises(c.ContractError, match=r"responses_delete_requested 2 > 1 requested"):
+        c.validate_job_dir(job_dir)
 
 
 def test_receipts_sealed_before_the_pending_count_still_verify() -> None:
     receipt = c.load(EXAMPLE / "receipt.json", c.Receipt)  # sealed before responses_delete_pending existed
     assert receipt.data_handling.responses_delete_pending == 0
     assert c.receipt_hash(c.ReceiptBody.model_validate(receipt.model_dump(exclude={"hash"}))) == receipt.hash
+
+
+# --- audit #76 ----------------------------------------------------------------------------------------------
+
+
+def test_an_empty_sam_mask_excuses_no_plan_mask() -> None:
+    track_box = (20, 10, 40, 40)
+    padded = (10, 0, 50, 50)
+    empty = c.Rle(size=(60, 80), counts=rle_string([60 * 80]))  # SAM zeroed the masklet (PRE-A §2.6)
+    assert not c._held([_mask_entry(empty)], [], track_box, padded, empty)  # pyright: ignore[reportPrivateUsage] -- the unit under test
+    dilated = _mask_entry(_rect_mask((16, 6, 44, 44)))
+    assert c._held([dilated], [], track_box, padded, empty)  # pyright: ignore[reportPrivateUsage] -- the unit under test
+
+
+def test_the_receipt_file_body_is_the_hashed_body() -> None:
+    raw = json.loads((EXAMPLE / "receipt.json").read_text())
+    stored = raw.pop("hash")
+    assert "responses_delete_pending" not in raw["data_handling"]  # omitted from the file while 0
+    sealed = c.Receipt.seal(c.ReceiptBody.model_validate(raw))
+    body = json.loads(sealed.model_dump_json())
+    body.pop("hash")
+    assert "responses_delete_pending" not in body["data_handling"]
+    prev = raw.get("prev_hash") or ""
+    assert hashlib.sha256((prev + c.canonical_json(body)).encode()).hexdigest() == stored == sealed.hash

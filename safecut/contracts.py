@@ -35,8 +35,10 @@ from pydantic import (
     PositiveInt,
     PrivateAttr,
     RootModel,
+    SerializerFunctionWrapHandler,
     StrictBool,
     ValidationError,
+    model_serializer,
     model_validator,
 )
 
@@ -802,6 +804,15 @@ class DataHandling(Contract):
     responses_delete_pending: NonNegativeInt = 0
     notes: list[str] = Field(default_factory=list[str])
 
+    @model_serializer(mode="wrap")
+    def _omit_zero_pending(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        # Added after receipts were first sealed: left out of the file while 0, so the file's body is exactly
+        # the hashed body (ARCHITECTURE §3.9) and every earlier receipt's hash still holds.
+        data = cast(dict[str, Any], handler(self))
+        if not data.get("responses_delete_pending"):
+            data.pop("responses_delete_pending", None)
+        return data
+
     @model_validator(mode="after")
     def _store(self) -> DataHandling:
         if self.store != any(self.store_by_model.values()):
@@ -861,9 +872,6 @@ def receipt_hash(body: ReceiptBody) -> str:
     not raw JSON, means defaults and timestamp formats are normalised before hashing.
     """
     data = ReceiptBody.model_validate(body.model_dump(include=set(ReceiptBody.model_fields))).model_dump(mode="json")
-    if not data["data_handling"].get("responses_delete_pending"):
-        # Added after receipts were first sealed: left out while 0, so every earlier receipt's hash still holds.
-        data["data_handling"].pop("responses_delete_pending", None)
     prev = data.get("prev_hash") or ""
     return hashlib.sha256((prev + canonical_json(data)).encode("utf-8")).hexdigest()
 
@@ -1409,16 +1417,8 @@ def _check_receipt(
                 raise ContractError(f"receipt.json audit.{name} {got!r} != audit.json {want!r}")
     if receipt.data_handling.files_deleted and files is not None and not files.all_deleted:
         raise ContractError("receipt.json: files_deleted is true but files.json has an undeleted or orphan upload")
-    if responses is not None and receipt.data_handling.responses_delete_requested != responses.requested:
-        raise ContractError(
-            f"receipt.json: responses_delete_requested {receipt.data_handling.responses_delete_requested}"
-            f" != {responses.requested} requested in responses.json"
-        )
-    if responses is not None and receipt.data_handling.responses_delete_pending != len(responses.pending):
-        raise ContractError(
-            f"receipt.json: responses_delete_pending {receipt.data_handling.responses_delete_pending}"
-            f" != {len(responses.pending)} unrequested in responses.json"
-        )
+    if responses is not None:
+        _check_responses_counts(receipt.data_handling, responses)
     if responses is not None and responses.root:
         # PRE-A §10.4: responses.json holds entries only when SAM ran without `store: false`, so Meta kept them.
         # PRE-A §10.6 names that model in `no_store_param` (no store setting was sent); `store_by_model: true` says
@@ -1451,6 +1451,22 @@ def _check_receipt_items(receipt: Receipt, decisions: Decisions) -> None:
         differing = sorted(name for name in want if got[name] != want[name])
         if differing:
             raise ContractError(f"receipt.json {item.item_id} differs from decisions.json in {differing}")
+
+
+def _check_responses_counts(handling: DataHandling, responses: ResponsesIndex) -> None:
+    """PRE-A §10.4: the receipt counts SAM responses whose deletion was requested and says how many remain. It is
+    sealed at the segment's end, and the hourly sweeper may request the rest later, so a sealed receipt may lag
+    responses.json; it may never understate what is still stored."""
+    requested, pending = handling.responses_delete_requested, handling.responses_delete_pending
+    if requested + pending != len(responses.root):
+        raise ContractError(
+            f"receipt.json: responses_delete_requested {requested} + responses_delete_pending {pending}"
+            f" != the {len(responses.root)} SAM responses in responses.json"
+        )
+    if requested > responses.requested:
+        raise ContractError(
+            f"receipt.json: responses_delete_requested {requested} > {responses.requested} requested in responses.json"
+        )
 
 
 def _check_receipt_cost(receipt: Receipt, job: Job, cost_path: Path) -> None:
@@ -1676,15 +1692,17 @@ def _near(entry: PlanEntry, box: Box) -> bool:
 
 
 def _held(entries: list[PlanEntry], fills: list[Box], box: Box, padded: Box, sam: Rle | None = None) -> bool:
-    """A box entry contains ``padded``; a mask entry contains the track's own SAM mask on that frame when there is
-    one (the guard pads outward, never inward), else its foreground spans ``box``; or a crowd fill contains ``box``."""
+    """A box entry contains ``padded``; a mask entry's foreground spans ``box`` and contains the track's own SAM mask
+    on that frame when there is one (the guard pads outward, never inward); or a crowd fill contains ``box``."""
 
     def holds(e: PlanEntry) -> bool:
         if e.shape == "box":
             return _contains(e.box, padded)
         if e.mask is None:
             return False
-        return _mask_within(sam, e.mask) if sam is not None else _mask_spans(e.mask, box)
+        # The span floor always (an empty or sliver SAM mask, PRE-A §2.6, excuses nothing), and where SAM's own
+        # mask exists the entry must contain it too (a shifted mask that "spans" still uncovers a strip).
+        return _mask_spans(e.mask, box) and (sam is None or _mask_within(sam, e.mask))
 
     return any(holds(e) for e in entries) or any(_contains(fill, box) for fill in fills)
 
