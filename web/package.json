@@ -10,7 +10,8 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "node e2e/replay-e2e.mjs"
+    "e2e": "node e2e/api-e2e.mjs",
+    "e2e:api": "node e2e/api-e2e.mjs"
   },
   "dependencies": {
     "next": "16.4.3",

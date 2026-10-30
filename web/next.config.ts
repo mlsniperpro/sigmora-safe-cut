@@ -29,7 +29,7 @@ const csp = [
   `media-src 'self' blob: https:${localApi}`,
   // The API and its presigned upload host; both are https.
   `connect-src 'self' https:${localApi}`,
-  "frame-src 'self' https:",
+  `frame-src 'self' https:${localApi}`,
   `frame-ancestors 'self' ${sigmoraOrigin()}`,
   "base-uri 'self'",
   "form-action 'self'",

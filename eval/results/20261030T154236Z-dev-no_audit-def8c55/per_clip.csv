@@ -1,0 +1,8 @@
+clip,entity,category,should_hide,visible_frames,frames_covered_95,frames_exposed,leak_bursts,frames_hidden,mean_coverage
+SC-A-91-synthetic-20261030.mp4,e1,participant,False,360,0,360,1,0,0.018705
+SC-A-91-synthetic-20261030.mp4,e2,participant,False,283,71,212,1,71,0.268888
+SC-A-91-synthetic-20261030.mp4,e3,bystander,True,269,269,0,0,269,1.0
+SC-A-91-synthetic-20261030.mp4,e4,child,True,120,120,0,0,120,1.0
+SC-A-91-synthetic-20261030.mp4,e5,screen,True,360,360,0,0,360,1.0
+SC-A-91-synthetic-20261030.mp4,e6,plate,True,110,110,0,0,110,1.0
+SC-A-91-synthetic-20261030.mp4,e7,document,True,96,96,0,0,96,1.0

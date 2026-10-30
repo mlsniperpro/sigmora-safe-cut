@@ -8,6 +8,7 @@ Routes and shapes follow UI-SPEC §8 and §10 (``web/src/lib/contracts.ts`` pars
 from __future__ import annotations
 
 import base64
+import contextlib
 import hashlib
 import importlib
 import logging
@@ -22,12 +23,13 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import httpx
-from fastapi import APIRouter, Depends, FastAPI, Header, Request
+from fastapi import APIRouter, Body, Depends, FastAPI, Header, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from imageio_ffmpeg import get_ffmpeg_exe
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
+from pydantic import BaseModel, ConfigDict, Field
+from starlette.concurrency import run_in_threadpool
 
 from safecut import netguard, pipeline
 from safecut.api.access import MAX_UPLOAD_BYTES, Access, ApiRefusal, Grant, RateLimiter, check_caps, estimate_usd
@@ -36,7 +38,7 @@ from safecut.api.urls import UPLOAD_TTL_S, Signer, expiry
 from safecut.api.views import Views, iso
 from safecut.api.worker import Worker
 from safecut.config import Settings, load_settings
-from safecut.contracts import Audit, Decisions, Intake, Job, Plan, dump, load
+from safecut.contracts import Audit, ContractError, Decisions, Intake, Job, Plan, dump, load
 from safecut.decide import REVIEW, policy_decisions
 from safecut.decide.review import ReviewEdit, ReviewError, ReviewLog, apply_review
 from safecut.meta.status import StatusUnavailableError, fetch_status
@@ -44,7 +46,6 @@ from safecut.stages import INTAKE, RAW_DIR, SOURCE_DIR, stage
 
 log = logging.getLogger("safecut.api")
 
-EDIT = TypeAdapter[ReviewEdit](ReviewEdit)
 #: /healthz asks Meta's status endpoint at most this often (PRE-A §10.7: every 5 min before Nov 5, then 1 min).
 HEALTH_EVERY_EARLY = timedelta(minutes=5)
 HEALTH_EVERY = timedelta(minutes=1)
@@ -154,6 +155,36 @@ class Service:
                     log.info("deleted %d expired job(s)", len(removed))
             except Exception:
                 log.exception("cleanup sweep failed")
+
+    def recover(self) -> list[str]:
+        """After a restart (a redeploy, a crash) no thread is working on any job: re-queue every job that was
+        mid-action, from where its files say it stopped (stages are idempotent and resume from ``job_log.jsonl``),
+        so a poller never waits forever on a status nothing will change. Returns the re-queued IDs."""
+        resumed: list[str] = []
+        for job_id in self.store.ids():
+            try:
+                with self.store.update(job_id) as state:
+                    if state.pinned or state.status not in ("processing", "rendering", "retry_later"):
+                        continue
+                    analysing = state.status == "processing" or (
+                        state.status == "retry_later" and state.stage not in ("render", "audit", "receipt")
+                    )
+                    action: Literal["analyse", "publish", "audit"] = (
+                        "analyse"
+                        if analysing
+                        else "audit"
+                        if state.stage == "audit" and (self.store.path(job_id) / "redacted.mp4").is_file()
+                        else "publish"
+                    )
+                    state.status = "processing" if analysing else "rendering"
+                    state.retry_at = None
+                    self.worker.submit(job_id, action)
+                    resumed.append(job_id)
+            except (JobNotFound, ContractError):
+                continue
+        if resumed:
+            log.info("re-queued %d job(s) interrupted by a restart", len(resumed))
+        return resumed
 
     def build_demo_jobs(self) -> list[str]:
         """Precompute each recorded hero job (``raw/manifest.json`` with ``demo`` or ``pinned``) as a pinned replay
@@ -385,7 +416,7 @@ async def upload(svc: Svc, job_id: str, request: Request, exp: str | None = None
                 handle.close()
                 partial.unlink(missing_ok=True)
                 raise ApiRefusal(413, "too_large", "The upload is larger than declared.", size_bytes=received)
-            handle.write(chunk)
+            await run_in_threadpool(handle.write, chunk)  # disk writes never stall the event loop
     if received != spec.size_bytes:
         partial.unlink(missing_ok=True)
         raise ApiRefusal(400, "upload_incomplete", "The upload ended before the declared size.")
@@ -396,57 +427,66 @@ async def upload(svc: Svc, job_id: str, request: Request, exp: str | None = None
     return Response(status_code=200)
 
 
+def refuse_pinned(state: JobState) -> None:
+    """The precomputed demo jobs are public and read-only: their IDs are derivable from the hero name."""
+    if state.pinned:
+        raise ApiRefusal(403, "demo_read_only", "The demo clip can't be changed or deleted.")
+
+
 @router.post("/v1/jobs/{job_id}/start", status_code=202, dependencies=[paid_limit])
 def start(svc: Svc, job_id: str) -> JSONResponse:
-    state = svc.job(job_id)
-    grant = svc.paid_grant(state)
-    if svc.worker.busy(job_id) or state.status in ("processing", "rendering", "retry_later"):
-        raise ApiRefusal(409, "already_running", "This clip is already being processed.")
-    if state.status not in ("created", "failed"):
-        raise ApiRefusal(409, "already_started", "This clip has already been processed.")
-    job_dir = svc.store.path(job_id)
-    spec = state.upload
-    clip = job_dir / SOURCE_DIR / spec.file_name if spec else None
-    if (
-        spec is None
-        or clip is None
-        or not spec.received
-        or not clip.is_file()
-        or clip.stat().st_size != spec.size_bytes
-    ):
-        raise ApiRefusal(409, "upload_incomplete", "The upload didn't finish, so nothing was processed.")
-    duration = state.duration_s or clip_duration(clip)
-    if state.mode == "live":
-        if svc.settings.model_api_key is None:
-            raise ApiRefusal(503, "config", "Safe Cut isn't configured to process clips right now.")
-        if not auditor_available(svc.settings):
-            raise ApiRefusal(503, "auditor_unavailable", "Safe Cut's final check isn't available right now.")
-        if grant is not None:
-            check_caps(svc.settings, svc.ledger, grant, estimate=estimate_usd(duration))
-    if not (job_dir / INTAKE).is_file():
-        dump(
-            Intake(
-                source=spec.file_name,
-                created_at=state.created_at,
-                consented=state.code_kind in ("owner", "recording"),
-                mode=state.mode,
-                code_kind=state.code_kind,
-                code_id=state.code_id,
-            ),
-            job_dir / INTAKE,
-        )
-    if state.mode == "replay" and not (job_dir / RAW_DIR).is_dir():
-        recording = pipeline.find_recording(pipeline.sha256_file(clip), svc.fixtures)
-        if recording is None:
-            raise ApiRefusal(422, "no_recording", "Demo mode can only replay the recorded demo clips.")
-        pipeline.attach_recording(job_dir, recording)
-    with svc.store.update(job_id) as current:
-        current.status, current.stage, current.failure = "processing", "queued", None
-        current.synthetic = pipeline.recording_is_synthetic(job_dir)
-        current.duration_s = duration
-        current.requeues = 0
-        updated = current.model_copy()
-    svc.worker.submit(job_id, "analyse")
+    svc.job(job_id)  # a clean 404 before taking the job's lock
+    # Everything from the status check to the transition happens under the job's lock, so two concurrent starts
+    # can't both pass the check and run the paid analysis twice.
+    with svc.store.update(job_id) as state:
+        refuse_pinned(state)
+        grant = svc.paid_grant(state)
+        if svc.worker.busy(job_id) or state.status in ("processing", "rendering", "retry_later"):
+            raise ApiRefusal(409, "already_running", "This clip is already being processed.")
+        if state.status not in ("created", "failed"):
+            raise ApiRefusal(409, "already_started", "This clip has already been processed.")
+        job_dir = svc.store.path(job_id)
+        spec = state.upload
+        clip = job_dir / SOURCE_DIR / spec.file_name if spec else None
+        if (
+            spec is None
+            or clip is None
+            or not spec.received
+            or not clip.is_file()
+            or clip.stat().st_size != spec.size_bytes
+        ):
+            raise ApiRefusal(409, "upload_incomplete", "The upload didn't finish, so nothing was processed.")
+        duration = state.duration_s or clip_duration(clip)
+        if state.mode == "live":
+            if svc.settings.model_api_key is None:
+                raise ApiRefusal(503, "config", "Safe Cut isn't configured to process clips right now.")
+            if not auditor_available(svc.settings):
+                raise ApiRefusal(503, "auditor_unavailable", "Safe Cut's final check isn't available right now.")
+            if grant is not None:
+                check_caps(svc.settings, svc.ledger, grant, estimate=estimate_usd(duration))
+        if not (job_dir / INTAKE).is_file():
+            dump(
+                Intake(
+                    source=spec.file_name,
+                    created_at=state.created_at,
+                    consented=state.code_kind in ("owner", "recording"),
+                    mode=state.mode,
+                    code_kind=state.code_kind,
+                    code_id=state.code_id,
+                ),
+                job_dir / INTAKE,
+            )
+        if state.mode == "replay" and not (job_dir / RAW_DIR).is_dir():
+            recording = pipeline.find_recording(pipeline.sha256_file(clip), svc.fixtures)
+            if recording is None:
+                raise ApiRefusal(422, "no_recording", "Demo mode can only replay the recorded demo clips.")
+            pipeline.attach_recording(job_dir, recording)
+        state.status, state.stage, state.failure = "processing", "queued", None
+        state.synthetic = pipeline.recording_is_synthetic(job_dir)
+        state.duration_s = duration
+        state.requeues = 0
+        updated = state.model_copy()
+        svc.worker.submit(job_id, "analyse")
     return ack(updated)
 
 
@@ -457,54 +497,34 @@ def get_job(svc: Svc, job_id: str) -> dict[str, Any]:
 
 
 @router.post("/v1/jobs/{job_id}/review", dependencies=[api_limit])
-async def review(svc: Svc, job_id: str, request: Request) -> dict[str, Any]:
-    try:
-        edit = EDIT.validate_json(await request.body())
-    except ValidationError as exc:
-        raise ApiRefusal(422, "bad_request", f"not a review edit: {exc.error_count()} error(s)") from None
+def review(svc: Svc, job_id: str, edit: Annotated[ReviewEdit, Body()]) -> dict[str, Any]:
+    """A plain (sync) handler: the guard re-plans in FastAPI's threadpool, never on the event loop, so polling and
+    media keep flowing while an edit is applied."""
     return _review(svc, job_id, edit)
 
 
 def _review(svc: Service, job_id: str, edit: ReviewEdit) -> dict[str, Any]:
-    state = svc.job(job_id)
-    if state.status == "needs_you":
-        raise ApiRefusal(409, "read_only", "This clip can't be edited until the audit runs again.")
-    if state.status not in ("review", "done") or svc.worker.busy(job_id):
-        raise ApiRefusal(409, "not_reviewable", "This clip isn't ready for review.")
+    svc.job(job_id)
     job_dir = svc.store.path(job_id)
     with svc.store.update(job_id) as current:
+        # Checked under the lock: a render that started a moment ago must not have its plan rewritten.
+        refuse_pinned(current)
+        if current.status == "needs_you":
+            raise ApiRefusal(409, "read_only", "This clip can't be edited until the audit runs again.")
+        if current.status not in ("review", "done") or svc.worker.busy(job_id):
+            raise ApiRefusal(409, "not_reviewable", "This clip isn't ready for review.")
         log_path = job_dir / REVIEW
         edits = list(load(log_path, ReviewLog).root) if log_path.is_file() else []
         if all(e.edit_id != edit.edit_id for e in edits):
-            job = load(job_dir / "job.json", Job)
-            plan = load(job_dir / "plan.json", Plan)
-            audit = load(job_dir / "audit.json", Audit) if (job_dir / "audit.json").is_file() else None
-            try:
-                result = apply_review(
-                    policy_decisions(job_dir),
-                    [*edits, edit],
-                    audit=audit,
-                    frames=job.frames,
-                    extend=plan.temporal.extend,
-                )
-            except ReviewError as exc:
-                raise ApiRefusal(409, exc.code, str(exc)) from None
-            dump(ReviewLog([*edits, edit]), log_path)
-            dump(result.decisions, job_dir / "decisions.json")
-            if result.audit is not None:
-                dump(result.audit, job_dir / "audit.json")
-            pipeline.run_stage(
-                job_dir, stage("guard"), replay=current.mode == "replay", settings=svc.settings, force=True
-            )
-            if current.status == "done":
-                current.status, current.stage = "review", "review"
+            _apply_edit(svc, job_dir, current, edits, edit)
         status = current.status
-    decisions = load(job_dir / "decisions.json", Decisions)
-    plan_now = load(job_dir / "plan.json", Plan)
-    audit_now = load(job_dir / "audit.json", Audit) if (job_dir / "audit.json").is_file() else None
+        mode = current.mode
+        decisions = load(job_dir / "decisions.json", Decisions)
+        plan_now = load(job_dir / "plan.json", Plan)
+        audit_now = load(job_dir / "audit.json", Audit) if (job_dir / "audit.json").is_file() else None
     return {
         "edit_id": edit.edit_id,
-        "mode": state.mode,
+        "mode": mode,
         "status": status,
         "has_render": (job_dir / "redacted.mp4").is_file(),
         "items": [i.model_dump(mode="json") | {"removed_by_creator": i.removed_by_creator} for i in decisions.items],
@@ -513,42 +533,76 @@ def _review(svc: Service, job_id: str, edit: ReviewEdit) -> dict[str, Any]:
     }
 
 
+def _apply_edit(svc: Service, job_dir: Path, current: JobState, edits: list[ReviewEdit], edit: ReviewEdit) -> None:
+    """Fold the edit in and re-plan, all or nothing: if the guard fails, the decisions, audit and plan go back to
+    what they were and the edit isn't logged, so a retry with the same ``edit_id`` applies it again."""
+    job = load(job_dir / "job.json", Job)
+    plan = load(job_dir / "plan.json", Plan)
+    audit = load(job_dir / "audit.json", Audit) if (job_dir / "audit.json").is_file() else None
+    try:
+        result = apply_review(
+            policy_decisions(job_dir), [*edits, edit], audit=audit, frames=job.frames, extend=plan.temporal.extend
+        )
+    except ReviewError as exc:
+        raise ApiRefusal(409, exc.code, str(exc)) from None
+    saved = {
+        name: (job_dir / name).read_bytes()
+        for name in ("decisions.json", "audit.json", "plan.json")
+        if (job_dir / name).is_file()
+    }
+    try:
+        dump(result.decisions, job_dir / "decisions.json")
+        if result.audit is not None:
+            dump(result.audit, job_dir / "audit.json")
+        pipeline.run_stage(job_dir, stage("guard"), replay=current.mode == "replay", settings=svc.settings, force=True)
+    except BaseException:
+        for name, data in saved.items():
+            (job_dir / name).write_bytes(data)
+        raise
+    dump(ReviewLog([*edits, edit]), job_dir / REVIEW)
+    if current.status == "done":
+        current.status, current.stage = "review", "review"
+
+
 @router.post("/v1/jobs/{job_id}/render", status_code=202, dependencies=[paid_limit])
 def render(svc: Svc, job_id: str) -> JSONResponse:
-    state = svc.job(job_id)
-    grant = svc.paid_grant(state)
-    if svc.worker.busy(job_id) or state.status in ("rendering", "processing", "retry_later"):
-        raise ApiRefusal(409, "already_running", "A render is already running.")
-    retry = (
-        state.status == "failed" and state.failure is not None and state.failure.stage in ("render", "audit", "receipt")
-    )
-    if state.status != "review" and not retry:
-        raise ApiRefusal(409, "not_reviewable", "This clip isn't waiting for a render.")
-    if state.mode == "live" and grant is not None:
-        check_caps(svc.settings, svc.ledger, grant, estimate=0.01)
-    job_dir = svc.store.path(job_id)
-    pipeline.approve(job_dir, how="review")
-    with svc.store.update(job_id) as current:
-        current.status, current.stage, current.failure = "rendering", "render", None
-        updated = current.model_copy()
-    svc.worker.submit(job_id, "publish")
+    svc.job(job_id)
+    with svc.store.update(job_id) as state:
+        refuse_pinned(state)
+        grant = svc.paid_grant(state)
+        if svc.worker.busy(job_id) or state.status in ("rendering", "processing", "retry_later"):
+            raise ApiRefusal(409, "already_running", "A render is already running.")
+        retry = (
+            state.status == "failed"
+            and state.failure is not None
+            and state.failure.stage in ("render", "audit", "receipt")
+        )
+        if state.status != "review" and not retry:
+            raise ApiRefusal(409, "not_reviewable", "This clip isn't waiting for a render.")
+        if state.mode == "live" and grant is not None:
+            check_caps(svc.settings, svc.ledger, grant, estimate=0.01)
+        pipeline.approve(svc.store.path(job_id), how="review")
+        state.status, state.stage, state.failure = "rendering", "render", None
+        updated = state.model_copy()
+        svc.worker.submit(job_id, "publish")
     return ack(updated)
 
 
 @router.post("/v1/jobs/{job_id}/audit", status_code=202, dependencies=[paid_limit])
 def audit(svc: Svc, job_id: str) -> JSONResponse:
-    state = svc.job(job_id)
-    grant = svc.paid_grant(state)
-    if svc.worker.busy(job_id) or state.status == "rendering":
-        raise ApiRefusal(409, "already_running", "The audit is already running.")
-    if state.status != "needs_you":
-        raise ApiRefusal(409, "not_needed", "This clip's audit doesn't need to run again.")
-    if state.mode == "live" and grant is not None:
-        check_caps(svc.settings, svc.ledger, grant, estimate=0.01)
-    with svc.store.update(job_id) as current:
-        current.status, current.stage, current.failure = "rendering", "audit", None
-        updated = current.model_copy()
-    svc.worker.submit(job_id, "audit")
+    svc.job(job_id)
+    with svc.store.update(job_id) as state:
+        refuse_pinned(state)
+        grant = svc.paid_grant(state)
+        if svc.worker.busy(job_id) or state.status == "rendering":
+            raise ApiRefusal(409, "already_running", "The audit is already running.")
+        if state.status != "needs_you":
+            raise ApiRefusal(409, "not_needed", "This clip's audit doesn't need to run again.")
+        if state.mode == "live" and grant is not None:
+            check_caps(svc.settings, svc.ledger, grant, estimate=0.01)
+        state.status, state.stage, state.failure = "rendering", "audit", None
+        updated = state.model_copy()
+        svc.worker.submit(job_id, "audit")
     return ack(updated)
 
 
@@ -563,6 +617,8 @@ def result(svc: Svc, job_id: str) -> dict[str, Any]:
 
 @router.delete("/v1/jobs/{job_id}", status_code=204, dependencies=[api_limit])
 def delete(svc: Svc, job_id: str) -> Response:
+    with contextlib.suppress(JobNotFound):  # an unknown job is a 404 below
+        refuse_pinned(svc.store.get(job_id))
     svc.worker.cancel(job_id)
     if not svc.store.delete(job_id):
         raise ApiRefusal(404, "not_found", "We couldn't find that clip.")
@@ -630,6 +686,7 @@ def create_app(settings: Settings | None = None, *, service: Service | None = No
         if blocking:
             netguard.block()  # a replay deployment never reaches the network, in any thread
         if background:
+            svc.recover()
             threads.append(threading.Thread(target=svc.cleanup_loop, name="cleanup", daemon=True))
             threads.append(threading.Thread(target=svc.build_demo_jobs, name="demo", daemon=True))
             for thread in threads:
