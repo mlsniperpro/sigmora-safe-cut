@@ -255,3 +255,21 @@ def test_a_receipt_never_seals_an_audit_of_another_video(job_dir: Path) -> None:
 def test_a_receipt_for_the_current_directory_by_its_dot(job_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(job_dir)
     assert receipt_run(Path("."), settings=SETTINGS).name == RECEIPT
+
+
+def test_a_receipt_never_seals_a_plan_the_video_was_not_drawn_from(job_dir: Path) -> None:
+    """Decisions and plan changed after the render (``safecut guard`` then ``safecut receipt``): the video still shows
+    what the old plan left clear, so no receipt until it is drawn again."""
+    decided = load(job_dir / "decisions.json", contracts.Decisions)
+    hidden = [i.model_copy(update={"decision": "hide", "style": "pixelate", "decided_by": "creator"})
+              if i.decision == "keep" else i for i in decided.items]  # fmt: skip
+    contracts.dump(contracts.Decisions(items=hidden), job_dir / "decisions.json")
+    guard_run(job_dir)
+    with pytest.raises(ReceiptError, match="drawn from the current plan"):
+        receipt_run(job_dir, settings=SETTINGS)
+
+
+def test_a_torn_audit_run_record_vouches_for_nothing(job_dir: Path) -> None:
+    (job_dir / "raw/audit/run.json").write_text('{"video_sha2')
+    with pytest.raises(ReceiptError, match="describe the current"):
+        receipt_run(job_dir, settings=SETTINGS)

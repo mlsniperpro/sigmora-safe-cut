@@ -132,12 +132,16 @@ def _gates(inputs: Inputs, groups: Sequence[Sequence[Track]], rows: dict[str, Ro
         tid for tid, row in rows.items()
         if "child" in row.votes or (row.escalated and row.role == "child")
     }  # fmt: skip
-    child_items = sum(
-        1
+    # Counted as distinct children: items linked as one child (the same links the child lock follows, so a child split
+    # across a duplicate body or an unpaired face and body counts once and can't satisfy the scene count twice).
+    tracks = inputs.tracks.tracks
+    root = _components(tracks, child_links(tracks, groups))
+    child_items = len({
+        root[group[0].track_id]
         for group in groups
         if any(t.track_id in voted and not t.child_phrase for t in group)
         and not all(t.reentry_of is not None for t in group)
-    )
+    })  # fmt: skip
     return _Gates(
         no_scene=scene is None or scene.status != "ok",
         no_speech=job.audio and not usable,
@@ -259,45 +263,57 @@ def _combine(verdicts: Sequence[Verdict]) -> Verdict:
     return Verdict("needs_you", "policy", reason, hold=hold)
 
 
-def _child_closure(
-    tracks: Sequence[Track], groups: Sequence[Sequence[Track]], judged: Mapping[str, Verdict]
-) -> dict[str, Verdict]:
-    """No ID of a child can be kept. A track is locked as a child when any of these links it to one, repeated until
-    nothing changes (so a link found one way is followed every other way):
-
-    * it shares a review item with a child track (a body grouped with a child's face, and the reverse);
-    * it is linked to one by ``reentry_of``, either way along the whole chain (the same object under a new ID);
-    * it is a body that holds an unpaired child face, or a face inside an unpaired child body, on half their shared
-      frames or more (grouping, which needs 80 %, couldn't pair them: an exact tie, or a face partly outside its body).
-    """
+def child_links(tracks: Sequence[Track], groups: Sequence[Sequence[Track]]) -> dict[str, set[str]]:
+    """Which tracks are one person for the child lock: tracks sharing a review item; tracks linked by ``reentry_of``
+    (either way); and a face inside a body on half their shared frames or more when either of the two is unpaired
+    (grouping, which needs 80 %, didn't make them one item: a tie, a face partly outside its body, or the face paired
+    with someone holding the child). Two paired items never link this way (an adult carrying their child)."""
     by_id = {t.track_id: t for t in tracks}
     group_of = {t.track_id: tuple(x.track_id for x in g) for g in groups for t in g}
     alone = {g[0].track_id for g in groups if len(g) == 1}
-    children = {tid for tid, v in judged.items() if v.child}
     links: dict[str, set[str]] = {t.track_id: set(group_of[t.track_id]) - {t.track_id} for t in tracks}
     for t in tracks:
         if t.reentry_of is not None and t.reentry_of in by_id:
             links[t.track_id].add(t.reentry_of)
             links[t.reentry_of].add(t.track_id)
-    faces = [t for t in tracks if t.concept == "face" and t.track_id in alone]
-    bodies = [t for t in tracks if t.concept == "person" and t.track_id in alone]
-    changed = True
-    while changed:
-        changed = False
-        found = {other for tid in children for other in links[tid]}
-        found |= {
-            b.track_id for b in tracks if b.concept == "person"
-            for f in faces if f.track_id in children and inside_share(f, b) >= CHILD_LINK
-        }  # fmt: skip
-        found |= {
-            f.track_id for f in tracks if f.concept == "face"
-            for b in bodies if b.track_id in children and inside_share(f, b) >= CHILD_LINK
-        }  # fmt: skip
-        if found - children:
-            children |= found
-            changed = True
+    faces = [t for t in tracks if t.concept == "face" and t.origin == "sam"]
+    bodies = [t for t in tracks if t.concept == "person" and t.origin == "sam"]
+    for f in faces:
+        for b in bodies:
+            if (f.track_id in alone or b.track_id in alone) and inside_share(f, b) >= CHILD_LINK:
+                links[f.track_id].add(b.track_id)
+                links[b.track_id].add(f.track_id)
+    return links
+
+
+def _components(tracks: Sequence[Track], links: Mapping[str, set[str]]) -> dict[str, str]:
+    root = {t.track_id: t.track_id for t in tracks}
+
+    def find(track_id: str) -> str:
+        while root[track_id] != track_id:
+            root[track_id] = root[root[track_id]]
+            track_id = root[track_id]
+        return track_id
+
+    for tid, others in links.items():
+        for other in others:
+            root[find(tid)] = find(other)
+    return {t.track_id: find(t.track_id) for t in tracks}
+
+
+def _child_closure(
+    tracks: Sequence[Track], groups: Sequence[Sequence[Track]], judged: Mapping[str, Verdict]
+) -> dict[str, Verdict]:
+    """No ID of a child can be kept: every track :func:`child_links` connects to a child, however many links away,
+    is locked hidden as a child too."""
+    root = _components(tracks, child_links(tracks, groups))
+    child_roots = {root[tid] for tid, v in judged.items() if v.child}
     reason = "child: linked to a child (same item, a re-entry, or face and body), so always hidden"
-    return {tid: Verdict("hide", "policy", reason, child=True) for tid in children if not judged[tid].child}
+    return {
+        t.track_id: Verdict("hide", "policy", reason, child=True)
+        for t in tracks
+        if not judged[t.track_id].child and root[t.track_id] in child_roots
+    }
 
 
 def style_for(kind: Kind, group: Sequence[Track], job: Job) -> Style:
@@ -306,7 +322,8 @@ def style_for(kind: Kind, group: Sequence[Track], job: Job) -> Style:
     has_person = any(t.concept == "person" for t in group)
     has_face = any(t.concept == "face" for t in group)
     if kind == "child":
-        return "person_solid" if has_person else "solid"
+        # The whole child: a body mask, or (face only) the face and a body under it (the guard estimates one).
+        return "person_solid" if has_person or has_face else "solid"
     if kind != "person":
         return "solid"
     prominent = any(

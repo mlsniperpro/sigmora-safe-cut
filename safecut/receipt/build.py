@@ -39,7 +39,7 @@ from safecut.contracts import (
     read_cost_lines,
     receipt_hash,
 )
-from safecut.render import file_sha256
+from safecut.render import file_sha256, rendered_from_plan
 
 RUN = Path("raw/audit/run.json")
 APPROVAL = "approval.json"
@@ -176,7 +176,11 @@ def audited_current_video(job_dir: Path) -> bool:
     run, video = job_dir / RUN, job_dir / "redacted.mp4"
     if not run.exists() or not video.exists():
         return False
-    return json.loads(run.read_text(encoding="utf-8")).get("video_sha256") == file_sha256(video)
+    try:
+        record = json.loads(run.read_text(encoding="utf-8"))
+    except ValueError:
+        return False  # a torn record vouches for nothing
+    return isinstance(record, dict) and cast("dict[str, object]", record).get("video_sha256") == file_sha256(video)
 
 
 def build(
@@ -185,6 +189,8 @@ def build(
     """Seal the receipt for ``job_dir``."""
     if not (job_dir / "audit.json").exists() or not (job_dir / "decisions.json").exists():
         raise ReceiptError("a receipt needs decisions.json and audit.json (run decide … audit first)")
+    if not rendered_from_plan(job_dir):
+        raise ReceiptError("redacted.mp4 wasn't drawn from the current plan.json (it changed since): render it again")
     if not audited_current_video(job_dir):
         raise ReceiptError("audit.json doesn't describe the current redacted.mp4 (re-rendered since): run the audit")
     job = load(job_dir / "job.json", Job)

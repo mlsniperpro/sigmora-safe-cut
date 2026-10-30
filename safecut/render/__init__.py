@@ -54,10 +54,16 @@ def render(job_dir: Path) -> Path:
                 path = thumbs / f"{spec.item_id}.jpg"
                 if not cv2.imwrite(str(path), cut_thumb(redacted, spec.box), [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY]):
                     raise RenderError(f"couldn't write {path.name}")
-    stamp = job_dir / PLAN_STAMP
-    stamp.parent.mkdir(parents=True, exist_ok=True)
-    stamp.write_text(file_sha256(job_dir / "plan.json") + "\n", encoding="utf-8")
+    write_atomic(job_dir / PLAN_STAMP, file_sha256(job_dir / "plan.json") + "\n")
     return out
+
+
+def write_atomic(path: Path, text: str) -> None:
+    """Whole or not at all (a temp file renamed into place): a crash never leaves a torn record."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
 
 
 #: The sha256 of the ``plan.json`` the current ``redacted.mp4`` was drawn from, written after the video is complete.
