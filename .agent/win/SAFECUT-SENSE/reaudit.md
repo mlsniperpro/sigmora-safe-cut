@@ -1,7 +1,7 @@
-AUDITED_COMMIT: b9b13d8
+AUDITED_COMMIT: ae004d8
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
-CLEAN_AUDITS_IN_A_ROW: 0
+CLEAN_AUDITS_IN_A_ROW: 2
 
 # SAFECUT-SENSE re-audit log
 
@@ -99,3 +99,45 @@ Not clean (one reasoning medium, introduced by audit 6's fix). Perception half: 
 - L a stream line imageio can't parse (AttributeError) → bad_media (`test_a_stream_line_the_parser_cannot_read_is_bad_media`); the encoder gets its own `-threads 4` (checked: `threads=4 lookahead_threads=1` in the prepared clip); negative 10+ digit SAM fields fail closed (`test_a_huge_negative_number_fails_closed`)
 - L a corrupt transcript.json crashed `scene` → no speech, scene.json written (`test_a_corrupt_transcript_still_writes_scene`); roles' input copy/restore atomic; speaker labels bounded (`test_a_speaker_label_that_is_a_huge_number_is_relabelled`); fixture ids never end in a separator
 - Decision: an `unsure` escalation ruling citing no frames counts as no ruling (`escalated: false`), the same rule as a role vote without citations (role-pass rule 5); advisory only.
+
+## Audit 8 (two auditors) at 5e6eaa7: 0 critical, 0 high, 1 medium (perception), 5 low
+Not clean (one perception medium: audit 7's header fix was incomplete). Reasoning half: clean (0 C/H/M; its contract
+fuzz ran 9 full jobs on hostile schema-valid answers, all valid).
+- M a newline in a metadata key is printed unescaped and forged ffmpeg header lines: a 3 s video with 20 min of audio was accepted, and an 81 Mpx frame passed as 100×100 → the header is a hint only: duration from the longest stream's packet span, pixels from the first decoded frame, the prepared clip cut to its video's span (`test_a_forged_header_cannot_hide_a_long_soundtrack`, `test_a_forged_header_cannot_hide_a_huge_frame`, `test_the_prepared_clip_never_runs_past_its_video`)
+- L whitespace before a 4,300+ digit SAM field reached Meta's int() → any ValueError from the parser is MetaIncomplete (`test_a_huge_number_with_spaces_fails_closed`); box-token keys trimmed like Meta's parser (`test_a_space_key_with_whitespace_is_read_like_metas_parser`)
+- L (reasoning) `clip_id` could end in a separator → stripped (`test_clip_ids_never_end_in_a_separator`); fallback turns unbounded → at most 300 (`test_the_fallback_keeps_a_bounded_number_of_turns`)
+- Decision: person misses inside a same-concept track's box are tracked by it (audit 3's rule; a child miss counts only for a child_phrase track); per-word phrase length, non-ASCII SoM tags drawn as `?`, replay failure text in a scene summary, a hand-edited corrupt ASR recording, and `--usd-cap` rounding are cosmetic or need tampered input: recorded, not changed.
+- Added after audit 7: a hypothesis property that any schema-valid votes and rulings assemble into a roles.json the contracts accept (`test_any_schema_valid_answers_assemble_into_a_valid_roles_file`).
+
+## Audit 9 (two auditors) at 3b6d537: 0 critical, 0 high, 0 medium, 7 low: CLEAN
+Both halves clean at Medium and above (interrupted by a usage limit at 18:05 UTC and resumed at 19:23 from their saved
+state). The reasoning half fuzzed ~45 full speech/scene/roles runs with hostile schema-valid answers and 3,000
+multi-window cases against an independent oracle: every output valid, every participant on 3/3 valid votes over ≥ 2
+distinct non-crowded frames. The perception half prepared 20+ legitimate clip shapes (rates, rotation, 10-bit HDR,
+8K, fragmented MP4, edit-list trims, audio first or longer) with no regression from the `-t` cut.
+- L (reasoning) the roles property was a weak oracle → it now asserts the keep rule itself (≥ 2 distinct cited frames, none crowded or unsent); A1–A16 and the crowded-frame tests already covered the rules
+- L a WAV half-written by a failed extract stayed in the job → removed (`test_a_failed_wav_extract_leaves_no_partial_file`)
+- Decision: a stream that changes resolution mid-stream (crafted: small first frame, huge later ones) is bounded by the 6 GiB transcode limit and the timeout; `times` still match the read-back frames' own count. Not refused upfront (that would need a full decode).
+- Decision: `-t` at the video span could drop a final frame only if the last packet reports a zero duration (not reproducible with a normal muxer; at most 1/fps).
+- Decision: an attached picture (cover art) as the first video stream is refused as bad_media (typed, fail closed).
+- Decision: a track with one failed vote in each of several windows counts as all-failed and isn't escalated: it stays hidden (fail closed); escalation is advisory.
+- Decision: votes 2 and 3 start when vote 1 answers or after 20 s; the "first output item" trigger needs a streaming hook the client doesn't expose. Latency only.
+
+## Audit 10 (two auditors, full fresh passes) at 86be73c, the final SENSE code: 0 critical, 0 high, 0 medium in SENSE: CLEAN
+Second clean audit in a row (9 at 3b6d537, 10 at 86be73c; between them only the two audit-9 lows and a merge of main).
+The perception half measured `job.times` and the proxy table on burned-in frame barcodes across 14 rates, offsets and
+VFR (0 mismatches), and 171 rate × length combinations. The reasoning half ran ~400 full speech → scene → roles →
+decide → guard jobs with hostile schema-valid answers (multi-window, crowded, random SAM answers, live client path
+with fault injection): every job valid, with an independent oracle finding no keep without 3/3 valid votes over ≥ 2
+distinct present non-crowded frames, no lost child, every miss covered.
+- Outside SENSE (reported to SHIP, its owner): `deploy/modal_app.py` mounts `safecut` with `add_local_python_source`, whose default ignore drops non-.py files, so the deployed image would lack the prompt templates (and SAFETY's YuNet weights).
+- Decisions (lows, no change at the final head): `data= H,W` with a space slips the mask-size pre-check (malformed Meta answer; Meta's parser still refuses it as not box-sized, CPU bounded); the demo's synthetic person boxes stop one row above the drawn feet (synthetic fixture only; E3 scores faces); a truncated upload prepares to the frames that decode (typed, times stay exact); non-square SAR is kept (SAM's space check fails closed if Meta answers in display space; needs the live probe); a turn wholly before the clip clamps to t = 0 (cannot create a keep); counts of scene participants and swept phrase characters are unbounded in prompts (cost only); quotes and brackets inside one quoted line aren't escaped (needs adversarial speech; cannot create a keep); the role-pass agreement-rate logging and order-shuffle contingency aren't built (advisory); a malformed ASR body with a lone surrogate or a 400-digit time fails the primary path loudly (Meta-only); no total cap on static misses beyond the spec's M8 (linear: 300 items stayed small); `make_demo_job` rebuilds the demo in place; escalation affordability is all-or-nothing (advisory).
+
+## Audit 11 (diff check) at ae004d8: behaviour-neutral
+After audit 10 the gate's older system ruff (0.16.9) asked for two lint changes; ae004d8 is them and nothing else
+(`git diff 86be73c ae004d8 -- . ':(exclude).agent'`: `safecut/track/media.py` loads imageio's header parser with
+`importlib` instead of a long suppressed import, and four test-local `noqa` lines gain their reason). An independent
+auditor verified it changes no behaviour: `media.parse_ffmpeg_header is imageio_ffmpeg._parsing.parse_ffmpeg_header`;
+the old and new `facts()` agree field for field on every fixture clip; the test file's AST is unchanged; the monkeypatch
+path still reaches the real call site; pytest (prepare, track, scout logic: 133 passed) and pyright clean. So the
+AUDITED_COMMIT moves to ae004d8 with audits 9 and 10 standing: the code they audited is the code at ae004d8.

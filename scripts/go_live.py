@@ -25,7 +25,9 @@ DEFAULT_CAP = 3.00
 
 def clip_id(clip: Path) -> str:
     """A fixture directory name: lowercase ``[a-z0-9_-]`` only, never empty, ``.`` or ``..``."""
-    return re.sub(r"[^a-z0-9_-]+", "-", clip.name.removesuffix(clip.suffix).lower()).strip("-")[:60] or "clip"
+    return (
+        re.sub(r"[^a-z0-9_-]+", "-", clip.name.removesuffix(clip.suffix).lower()).strip("-")[:60].strip("-") or "clip"
+    )
 
 
 def fixture_id(given: str) -> str:
