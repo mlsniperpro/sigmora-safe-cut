@@ -98,6 +98,7 @@ def test_a_clean_render_passes_in_one_pass(tmp_path: Path) -> None:
     contracts.validate_job_dir(job_dir)
 
 
+@pytest.mark.entry("E4:injected_leak_patched")
 def test_an_injected_3_frame_leak_is_found_and_patched(tmp_path: Path) -> None:
     """E4: a 3-frame hole in the bystander's redaction is found by the detector (every frame) and the red-team,
     patched with an audit patch, re-rendered, and verified clean on the next pass."""

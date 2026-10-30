@@ -439,6 +439,7 @@ def policy_inputs(draw: st.DrawFn) -> Inputs:
                   scene=sc, transcript=tr)  # fmt: skip
 
 
+@pytest.mark.entry("E4:non_participant_never_kept")
 @E4
 @given(policy_inputs())
 def test_property_nothing_but_a_unanimous_participant_is_kept(inputs: Inputs) -> None:
@@ -474,6 +475,7 @@ def test_property_every_decision_passes_the_contract(inputs: Inputs) -> None:
         assert (item.hold is None) or item.decision == "needs_you"
 
 
+@pytest.mark.entry("E4:child_never_kept")
 @E4
 @given(policy_inputs())
 def test_property_children_are_never_kept(inputs: Inputs) -> None:

@@ -246,6 +246,7 @@ def guarded(draw: st.DrawFn) -> tuple[Tracks, Decisions, Plan]:
     return tset, d, plan(JOB, tset, d)
 
 
+@pytest.mark.entry("E4:hidden_frames_covered")
 @E4
 @given(guarded())
 def test_property_every_visible_frame_of_a_hidden_track_is_covered_by_its_padded_box(
@@ -275,6 +276,7 @@ def test_property_every_visible_frame_of_a_hidden_track_is_covered_by_its_padded
     contracts._check_plan_geometry(p, d, ts, JOB)
 
 
+@pytest.mark.entry("E4:backfill_gap_hold")
 @E4
 @given(guarded())
 def test_property_backfill_and_gap_hold_hold(case: tuple[Tracks, Decisions, Plan]) -> None:
@@ -299,6 +301,7 @@ def test_property_backfill_and_gap_hold_hold(case: tuple[Tracks, Decisions, Plan
                     assert covered(p, frame, item, interp), ("gap", t.track_id, frame)
 
 
+@pytest.mark.entry("E4:locked_grid_fixed")
 @E4
 @given(guarded())
 def test_property_locked_grids_never_move(case: tuple[Tracks, Decisions, Plan]) -> None:

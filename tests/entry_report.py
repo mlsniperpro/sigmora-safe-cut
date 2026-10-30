@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections.abc import Generator
 from pathlib import Path
 from typing import Any
 
@@ -57,15 +58,20 @@ def _write(path: str, entry: dict[str, Any]) -> None:
         handle.write(json.dumps(entry, sort_keys=True) + "\n")
 
 
-@pytest.hookimpl(trylast=True)
-def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]) -> None:
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_makereport(
+    item: pytest.Item, call: pytest.CallInfo[None]
+) -> Generator[None, pytest.TestReport, pytest.TestReport]:
+    # A wrapper: makereport is a first-result hook, so a plain (even trylast) implementation never runs once
+    # pytest's own has returned the report.
+    report = yield
     path = os.environ.get("SAFECUT_ENTRY_REPORT")
     keys = _keys(item)
-    if not path or not keys or call.when != "teardown":
-        return
-    stats = getattr(item, "hypothesis_statistics", None)
-    passing = sum(int(n) for n in _PASSING.findall(stats)) if isinstance(stats, str) else None
-    _write(path, {"nodeid": item.nodeid, "keys": keys, "event": "teardown", "examples": passing})
+    if path and keys and call.when == "teardown":
+        stats = getattr(item, "hypothesis_statistics", None)
+        passing = sum(int(n) for n in _PASSING.findall(stats)) if isinstance(stats, str) else None
+        _write(path, {"nodeid": item.nodeid, "keys": keys, "event": "teardown", "examples": passing})
+    return report
 
 
 def pytest_runtest_logreport(report: pytest.TestReport) -> None:
