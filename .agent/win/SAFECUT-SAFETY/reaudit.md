@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 3229c21adda346df3c5d40e636e55d8a94d1b568
+AUDITED_COMMIT: fc79f545e0eb93d7e299fcd8ad2bab227194d69d
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -199,4 +199,14 @@ ground-truth frames, all clean); WP4 2 medium reproduced, fixed at b29ce28 (merg
   entry follows the dilated SAM outline (by design); an undo of a cover whose spot a re-audit dropped keeps the patch
   (fail-closed); flagged-frame sampling cost on a clip SAM missed entirely (spec-mandated; the cap blocks it).
 
-## Round 11: running at 3229c21 (main merged in: SHIP's fixes)
+## Round 11 (at 3229c21): WP3 no findings (≈ 8,000 random jobs with edits, 100 % raw-box coverage check);
+WP4 1 low reproduced, fixed at fc79f54 (merged bcccc49). Not clean (a finding is a finding).
+- WP4 low: `receipt.models.escalate` came from today's setting, not what ran → the model its recorded calls name
+  (`test_the_escalation_model_is_the_one_its_calls_recorded`, fails without the fix).
+- Notes kept as notes: a child SAM re-IDs with no `reentry_of` and no frame overlap counts twice (spec: items are
+  counted; same class as h); an unresolved flagged leak's item stays mosaic while publishing is blocked (the
+  contract upgrades only resolved read-throughs); new A-numbers are max+1 after an undone cover; the render stamp
+  hashes the plan after encoding (edits are refused while a job is busy); `audit/baselines.py` serves E9 tests only;
+  a truncated red-team batch fails closed without a split.
+
+## Round 12: running at fc79f54 (main bcccc49)
