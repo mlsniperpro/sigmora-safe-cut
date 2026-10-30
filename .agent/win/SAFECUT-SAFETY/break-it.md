@@ -44,7 +44,9 @@ guards. The soak and the fresh-clone run are repeated at the final commit; `TEST
 ## Fresh clone
 - Full test suite on a fresh clone of main at ede3dc1: **1278 passed**.
 - Full `bash scripts/entry-check.sh` on a fresh clone of main at d126234: E1–E10 and E12 OK; E11 failed only on
-  a skip-shaped string inside SHIP's own `tests/test_entry_check.py` (reported to SHIP).
+  a skip-shaped string inside SHIP's own `tests/test_entry_check.py` (reported to SHIP, fixed by SHIP).
+- Full `bash scripts/entry-check.sh` on a fresh clone of main at e8fee36 (2026-10-30T20:49Z): E1–E12 all OK,
+  **ENTRY: PASS**. Repeated on the final main after this lane's last merge.
 
 ## Adversarial audits
 - Eight rounds of two independent full audits (WP3, WP4); every finding verified and fixed with a test or
