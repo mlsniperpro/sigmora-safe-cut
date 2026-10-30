@@ -12,16 +12,16 @@ uv run safecut run fixtures/clips/SC-A-91-synthetic-20261030.mp4 --out "$(mktemp
 
 ## 1. Perceive: SAM 3.1 tracks every candidate (`tracks.json`)
 
-One SAM 3.1 request per concept (face, person, license plate, screen, phone, document, name badge) returns thirteen tracks:
+One SAM 3.1 request per concept (face, person, license plate, screen, phone, document, name badge), plus the miss loop's sweep, gives fifteen tracks:
 
-- `face:1`–`face:4`;
-- `person:1`–`person:4`;
+- `face:1`–`face:4` and `person:1`–`person:4`;
 - `license plate:1`;
 - `screen:1`;
 - `envelope:1` (added later by the miss loop, step 3);
-- `face:5` and `person:5`.
+- `face:5` and `person:5`: the passer-by coming back into frame after leaving it (`reentry_of: face:2` / `person:2`);
+- `face:6` and `person:6`: Kev, the guest, walking out of frame on the right and back in from the left (`reentry_of: face:3` / `person:3`).
 
-The last two are the passer-by coming back into frame after leaving it. SAM gives them new IDs, with `reentry_of: face:2` / `person:2` kept as a hint only. A person who is lost and found again is a **new** track, and starts hidden.
+SAM gives a returning person new IDs and the `reentry_of` link is kept as a hint only. A person who is lost and found again is a **new** track, and starts hidden, even the guest.
 
 ## 2. Listen and read the scene: Voice Transcribe, then Muse Spark (`transcript.json`, `scene.json`)
 
@@ -45,6 +45,7 @@ The role pass sends Muse Spark Set-of-Mark keyframes: frames with each track's b
 | `face:2` (passer-by) | bystander ×3 | bystander: "walks past in the background; nobody addresses them" |
 | `face:4` | child, bystander, bystander | **child**: one child vote is enough |
 | `face:5` (the passer-by, back) | bystander, unsure, bystander | **unsure**, so it is escalated once at maximum effort; the ruling suggests bystander |
+| `face:6` (Kev, back) | participant, unsure, participant | **unsure**, escalated; the ruling suggests participant |
 
 The objects get a content check:
 - `screen:1` is "a wall screen showing an email inbox with names" (sensitive);
@@ -63,6 +64,7 @@ The policy (`safecut/decide/policy.py`, 100 % branch-covered and property-tested
 | Passer-by (`face:2`, `person:2`) | hide, whole-person cover | model | bystander |
 | Child (`face:4`, `person:4`) | hide, **locked** | model | a child; the creator can't keep it clear |
 | Passer-by again (`face:5`, `person:5`) | **needs you** (renders hidden) | policy | "checks didn't all agree; a closer look suggests bystander" |
+| Kev again (`face:6`, `person:6`) | **needs you** (renders hidden) | policy | "checks didn't all agree; a closer look suggests participant" |
 | Inbox screen | hide, solid | model | sensitive screen |
 | Plate | hide, solid | policy | plates are always hidden |
 | Envelope | hide, solid | model | sensitive document |
@@ -73,7 +75,7 @@ The leak guard (`plan.json`) then pads every hidden box, back-fills before a tra
 
 The review panel shows these items in three columns: hidden, kept clear and needs you. Each item has a Why drawer with the keyframe, the votes and the reason. Each tap is one edit sent to `POST /v1/jobs/{id}/review`. WP3's `apply_review` folds it over the policy's decisions, and the guard re-plans. Edits are idempotent by `edit_id`, and Undo is an edit of its own.
 
-What the creator can't do: keep the child clear, keep an audit patch clear, or merge anything into a non-participant. The approval pins the exact `decisions.json` it approved (`decisions_sha256`), so a later edit needs a new approval. In this trace, `--auto-approve-policy` stands in for the creator and accepts the policy as it is, so the needs-you passer-by stays hidden.
+What the creator can't do: keep the child clear, keep an audit patch clear, or merge anything into a non-participant. The approval pins the decisions it approved (`decisions_sha256`, over every item but the audit's own locked patches), so a later edit needs a new approval. In the review panel the creator would tap **Same as…** to merge Kev's returning track into Kev. In this trace, `--auto-approve-policy` stands in for the creator and accepts the policy as it is, so both needs-you items stay hidden: the passer-by, and Kev for the few frames after he walks back in.
 
 ## 6. Act, then verify the action: render and audit (`redacted.mp4`, `audit.json`)
 

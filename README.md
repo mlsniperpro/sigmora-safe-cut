@@ -55,8 +55,8 @@ From [`eval/RESULTS.md`](eval/RESULTS.md), which `eval/report.py` builds from th
 | OpenCV YuNet face detector on every frame (EgoBlur weights not installed) | 0.0% | 100.0% | 5 | 0.0% |
 | Detector only (SAM 3.1 classes, no Muse Spark) | 80.0% | 10.1% | 1 | 100.0% |
 | Muse Spark keyframe boxes, no tracking | 60.0% | 37.5% | 12 | 100.0% |
-| **Safe Cut (full)** | 100.0% | 0.0% | 0 | 50.0% |
-| Safe Cut without the audit pass | 100.0% | 0.0% | 0 | 50.0% |
+| **Safe Cut (full)** | 100.0% | 0.0% | 0 | 0.0% |
+| Safe Cut without the audit pass | 100.0% | 0.0% | 0 | 0.0% |
 <!-- results:end -->
 
 The honest failures on this clip: the YuNet baseline finds no drawn face at all (they aren't faces), so it exposes everything. Blur-every-face hides both participants. Safe Cut's own over-blur comes from deny-by-default: the guest leaves and comes back, the tracker gives the return a new ID, and with the policy auto-approved that span stays hidden until a creator merges it (one tap in review). Recall, exposure, leak bursts and over-blur are defined in `eval/RESULTS.md` and tested in `tests/test_metrics.py`.

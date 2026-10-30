@@ -154,7 +154,7 @@ Only when SAM is called without `store: false` (`SAFECUT_SAM_SEND_STORE=false`):
 ```json
 {"source": "SC-A-01.mp4", "created_at": "2026-10-27T10:00:00Z", "consented": false, "mode": "live|replay", "code_kind": "judge"}
 ```
-`prepare` copies `source`, `created_at` and `consented` into `job.json`. `approval.json` is written when the creator approves the plan (the review screen, or `safecut run --auto-approve-policy`), before `render`; `receipt` copies `approved_by`/`approved_at`, and `decisions_sha256` pins the approved `decisions.json` (a later edit needs a new approval):
+`prepare` copies `source`, `created_at` and `consented` into `job.json`. `approval.json` is written when the creator approves the plan (the review screen, or `safecut run --auto-approve-policy`), before `render`; `receipt` copies `approved_by`/`approved_at`, and `decisions_sha256` pins the approved decisions: the sha256 of the canonical JSON of `decisions.json`'s items without its audit patches (`origin: "audit_patch"`, which the audit appends after approval and which are always locked hides); any other later edit needs a new approval:
 ```json
 {"approved_by": "creator", "approved_at": "2026-10-27T10:05:00Z", "how": "review|auto_policy", "decisions_sha256": "…"}
 ```
