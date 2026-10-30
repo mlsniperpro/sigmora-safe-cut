@@ -18,8 +18,17 @@ from safecut.guard import run as guard_run
 from safecut.receipt import RECEIPT, RECEIPT_HTML, ReceiptError, history, verify_chain
 from safecut.receipt import run as receipt_run
 from safecut.receipt.__main__ import main as cli
-from safecut.receipt.build import BASETEN_NOTE, SYNTHETIC_NOTE, YUNET_NOTE, build, data_handling
+from safecut.receipt.build import (
+    AUDIO_NOTE,
+    AUTO_APPROVE_NOTE,
+    BASETEN_NOTE,
+    SYNTHETIC_NOTE,
+    YUNET_NOTE,
+    build,
+    data_handling,
+)
 from safecut.render import render
+from safecut.render import run as render_run
 from tests.safety_jobs import make_job
 
 SETTINGS = Settings(egoblur_model="yunet-face")
@@ -46,7 +55,7 @@ def test_the_receipt_matches_every_job_file(job_dir: Path) -> None:
     assert "redteam" not in receipt.models  # the synthetic oracle is no model
     assert receipt.data_handling.no_store_param == ["muse-voice-transcribe-1.0"]
     assert set(receipt.data_handling.store_by_model.values()) == {False}
-    assert receipt.data_handling.notes == [SYNTHETIC_NOTE, YUNET_NOTE]
+    assert receipt.data_handling.notes == [SYNTHETIC_NOTE, YUNET_NOTE, AUTO_APPROVE_NOTE, AUDIO_NOTE]  # sealed
     assert receipt.prev_hash is None
     assert verify_chain([receipt])
 
@@ -145,3 +154,28 @@ def test_the_example_job_receipt_still_verifies() -> None:
     """The contract change (removed_by_creator, written only when true) leaves sealed receipts' hashes intact."""
     receipt = load(Path("fixtures/contracts/j_example/receipt.json"), Receipt)
     assert verify_chain([receipt])
+
+
+def test_a_re_render_retires_the_old_receipt_until_a_new_one_is_sealed(job_dir: Path) -> None:
+    """A new render never sits beside the old video's sealed verdict: if its audit then fails, there is no receipt
+    (and the job isn't "done"); the next receipt still chains from the retired one."""
+    receipt_run(job_dir, settings=SETTINGS)
+    first = load(job_dir / RECEIPT, Receipt)
+    render_run(job_dir)
+    assert not (job_dir / RECEIPT).exists()
+    assert not (job_dir / RECEIPT_HTML).exists()
+    assert pipeline.status(job_dir) != "done"
+    assert load(job_dir / "receipts" / f"{first.hash}.json", Receipt) == first
+    audit_run(job_dir, replay=True, settings=SETTINGS)
+    receipt_run(job_dir, settings=SETTINGS)
+    second = load(job_dir / RECEIPT, Receipt)
+    assert second.prev_hash == first.hash
+    assert verify_chain(history(job_dir))
+
+
+def test_a_human_review_is_not_noted_as_auto_approved(job_dir: Path) -> None:
+    pipeline.approve(job_dir, how="review")
+    receipt_run(job_dir, settings=SETTINGS)
+    receipt = load(job_dir / RECEIPT, Receipt)
+    assert AUTO_APPROVE_NOTE not in receipt.data_handling.notes
+    assert "approved by the creator" in (job_dir / RECEIPT_HTML).read_text()

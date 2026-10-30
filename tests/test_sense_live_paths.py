@@ -114,3 +114,32 @@ def test_a_rerun_reuses_this_jobs_sam_answers(live_job: tuple[Path, FakeMeta]) -
     asyncio.run(track_stage.run_async(job, settings=settings))
     assert fake.calls.count("sam") == first  # nothing re-billed (PRE-A §10.4 checkpoints)
     assert load(job / "tracks.json", Tracks).tracks == Tracks.model_validate_json(tracks).tracks
+
+
+def test_a_recorded_answer_that_never_parsed_is_asked_again(live_job: tuple[Path, FakeMeta]) -> None:
+    """A glitched (but recorded) SAM answer can't wedge the stage: a re-run asks again for that one concept only."""
+    job, fake = live_job
+    settings = Settings(model_api_key=SecretStr("sk-test-not-a-real-key"), sam_fps=8)
+    asyncio.run(track_stage.run_async(job, settings=settings))
+    first = fake.calls.count("sam")
+    key = track_stage.SamCall(kind="phrase", concept="face", text="face").key
+    bad = replay.load_call(job, track_stage.RAW_STAGE, key)
+    assert bad.events is not None
+    mangled = [e if e.get("type") != "response.output_text.delta" else {**e, "delta": "<3f>0<|box;x1=1"}
+               for e in bad.events]  # fmt: skip
+    replay.save(job, track_stage.RAW_STAGE, key, bad.model_copy(update={"events": mangled}))
+    asyncio.run(track_stage.run_async(job, settings=settings))
+    assert fake.calls.count("sam") == first + 1
+    assert replay.load_call(job, track_stage.RAW_STAGE, key).events == bad.events  # the good answer recorded again
+
+
+def test_a_checkpoint_from_another_model_is_not_reused(live_job: tuple[Path, FakeMeta]) -> None:
+    job, fake = live_job
+    settings = Settings(model_api_key=SecretStr("sk-test-not-a-real-key"), sam_fps=8)
+    asyncio.run(track_stage.run_async(job, settings=settings))
+    first = fake.calls.count("sam")
+    key = track_stage.SamCall(kind="phrase", concept="face", text="face").key
+    older = replay.load_call(job, track_stage.RAW_STAGE, key)
+    replay.save(job, track_stage.RAW_STAGE, key, older.model_copy(update={"model": "sam-3.0"}))
+    asyncio.run(track_stage.run_async(job, settings=settings))
+    assert fake.calls.count("sam") == first + 1  # only the other model's answer is asked again

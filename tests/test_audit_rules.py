@@ -4,12 +4,16 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from safecut.audit import leaks as rules
 from safecut.contracts import DecisionItem, Decisions, Leak, Plan
+from safecut.decide import geometry as g
+from safecut.decide.geometry import iou as iou_of
+from safecut.scout.grid import BAR_H as ROLE_PASS_BAR
 from tests.safety_factories import track, tracks
 
 W, H = 1280, 720
@@ -124,8 +128,8 @@ def test_grid_vectors(raw: list[int], want: Any) -> None:
 
 
 def test_bar_height_and_frame_label() -> None:
-    assert rules.bar_height(720) == 40
-    assert rules.bar_height(180) == 24
+    # API-NOTES §5: bar_h = 40 sent pixels for every clip, the same bar as the role pass (redteam.md Inputs).
+    assert rules.bar_height(720) == rules.bar_height(180) == rules.bar_height(1920) == ROLE_PASS_BAR == 40
     assert rules.is_frame_label("F 000090")
     assert not rules.is_frame_label("AMINA")
     assert not rules.is_frame_label(None)
@@ -177,3 +181,25 @@ def test_next_numbers_and_spots() -> None:
         ("s1", 10, 10, {10: (10, 10, 40, 30)}),
         ("s2", 90, 90, {90: (10, 10, 30, 30)}),
     ]
+
+
+def test_leaks_merge_only_at_iou_0_3_or_more() -> None:
+    """API-NOTES §12: consecutive leaks of one object merge at IoU ≥ 0.3; boxes that merely touch stay apart."""
+    near = [leak(10, (10, 10, 30, 30)), leak(12, (25, 10, 45, 30))]  # IoU 5/35 ≈ 0.14
+    assert len(rules.group_leaks(near, step=30)) == 2
+    same = [leak(10, (10, 10, 30, 30)), leak(12, (14, 10, 34, 30))]  # IoU 16/24 ≈ 0.67
+    assert len(rules.group_leaks(same, step=30)) == 1
+
+
+def test_exclusion_uses_the_kept_tracks_visible_mask_where_it_has_one() -> None:
+    """redteam.md: a finding is excused by the *visible* region of a kept item: its SAM mask on that frame."""
+    yy, xx = np.mgrid[0:180, 0:320]
+    thin = (np.abs(xx - 150) <= 8) & (yy >= 20) & (yy < 160)  # a thin pole-like body inside a wide box
+    body = {"person:1": track("person:1", 50, 50, (100, 20, 200, 160), masks={50: g.encode(thin)})}
+    kept = Decisions(items=[item("i_7", ["person:1"])])
+    beside = (100, 20, 140, 160)  # inside the kept box (box IoU 0.4) but off its visible body
+    assert iou_of((100, 20, 200, 160), beside) > rules.EXCLUDE_IOU
+    assert rules.excluded_by("person", beside, 50, kept, body) is None
+    assert rules.excluded_by("person", (140, 20, 160, 160), 50, kept, body) == "i_7"  # on the body itself
+    boxed = {"person:1": track("person:1", 50, 50, (100, 20, 200, 160))}  # no mask: its box
+    assert rules.excluded_by("person", beside, 50, kept, boxed) == "i_7"

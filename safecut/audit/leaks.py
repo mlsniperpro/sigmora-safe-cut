@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from safecut.contracts import DecisionItem, Decisions, Leak, LeakKind, Plan, Spot, Track, Tracks, boxes_overlap
-from safecut.decide.geometry import BoxT, box_at, clamp, intersection, iou, union
+from safecut.decide.geometry import BoxT, area, box_at, clamp, decode_crop, intersection, iou, union
 from safecut.decide.review import PATCH_REASON
 
 #: redteam.md: a finding overlapping a kept item's visible region by more than this IoU is that item.
@@ -44,6 +44,23 @@ def concept_matches(kind: LeakKind, concept: str) -> bool:
             return False
 
 
+def visible_iou(track: Track, frame: int, box: BoxT) -> float:
+    """IoU of ``box`` with the track's *visible* region on ``frame`` (redteam.md): its SAM mask where it has one, so a
+    bystander standing behind a kept body's box isn't excused by the empty corners of that box; else its box."""
+    if frame in track.masks:
+        found = decode_crop(track.masks[frame])
+        if found is None:
+            return 0.0
+        crop, x, y = found
+        x1, y1 = max(box[0], x), max(box[1], y)
+        x2, y2 = min(box[2], x + crop.shape[1]), min(box[3], y + crop.shape[0])
+        inter = int(crop[y1 - y : y2 - y, x1 - x : x2 - x].sum()) if x2 > x1 and y2 > y1 else 0
+        whole = int(crop.sum()) + area(box) - inter
+        return inter / whole if whole else 0.0
+    kept = box_at(track, frame)
+    return iou(kept, box) if kept is not None else 0.0
+
+
 def excluded_by(
     kind: LeakKind, box: BoxT, frame: int, decisions: Decisions, by_track: Mapping[str, Track]
 ) -> str | None:
@@ -55,8 +72,7 @@ def excluded_by(
             track = by_track.get(track_id)
             if track is None or not concept_matches(kind, track.concept):
                 continue
-            kept = box_at(track, frame)
-            if kept is not None and iou(kept, box) > EXCLUDE_IOU:
+            if visible_iou(track, frame, box) > EXCLUDE_IOU:
                 return item.item_id
     return None
 
@@ -82,9 +98,14 @@ def round_half_up(z: float) -> int:
     return math.floor(z + 0.5)
 
 
+#: API-NOTES §5/§10: the frame-number bar above each sent image is ``bar_h = 40`` px, the same bar as the role pass.
+BAR_H = 40
+
+
 def bar_height(height: int) -> int:
-    """The frame-number bar added above each sent image: 40 px at 720 p (API-NOTES §11.2), never under 24 px."""
-    return max(24, round(height / 18))
+    """The frame-number bar added above each sent image (the same for every clip size, like the role pass's)."""
+    del height
+    return BAR_H
 
 
 def grid_box(raw: Sequence[int], *, width: int, height: int, bar: int) -> BoxT | Literal["in_bar"] | None:
@@ -170,16 +191,20 @@ class Group:
         return union([leak.box for leak in self.leaks])
 
 
+#: API-NOTES §12: consecutive leaks of one object merge when their boxes overlap with at least this IoU.
+GROUP_IOU = 0.3
+
+
 def group_leaks(leaks: Sequence[Leak], step: int) -> list[Group]:
     """Group leaks in frame order: a leak joins a group with a leak no more than ``step`` frames earlier whose box
-    overlaps its own; otherwise it starts a group."""
+    overlaps its own with IoU ≥ 0.3 (API-NOTES §12, UI-SPEC §3.3 spots); otherwise it starts a group."""
     groups: list[Group] = []
     for leak in sorted(leaks, key=lambda x: (x.frame, x.box)):
         home = next(
             (
                 g
                 for g in groups
-                if any(leak.frame - other.frame <= step and boxes_overlap(other.box, leak.box) for other in g.leaks)
+                if any(leak.frame - other.frame <= step and iou(other.box, leak.box) >= GROUP_IOU for other in g.leaks)
             ),
             None,
         )

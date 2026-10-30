@@ -1,9 +1,10 @@
 """receipt: the job's files → ``receipt.json`` + ``receipt.html`` (WP4 step 3).
 
-``run(job_dir)`` seals the receipt. When the job already has one (a re-render after review), the new receipt
-chains from it (``prev_hash``) and the old one is kept as ``receipts/<hash>.json``, so the job's history verifies
-end to end with :func:`verify_chain`. ``python -m safecut.receipt verify <receipt.json>…`` checks a chain. No API
-call: ``replay`` changes nothing.
+``run(job_dir)`` seals the receipt. When the job already has one (a re-render after review), the new receipt chains
+from it (``prev_hash``) and the old one is kept as ``receipts/<hash>.json``, so the job's history verifies end to
+end with :func:`verify_chain`. The render stage retires the old receipt first (:func:`retire`), so a job whose
+re-render or re-audit fails never shows the previous video's verdict. ``python -m safecut.receipt verify
+<receipt.json>…`` checks a chain. No API call: ``replay`` changes nothing.
 """
 
 from __future__ import annotations
@@ -18,19 +19,42 @@ from safecut.receipt.html import render_html
 RECEIPT = "receipt.json"
 RECEIPT_HTML = "receipt.html"
 HISTORY = "receipts"
+#: The hash of the last receipt :func:`retire` archived (``receipts/HEAD``), which the next receipt chains from.
+HEAD = "HEAD"
 
 
 def run(job_dir: Path, *, replay: bool = False, settings: Settings | None = None) -> Path:
     """Write ``receipt.json`` and ``receipt.html``; return the JSON's path."""
     del replay  # no API call in this stage
     settings = settings or load_settings()
-    previous = load(job_dir / RECEIPT, Receipt) if (job_dir / RECEIPT).exists() else None
-    if previous is not None:
-        dump(previous, job_dir / HISTORY / f"{previous.hash}.json")
+    previous = retire(job_dir) or _retired(job_dir)
     receipt = build(job_dir, settings, prev_hash=previous.hash if previous is not None else None)
     path = dump(receipt, job_dir / RECEIPT)
     (job_dir / RECEIPT_HTML).write_text(render_html(receipt, job_dir), encoding="utf-8")
     return path
+
+
+def retire(job_dir: Path) -> Receipt | None:
+    """Archive the current receipt as ``receipts/<hash>.json`` and take it (and its page) out of the job, so a new
+    render never sits beside the old video's sealed verdict; the next receipt chains from it. A tampered receipt
+    raises (``ContractError``), never archived."""
+    path = job_dir / RECEIPT
+    if not path.exists():
+        return None
+    previous = load(path, Receipt)
+    dump(previous, job_dir / HISTORY / f"{previous.hash}.json")
+    (job_dir / HISTORY / HEAD).write_text(previous.hash, encoding="utf-8")
+    path.unlink()
+    (job_dir / RECEIPT_HTML).unlink(missing_ok=True)
+    return previous
+
+
+def _retired(job_dir: Path) -> Receipt | None:
+    """The last receipt :func:`retire` archived, if the job has none in place."""
+    head = job_dir / HISTORY / HEAD
+    if not head.exists():
+        return None
+    return load(job_dir / HISTORY / f"{head.read_text(encoding='utf-8').strip()}.json", Receipt)
 
 
 def history(job_dir: Path) -> list[Receipt]:
@@ -43,4 +67,4 @@ def history(job_dir: Path) -> list[Receipt]:
     return chain
 
 
-__all__ = ["RECEIPT", "RECEIPT_HTML", "ReceiptError", "build", "history", "run", "verify_chain"]
+__all__ = ["RECEIPT", "RECEIPT_HTML", "ReceiptError", "build", "history", "retire", "run", "verify_chain"]

@@ -27,7 +27,18 @@ from functools import lru_cache
 import numpy as np
 
 from safecut.contracts import Rle, Track
-from safecut.decide.geometry import BoolMask, BoxT, box_at, clamp, decode, dilate, encode_crop, grow, mask_bbox, union
+from safecut.decide.geometry import (
+    BoolMask,
+    BoxT,
+    box_at,
+    clamp,
+    decode_crop,
+    dilate,
+    encode_crop,
+    grow,
+    mask_bbox,
+    union,
+)
 
 #: DESIGN §2.6: a held box grows 2 % of its size per frame on each side...
 GROW_PER_FRAME = 0.02
@@ -112,6 +123,18 @@ class Patch:
             return None
         return cls(mask[bbox[1] : bbox[3], bbox[0] : bbox[2]], bbox[0], bbox[1])
 
+    def clipped(self, width: int, height: int) -> Patch | None:
+        """The part inside a ``width`` x ``height`` frame, trimmed to its foreground (None when nothing is left)."""
+        x1, y1 = max(0, self.x), max(0, self.y)
+        x2, y2 = min(width, self.box[2]), min(height, self.box[3])
+        if x2 <= x1 or y2 <= y1:
+            return None
+        inside = Patch(self.crop[y1 - self.y : y2 - self.y, x1 - self.x : x2 - self.x], x1, y1)
+        bbox = mask_bbox(inside.crop)
+        if bbox is None:
+            return None
+        return Patch(inside.crop[bbox[1] : bbox[3], bbox[0] : bbox[2]], x1 + bbox[0], y1 + bbox[1])
+
     def moved(self, dx: int, dy: int) -> Patch:
         return Patch(self.crop, self.x + dx, self.y + dy)
 
@@ -150,7 +173,8 @@ class TrackRegions:
         self._decoded = lru_cache(maxsize=8)(self._decode)
 
     def _decode(self, frame: int) -> Patch | None:
-        return Patch.of(decode(self.track.masks[frame]))
+        found = decode_crop(self.track.masks[frame])
+        return Patch(*found) if found is not None else None
 
     def _pad(self, box: BoxT) -> BoxT:
         return grow(box, self.ratio, self.px, self.width, self.height)
@@ -165,8 +189,7 @@ class TrackRegions:
         canvas = np.zeros((patch.crop.shape[0] + 2 * ry, patch.crop.shape[1] + 2 * rx), dtype=np.bool_)
         canvas[ry : ry + patch.crop.shape[0], rx : rx + patch.crop.shape[1]] = patch.crop
         grown = Patch(dilate(canvas, rx, ry), patch.x - rx, patch.y - ry)
-        frame = (0, 0, self.width, self.height)
-        clipped = Patch.of(grown.window(frame))
+        clipped = grown.clipped(self.width, self.height)
         if clipped is None:
             return None
         return Region(box=clipped.box, mask=encode_crop(clipped.crop, clipped.x, clipped.y, height=self.height,

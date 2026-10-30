@@ -232,6 +232,18 @@ class Escalation:
 NO_ESCALATION = Escalation(role="unsure", escalated=False, suggested_role=None, evidence=None, frames=None)
 
 
+def merge_rulings(a: Ruling, b: Ruling) -> Ruling:
+    """One answer ruling on a label twice, merged fail closed: a child ruling wins; two different roles are
+    ``unsure`` (which suggests nothing)."""
+    frames = tuple(sorted({*a.frames, *b.frames}))
+    if "child" in (a.role, b.role):
+        child = a if a.role == "child" else b
+        return Ruling("child", child.evidence, frames)
+    if a.role != b.role:
+        return Ruling("unsure", a.evidence or b.evidence, frames)
+    return Ruling(a.role, a.evidence, frames)
+
+
 def check_ruling(ruling: Ruling | None, present: frozenset[int]) -> Ruling | None:
     """A ruling counts only if it cites frames shown with the track on them; a ``participant`` ruling needs two
     (the escalation prompt's own bar), else it is read as ``unsure``. ``None``: failed, skipped or invalid."""

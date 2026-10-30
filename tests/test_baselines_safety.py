@@ -14,7 +14,8 @@ from eval.metrics import score_job
 from safecut import netguard, pipeline
 from safecut.audit.baselines import BASELINE, detector_baseline
 from safecut.audit.detectors import YuNet
-from safecut.guard.baselines import blur_all_baseline
+from safecut.contracts import DecisionItem, Decisions, dump, load
+from safecut.guard.baselines import blur_all_baseline, no_audit_baseline
 
 DEMO = Path("fixtures/jobs/demo")
 MANIFEST = json.loads((DEMO / "raw" / "manifest.json").read_text())
@@ -61,3 +62,19 @@ def test_the_detector_baseline_names_the_detector_that_ran(analysed: Path) -> No
     assert (record["variant"], record["detector"]) == ("egoblur", "yunet-face")
     base = exposed(job_dir)
     assert sum(base.values()) > sum(exposed(analysed).values())  # drawn shapes: a face detector finds little
+
+
+def test_no_audit_is_the_policy_and_guard_without_any_audit_patch(analysed: Path) -> None:
+    job_dir = copy(analysed, "j_no_audit")
+    decided = load(job_dir / "decisions.json", Decisions)
+    patch = DecisionItem.model_validate({
+        "item_id": "p_1", "track_ids": [], "kind": "person", "decision": "hide", "style": "solid",
+        "reason": "Added by the audit: the final check found this after rendering and covered it.",
+        "evidence_frames": [10], "decided_by": "policy", "locked": True, "origin": "audit_patch",
+        "audit_label": "A1", "box": [0, 0, 40, 40], "first": 5, "last": 15,
+    })  # fmt: skip
+    dump(Decisions(items=[*decided.items, patch]), job_dir / "decisions.json")
+    no_audit_baseline(job_dir)
+    assert json.loads((job_dir / BASELINE).read_text())["variant"] == "no_audit"
+    assert load(job_dir / "decisions.json", Decisions) == decided  # the patch the audit added is gone
+    assert (job_dir / "plan.json").read_text() == (analysed / "plan.json").read_text()  # the guard's plan as is

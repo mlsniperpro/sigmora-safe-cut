@@ -52,3 +52,18 @@ Evidence is a test name, a command run in this session, or a commit. Owner input
 - [-] WP3-6 crowd fill covers only tracked objects: the contract asks for hidden tracked objects; untracked crowd members beyond SAM's cap aren't localised by anything, and the fill is padded per object.
 - [x] WP4-9 a re-render re-encodes frames it didn't redraw: every pass after a re-render re-scans the whole video (`settle` in `audit/loop.py`).
 - [-] WP4-16 a frame-fixed grid samples a moving face at shifting phases: the locked grid is DESIGN §2.7's requirement, and the fixed per-cell noise is the mitigation.
+
+## Audit findings (round 2, fixed with tests at 90b9f71, merged dd92749)
+- [x] WP3 locked hide refused (`test_a_locked_item_can_not_be_hidden_by_the_creator_either`).
+- [x] WP3 cover_spot replay and undo (`test_undoing_a_cover_spot_removes_its_patch_and_reopens_the_spot`).
+- [x] WP3 stale edits never abort the stage; undo of unknown/later edits (`test_a_stale_last_edit_never_aborts_the_decide_stage`, `test_an_undo_of_an_unknown_or_later_edit_reverts_nothing`).
+- [x] WP3 two-sided gap hold (`test_a_gap_is_held_from_both_ends`).
+- [x] WP3 child re-entries locked (`test_every_id_of_a_child_is_locked_across_reentries`).
+- [x] WP3 hold precedence on role failures (`test_a_role_failure_still_writes_the_first_hold_in_order`).
+- [-] WP3 review latency in the API: guard sped up here (51a67bb); the API's threadpool and mask-free payloads are SHIP's paths, filed with SHIP.
+- [-] WP3 `bind.py` has no production importer: SENSE binds in its own stage; kept as the tested reference.
+- [x] WP4 unplaceable findings never excused (`test_a_finding_that_cannot_be_placed_is_never_excused_by_the_host`).
+- [x] WP4 client-raised refusal re-asked (`test_live_reasks_a_refusal_the_client_raises`).
+- [x] WP4 opinion failures recorded, saved, reused; read-through flagged (`test_a_failed_opinion_is_recorded_once_and_never_blocks`, `test_text_the_opinion_reads_through_a_mosaic_is_flagged_and_patched`).
+- [x] WP4 receipt honesty: wording, synthetic note on billed jobs, Baseten disclosure (`test_a_second_opinion_on_baseten_is_disclosed`).
+- [-] WP4 approval hash bound to decisions: SHIP's `pipeline.approve`, filed with SHIP.

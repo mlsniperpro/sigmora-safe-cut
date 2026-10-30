@@ -88,6 +88,10 @@ class Concept:
     child_phrase: bool
 
 
+#: An object concept is at most 40 characters, cut at a word boundary.
+CONCEPT_CHARS = 40
+
+
 def concept_for(phrase: str) -> Concept:
     """A normalised phrase → its track concept (M12, M13): any child-set token → ``person`` + ``child_phrase``;
     a person-set head noun → ``person`` (``face`` for a face); anything else is an object named by the phrase."""
@@ -98,7 +102,9 @@ def concept_for(phrase: str) -> Concept:
         return Concept("person", child_phrase=True)
     if tokens[-1] in PERSON_SET:
         return Concept("face" if tokens[-1] == "face" else "person", child_phrase=False)
-    return Concept(phrase, child_phrase=False)
+    # A model-written phrase names the track (labels, Set-of-Mark tags): bounded like a sweep's phrase.
+    short = phrase if len(phrase) <= CONCEPT_CHARS else phrase[: CONCEPT_CHARS + 1].rsplit(" ", 1)[0]
+    return Concept(short[:CONCEPT_CHARS].strip(), child_phrase=False)
 
 
 @dataclass(frozen=True)
@@ -145,18 +151,34 @@ def validate(raw: RawMiss, *, sent: frozenset[int], width: int, height: int, bar
                 concept=concept_for(phrase))  # fmt: skip
 
 
+#: A miss with its own box counts as tracked only if a same-concept track box covers this share of it.
+TRACKED_SHARE = 0.5
+
+
+def _covers(box: Box, miss: Miss) -> bool:
+    x, y = miss.point
+    if not (box[0] <= x < box[2] and box[1] <= y < box[3]):
+        return False
+    if miss.box is None:
+        return True
+    m = miss.box
+    inter = max(0, min(box[2], m[2]) - max(box[0], m[0])) * max(0, min(box[3], m[3]) - max(box[1], m[1]))
+    return inter >= TRACKED_SHARE * (m[2] - m[0]) * (m[3] - m[1])
+
+
 def untracked(misses: Sequence[Miss], tracks: Sequence[Track]) -> list[Miss]:
-    """Drop a miss whose point already lies in a box of a track of the same concept on its frame: it is tracked
-    (and hidden) already, e.g. loop 1's envelope re-reported by the re-pass. Another concept's box doesn't count:
-    an unboxed face on a boxed screen is still a miss (``miss-loop.md`` tricky case 2)."""
+    """Drop a miss already tracked (and hidden): a track of the same concept whose box on the miss's frame holds its
+    point and, when the miss has a box, half of that box, e.g. loop 1's envelope re-reported by the re-pass.
+    Another concept's box doesn't count: an unboxed face on a boxed screen is still a miss (``miss-loop.md`` tricky
+    case 2). A child miss counts as tracked only by a ``child_phrase`` track: a child in front of an adult's person
+    box is still a child to lock."""
     kept: list[Miss] = []
     for miss in misses:
-        x, y = miss.point
         covered = any(
             t.concept == miss.concept.concept
+            and (t.child_phrase or not miss.concept.child_phrase)
             and (box := t.boxes.get(miss.frame)) is not None
-            and box[0] <= x < box[2]
-            and box[1] <= y < box[3]
+            and _covers(box, miss)
             for t in tracks
         )
         if not covered:

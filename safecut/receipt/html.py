@@ -147,6 +147,7 @@ pending {d.responses_delete_pending}</td></tr>
 <div class="card"><div>hash <code>{escape(receipt.hash)}</code></div>
 <div>previous <code>{escape(receipt.prev_hash or "none (first in its chain)")}</code></div>
 <p class="muted">hash = sha256(previous hash + canonical JSON of receipt.json without its hash). Changing any
-field breaks it: <code>uv run python -m safecut.receipt verify receipt.json</code></p></div>
+field of receipt.json breaks it: <code>uv run python -m safecut.receipt verify receipt.json</code>. This page and its
+thumbnails are a view of it and are not sealed themselves.</p></div>
 </main></body></html>
 """

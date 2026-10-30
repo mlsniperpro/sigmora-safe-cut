@@ -26,7 +26,8 @@ from safecut.meta.session import job_client
 from safecut.scout import calls, grid, roles, som
 from safecut.scout.schemas import BOXES, BoxesOut
 
-STAGE = "boxes"
+#: The raw directory SHIP's eval harness replays (``raw/baseline_muse/*.json``).
+STAGE = "baseline_muse"
 PLAIN_DIR = "plain"
 KINDS: tuple[str, ...] = ("face", "person", "license plate", "screen", "document", "phone", "name badge")
 SYSTEM = (
@@ -59,38 +60,56 @@ def plain_keyframes(job_dir: Path, job: Job) -> list[int]:
     return frames
 
 
+def keyframe_objects(
+    job: Job, answers: Sequence[tuple[Sequence[int], BoxesOut]]
+) -> dict[int, list[tuple[str, grid.Box]]]:
+    """Every valid box per sent keyframe, as (kind, prepared-clip box); an overlapping window's second answer for a
+    frame, an unsent frame and a box that isn't 4 in-frame integers are dropped. Every sent keyframe has an entry."""
+    found: dict[int, list[tuple[str, grid.Box]]] = {}
+    for sent, _ in answers:
+        for f in sent:
+            found.setdefault(f, [])
+    answered: set[int] = set()
+    for sent, answer in answers:
+        for entry in sorted(answer.frames, key=lambda e: e.frame):
+            if entry.frame not in sent or entry.frame in answered:
+                continue
+            answered.add(entry.frame)
+            for obj in entry.objects:
+                corners = obj.box
+                if len(corners) != 4:
+                    continue
+                box = grid.box((corners[0], corners[1], corners[2], corners[3]), job.width, job.height, kind="miss")
+                if box is not None:
+                    found[entry.frame].append((obj.kind, box))
+    return found
+
+
 def held_tracks(job: Job, answers: Sequence[tuple[Sequence[int], BoxesOut]], model: str) -> list[Track]:
     """Every valid box as a track on its keyframe, held to the frame before the next keyframe."""
     keyframes = som.keyframe_numbers(job)
     until = {f: (keyframes[i + 1] - 1 if i + 1 < len(keyframes) else job.frames - 1) for i, f in enumerate(keyframes)}
     numbering: dict[str, int] = {}
     tracks: list[Track] = []
-    seen: set[int] = set()
-    for sent, answer in answers:
-        for entry in sorted(answer.frames, key=lambda e: e.frame):
-            if entry.frame not in sent or entry.frame in seen:
-                continue  # an unsent frame, or one already answered by an overlapping window
-            seen.add(entry.frame)
-            for obj in entry.objects:
-                corners = obj.box
-                box = None
-                if len(corners) == 4:
-                    box = grid.box((corners[0], corners[1], corners[2], corners[3]), job.width, job.height, kind="miss")
-                if box is None:
-                    continue
-                number = numbering.get(obj.kind, 1)
-                numbering[obj.kind] = number + 1
-                first, last = entry.frame, until[entry.frame]
-                tracks.append(Track(track_id=f"{obj.kind}:{number}", concept=obj.kind, first=first, last=last,
-                                    boxes=dict.fromkeys(range(first, last + 1), box), source=model,
-                                    prompt=obj.kind, origin="sam"))  # fmt: skip
+    for frame, objects in sorted(keyframe_objects(job, answers).items()):
+        for kind, box in objects:
+            number = numbering.get(kind, 1)
+            numbering[kind] = number + 1
+            first, last = frame, until[frame]
+            tracks.append(Track(track_id=f"{kind}:{number}", concept=kind, first=first, last=last,
+                                boxes=dict.fromkeys(range(first, last + 1), box), source=model, prompt=kind,
+                                origin="sam"))  # fmt: skip
     return tracks
 
 
-async def boxes(ctx: calls.Context) -> Tracks:
+Answers = list[tuple[Sequence[int], BoxesOut]]
+
+
+async def detect(ctx: calls.Context) -> Answers:
+    """One detector call per role-pass window of plain keyframes; any failed call fails the baseline."""
     frames = plain_keyframes(ctx.job_dir, ctx.job)
     ask = ASK.format(kinds=", ".join(KINDS))
-    answers: list[tuple[Sequence[int], BoxesOut]] = []
+    answers: Answers = []
     for index, chunk in enumerate(roles.windows(frames, ctx.job.fps)):
         images = [calls.image_part(ctx.job_dir / PLAIN_DIR / f"{f:06d}.jpg") for f in chunk]
         outcome = await calls.call_json(
@@ -101,8 +120,33 @@ async def boxes(ctx: calls.Context) -> Tracks:
         if outcome.status != "ok" or outcome.value is None:
             raise BaselineError(f"the muse_no_track detector call w{index} {outcome.status}: {outcome.reason}")
         answers.append((chunk, outcome.value))
-    tracks = held_tracks(ctx.job, answers, ctx.settings.role_model)
-    return Tracks(concepts=list(KINDS), sam_fps=1, sam_frames=len(frames), tracks=tracks)
+    return answers
+
+
+async def answers_for(
+    job_dir: Path,
+    *,
+    replay_mode: bool = False,
+    settings: Settings | None = None,
+    client: MetaClient | None = None,
+    responder: replay.Responder | None = None,
+) -> tuple[Job, Answers]:
+    """The detector's answers for a prepared job: replayed from ``raw/baseline_muse/``, from a responder, or live
+    (uploads deleted afterwards)."""
+    settings = settings or config.load_settings()
+    job = load(job_dir / "job.json", Job)
+    ctx = calls.Context(job_dir=job_dir, job=job, settings=settings, replay=replay_mode or settings.replay,
+                        responder=responder)  # fmt: skip
+    if ctx.replay or ctx.responder is not None:
+        return job, await detect(ctx)
+    if client is None:
+        async with job_client(job_dir, settings) as own:
+            return await answers_for(job_dir, settings=settings, client=own)
+    ctx.client, ctx.store = client, FileStore(client, job_dir)
+    try:
+        return job, await detect(ctx)
+    finally:
+        await ctx.store.delete_all()
 
 
 async def run_async(
@@ -115,19 +159,11 @@ async def run_async(
 ) -> Path:
     """Write ``tracks.json`` for the ``muse_no_track`` baseline."""
     settings = settings or config.load_settings()
-    job = load(job_dir / "job.json", Job)
-    ctx = calls.Context(job_dir=job_dir, job=job, settings=settings, replay=replay_mode or settings.replay,
-                        responder=responder)  # fmt: skip
-    if ctx.replay or ctx.responder is not None:
-        return dump(await boxes(ctx), job_dir / "tracks.json")
-    if client is None:
-        async with job_client(job_dir, settings) as own:
-            return await run_async(job_dir, replay_mode=False, settings=settings, client=own)
-    ctx.client, ctx.store = client, FileStore(client, job_dir)
-    try:
-        return dump(await boxes(ctx), job_dir / "tracks.json")
-    finally:
-        await ctx.store.delete_all()
+    job, answers = await answers_for(job_dir, replay_mode=replay_mode, settings=settings, client=client,
+                                     responder=responder)  # fmt: skip
+    tracks = held_tracks(job, answers, settings.role_model)
+    found = Tracks(concepts=list(KINDS), sam_fps=1, sam_frames=len(som.keyframe_numbers(job)), tracks=tracks)
+    return dump(found, job_dir / "tracks.json")
 
 
 def run(job_dir: Path, *, replay: bool = False) -> Path:

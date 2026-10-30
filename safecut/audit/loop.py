@@ -1,7 +1,7 @@
 """The audit loop (WP4 step 2, DESIGN §2.8, ``docs/prompts/redteam.md``): find leaks, patch them, prove it.
 
 Pass 1 runs the face/plate detector on **every** output frame and the red-team on the sampled frames (1 per
-second, the edges of every track's covered span, long gaps, the first frame of every detector run). Each leak
+second, the edges of every track's covered span, long gaps, every frame the detector flagged). Each leak
 becomes an audit patch (and, read through a mosaic, its item is re-rendered solid too); the guard re-plans, the
 renderer re-renders, and the next pass scans the whole new render and red-teams the fixes. After pass 3 whatever
 is left is ``unresolved`` and publishing stays off. Nothing fails open: a frame the detector never scanned, or the
@@ -21,7 +21,7 @@ from pathlib import Path
 
 from safecut.audit import leaks as rules
 from safecut.audit.detectors import Detection, Detector
-from safecut.audit.opinion import Ask, Opinion, consult, data_url, recorded, save
+from safecut.audit.opinion import Ask, Opinion, attempted, consult, data_url, mark_attempted, recorded, save
 from safecut.audit.redteam import MAX_FRAMES_PER_CALL, Answer, BudgetCause, RedTeam
 from safecut.contracts import (
     Audit,
@@ -340,13 +340,17 @@ async def audit_job(
     words = approved(decisions, roles, scene)
     everything = set(range(job.frames))
     found = scan(state, job_dir, detector, everything, count=True)
-    flagged = {group.first for group in rules.group_leaks(found, job.fps)}  # one look per detector run, not per frame
+    flagged = {leak.frame for leak in found}  # redteam.md Inputs: "and every frame EgoBlur flagged"
     sampled = rules.sample_frames(job.frames, job.fps, tracks, state.plan, extra=flagged)
     found += await red_team(state, job_dir, redteam, set(sampled), words)
     passes = await settle(state, job_dir, detector=detector, redteam=redteam, found=found, words=words, passes=1,
                           max_passes=max_passes)  # fmt: skip
+    if attempted(job_dir, job) and not job.open_weight_attempted:  # job.json was rebuilt: the flag never clears
+        state.job = job = job.model_copy(update={"open_weight_attempted": True})
+        dump(job, job_dir / "job.json")
     if opinion is not None and not job.open_weight_attempted:
         # At most once in the job's life, marked before the first call (redteam.md "Second opinion").
+        mark_attempted(job_dir)
         state.job = job = job.model_copy(update={"open_weight_attempted": True})
         dump(job, job_dir / "job.json")
         bar = rules.bar_height(job.height)
