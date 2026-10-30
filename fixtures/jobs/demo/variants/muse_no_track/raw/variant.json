@@ -2,7 +2,7 @@
  "variant": "muse_no_track",
  "synthetic": true,
  "source": "fixtures/clips/SC-A-91-synthetic-20261030.mp4",
- "source_sha256": "cc3cd46eab3847db6f63cb9a64e51c2859a72f3db9fdf3beaa0ee8d4eaf1c3c6",
+ "source_sha256": "14e0d28ac861cb0b5c04f415f42a9a4571fdd8a18d452c8188d06757bfa7f90b",
  "settings": {
   "SAFECUT_MISS_SAM": "stub"
  },

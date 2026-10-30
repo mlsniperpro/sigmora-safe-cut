@@ -83,8 +83,15 @@ def _host(f: int) -> tuple[int, int]:
     return 140 + round(6 * math.sin(2 * math.pi * f / 90)), 95
 
 
+GUEST_OUT, GUEST_BACK = 280, 330
+
+
 def _guest(f: int) -> tuple[int, int]:
-    return max(500, 680 - 6 * (f - 60)), 105
+    if f < GUEST_OUT:
+        return max(500, 680 - 6 * (f - 60)), 105  # walks in from the right and stands beside the host
+    if f < GUEST_BACK:
+        return 500 + 8 * (f - GUEST_OUT), 105  # walks out to the right
+    return -45 + 6 * (f - GUEST_BACK), 105  # comes back in from the left for the clip's last half second
 
 
 def _passerby(f: int) -> tuple[int, int]:
@@ -99,8 +106,9 @@ def _child(f: int) -> tuple[int, int]:
 
 FIGURES: dict[str, tuple[Figure, Any]] = {
     "e1": (Figure("e1", (40, 120, 235), 32, 110, 200, (range(FRAMES),)), _host),
-    # The guest steps out for over 2 s and comes back briefly (a participant re-entry: SHIP's E6 review case).
-    "e2": (Figure("e2", (60, 170, 60), 31, 104, 200, (range(60, 262), range(330, 345))), _guest),
+    # The guest walks out to the right, is gone for over 1 s and comes back in from the left for the last half second
+    # (a participant re-entry, SHIP's E6 review case: a new ID, hidden by policy until the creator merges it).
+    "e2": (Figure("e2", (60, 170, 60), 31, 104, 200, (range(60, 300), range(GUEST_BACK, GUEST_BACK + 15))), _guest),
     "e3": (Figure("e3", (180, 90, 40), 19, 64, 110, (range(20, 140), range(200, 290))), _passerby),
     "e4": (Figure("e4", (160, 40, 150), 15, 42, 70, (range(90, 210),)), _child),
 }
@@ -218,7 +226,7 @@ CATEGORY = {"e1": "participant", "e2": "participant", "e3": "bystander", "e4": "
 DIFFICULTY = {"e2": ["reentry"], "e3": ["reentry"], "e4": ["small"]}
 REASON = {
     "e1": "the host: introduces herself as Amina and talks to camera",
-    "e2": "the guest: introduced by the host as her friend Kev, answers her, steps out and comes back",
+    "e2": "the guest: introduced by the host as her friend Kev, answers her, walks out and comes back",
     "e3": "walks past behind them twice, never addressed",
     "e4": "a child crossing the middle of the frame",
     "e5": "a wall screen showing an email inbox with names",
