@@ -127,6 +127,38 @@ def test_aac_priming_is_not_mistaken_for_an_audio_lead() -> None:
     assert prepare._audio_filter(found.video, found.audio_start) == "asetpts=PTS-STARTPTS"  # pyright: ignore[reportPrivateUsage] -- the filter is the unit
 
 
+def test_an_edit_list_trim_keeps_audio_on_the_first_shown_frame(tmp_path: Path) -> None:
+    """A stream-copy trim (``-ss 0.5 -c copy``, as phones' trims do) keeps the GOP's earlier frames as hidden
+    packets before the edit list's start. The clock starts at the first *decoded* frame, so nothing delays the
+    audio and the hidden frames aren't counted (§5b steps 2–3)."""
+    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+    whole = tmp_path / "whole.mp4"
+    cmd = [ffmpeg, "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", "30",
+           "-i", "-", "-f", "lavfi", "-i", "sine=frequency=440:duration=3", "-map", "0:v", "-map", "1:a",
+           "-c:v", "libx264", "-preset", "ultrafast", "-qp", "0", "-pix_fmt", "yuv444p", "-g", "30", "-bf", "0",
+           "-c:a", "aac", "-shortest", str(whole)]  # fmt: skip
+    subprocess.run(cmd, input=b"".join(_frame(k) for k in range(90)), check=True)  # noqa: S603 -- fixed argv
+    trimmed = tmp_path / "trimmed.mp4"
+    trim = [ffmpeg, "-y", "-loglevel", "error", "-ss", "0.5", "-i", str(whole), "-c", "copy", str(trimmed)]
+    subprocess.run(trim, check=True)  # noqa: S603 -- fixed argv
+    assert media.packets(trimmed).count == 90  # the hidden packets are there...
+    found = prepare.probe(trimmed)
+    assert (found.video.count, found.video.start, found.fps) == (75, 0, 30)  # ...and not counted
+    assert found.audio_start is not None
+    assert prepare._audio_filter(found.video, found.audio_start) == "asetpts=PTS-STARTPTS"  # pyright: ignore[reportPrivateUsage] -- the filter is the unit
+    job = load(prepare.prepare(trimmed, tmp_path / "j_trim"), Job)
+    shown = _decode_indices(tmp_path / "j_trim" / prepare.PREPARED)
+    assert job.frames == len(shown) == 75
+    assert shown[0] == 15
+    assert job.times == [n / 30 for n in range(75)]
+    head = [ffmpeg, "-loglevel", "error", "-i", str(tmp_path / "j_trim" / prepare.PREPARED), "-map", "0:a:0",
+            "-t", "0.2", "-f", "s16le", "-ac", "1", "-"]  # fmt: skip
+    pcm = subprocess.run(head, capture_output=True, check=True).stdout  # noqa: S603 -- fixed argv
+    samples = np.frombuffer(pcm, dtype="<i2").astype(np.float64)
+    assert len(samples) > 0
+    assert np.sqrt(np.mean(samples**2)) > 1000  # the tone plays from the first shown frame, not after 0.5 s of silence
+
+
 def test_fixture_clips_and_keyframes(tmp_path: Path) -> None:
     truth = json.loads(Path("fixtures/clips/truth.json").read_text())
     for name, spec in truth.items():

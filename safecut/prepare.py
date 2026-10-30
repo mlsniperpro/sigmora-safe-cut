@@ -103,7 +103,8 @@ def probe(source: Path) -> SourceProbe:
                            size_bytes=size)  # fmt: skip
     try:
         facts = media.facts(source)
-        video = media.packets(source, "v:0")
+        # The video clock starts at the first *decoded* frame (§5b steps 2–3): hidden edit-list frames are dropped.
+        video = media.packets(source, "v:0").from_time(media.decoded_start(source, "v:0"))
     except media.MediaError as exc:
         raise PrepareError("bad_media", f"can't read the video stream: {exc}", size_bytes=size) from exc
     audio: media.Packets | None = None
