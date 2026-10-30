@@ -205,6 +205,8 @@ def run(
             recorded = models_recorded(job_dir, settings)
             if "detector" in result.detail:  # the egoblur baseline's detector, which writes no audit.json
                 recorded["auditor"] = result.detail["detector"]
+            if "keyframe_boxes" in result.detail:  # muse_no_track: Muse Spark's keyframe boxes, no tracks file
+                recorded["keyframe_boxes"] = result.detail["keyframe_boxes"]
             for role, model in recorded.items():
                 ran.setdefault(role, set()).add(model)
             scores.append(score_job(job_dir, load_labels(base / entry.labels), result.regions))

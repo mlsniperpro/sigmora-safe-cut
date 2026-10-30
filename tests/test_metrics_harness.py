@@ -350,3 +350,13 @@ def test_a_run_config_names_only_the_models_that_ran(base: Path, variant: str, a
     models = json.loads((run_dir / "config.json").read_text())["models"]
     assert not absent & set(models), models
     assert "tracks" in models
+
+
+def test_muse_no_track_never_runs_the_tracker(base: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The keyframe-boxes baseline needs only prepare: SAM (paid, live) is never called, and the config says so."""
+    from eval import variants  # noqa: PLC0415 -- the module whose hook loader is stubbed
+
+    monkeypatch.setattr(variants, "_hook", lambda module, name: lambda job_dir, *, replay: {0: [(0, 0, 4, 4)]})
+    run_dir = runner.run("dev", "muse_no_track", replay=True, out=base / "results", splits=base / "splits", base=base)
+    models = json.loads((run_dir / "config.json").read_text())["models"]
+    assert models == {"keyframe_boxes": "muse-spark-1.3"}

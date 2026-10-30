@@ -9,12 +9,12 @@ Recall: the share of should-hide entities covered (≥ 95 % of the box) on at le
 
 | Method | Recall | Exposure | Leak bursts | Over-blur | Needs-you items / min | Run |
 |---|---|---|---|---|---|---|
-| Blur every face (SAM 3.1 `face`, all hidden) | 40.0% | 59.3% | 3 | 100.0% | 0.00 | [20261030T172539Z-dev-blur_all-c8c08fb](results/20261030T172539Z-dev-blur_all-c8c08fb/metrics.json) |
-| OpenCV YuNet face detector on every frame (EgoBlur weights not installed) | 0.0% | 100.0% | 5 | 0.0% | 0.00 | [20261030T172605Z-dev-egoblur-c8c08fb](results/20261030T172605Z-dev-egoblur-c8c08fb/metrics.json) |
-| Detector only (SAM 3.1 classes, no Muse Spark) | 80.0% | 10.1% | 1 | 100.0% | 0.00 | [20261030T172612Z-dev-detector_only-c8c08fb](results/20261030T172612Z-dev-detector_only-c8c08fb/metrics.json) |
-| Muse Spark keyframe boxes, no tracking | 60.0% | 37.5% | 12 | 100.0% | 0.00 | [20261030T172637Z-dev-muse_no_track-c8c08fb](results/20261030T172637Z-dev-muse_no_track-c8c08fb/metrics.json) |
-| **Safe Cut (full)** | 100.0% | 0.0% | 0 | 0.0% | 10.00 | [20261030T172435Z-dev-full-c8c08fb](results/20261030T172435Z-dev-full-c8c08fb/metrics.json) |
-| Safe Cut without the audit pass | 100.0% | 0.0% | 0 | 0.0% | 10.00 | [20261030T172511Z-dev-no_audit-c8c08fb](results/20261030T172511Z-dev-no_audit-c8c08fb/metrics.json) |
+| Blur every face (SAM 3.1 `face`, all hidden) | 40.0% | 59.3% | 3 | 100.0% | 0.00 | [20261030T175016Z-dev-blur_all-ef66bc3](results/20261030T175016Z-dev-blur_all-ef66bc3/metrics.json) |
+| OpenCV YuNet face detector on every frame (EgoBlur weights not installed) | 0.0% | 100.0% | 5 | 0.0% | 0.00 | [20261030T175048Z-dev-egoblur-ef66bc3](results/20261030T175048Z-dev-egoblur-ef66bc3/metrics.json) |
+| Detector only (SAM 3.1 classes, no Muse Spark) | 80.0% | 10.1% | 1 | 100.0% | 0.00 | [20261030T175100Z-dev-detector_only-ef66bc3](results/20261030T175100Z-dev-detector_only-ef66bc3/metrics.json) |
+| Muse Spark keyframe boxes, no tracking | 60.0% | 37.5% | 12 | 100.0% | 0.00 | [20261030T175130Z-dev-muse_no_track-ef66bc3](results/20261030T175130Z-dev-muse_no_track-ef66bc3/metrics.json) |
+| **Safe Cut (full)** | 100.0% | 0.0% | 0 | 0.0% | 10.00 | [20261030T174856Z-dev-full-ef66bc3](results/20261030T174856Z-dev-full-ef66bc3/metrics.json) |
+| Safe Cut without the audit pass | 100.0% | 0.0% | 0 | 0.0% | 10.00 | [20261030T174939Z-dev-no_audit-ef66bc3](results/20261030T174939Z-dev-no_audit-ef66bc3/metrics.json) |
 
 1 clip(s), 5 should-hide and 2 should-keep entities, 0.20 min of footage. Chart: [charts/dev-synthetic.png](results/charts/dev-synthetic.png).
 

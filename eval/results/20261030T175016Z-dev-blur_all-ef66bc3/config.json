@@ -1,0 +1,18 @@
+{
+ "run_id": "20261030T175016Z-dev-blur_all-ef66bc3",
+ "split": "dev",
+ "variant": "blur_all",
+ "replay": true,
+ "synthetic": true,
+ "git_sha": "ef66bc34e3790ebca751e7d547f6e53bfebeaf24",
+ "split_hash": "077fb6caa9f0f0b655d4d15e187c7bd5f051e9e4781b93188a3920fcffb28939",
+ "created_at": "2026-10-30T17:50:16.507793Z",
+ "clips": [
+  "fixtures/clips/SC-A-91-synthetic-20261030.mp4"
+ ],
+ "models": {
+  "tracks": "sam-3.1"
+ },
+ "models_note": "synthetic recordings replayed: no Meta model was called",
+ "detail": {}
+}

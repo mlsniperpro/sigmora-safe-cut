@@ -3,23 +3,23 @@
  "cost_per_min": 0.0,
  "cost_usd": 0.0,
  "cost_usd_estimated": 0.0,
- "entity_recall": 0.4,
- "exposure_rate": 0.59267,
- "leak_bursts": 3,
+ "entity_recall": 0.6,
+ "exposure_rate": 0.374869,
+ "leak_bursts": 12,
  "minutes": 0.2,
  "over_blur": 1.0,
  "per_category_recall": {
-  "bystander": 1.0,
-  "child": 1.0,
-  "document": 0.0,
-  "plate": 0.0,
-  "screen": 0.0
+  "bystander": 0.0,
+  "child": 0.0,
+  "document": 1.0,
+  "plate": 1.0,
+  "screen": 1.0
  },
  "review_load_per_min": 0.0,
- "run_id": "20261030T172539Z-dev-blur_all-c8c08fb",
+ "run_id": "20261030T175130Z-dev-muse_no_track-ef66bc3",
  "should_hide": 5,
  "should_keep": 2,
  "split": "dev",
  "synthetic": true,
- "variant": "blur_all"
+ "variant": "muse_no_track"
 }

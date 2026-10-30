@@ -16,10 +16,10 @@
   "screen": 1.0
  },
  "review_load_per_min": 10.0,
- "run_id": "20261030T172511Z-dev-no_audit-c8c08fb",
+ "run_id": "20261030T174856Z-dev-full-ef66bc3",
  "should_hide": 5,
  "should_keep": 2,
  "split": "dev",
  "synthetic": true,
- "variant": "no_audit"
+ "variant": "full"
 }
