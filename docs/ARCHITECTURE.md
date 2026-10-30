@@ -102,7 +102,7 @@ This is the same shape as DESIGN §2.3, plus vote detail:
             "decided_by": "policy|model|creator", "locked": false,
             "hold": null, "origin": "sam", "audit_label": null}]}
 ```
-Children are `locked: true` and `hide`; the creator can't un-hide them (DESIGN §2.5). `needs_you` renders hidden until the creator decides.
+Children are `locked: true` and `hide`; the creator can't un-hide them (DESIGN §2.5). `needs_you` renders hidden until the creator decides. `removed_by_creator: true` (optional, written only when true) marks the creator's "remove person" (DESIGN §2.7b): a `hide` by the creator in `person_solid`; the receipt carries it item by item.
 
 ### 3.7 `plan.json` (guard)
 ```json
