@@ -7,9 +7,10 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+import cv2
 import numpy as np
 import pytest
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from safecut import contracts
@@ -313,3 +314,36 @@ def test_property_locked_grids_never_move(case: tuple[Tracks, Decisions, Plan]) 
             assert None not in grids
         else:
             assert grids <= {None}
+
+
+def test_a_sliver_mask_in_a_small_box_falls_back_to_the_box() -> None:
+    """Audit finding: dilation grew one stray pixel in a 30 px face box into a disk that 'spanned' it."""
+    sliver = np.zeros((H, W), dtype=np.bool_)
+    sliver[105, 115] = True
+    ts = tracks(track("face:1", 10, 10, (100, 90, 130, 120), masks={10: g.encode(sliver)}))
+    (e,) = entries(plan(JOB, ts, hide_all(ts)), 10, "i_1")
+    assert e.shape == "box"
+    assert covered(plan(JOB, ts, hide_all(ts)), 10, "i_1", (100, 90, 130, 120))
+
+
+def test_a_reentry_gap_is_held_up_to_2_s() -> None:
+    """DESIGN §2.6's gap hold survives SAM splitting a lost object into a re-entry (a new track)."""
+    first = track("face:1", 0, 5, (40, 40, 60, 60))
+    again = track("face:2", 50, 59, (40, 40, 60, 60), reentry_of="face:1")
+    ts = tracks(first, again, sam_fps=30)
+    p = plan(JOB, ts, hide_all(ts))
+    assert p.temporal.backfill == 15
+    for frame in range(6, 50):  # extend, then the hold, then the re-entry's back-fill: never bare
+        assert covered(p, frame, "i_1", (40, 40, 60, 60)) or covered(p, frame, "i_2", (40, 40, 60, 60)), frame
+
+
+@settings(max_examples=300, deadline=None)
+@given(st.integers(0, 60), st.integers(0, 60), st.integers(1, 40), st.integers(1, 40))
+def test_property_coarse_dilation_contains_the_exact_one(cx: int, cy: int, rx: int, ry: int) -> None:
+    mask = np.zeros((90, 120), dtype=np.bool_)
+    mask[cy : cy + 9, cx : cx + 13] = True
+    mask[cy + 20 : cy + 22, cx + 30 : cx + 31] = True
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * rx + 1, 2 * ry + 1))
+    exact = cv2.dilate(mask.astype(np.uint8), kernel, borderType=cv2.BORDER_CONSTANT, borderValue=0).astype(bool)
+    got = g.dilate(mask, rx, ry)
+    assert (got | ~exact).all()

@@ -90,6 +90,17 @@ def _crowd_fills(tracks: Tracks, hidden: set[str], job: Job) -> list[CrowdFill]:
     return fills
 
 
+def hold_until(track: Track, by_id: dict[str, Track], job: Job) -> int:
+    """The last frame the guard covers a track on: ``last + extend``, and, when SAM picked the object up again as a
+    new track (a re-entry), on through the gap up to 2 s (DESIGN §2.6's gap hold, which the split would lose)."""
+    end = track.last + EXTEND
+    hold = math.ceil(GAP_HOLD_S * job.fps)
+    for other in by_id.values():
+        if other.reentry_of == track.track_id:
+            end = max(end, min(other.first - 1, track.last + hold))
+    return end
+
+
 def _patch_entries(item: DecisionItem, job: Job) -> Iterable[tuple[int, PlanEntry]]:
     """An audit patch: its raw box padded by its kind's spatial padding over its own span, no temporal padding
     (API-NOTES §12)."""
@@ -135,7 +146,7 @@ def plan(job: Job, tracks: Tracks, decisions: Decisions, *, solid: Iterable[str]
                 height=job.height,
                 interp_gap=interp_gap,
             )
-            for frame in range(max(0, track.first - backfill), min(job.frames, track.last + EXTEND + 1)):
+            for frame in range(max(0, track.first - backfill), min(job.frames, hold_until(track, by_id, job) + 1)):
                 region = regions.at(frame)
                 entry = PlanEntry(
                     item_id=item.item_id,

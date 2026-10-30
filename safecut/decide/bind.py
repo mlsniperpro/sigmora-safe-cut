@@ -8,8 +8,8 @@ A model sometimes names a thing by a point instead of a Set-of-Mark number (the 
 2. With no mask hit, the nearest track box within 0.1 x the frame diagonal binds; an equal-distance tie, no vote.
 3. Across keyframes, each key (one thing the model pointed at, seen on several frames) collects votes per track.
    Conflicts between keys are settled by a Hungarian assignment that maximises total votes. A key binds only to
-   its own strict favourite: an equal-vote rival, a favourite taken by another key, or no vote at all binds it to
-   nothing (``unsure``).
+   its own strict favourite: an equal-vote rival, a favourite taken by another key, another key that wants the same
+   track as much, or no vote at all binds it to nothing (``unsure``).
 
 Binding to nothing is the safe answer: an unbound miss gets its own SAM sweep or static box, hidden by default.
 """
@@ -105,6 +105,7 @@ def bind(sightings: Sequence[Sighting], tracks: Sequence[Track], *, width: int, 
         got = votes[key][track_id]
         # Only the key's own clear favourite binds: a key that lost its favourite to another key, or whose favourite
         # ties, binds to nothing rather than to a runner-up (a wrong bind would drop a real miss).
-        if got > 0 and all(n < got for t, n in votes[key].items() if t != track_id):
+        rival_keys = [k for k in keys if k != key and votes[k][track_id] == got and max(votes[k].values()) == got]
+        if got > 0 and all(n < got for t, n in votes[key].items() if t != track_id) and not rival_keys:
             result[key] = track_id
     return result

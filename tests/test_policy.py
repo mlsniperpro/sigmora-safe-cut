@@ -166,7 +166,7 @@ def test_an_object_with_a_child_vote_is_a_child() -> None:
 def test_a_reentry_is_hidden_until_the_creator_merges_it() -> None:
     a = track("face:1", 0, 10)
     b = track("face:2", 20, 30, reentry_of="face:1")
-    got = run(a, b, rs=[matched("face:1"), matched("face:2")])
+    got = run(a, b, rs=[matched("face:1", frames=(2, 8)), matched("face:2", frames=(22, 28))])
     assert only(got, "face:1")["decision"] == "keep"
     second = only(got, "face:2")
     assert second["decision"] == "needs_you"
@@ -493,3 +493,9 @@ def test_property_children_are_never_kept(inputs: Inputs) -> None:
 @given(st.text(max_size=40))
 def test_property_normal_words_matches_the_contract(text: str) -> None:
     assert normal_words(text) == contracts._normal_words(text)
+
+
+def test_cited_frames_must_be_on_the_track() -> None:
+    """Audit finding: two cited frames outside the track's own span are no evidence for it."""
+    got = only(run(track("face:1", 40, 55), rs=[matched(frames=(2, 3))]), "face:1")
+    assert got["decision"] == "needs_you"

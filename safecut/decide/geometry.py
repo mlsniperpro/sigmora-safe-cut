@@ -144,19 +144,40 @@ def mask_bbox(mask: BoolMask) -> BoxT | None:
     return (int(cols[0]), int(rows[0]), int(cols[-1]) + 1, int(rows[-1]) + 1)
 
 
+#: Above this radius, dilation runs on a block-pooled crop (cost falls with the square of the block size).
+COARSE_RADIUS = 12
+
+
 def dilate(mask: BoolMask, rx: int, ry: int) -> BoolMask:
-    """Grow a mask by an ``rx`` x ``ry`` elliptical radius (work done on the foreground's crop only)."""
+    """Grow a mask by an ``rx`` x ``ry`` elliptical radius (work done on the foreground's crop only).
+
+    Large radii run on a crop pooled into blocks (a block is foreground if any pixel in it is), dilated by the radius
+    in blocks plus one, then expanded back: always a superset of the exact dilation (the guard pads outward, never
+    inward), at a fraction of the cost of a 100-pixel elliptical kernel."""
     box = mask_bbox(mask)
     if box is None or (rx <= 0 and ry <= 0):
         return mask.copy()
     height, width = mask.shape
     x1, y1 = max(0, box[0] - rx), max(0, box[1] - ry)
     x2, y2 = min(width, box[2] + rx), min(height, box[3] + ry)
-    crop = mask[y1:y2, x1:x2].astype(np.uint8)
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * rx + 1, 2 * ry + 1))
-    grown = cv2.dilate(crop, kernel, borderType=cv2.BORDER_CONSTANT, borderValue=0)
+    crop = mask[y1:y2, x1:x2]
+    k = max(1, min(rx, ry) // COARSE_RADIUS) if min(rx, ry) > COARSE_RADIUS else 1
+    if k > 1:
+        ch, cw = crop.shape
+        pad = np.zeros((-(-ch // k) * k, -(-cw // k) * k), dtype=np.bool_)
+        pad[:ch, :cw] = crop
+        pooled = pad.reshape(pad.shape[0] // k, k, pad.shape[1] // k, k).any(axis=(1, 3)).astype(np.uint8)
+        kx, ky = -(-rx // k) + 1, -(-ry // k) + 1
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * kx + 1, 2 * ky + 1))
+        grown_blocks = cv2.dilate(pooled, kernel, borderType=cv2.BORDER_CONSTANT, borderValue=0).astype(np.bool_)
+        grown = np.repeat(np.repeat(grown_blocks, k, axis=0), k, axis=1)[:ch, :cw]
+    else:
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * rx + 1, 2 * ry + 1))
+        grown = cv2.dilate(crop.astype(np.uint8), kernel, borderType=cv2.BORDER_CONSTANT, borderValue=0).astype(
+            np.bool_
+        )
     out = np.zeros_like(mask)
-    out[y1:y2, x1:x2] = grown.astype(np.bool_)
+    out[y1:y2, x1:x2] = grown
     return out | mask
 
 

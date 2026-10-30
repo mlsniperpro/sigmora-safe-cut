@@ -17,14 +17,18 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Sequence
+from contextlib import AsyncExitStack
 from pathlib import Path
 
+from safecut import open_weight, pipeline
 from safecut.audit.detectors import Detector, load_detector
 from safecut.audit.loop import audit_job
+from safecut.audit.opinion import Ask
 from safecut.audit.redteam import Answer, LiveRedTeam, RedTeam, ReplayRedTeam, SyntheticRedTeam
 from safecut.audit.truth import load_labels, manifest_truth
 from safecut.config import Settings, load_settings
 from safecut.contracts import Audit, Job, Plan, load
+from safecut.meta.budget import Caller, LocalLedger
 from safecut.meta.client import MetaClient
 from safecut.meta.session import job_client
 from safecut.render.draw import Frame
@@ -57,10 +61,29 @@ def replay_redteam(job_dir: Path) -> RedTeam:
 
 
 async def _live(job_dir: Path, settings: Settings, detector: Detector, client: MetaClient | None) -> Audit:
-    if client is not None:
-        return (await audit_job(job_dir, detector=detector, redteam=LiveRedTeam(client, settings, job_dir)))[0]
-    async with job_client(job_dir, settings) as own:  # seeded with the job's spend so far (the job cap holds)
-        return (await audit_job(job_dir, detector=detector, redteam=LiveRedTeam(own, settings, job_dir)))[0]
+    job = load(job_dir / "job.json", Job)
+    # The job's own caller (judge, pilot, owner …): its caps hold, and the open-weight gate reads its code kind.
+    caller = pipeline.job_caller(job_dir, settings) if (job_dir / pipeline.INTAKE).exists() else Caller.local()
+    eligible = not job.open_weight_attempted and open_weight.enabled_for(
+        settings, consented=job.consented, code_kind=caller.code_kind
+    )
+    async with AsyncExitStack() as stack:
+        meta = client or await stack.enter_async_context(job_client(job_dir, settings, caller=caller))
+        opinion: Ask | None = None
+        if eligible:
+            baseten = open_weight.open_weight_client(settings, job_id=job.job_id, caller=caller, ledger=LocalLedger(),
+                                                     cost_path=job_dir / "cost.jsonl")  # fmt: skip
+            stack.push_async_callback(baseten.aclose)
+
+            async def ask(frames: Sequence[tuple[int, str]], words: str) -> open_weight.SecondOpinion:
+                return await open_weight.second_opinion(baseten, settings, consented=job.consented, frames=frames,
+                                                        kept_clear=words)  # fmt: skip
+
+            opinion = ask
+
+        audit, _ = await audit_job(job_dir, detector=detector, redteam=LiveRedTeam(meta, settings, job_dir),
+                                   opinion=opinion, opinion_grid_ok=settings.open_weight_grid_ok)  # fmt: skip
+        return audit
 
 
 def run(

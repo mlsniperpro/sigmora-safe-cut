@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from safecut import contracts
+from safecut import contracts, pipeline
 from safecut.audit import run as audit_run
 from safecut.config import Settings
 from safecut.contracts import ContractError, CostLine, Receipt, append_cost_line, load
@@ -30,6 +30,7 @@ def job_dir(tmp_path: Path) -> Path:
     job_dir = make_job(tmp_path)
     for stage in (decide_run, guard_run):
         stage(job_dir)
+    pipeline.approve(job_dir, how="auto_policy")
     render(job_dir)
     audit_run(job_dir, replay=True, settings=SETTINGS)
     return job_dir
@@ -86,6 +87,8 @@ def test_the_page_is_self_contained_and_says_what_happened(job_dir: Path) -> Non
     receipt_run(job_dir, settings=SETTINGS)
     page = (job_dir / RECEIPT_HTML).read_text()
     assert "Audit passed" in page
+    assert "synthetic ground-truth oracle" in page
+    assert "none was called" in page
     assert page.count("data:image/jpeg;base64,") == 2
     assert "http://" not in page
     assert "https://" not in page
@@ -116,6 +119,12 @@ def test_no_receipt_before_the_audit(tmp_path: Path) -> None:
     decide_run(job_dir)
     with pytest.raises(ReceiptError):
         build(job_dir, SETTINGS)
+
+
+def test_no_receipt_without_the_creators_approval(job_dir: Path) -> None:
+    (job_dir / "approval.json").unlink()
+    with pytest.raises(ReceiptError, match="approval"):
+        receipt_run(job_dir, settings=SETTINGS)
 
 
 def test_the_example_job_receipt_still_verifies() -> None:

@@ -30,14 +30,18 @@ def edits(*raw: dict[str, Any]) -> list[ReviewEdit]:
 def base() -> Decisions:
     """i_1 kept participant (face:1), i_2 bystander (face:2), i_3 locked child (face:3), i_4 re-entry (face:4)."""
     ts = [
-        track("face:1", 0, 10, (10, 10, 30, 30)),
-        track("face:2", 0, 10, (100, 10, 120, 30)),
-        track("face:3", 0, 10, (200, 10, 220, 30)),
-        track("face:4", 20, 30, (10, 10, 30, 30), reentry_of="face:1"),
+        track("face:1", 0, 20, (10, 10, 30, 30)),
+        track("face:2", 0, 20, (100, 10, 120, 30)),
+        track("face:3", 0, 20, (200, 10, 220, 30)),
+        track("face:4", 25, 35, (10, 10, 30, 30), reentry_of="face:1"),
     ]
     p = ("participant",) * 3
-    rs = [row("face:1", *p, matches_participant=0), row("face:2", *("bystander",) * 3),
-          row("face:3", "child", "participant", "participant"), row("face:4", *p, matches_participant=0)]  # fmt: skip
+    rs = [
+        row("face:1", *p, matches_participant=0),
+        row("face:2", *("bystander",) * 3),
+        row("face:3", "child", "participant", "participant"),
+        row("face:4", *p, matches_participant=0, frames=(26, 30)),
+    ]
     got = decide(Inputs(job=job(), tracks=tracks(*ts), roles=roles(*rs), scene=scene(), transcript=transcript()))
     assert [i.decision for i in got.items] == ["keep", "hide", "hide", "needs_you"]
     return got
@@ -211,3 +215,16 @@ def test_property_children_are_never_kept_even_after_creator_edits(
             assert item.decision == "hide"
             assert item.locked
     contracts._check_decisions(final, inputs.job, inputs.tracks, None)
+
+
+def test_merging_into_a_kept_static_item_makes_it_a_sam_item() -> None:
+    """Audit finding: a static origin with a SAM track in it fails the contract."""
+    ts = tracks(track("face:1", 3, 3, origin="static"), track("face:2", 0, 10, (100, 10, 120, 30)))
+    d = decide(Inputs(job=job(), tracks=ts))
+    static = next(i for i in d.items if i.origin == "static")
+    other = next(i for i in d.items if i.origin == "sam")
+    log = edits({"type": "keep", "edit_id": "k", "item_id": static.item_id},
+                {"type": "merge", "edit_id": "m", "item_id": other.item_id, "into": static.item_id})  # fmt: skip
+    merged = apply_review(d, log).decisions
+    assert [i.origin for i in merged.items] == ["sam"]
+    contracts._check_decisions(merged, job(), ts, None)

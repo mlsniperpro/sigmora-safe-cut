@@ -26,7 +26,7 @@ from functools import lru_cache
 import numpy as np
 
 from safecut.contracts import Rle, Track
-from safecut.decide.geometry import BoolMask, BoxT, box_at, clamp, decode, dilate, encode, grow, mask_bbox, shift
+from safecut.decide.geometry import BoolMask, BoxT, box_at, clamp, decode, dilate, encode, grow, mask_bbox, shift, union
 
 #: DESIGN §2.6: a held box grows 2 % of its size per frame on each side...
 GROW_PER_FRAME = 0.02
@@ -54,10 +54,6 @@ def _expand(box: BoxT, share: float, width: int, height: int) -> BoxT:
     return out if out is not None else box
 
 
-def _union(a: BoxT, b: BoxT) -> BoxT:
-    return (min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]))
-
-
 def edge_velocity(track: Track, at_start: bool) -> tuple[float, float]:
     """The track's (dx, dy) per frame at its first (or last) anchor, measured over up to 8 frames inward and capped
     at a quarter of the box's size per frame."""
@@ -83,7 +79,7 @@ def held_box(edge: BoxT, distance: int, velocity: tuple[float, float], width: in
     itself and grown 2 % a frame (capped)."""
     dx, dy = velocity[0] * distance, velocity[1] * distance
     moved = clamp((edge[0] + dx, edge[1] + dy, edge[2] + dx, edge[3] + dy), width, height)
-    swept = _union(edge, moved) if moved is not None else edge
+    swept = union([edge, moved]) if moved is not None else edge
     return _expand(swept, min(GROW_PER_FRAME * distance, MAX_GROWTH), width, height)
 
 
@@ -122,9 +118,13 @@ class TrackRegions:
     def _padded_mask(self, mask: BoolMask, box: BoxT) -> Region | None:
         rx = math.ceil(self.ratio * (box[2] - box[0])) + self.px
         ry = math.ceil(self.ratio * (box[3] - box[1])) + self.px
+        # The span test runs on SAM's own (or the shifted) mask, before padding: dilation would grow a stray pixel
+        # in a small box into a disk that "spans" it while most of the object stays bare.
+        if not mask_ok(mask, box):
+            return None
         grown = dilate(mask, rx, ry)
         bbox = mask_bbox(grown)
-        if bbox is None or not mask_ok(grown, box):
+        if bbox is None:
             return None
         return Region(box=bbox, mask=encode(grown))
 
@@ -176,4 +176,4 @@ class TrackRegions:
                     return region
             return Region(self._pad(interpolated))
         held = held_box(t.boxes[before], frame - before, (0.0, 0.0), self.width, self.height)
-        return Region(self._pad(_union(held, interpolated)))
+        return Region(self._pad(union([held, interpolated])))
