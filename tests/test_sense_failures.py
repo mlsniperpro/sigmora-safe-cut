@@ -386,3 +386,33 @@ def test_a_corrupt_scene_file_still_writes_roles(tracked: Path) -> None:
     result = load(tracked / "roles.json", Roles)
     assert result.status == "ok"
     assert all(t.role != "participant" or t.matches_participant is None for t in result.tracks)
+
+
+def test_a_child_ruling_on_the_host_still_writes_roles(tracked: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Escalation rules 'child' on the host (3/3 participant, matched to a scene participant), a label it wasn't
+    asked about: the host locks as a child, unmatched, and roles.json is written (re-audit 7, M1)."""
+    from safecut.scout import calls  # noqa: PLC0415 -- the escalation answer is rewritten here
+    from safecut.scout.schemas import EscalationOut  # noqa: PLC0415
+
+    real = calls.call_json
+
+    async def answer(ctx: object, **kw: object) -> object:
+        outcome = await real(ctx, **kw)  # pyright: ignore[reportArgumentType, reportUnknownVariableType] -- forwarded as is
+        if kw.get("stage") == roles.ESCALATE_STAGE and isinstance(outcome.value, EscalationOut):  # pyright: ignore[reportUnknownMemberType] -- forwarded outcome
+            extra = {"track_id": "face:1", "role": "child", "evidence": "small", "frames": [], "why_others_wrong": "-"}
+            value = EscalationOut.model_validate({"rulings": [*outcome.value.model_dump()["rulings"], extra]})  # pyright: ignore[reportUnknownMemberType] -- forwarded outcome
+            return calls.Outcome(status="ok", value=value)
+        return outcome  # pyright: ignore[reportUnknownVariableType] -- forwarded outcome
+
+    monkeypatch.setattr(roles.calls, "call_json", answer)
+    run(tracked, FakeMeta(tracked), "transcribe", "scene", "roles")
+    host = next(t for t in load(tracked / "roles.json", Roles).tracks if t.track_id == "face:1")
+    assert (host.role, host.matches_participant) == ("child", None)
+    valid(tracked)
+
+
+def test_a_corrupt_transcript_still_writes_scene(tracked: Path) -> None:
+    run(tracked, FakeMeta(tracked), "transcribe")
+    (tracked / "transcript.json").write_text('{"broken": ')
+    run(tracked, FakeMeta(tracked), "scene")
+    assert load(tracked / "scene.json", Scene).status in ("ok", "failed", "skipped")

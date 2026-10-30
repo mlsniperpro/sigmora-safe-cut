@@ -135,3 +135,11 @@ def test_a_vote_that_raises_cancels_its_siblings() -> None:
 
     asyncio.run(go())
     assert sorted(cancelled) == [1, 3]  # no paid call left running unwatched
+
+
+def test_a_speaker_label_that_is_a_huge_number_is_relabelled() -> None:
+    answer = SpeechOut(has_speech=True, turns=[
+        SpeechTurnOut(speaker="U" + "9" * 5000, start=0.0, end=1.0, text="hi", self_intro=None, addresses=None),
+    ])  # fmt: skip
+    turns = speech.fallback_turns(answer, 5.0)
+    assert [t.speaker for t in turns] == ["U1"]

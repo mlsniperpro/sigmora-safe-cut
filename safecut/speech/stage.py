@@ -36,7 +36,7 @@ ASR_STAGE = "asr"
 ASR_KEY = "transcribe"
 FALLBACK_STAGE = "speech"
 FALLBACK_KEY = "fallback"
-_SPEAKER = re.compile(r"^[SU][1-9][0-9]*$")
+_SPEAKER = re.compile(r"^[SU][1-9][0-9]{0,5}$")  # bounded: a label is never a number int() can't take
 #: A fallback answer with fewer input tokens than this per second of clip didn't ingest the media at all (cookbook
 #: issue #59 counted only the prompt text). It can't tell a dropped soundtrack under an ingested video (≈ 2,200
 #: tokens/s); WP0's probe e measures that floor once the key exists.

@@ -133,7 +133,9 @@ def test_another_ids_leftover_does_not_fail_a_good_swap(tmp_path: Path) -> None:
     assert (out / "raw" / "manifest.json").is_file()
 
 
-@pytest.mark.parametrize(("given", "want"), [("v1.5", "v1-5"), ("../..", "clip"), ("Hero 1/A", "hero-1-a")])
+@pytest.mark.parametrize(
+    ("given", "want"), [("v1.5", "v1-5"), ("../..", "clip"), ("Hero 1/A", "hero-1-a"), ("a" * 59 + ".b", "a" * 59)]
+)
 def test_ids_keep_their_dots_as_separators(given: str, want: str) -> None:
     assert go_live.fixture_id(given) == want
 

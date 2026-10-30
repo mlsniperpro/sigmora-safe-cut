@@ -29,8 +29,9 @@ def clip_id(clip: Path) -> str:
 
 
 def fixture_id(given: str) -> str:
-    """An ``--id`` as a fixture directory name: like :func:`clip_id`, but a dot is part of the id (``v1.5``)."""
-    return re.sub(r"[^a-z0-9_-]+", "-", given.lower()).strip("-")[:60] or "clip"
+    """An ``--id`` as a fixture directory name: like :func:`clip_id`, but the whole id (a dot becomes a separator,
+    ``v1.5`` → ``v1-5``, rather than starting an extension that would be cut off)."""
+    return re.sub(r"[^a-z0-9_-]+", "-", given.lower()).strip("-")[:60].strip("-") or "clip"
 
 
 def allowed(clip: Path, consented: bool) -> bool:

@@ -448,8 +448,9 @@ def load_optional[M: Scene | Transcript](path: Path, model: type[M]) -> M | None
 
 def role_track(track_id: str, result: votes.TrackResult, escalation: votes.Escalation | None) -> RoleTrack:
     role = result.role
+    matches = result.matches_participant
     if escalation is not None and escalation.role == "child":
-        role = "child"
+        role, matches = "child", None  # a child is never matched to a participant (the contract's rule too)
     return RoleTrack(
         track_id=track_id,
         role=role,
@@ -458,7 +459,7 @@ def role_track(track_id: str, result: votes.TrackResult, escalation: votes.Escal
         evidence=result.evidence,
         frames=list(result.frames),
         failed_votes=result.failed_votes,
-        matches_participant=result.matches_participant,
+        matches_participant=matches,
         suggested_role=escalation.suggested_role if escalation is not None else None,
         escalation_evidence=escalation.evidence if escalation is not None and escalation.escalated else None,
         escalation_frames=list(escalation.frames) if escalation is not None and escalation.frames is not None else None,
@@ -578,11 +579,18 @@ def track_stage_tracks(job_dir: Path) -> Tracks:
     path, copy, stamp = job_dir / TRACKS, job_dir / INPUT_COPY, job_dir / OUTPUT_STAMP
     if copy.is_file() and stamp.is_file() and stamp.read_text().strip() == _digest(path):
         log.info("roles: this stage's earlier output; starting from its input again")
-        shutil.copyfile(copy, path)
+        _copy_atomic(copy, path)
     else:
-        shutil.copyfile(path, copy)
         stamp.unlink(missing_ok=True)
+        _copy_atomic(path, copy)
     return load(path, Tracks)
+
+
+def _copy_atomic(source: Path, target: Path) -> None:
+    """A copy a kill can't leave half-written: written beside the target, then renamed over it."""
+    partial = target.with_name(f".{target.name}.partial")
+    shutil.copyfile(source, partial)
+    partial.replace(target)
 
 
 def stamp_output(job_dir: Path) -> None:
