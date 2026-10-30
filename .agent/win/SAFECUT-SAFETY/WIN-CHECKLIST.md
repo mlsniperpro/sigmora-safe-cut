@@ -131,3 +131,6 @@ Evidence is a test name, a command run in this session, or a commit. Owner input
 ## Audit findings (round 13, fixed with tests at bb48177 / 8237fab)
 - [x] Copied leaks re-judged against today's decisions (`test_a_copied_opinion_leak_is_rejudged_when_the_creator_hides_what_it_lies_on`).
 - [x] Back-fill follows fast faces (`test_back_fill_follows_a_fast_moving_face`).
+
+## Round 14: clean (both audits, no findings); E4 coverage checker fixed (87a495b, test only)
+- [x] The E4 property checks SAM's outline against everything the plan hides on the frame (`test_property_every_visible_frame_of_a_hidden_track_is_covered_by_its_padded_box`).
