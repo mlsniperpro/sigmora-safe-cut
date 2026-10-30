@@ -1,0 +1,58 @@
+{
+ "synthetic": true,
+ "stage": "escalate",
+ "model": "muse-spark-1.3",
+ "request": {
+  "frames": [
+   0,
+   30,
+   60,
+   90,
+   120,
+   150,
+   180,
+   210,
+   240,
+   270,
+   300,
+   330
+  ]
+ },
+ "events": [
+  {
+   "type": "response.created",
+   "response": {
+    "id": "resp_synthetic_escalate_w0",
+    "status": "in_progress"
+   }
+  },
+  {
+   "type": "response.completed",
+   "response": {
+    "id": "resp_synthetic_escalate_w0",
+    "status": "completed",
+    "output": [
+     {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+       {
+        "type": "output_text",
+        "text": "{\"rulings\":[{\"track_id\":\"face:1\",\"role\":\"bystander\",\"frames\":[0],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"person:1\",\"role\":\"bystander\",\"frames\":[0],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"face:2\",\"role\":\"bystander\",\"frames\":[30],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"person:2\",\"role\":\"bystander\",\"frames\":[30],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"face:4\",\"role\":\"bystander\",\"frames\":[60],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"person:4\",\"role\":\"bystander\",\"frames\":[60],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"person:5\",\"role\":\"bystander\",\"frames\":[60],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"face:6\",\"role\":\"bystander\",\"frames\":[90],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"person:7\",\"role\":\"bystander\",\"frames\":[90],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"face:7\",\"role\":\"bystander\",\"frames\":[90],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"person:8\",\"role\":\"bystander\",\"frames\":[90],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"face:10\",\"role\":\"bystander\",\"frames\":[120],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"person:11\",\"role\":\"bystander\",\"frames\":[120],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"face:11\",\"role\":\"bystander\",\"frames\":[120],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"person:12\",\"role\":\"bystander\",\"frames\":[120],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"face:14\",\"role\":\"bystander\",\"frames\":[150],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"person:15\",\"role\":\"bystander\",\"frames\":[150],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"face:15\",\"role\":\"bystander\",\"frames\":[150],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"person:16\",\"role\":\"bystander\",\"frames\":[150],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"face:17\",\"role\":\"bystander\",\"frames\":[180],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"person:18\",\"role\":\"bystander\",\"frames\":[180],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"face:18\",\"role\":\"bystander\",\"frames\":[180],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"person:19\",\"role\":\"bystander\",\"frames\":[180],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"face:20\",\"role\":\"bystander\",\"frames\":[210],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"person:21\",\"role\":\"bystander\",\"frames\":[210],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"face:21\",\"role\":\"bystander\",\"frames\":[210],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"person:22\",\"role\":\"bystander\",\"frames\":[210],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"face:23\",\"role\":\"bystander\",\"frames\":[240],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"person:24\",\"role\":\"bystander\",\"frames\":[240],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"face:24\",\"role\":\"bystander\",\"frames\":[240],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"person:25\",\"role\":\"bystander\",\"frames\":[240],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"face:26\",\"role\":\"bystander\",\"frames\":[270],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"person:27\",\"role\":\"bystander\",\"frames\":[270],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"face:27\",\"role\":\"bystander\",\"frames\":[270],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"person:28\",\"role\":\"bystander\",\"frames\":[270],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"face:29\",\"role\":\"bystander\",\"frames\":[300],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"person:30\",\"role\":\"bystander\",\"frames\":[300],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"face:30\",\"role\":\"bystander\",\"frames\":[300],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"person:31\",\"role\":\"bystander\",\"frames\":[300],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"face:31\",\"role\":\"bystander\",\"frames\":[330],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"person:32\",\"role\":\"bystander\",\"frames\":[330],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"}]}"
+       }
+      ]
+     }
+    ],
+    "usage": {
+     "input_tokens": 0,
+     "output_tokens": 0,
+     "input_tokens_details": {
+      "cached_tokens": 0
+     }
+    }
+   }
+  }
+ ],
+ "response": null,
+ "usd": 0.0
+}
