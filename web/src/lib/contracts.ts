@@ -336,9 +336,10 @@ export type JobResponse = z.infer<typeof jobResponseSchema>;
 export const resultResponseSchema = z.object({
   job_id: z.string(),
   mode: modeSchema,
-  status: jobStatusSchema,
+  // §8/§5.6 don't give /result these; the page reads the job's own status and frames first.
+  status: jobStatusSchema.optional(),
   deletes_at: isoTime,
-  frames: z.number().int().nonnegative(),
+  frames: z.number().int().nonnegative().optional(),
   video_url: mediaUrl,
   captions_url: mediaUrl.nullable().optional(),
   receipt_html_url: mediaUrl,

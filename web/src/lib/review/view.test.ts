@@ -79,7 +79,7 @@ describe("review view model (UI-SPEC §3.3, §3.9)", () => {
   it("shows an unfixed spot as a U chip with Cover it, read-only in needs_you", () => {
     const u = load(unresolvedMock);
     const spot = columnsOf(buildChips(u.state, u.job)).needs_you.find((c) => c.type === "spot")!;
-    expect(spot).toMatchObject({ label: "Unfixed spot U1", kindWord: "Person", buttons: { cover: true, why: false } });
+    expect(spot).toMatchObject({ label: "Unfixed spot U1", kindWord: "Person", buttons: { cover: true, why: false, menu: { remove: false, jump: true } } });
     const ro = load(auditFailedLeak);
     const roSpot = buildChips(ro.state, ro.job).find((c) => c.type === "spot")!;
     expect(roSpot.buttons.cover).toBe(false);

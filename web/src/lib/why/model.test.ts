@@ -7,6 +7,7 @@ import speechMock from "../../../mocks/job-review-speech-fallback.json";
 import whyMock from "../../../mocks/job-review-why-rows.json";
 import { jobResponseSchema, type JobResponse } from "../contracts";
 import { buildWhy, type LocalItemState } from "./model";
+import { speechSection } from "./why";
 
 const parse = (raw: unknown): JobResponse => jobResponseSchema.parse(raw);
 const localOf = (job: JobResponse, id: string, over: Partial<LocalItemState> = {}): LocalItemState => {
@@ -153,5 +154,34 @@ describe("Why drawer (UI-SPEC §4.3)", () => {
     expect(d).toMatchObject({ decidedBy: "Decided by Muse Spark", cover: "Cover: Coarse pixels", tracks: "Tracks: face:6", frames: "Frames 8–11" });
     expect(why(heroMock, "i_1").details.cover).toBe("Cover: none (kept clear)");
     expect(d.models).toBe("Models: Muse Spark 1.3 · SAM 3.1 · Muse Voice Transcribe");
+  });
+});
+
+describe("speech lines and footer (§4.3, §4.6)", () => {
+  const turn = (speaker: string, start: number, text: string) => ({ speaker, start, end: start + 0.5, text });
+  const transcript = (turns: ReturnType<typeof turn>[]) => ({ status: "ok", source: null, source_kind: "primary" as const, degraded: false, turns });
+
+  it("a linked speaker with no lines on screen gets no 'No speech is linked' footer", () => {
+    const s = speechSection("Face 2", { first: 0, last: 9 }, 10, true, transcript([turn("S1", 0.1, "hello"), turn("S2", 5, "later")]), "S2");
+    expect(s).toMatchObject({ kind: "lines", footer: null });
+    if (s.kind !== "lines") throw new Error("expected lines");
+    expect(s.lines.map((l) => l.speaker)).toEqual(["Voice S1"]);
+  });
+
+  it("the footer shows when no speaker is linked, even with no span", () => {
+    expect(speechSection("Face 4", null, 10, true, transcript([turn("S1", 0, "hi")]), null)).toMatchObject({ footer: "No speech is linked to Face 4." });
+    expect(speechSection("Face 4", null, 10, true, transcript([turn("S1", 0, "hi")]), "S1")).toMatchObject({ footer: null });
+  });
+
+  it("within the four-line cap the linked speaker's lines come first, shown in time order", () => {
+    const turns = [turn("S1", 0, "a"), turn("S1", 0.1, "b"), turn("S1", 0.2, "c"), turn("S1", 0.3, "d"), turn("S2", 0.4, "mine")];
+    const s = speechSection("Face 2", { first: 0, last: 9 }, 10, true, transcript(turns), "S2");
+    if (s.kind !== "lines") throw new Error("expected lines");
+    expect(s.lines.map((l) => [l.text, l.saidBy])).toEqual([
+      ["a", false],
+      ["b", false],
+      ["c", false],
+      ["mine", true],
+    ]);
   });
 });

@@ -13,7 +13,7 @@ import { COPY, codeWindowMessage, formatLocal } from "@/lib/copy";
 import { CODE_MAX_LENGTH, checkFiles, durationProblem, normaliseCode, sizeMb } from "@/lib/upload";
 import { useCooldown } from "@/hooks/useCooldown";
 import { useJob } from "@/hooks/useJob";
-import { SITE } from "@/lib/site";
+import { SITE, keptQuery } from "@/lib/site";
 import { ProgressView, fmtDuration } from "../job/ProgressView";
 import { btn } from "../ui";
 import { useMode, useReportMode } from "../mode";
@@ -557,8 +557,10 @@ export function TryFlow() {
               deletedByUser.current = true;
               uploadAbort.current?.abort();
             });
-          }} onDeleted={() => setStep("deleted")} onNavigate={(href) => {
+          }} onDeleted={() => setStep("deleted")} onNavigate={(path) => {
             if (deletedByUser.current) return;
+            // The job page keeps `from` and `demo` (§10.4). Read at navigation time, so /try stays static.
+            const href = `${path}${keptQuery(new URLSearchParams(window.location.search))}`;
             if (pendingDelete.current) heldNavigation.current = href;
             else router.push(href);
           }} />}

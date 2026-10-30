@@ -1,4 +1,4 @@
-AUDITED_COMMIT: b2c083d
+AUDITED_COMMIT: b5ed253
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -467,3 +467,17 @@ Noted, not counted:
 | 1 | low | "You can leave this page" and the review link showed while the upload was still running; opening the link (or reloading) killed the upload and the job stayed `created` (§2.3 shows the note only after "✓ Uploading") | fixed: while uploading, the page says "Keep this page open until the upload finishes. Leaving now stops it.", the link comes once the upload is done, and the browser asks before a reload or close. ProgressView test (fails on b2c083d) |
 | 2 | low | A 429 on Continue (code check) left Continue enabled; §10.3 holds the button until Retry-After (60 s without) for any POST but /review | fixed: Continue is aria-disabled for the cooldown (useCooldown) and ignores presses. The TryFlow test that expected an immediate retry encoded the bug; it now asserts the hold. The e2e checks the hold too |
 | 3 | low | §2.7 calls for a "progress bar with percent" while uploading; only the percent text was shown | fixed: a `<progress>` (labelled "Upload progress") under the uploading row, with the percent kept. ProgressView test (fails on b2c083d) |
+
+## Round 37 (audited b5ed253 by a Sonnet reviewer: the spec read line by line against the code, a fresh archive build in Chromium, and one live-mode build against a small fake https API; fixes in the next commit)
+
+0 critical, 0 high, 1 medium, 4 low. CLEAN_AUDITS_IN_A_ROW stays 0. No regressions from round 36.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | medium | The result video had captions only from a `captions_url` that no spec table defines; §5.5 and §9 want captions from the transcript whenever the source had speech | fixed: the result page builds them from the job's transcript (as the review page does) whenever no captions file is given or until it loads. ResultPage test with a `/result` stripped of `captions_url` (fails on b5ed253) |
+| 2 | low | `resultResponseSchema` required top-level `status` and `frames`, which §8/§5.6 don't give `/result`, so a spec-shaped answer showed the error page | fixed: both optional; the frame count falls back to the job's, then to `frames_scanned`, as the review banner already does. Same ResultPage test (fails on b5ed253) |
+| 3 | low | `?from=sigmora` and `?demo=1` were dropped moving from `/try` to `/jobs/{id}`, and "Review them" / "Back to review" dropped `demo` (§10.4) | fixed: `/try` appends `keptQuery` at navigation time (read from `location`, so `/try` stays static), and the result links use it. TryFlow and ResultPage tests (fail on b5ed253) |
+| 4 | low | The Why drawer said "No speech is linked to {label}." for a linked speaker whose lines fell outside the first four overlapping turns or outside the window (§4.3) | fixed: the footer shows only when no speaker is linked, and within the four-line cap the linked speaker's lines are picked first, then shown in time order. Three speechSection tests (fail on b5ed253) |
+| 5 | low | Unfixed-spot (U) chips had no ⋯ menu, so no "Jump to first appearance" (§3.1, §3.8) | fixed: spot chips get the menu with Jump only. view test (fails on b5ed253) |
+
+Every new test was run against b5ed253's code (fixes stashed) and fails there: 7 tests. On the fix commit: `checks.sh` exit 0, 867 tests, e2e 143/143.

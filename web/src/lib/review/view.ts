@@ -151,7 +151,7 @@ export function buildChips(state: ReviewState, job: JobResponse): Chip[] {
       changedByYou: false,
       removed: false,
       newLine: null,
-      buttons: { why: false, hide: false, keep: false, merge: null, cover: !readOnly, menu: { remove: false, jump: false } },
+      buttons: { why: false, hide: false, keep: false, merge: null, cover: !readOnly, menu: { remove: false, jump: true } },
       seekFrame: spot.first,
       thumb: box && keyframes.has(String(spot.first)) ? { frame: spot.first, box } : null,
       pending: false,

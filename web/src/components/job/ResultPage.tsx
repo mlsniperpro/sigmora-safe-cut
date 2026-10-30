@@ -15,6 +15,7 @@ import { SITE, fromSigmora, keptQuery } from "@/lib/site";
 import { useCooldown } from "@/hooks/useCooldown";
 import { useHeadingTitle } from "@/hooks/useHeadingTitle";
 import { useJob } from "@/hooks/useJob";
+import { useCaptions } from "@/hooks/useCaptions";
 import { useRemoteCaptions } from "@/hooks/useRemoteCaptions";
 import { CheckIcon, WarningIcon } from "../icons";
 import { useMode, useReportMode } from "../mode";
@@ -44,6 +45,8 @@ export function ResultPage() {
   const params = useSearchParams();
   const router = useRouter();
   const sigmora = fromSigmora(params);
+  /** Back to review keeps `from` and `demo`, like every other job link. */
+  const reviewQuery = `?view=review${keptQuery(params).replace("?", "&")}`;
   const { load, resume, markDeleted } = useJob(id);
   const job = load.kind === "ready" ? load.job : null;
   const [result, setResult] = useState<ResultLoad>({ kind: "idle" });
@@ -70,7 +73,10 @@ export function ResultPage() {
     keepMedia.current = false;
   }, [attempt]);
   const latest = result.kind === "ready" ? result.result : null;
-  const captions = useRemoteCaptions(latest?.captions_url);
+  // Without a captions file (or until it loads) the job's own transcript makes them, as on the review page (§3.1).
+  const remoteCaptions = useRemoteCaptions(latest?.captions_url);
+  const transcriptCaptions = useCaptions(job?.transcript, job?.job?.audio ?? false);
+  const captions = remoteCaptions ?? transcriptCaptions;
   // An iframe fires no error event for HTTP failures, so a receipt that hasn't loaded in time counts
   // as failed (§5.4), after one refetch in case its signed URL had expired (§10.7).
   useEffect(() => {
@@ -173,7 +179,7 @@ export function ResultPage() {
 
   if (mediaFailed) return loadMessage("unexpected", retryResult);
   const r = result.result;
-  const summary = auditSummary(r.audit, j.job?.frames ?? r.frames);
+  const summary = auditSummary(r.audit, j.job?.frames ?? r.frames ?? r.audit.frames_scanned);
   const doDelete = async () => {
     setConfirm(false);
     // A fresh attempt: an identical error is announced and focused again.
@@ -228,7 +234,7 @@ export function ResultPage() {
               </p>
             ))}
             {summary.state === "unresolved" && (
-              <Link href={`/jobs/${encodeURIComponent(id)}?view=review${sigmora ? "&from=sigmora" : ""}`} className={`${btn.secondary} mt-3`}>
+              <Link href={`/jobs/${encodeURIComponent(id)}${reviewQuery}`} className={`${btn.secondary} mt-3`}>
                 Review them
               </Link>
             )}
@@ -267,7 +273,7 @@ export function ResultPage() {
               Publishing is off until every spot is fixed.
             </p>
           )}
-          <Link href={`/jobs/${encodeURIComponent(id)}?view=review${sigmora ? "&from=sigmora" : ""}`} className={btn.link}>
+          <Link href={`/jobs/${encodeURIComponent(id)}${reviewQuery}`} className={btn.link}>
             Back to review
           </Link>
         </div>

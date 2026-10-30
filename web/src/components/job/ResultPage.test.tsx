@@ -41,6 +41,38 @@ describe("result and receipt (UI-SPEC §5)", () => {
     expect(screen.getByRole("link", { name: "Back to review" })).toHaveAttribute("href", "/jobs/result-clean?view=review");
   });
 
+  it("keeps demo and from on the links back to review (§10.4)", async () => {
+    setup("result-unresolved", "from=sigmora&demo=1");
+    expect(await screen.findByRole("link", { name: "Review them" })).toHaveAttribute("href", "/jobs/result-unresolved?view=review&from=sigmora&demo=1");
+    expect(screen.getByRole("link", { name: "Back to review" })).toHaveAttribute("href", "/jobs/result-unresolved?view=review&from=sigmora&demo=1");
+  });
+
+  it("a result without captions_url, status or frames still loads, with captions from the job's transcript", async () => {
+    nav.id = "result-clean";
+    nav.search = "";
+    const backend = new MockBackend({ latencyMs: 0 });
+    const transport: Transport = {
+      upload: (...args) => backend.upload(...args),
+      request: (init: Parameters<MockBackend["request"]>[0]) =>
+        backend.request(init).then((raw) => {
+          if (!init.path.endsWith("/result") || raw.status !== 200) return raw;
+          const body: Record<string, unknown> = { ...(raw.body as Record<string, unknown>) };
+          for (const key of ["captions_url", "status", "frames"]) delete body[key];
+          return { ...raw, body };
+        }),
+    };
+    setClientForTests(new SafeCutClient({ transport, sleep: () => Promise.resolve() }));
+    const { container } = render(
+      <ModeProvider>
+        <ResultPage />
+      </ModeProvider>,
+    );
+    expect(await screen.findByText("No leaks found.")).toBeInTheDocument();
+    expect(screen.getByText("12 of 12 frames checked.")).toBeInTheDocument();
+    // Built from the transcript, so a blob URL rather than the API's captions file.
+    expect(container.querySelector("track")?.getAttribute("src")).toMatch(/^blob:/);
+  });
+
   it("fixed: counts distinct patched items", async () => {
     setup("result-fixed");
     expect(await screen.findByText("1 leak found and fixed. Nothing left to fix.")).toBeInTheDocument();

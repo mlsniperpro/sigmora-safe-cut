@@ -168,6 +168,11 @@ Round 14 (fixes in the round-14 commit; details in `reaudit.md`):
 - [x] R15-1 (low) a late fresh URL brings the review player back: JobPage test
 - [x] R15-2 (low) an action's GET isn't made quiet by a cut-short refresh: useJob test
 - [x] Self-found: fixture dates shift with the clock, so the mock and the tests hold on any date: mock-backend tests, suite run at clock shifts up to +400 days
+- [x] R37-1 (medium) result captions from the job's transcript (§5.5): ResultPage test
+- [x] R37-2 (low) `/result` without `status`/`frames` loads: ResultPage test
+- [x] R37-3 (low) `from` and `demo` kept from /try to the job page and on the result links: TryFlow and ResultPage tests
+- [x] R37-4 (low) "No speech is linked" only without a linked speaker; linked lines first under the cap: speechSection tests
+- [x] R37-5 (low) U chips get ⋯ with Jump: view test
 - [x] R36-1 (low) keep-open note while uploading, link after; beforeunload guard: ProgressView test
 - [x] R36-2 (low) a 429 holds Continue until Retry-After: TryFlow test, e2e
 - [x] R36-3 (low) upload progress bar (§2.7): ProgressView test

@@ -207,21 +207,24 @@ export function speechSection(
       footer: limited ? "Speech couldn't be checked reliably for this clip." : "No speech was transcribed. Safe Cut's speech check covers 25 languages, not including Swahili.",
     };
   }
-  if (!span) return { kind: "lines", heading, lines: [], footer: `No speech is linked to ${label}.` };
+  // The footer says no speech is linked only when no speaker is (§4.3), not when their lines fall outside the window.
+  const unlinked = speakerOfItem === null ? `No speech is linked to ${label}.` : null;
+  if (!span) return { kind: "lines", heading, lines: [], footer: unlinked };
   const slack = limited ? FALLBACK_SLACK_S : 0;
   const from = span.first / fps - slack;
   const to = (span.last + 1) / fps + slack;
-  const lines = turns
-    .filter((t) => t.start < to && t.end >= from)
-    .slice(0, MAX_LINES)
+  const overlapping = turns.filter((t) => t.start < to && t.end >= from);
+  // Within the cap the linked speaker's own lines come first, then shown in time order.
+  const chosen = new Set([...overlapping.filter((t) => speakerOfItem !== null && t.speaker === speakerOfItem), ...overlapping].slice(0, MAX_LINES));
+  const lines = overlapping
+    .filter((t) => chosen.has(t))
     .map((t) => ({
       time: `${limited ? "about " : ""}${formatSeconds(t.start)}`,
       speaker: `Voice ${t.speaker}`,
       text: t.text.length > MAX_CHARS ? `${t.text.slice(0, MAX_CHARS)}…` : t.text,
       saidBy: speakerOfItem !== null && t.speaker === speakerOfItem,
     }));
-  const linked = speakerOfItem !== null && lines.some((l) => l.saidBy);
-  return { kind: "lines", heading, lines, footer: linked ? null : `No speech is linked to ${label}.` };
+  return { kind: "lines", heading, lines, footer: unlinked };
 }
 
 /** The speaker linked to an item through `matches_participant` → `scene.participants[k].speaker`. */

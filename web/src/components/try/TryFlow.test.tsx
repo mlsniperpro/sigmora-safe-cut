@@ -124,6 +124,24 @@ describe("/try", () => {
     expect(screen.getByRole("checkbox")).toHaveFocus();
   });
 
+  it("keeps demo and from when it moves to the job page (§10.4)", async () => {
+    window.history.replaceState(null, "", "/try?from=sigmora&demo=1");
+    try {
+      const user = setup();
+      await enterCode(user, "judge");
+      await screen.findByRole("button", { name: "Choose a file" });
+      await user.upload(fileInput(), clip());
+      await screen.findByText(/street\.mp4/);
+      await user.click(screen.getByRole("checkbox"));
+      await user.click(screen.getByRole("button", { name: "Start" }));
+      await waitFor(() => expect(backend.log.some((l) => l.path.endsWith("/start"))).toBe(true));
+      now += 1_000_000;
+      await waitFor(() => expect(push).toHaveBeenCalledWith("/jobs/j_mock1?from=sigmora&demo=1"), { timeout: 5_000 });
+    } finally {
+      window.history.replaceState(null, "", "/");
+    }
+  });
+
   it("uploads, starts, shows progress and moves to the review panel", async () => {
     const user = setup();
     await enterCode(user, "judge");
