@@ -550,6 +550,12 @@ try {
     await narrow.getByRole("button", { name: "Next evidence frame" }).waitFor();
     const sideways = await narrow.getByRole("dialog").evaluate((d) => d.scrollWidth - d.clientWidth);
     check("200% text, 320 px: the evidence-frame row fits the sheet", sideways <= 1, `${sideways}px`);
+    // The header and the landing hero reflow too (Menu wraps under the wordmark; the hero's column can shrink).
+    for (const path of ["/", "/privacy"]) {
+      await narrow.goto(`${BASE}${path}`, { waitUntil: "networkidle" });
+      const wide = await narrow.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      check(`200% text, 320 px: ${path} doesn't scroll sideways`, wide <= 0, `${wide}px`);
+    }
     await big.close();
     // 125% text on a 1100 px screen: the layout JS and CSS agree, so the columns keep their names (headings or tabs).
     const mid = await chromium.launch({ args: ["--blink-settings=defaultFontSize=20,minimumFontSize=0"] });

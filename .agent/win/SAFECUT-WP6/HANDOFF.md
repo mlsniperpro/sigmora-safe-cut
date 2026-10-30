@@ -77,6 +77,7 @@
 - Audit round 32 (on 234db94): 1 medium (the JS layout query in px against Tailwind's rem) and 2 low, fixed in the round-32 commit. All layout gates now follow the text size. On that commit: 858 tests, e2e 135/135.
 - Audit round 33 (on 89e6512): 2 low (focus lost crossing the breakpoint; the Why sheet at 200% on 320 px), fixed in the round-33 commit. On that commit: 858 tests, e2e 138/138.
 - Audit round 34 (on f01e64d): 2 low (a stale chip refocus after a click away; the frame row at 200%/320 px), fixed in the round-34 commit. On that commit: 858 tests, e2e 140/140.
+- Self-sweep after round 34: I probed every page and every Why sheet at 200% text on 320 and 360 px. I fixed the header (8 px) and landing hero (31 px) overflows earlier rounds had only noted; the probe is now clean. On that commit: 858 tests, e2e 142/142.
 - CLEAN_AUDITS_IN_A_ROW is 0. Two clean full audits are still needed, then a fresh break-it.md (fresh clone + FUZZ_RUNS=100000).
 
 ## Next steps, in order

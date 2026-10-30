@@ -32,7 +32,7 @@ export function HeroAndSteps() {
   const onAuditor = useCallback((a: DemoResponse["audit"]) => setAudit(a), []);
   return (
     <>
-      <section className="mx-auto grid max-w-6xl gap-8 px-4 pt-10 pb-12 lg:grid-cols-[1fr_1.1fr] lg:items-center lg:pt-16">
+      <section className="mx-auto grid max-w-6xl grid-cols-[minmax(0,1fr)] gap-8 px-4 pt-10 pb-12 lg:grid-cols-[1fr_1.1fr] lg:items-center lg:pt-16">
         <div className="order-2 lg:order-1">
           <h1 className="text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
             Publish real-world footage without exposing the people who never agreed to be in it.

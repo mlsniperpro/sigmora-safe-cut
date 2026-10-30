@@ -49,7 +49,8 @@ export function HeaderShell({ sigmora = false }: { sigmora?: boolean }) {
   );
   return (
     <header className="border-b border-border bg-surface">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-1">
+      {/* Wraps: at large text on a narrow phone, Menu goes below the wordmark instead of off the edge. */}
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-4 px-4 py-1">
         <Wordmark />
         {sigmora ? (
           <a href={SITE.sigmoraUrl} className="flex min-h-11 items-center rounded px-2 font-medium hover:underline">

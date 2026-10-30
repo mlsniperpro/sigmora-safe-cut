@@ -138,7 +138,7 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["au
         )}
       </div>
       <figcaption className="flex flex-col gap-2 border-t border-border p-3 text-sm">
-        <div role="radiogroup" aria-label="Version" aria-describedby="toggle-hint" className="inline-flex w-fit rounded-lg border border-border bg-surface-2 p-0.5">
+        <div role="radiogroup" aria-label="Version" aria-describedby="toggle-hint" className="inline-flex w-fit max-w-full flex-wrap rounded-lg border border-border bg-surface-2 p-0.5">
           {(["raw", "safecut"] as const).map((v) => (
             <button
               key={v}
