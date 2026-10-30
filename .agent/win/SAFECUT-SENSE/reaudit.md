@@ -1,7 +1,7 @@
-AUDITED_COMMIT: b9b13d8
+AUDITED_COMMIT: 86be73c
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
-CLEAN_AUDITS_IN_A_ROW: 1
+CLEAN_AUDITS_IN_A_ROW: 2
 
 # SAFECUT-SENSE re-audit log
 
@@ -122,3 +122,13 @@ distinct non-crowded frames. The perception half prepared 20+ legitimate clip sh
 - Decision: an attached picture (cover art) as the first video stream is refused as bad_media (typed, fail closed).
 - Decision: a track with one failed vote in each of several windows counts as all-failed and isn't escalated: it stays hidden (fail closed); escalation is advisory.
 - Decision: votes 2 and 3 start when vote 1 answers or after 20 s; the "first output item" trigger needs a streaming hook the client doesn't expose. Latency only.
+
+## Audit 10 (two auditors, full fresh passes) at 86be73c, the final SENSE code: 0 critical, 0 high, 0 medium in SENSE: CLEAN
+Second clean audit in a row (9 at 3b6d537, 10 at 86be73c; between them only the two audit-9 lows and a merge of main).
+The perception half measured `job.times` and the proxy table on burned-in frame barcodes across 14 rates, offsets and
+VFR (0 mismatches), and 171 rate × length combinations. The reasoning half ran ~400 full speech → scene → roles →
+decide → guard jobs with hostile schema-valid answers (multi-window, crowded, random SAM answers, live client path
+with fault injection): every job valid, with an independent oracle finding no keep without 3/3 valid votes over ≥ 2
+distinct present non-crowded frames, no lost child, every miss covered.
+- Outside SENSE (reported to SHIP, its owner): `deploy/modal_app.py` mounts `safecut` with `add_local_python_source`, whose default ignore drops non-.py files, so the deployed image would lack the prompt templates (and SAFETY's YuNet weights).
+- Decisions (lows, no change at the final head): `data= H,W` with a space slips the mask-size pre-check (malformed Meta answer; Meta's parser still refuses it as not box-sized, CPU bounded); the demo's synthetic person boxes stop one row above the drawn feet (synthetic fixture only; E3 scores faces); a truncated upload prepares to the frames that decode (typed, times stay exact); non-square SAR is kept (SAM's space check fails closed if Meta answers in display space; needs the live probe); a turn wholly before the clip clamps to t = 0 (cannot create a keep); counts of scene participants and swept phrase characters are unbounded in prompts (cost only); quotes and brackets inside one quoted line aren't escaped (needs adversarial speech; cannot create a keep); the role-pass agreement-rate logging and order-shuffle contingency aren't built (advisory); a malformed ASR body with a lone surrogate or a 400-digit time fails the primary path loudly (Meta-only); no total cap on static misses beyond the spec's M8 (linear: 300 items stayed small); `make_demo_job` rebuilds the demo in place; escalation affordability is all-or-nothing (advisory).
