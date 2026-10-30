@@ -1,7 +1,7 @@
-AUDITED_COMMIT: f01e64d
+AUDITED_COMMIT: b2c083d
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
-CLEAN_AUDITS_IN_A_ROW: 0
+CLEAN_AUDITS_IN_A_ROW: 1
 
 # Re-audit log: SAFECUT-WP6
 
@@ -441,3 +441,19 @@ Noted, not counted: at 320 px with 200% text the landing figure scrolls 31 px si
 |---|---|---|---|
 | 1 | low | Round 33's breakpoint refocus kept a stale chip after the viewer clicked blank page (no focusin fires there), so a later flip pulled focus and scroll back to it | fixed: a pointerdown outside any chip forgets the remembered chip. e2e clicks away and flips the layout (fails on f01e64d: focus back on i_5) |
 | 2 | low | At 200% text on a 320 px phone, the Why sheet's ◀ frames ▶ row overflowed by 22 px | fixed: the row wraps. e2e at 200% text and 320 px (fails on f01e64d: 22 px) |
+
+## Round 35 (audited b2c083d by a Sonnet reviewer): CLEAN
+
+0 critical, 0 high, 0 medium, 0 low.
+- **Changes since round 34:** the header and landing at 100% text across 14–20 widths (320–1920) in light and dark, plus the mobile menu at 3 text sizes and 4 widths. The radiogroup's arrow keys (also in a live build). A read of the pointerdown refocus.
+- **The rest of the app:**
+  - repo e2e 142/142;
+  - axe WCAG 2.2 A/AA on 53 routes × 320/390/1280 × light/dark (0 violations, one h1, no overflow, no target under 44 px);
+  - text-spacing on 20 routes;
+  - large default text (125–300%) on the landing, `?from=sigmora` and /try;
+  - a live build covering /try and code-check faults, and copy against UI-SPEC §1.
+
+Noted, not counted:
+- With `?from=sigmora` at 320–326 px, "Back to Sigmora" wraps to a second header row (clean, better than squeezing).
+- At 300% text (beyond 1.4.4's 200%) on 320 px, `/` and `/try` scroll 13–35 px sideways.
+- The radiogroup has no Home/End (the arrow keys work).
