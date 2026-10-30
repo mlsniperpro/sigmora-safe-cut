@@ -22,6 +22,7 @@ from safecut.decide.review import ReviewEdit, apply_review
 from safecut.guard import run as guard_run
 from safecut.guard.plan import EXTEND, PADDING, backfill_frames, body_below, plan, read_through
 from safecut.guard.regions import held_box, mask_ok
+from safecut.render.draw import hidden_mask
 from tests.safety_factories import FPS, FRAMES, H, W, job, roles, row, track, track_sets, tracks
 from tests.test_policy import E4
 
@@ -278,11 +279,11 @@ def test_property_every_visible_frame_of_a_hidden_track_is_covered_by_its_padded
             padded = (max(0, box[0] - dx), max(0, box[1] - dy), min(W, box[2] + dx), min(H, box[3] + dy))
             es = entries(p, frame, owner[t.track_id])
             if any(e.mask is not None for e in es):
-                # Mask-shaped: SAM's own outline of the object (padded outward) is under the plan.
+                # Mask-shaped: SAM's own outline of the object (padded outward) is under what the plan hides on that
+                # frame: every entry of the item (a body's box as much as a face's mask) and any crowd fill.
                 if frame in t.masks:
-                    have = np.zeros((H, W), dtype=np.bool_)
-                    for e in es:
-                        have |= g.decode(e.mask) if e.mask is not None else np.zeros((H, W), dtype=np.bool_)
+                    fills = [f for f in p.crowd_fills if frame in f.frames]
+                    have = hidden_mask(es, fills, H, W)
                     assert (have | ~g.decode(t.masks[frame])).all(), (t.track_id, frame)
             else:
                 assert covered(p, frame, owner[t.track_id], padded), (t.track_id, frame)
