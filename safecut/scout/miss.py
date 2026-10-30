@@ -141,6 +141,25 @@ def validate(raw: RawMiss, *, sent: frozenset[int], width: int, height: int, bar
                 concept=concept_for(phrase))  # fmt: skip
 
 
+def untracked(misses: Sequence[Miss], tracks: Sequence[Track]) -> list[Miss]:
+    """Drop a miss whose point already lies in a box of a track of the same concept on its frame: it is tracked
+    (and hidden) already, e.g. loop 1's envelope re-reported by the re-pass. Another concept's box doesn't count:
+    an unboxed face on a boxed screen is still a miss (``miss-loop.md`` tricky case 2)."""
+    kept: list[Miss] = []
+    for miss in misses:
+        x, y = miss.point
+        covered = any(
+            t.concept == miss.concept.concept
+            and (box := t.boxes.get(miss.frame)) is not None
+            and box[0] <= x < box[2]
+            and box[1] <= y < box[3]
+            for t in tracks
+        )
+        if not covered:
+            kept.append(miss)
+    return kept
+
+
 def dedupe(misses: Sequence[Miss], width: int, height: int) -> list[Miss]:
     """Step 4: merge items with the same phrase on the same frame whose points are ≤ 5% of the diagonal apart
     (M10). The first keeps its place; ``recurs`` and a box carry over from the merged ones."""
