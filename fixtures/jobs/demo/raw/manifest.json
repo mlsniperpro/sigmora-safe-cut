@@ -2,7 +2,7 @@
  "demo": true,
  "synthetic": true,
  "source": "fixtures/clips/SC-A-91-synthetic-20261030.mp4",
- "source_sha256": "bdc29623da80437d23a0d7fde37daf83eca12caf62edbcd939e172e3b2449e80",
+ "source_sha256": "cc3cd46eab3847db6f63cb9a64e51c2859a72f3db9fdf3beaa0ee8d4eaf1c3c6",
  "truth": "fixtures/jobs/demo/truth/SC-A-91.json",
  "note": "Synthetic: every response was generated from the clip's ground truth by scripts/make_demo_job.py (none is model output)."
 }

@@ -127,6 +127,38 @@ def test_aac_priming_is_not_mistaken_for_an_audio_lead() -> None:
     assert prepare._audio_filter(found.video, found.audio_start) == "asetpts=PTS-STARTPTS"  # pyright: ignore[reportPrivateUsage] -- the filter is the unit
 
 
+def test_an_edit_list_trim_keeps_audio_on_the_first_shown_frame(tmp_path: Path) -> None:
+    """A stream-copy trim (``-ss 0.5 -c copy``, as phones' trims do) keeps the GOP's earlier frames as hidden
+    packets before the edit list's start. The clock starts at the first *decoded* frame, so nothing delays the
+    audio and the hidden frames aren't counted (§5b steps 2–3)."""
+    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+    whole = tmp_path / "whole.mp4"
+    cmd = [ffmpeg, "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", "30",
+           "-i", "-", "-f", "lavfi", "-i", "sine=frequency=440:duration=3", "-map", "0:v", "-map", "1:a",
+           "-c:v", "libx264", "-preset", "ultrafast", "-qp", "0", "-pix_fmt", "yuv444p", "-g", "30", "-bf", "0",
+           "-c:a", "aac", "-shortest", str(whole)]  # fmt: skip
+    subprocess.run(cmd, input=b"".join(_frame(k) for k in range(90)), check=True)  # noqa: S603 -- fixed argv
+    trimmed = tmp_path / "trimmed.mp4"
+    trim = [ffmpeg, "-y", "-loglevel", "error", "-ss", "0.5", "-i", str(whole), "-c", "copy", str(trimmed)]
+    subprocess.run(trim, check=True)  # noqa: S603 -- fixed argv
+    assert media.packets(trimmed).count == 90  # the hidden packets are there...
+    found = prepare.probe(trimmed)
+    assert (found.video.count, found.video.start, found.fps) == (75, 0, 30)  # ...and not counted
+    assert found.audio_start is not None
+    assert prepare._audio_filter(found.video, found.audio_start) == "asetpts=PTS-STARTPTS"  # pyright: ignore[reportPrivateUsage] -- the filter is the unit
+    job = load(prepare.prepare(trimmed, tmp_path / "j_trim"), Job)
+    shown = _decode_indices(tmp_path / "j_trim" / prepare.PREPARED)
+    assert job.frames == len(shown) == 75
+    assert shown[0] == 15
+    assert job.times == [n / 30 for n in range(75)]
+    head = [ffmpeg, "-loglevel", "error", "-i", str(tmp_path / "j_trim" / prepare.PREPARED), "-map", "0:a:0",
+            "-t", "0.2", "-f", "s16le", "-ac", "1", "-"]  # fmt: skip
+    pcm = subprocess.run(head, capture_output=True, check=True).stdout  # noqa: S603 -- fixed argv
+    samples = np.frombuffer(pcm, dtype="<i2").astype(np.float64)
+    assert len(samples) > 0
+    assert np.sqrt(np.mean(samples**2)) > 1000  # the tone plays from the first shown frame, not after 0.5 s of silence
+
+
 def test_fixture_clips_and_keyframes(tmp_path: Path) -> None:
     truth = json.loads(Path("fixtures/clips/truth.json").read_text())
     for name, spec in truth.items():
@@ -164,6 +196,7 @@ def test_too_large_is_refused_before_transcode(tmp_path: Path, monkeypatch: pyte
     with pytest.raises(prepare.PrepareError) as err:
         prepare.prepare(Path("fixtures/clips/counter_24fps.mp4"), tmp_path / "j")
     assert err.value.reason == "too_large"
+    assert err.value.size_bytes is not None
     assert not (tmp_path / "j" / prepare.PREPARED).exists()
 
 
@@ -173,6 +206,8 @@ def test_too_long_is_refused(tmp_path: Path) -> None:
     with pytest.raises(prepare.PrepareError) as err:
         prepare.prepare(clip, tmp_path / "j")
     assert err.value.reason == "too_long"
+    assert err.value.duration_s is not None
+    assert err.value.duration_s > 60
 
 
 def test_exactly_sixty_seconds_is_allowed(tmp_path: Path) -> None:
@@ -187,12 +222,17 @@ def test_unreadable_and_videoless_uploads(tmp_path: Path) -> None:
     junk.write_bytes(b"not a video at all")
     with pytest.raises(prepare.PrepareError) as err:
         prepare.prepare(junk, tmp_path / "j1")
-    assert err.value.reason == "unreadable"
+    assert err.value.reason == "bad_media"
     audio_only = tmp_path / "audio.m4a"
     media.run(["-y", "-f", "lavfi", "-i", "sine=duration=1", "-c:a", "aac", str(audio_only)])
     with pytest.raises(prepare.PrepareError) as err:
         prepare.prepare(audio_only, tmp_path / "j2")
-    assert err.value.reason in ("no_video", "unreadable")
+    assert err.value.reason == "bad_media"
+    still = make_clip(tmp_path / "still.mp4", [0.0])  # one frame: a picture, not a video
+    with pytest.raises(prepare.PrepareError) as err:
+        prepare.prepare(still, tmp_path / "j3")
+    assert err.value.reason == "bad_media"
+    assert not (tmp_path / "j3" / prepare.PREPARED).exists()
 
 
 def test_run_finds_the_one_upload(tmp_path: Path) -> None:
@@ -228,3 +268,18 @@ def test_job_fps_rounds_half_up() -> None:
     assert prepare.job_fps(fast) == 30
     single = media.Packets(time_base=Fraction(1, 1000), pts=(0,), last_duration=0)
     assert prepare.job_fps(single) == 1
+
+
+def test_a_playlist_upload_is_refused_before_ffmpeg_opens_what_it_names(tmp_path: Path) -> None:
+    """An HLS playlist would make ffmpeg read the local files it lists (here a real clip): only the mov demuxer
+    may open an upload."""
+    playlist = tmp_path / "evil.m3u8"
+    target = Path("fixtures/clips/counter_30fps_audio.mp4").resolve()
+    playlist.write_text(f"#EXTM3U\\n#EXT-X-TARGETDURATION:1\\n#EXTINF:1,\\n{target}\\n#EXT-X-ENDLIST\\n")
+    for read in (media.packets, media.decoded_start):
+        with pytest.raises(media.MediaError, match="whitelist"):
+            read(playlist, "v:0")
+    with pytest.raises(prepare.PrepareError) as err:
+        prepare.prepare(playlist, tmp_path / "j")
+    assert err.value.reason == "bad_media"
+    assert not (tmp_path / "j" / prepare.PREPARED).exists()

@@ -17,4 +17,9 @@ for stage in track transcribe scene roles; do uv run safecut "$stage" --job "$wo
 uv run python -c "import sys; from safecut.contracts import validate_job_dir; validate_job_dir(sys.argv[1])" "$work/demo"
 # The live path without a key: go-live.sh must refuse with exit 2, naming the missing input.
 if env -u MODEL_API_KEY bash scripts/go-live.sh fixtures/clips/counter_30fps_audio.mp4; then exit 1; else test $? -eq 2; fi
-bash scripts/entry-check.sh
+# This lane's E-lines of .agent/ENTRY-DONE.md (E2: the SENSE stages on main, E3: the demo job hidden offline,
+# E8: the live path). --only never prints PASS and exits non-zero, so each line is required by name; the whole
+# ENTRY: PASS (every lane's lines) is run on a fresh clone of origin/main, not here.
+if bash scripts/entry-check.sh --only E2,E3,E8 >"$work/entry.log" 2>&1; then :; fi
+cat "$work/entry.log"
+for line in E2 E3 E8; do grep -qx "$line: OK" "$work/entry.log"; done

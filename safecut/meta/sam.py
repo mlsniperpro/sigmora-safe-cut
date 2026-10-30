@@ -454,6 +454,30 @@ def _chunks(text: str, parts: int) -> list[tuple[str, int]]:
     return [c for c in out if c[0]]
 
 
+def _collect(
+    records: Sequence[_Record],
+) -> tuple[dict[tuple[int, str], tuple[int, SegmentationMask]], dict[tuple[int, str], _Record], set[tuple[int, str]]]:
+    """Each (frame, object)'s latest mask revision and its box. §1.4 wants one record per object per frame; a
+    repeat is joined, never dropped: the union box (fail toward hiding more), listed in the returned set so its
+    mask is dropped, since neither mask is that box's size."""
+    masks: dict[tuple[int, str], tuple[int, SegmentationMask]] = {}
+    boxes: dict[tuple[int, str], _Record] = {}
+    repeated: set[tuple[int, str]] = set()
+    for r in records:
+        key = (r[1], r[2])
+        if r[0] == "mask":
+            if key not in masks or masks[key][0] <= r[3]:
+                masks[key] = (r[3], SegmentationMask(encoding=r[4], payload=r[5], width=r[6], height=r[7]))
+        elif key in boxes:
+            was = boxes[key]
+            boxes[key] = ("box", r[1], r[2], min(was[3], r[3]), min(was[4], r[4]), max(was[5], r[5]),
+                          max(was[6], r[6]), r[7])  # fmt: skip
+            repeated.add(key)
+        else:
+            boxes[key] = r
+    return masks, boxes, repeated
+
+
 def _detections(
     results: Sequence[tuple[list[_Record], list[_Diagnostic]]], size: tuple[int, int] | None
 ) -> list[Detection]:
@@ -467,26 +491,17 @@ def _detections(
     if errors:
         raise MetaIncomplete(f"SAM parser dropped {len(errors)} line(s): {errors[0][1]} at line {errors[0][2]}",
                              eof=False)  # fmt: skip
-    masks: dict[tuple[int, str], tuple[int, SegmentationMask]] = {}
-    boxes: dict[tuple[int, str], _Record] = {}
     spaces = {(r[1], r[2]) for records, _ in results for r in records if r[0] == "space"}
     if size is not None and spaces - {(str(size[0]), str(size[1]))}:
         # Every coordinate is in the box tokens' w x h space; any other space than the proxy's would misplace them.
         raise MetaIncomplete(f"SAM answered in a {sorted(spaces)[0]} space, not the proxy's {size[0]}x{size[1]}",
                              eof=False)  # fmt: skip
-    for records, _ in results:
-        for r in records:
-            if r[0] == "space":
-                continue
-            if r[0] == "mask":
-                key = (r[1], r[2])
-                if key not in masks or masks[key][0] <= r[3]:
-                    masks[key] = (r[3], SegmentationMask(encoding=r[4], payload=r[5], width=r[6], height=r[7]))
-            else:
-                boxes[(r[1], r[2])] = r
+    masks, boxes, repeated = _collect([r for records, _ in results for r in records if r[0] != "space"])
+    if repeated:
+        log.warning("SAM repeated an object on a frame; boxes joined", extra={"count": len(repeated)})
     detections: list[Detection] = []
     for (f, oid), r in boxes.items():
-        mask = masks[(f, oid)][1] if (f, oid) in masks else None
+        mask = masks[(f, oid)][1] if (f, oid) in masks and (f, oid) not in repeated else None
         box = (int(r[3]), int(r[4]), int(r[5]), int(r[6]))
         if mask is not None and (mask.width, mask.height) != (box[2] - box[0], box[3] - box[1]):
             # §1.4: a mask is box-sized; any other size would be placed wrong and under-hide.

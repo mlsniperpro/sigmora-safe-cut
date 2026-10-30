@@ -12,8 +12,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from safecut.config import Settings
-from safecut.contracts import read_cost_lines
-from safecut.meta.budget import Caller, LocalLedger, job_limit
+from safecut.contracts import Intake, load, read_cost_lines
+from safecut.meta.budget import Caller, Ledger, LocalLedger, job_limit
 from safecut.meta.client import MetaClient
 
 COST = "cost.jsonl"
@@ -33,15 +33,27 @@ def job_ledger(settings: Settings, job_id: str, cost_path: Path) -> LocalLedger:
     return ledger
 
 
+def _service_caps(job_dir: Path, settings: Settings) -> tuple[Caller, Ledger] | None:
+    """A job that came through an access code counts against the service's shared caps (WP5's caller and SQLite
+    ledger); a local run (no code in ``intake.json``, or no intake) uses the job-seeded ledger above."""
+    intake = job_dir / "intake.json"
+    if not intake.exists() or load(intake, Intake).code_kind is None:
+        return None
+    from safecut import pipeline  # noqa: PLC0415 -- the pipeline imports the stages that import this module
+
+    return pipeline.job_caller(job_dir, settings), pipeline.job_ledger(settings)
+
+
 @asynccontextmanager
 async def job_client(job_dir: Path, settings: Settings, *, caller: Caller | None = None) -> AsyncGenerator[MetaClient]:
-    """An owner client for ``job_dir`` (job ID = the directory name), logging to its ``cost.jsonl``."""
+    """A client for ``job_dir`` (job ID = the directory name), logging to its ``cost.jsonl``."""
     cost_path = job_dir / COST
+    service = None if caller is not None else _service_caps(job_dir, settings)
     client = MetaClient(
         settings,
         job_id=job_dir.name,
-        caller=caller or Caller.local(),
-        ledger=job_ledger(settings, job_dir.name, cost_path),
+        caller=caller or (service[0] if service else Caller.local()),
+        ledger=service[1] if service else job_ledger(settings, job_dir.name, cost_path),
         cost_path=cost_path,
     )
     try:

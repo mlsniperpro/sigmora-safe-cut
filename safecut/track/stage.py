@@ -162,9 +162,15 @@ async def sweep(
             return uploaded[0]
 
     async def one(call: SamCall) -> sam.Segmentation:
-        reused = checkpoint(job_dir, call, proxy)
+        reused = checkpoint(job_dir, call, proxy, model=client.settings.sam_model)
         if reused is not None:
-            return await sam.parse_video_events(reused.events, size=(proxy.width, proxy.height))
+            try:
+                seg = await sam.parse_video_events(reused.events, size=(proxy.width, proxy.height))
+            except MetaError as exc:
+                seg = None  # a recorded answer that never parsed is no checkpoint: ask again (it is overwritten)
+                log.warning("recorded SAM answer unusable; asking again", extra={"key": call.key, "error": str(exc)})
+            if seg is not None and all(d.frame < proxy.frames for d in seg.detections):
+                return seg
 
         async def send(fid: str) -> sam.StreamResult:
             call.file_id = fid
@@ -180,22 +186,25 @@ async def sweep(
     try:
         async with asyncio.TaskGroup() as group:
             tasks = [group.create_task(one(c)) for c in calls]
-    except* MetaError as failed:
-        raise failed.exceptions[0] from None
+    except ExceptionGroup as failed:
+        # One typed error for the caller: a Meta failure first, else whatever else broke (a disk error saving).
+        metas = [e for e in failed.exceptions if isinstance(e, MetaError)]
+        raise (metas or list(failed.exceptions))[0] from None
     finally:
         if responses is not None:
             await responses.delete_pending(client)
     return [t.result() for t in tasks]
 
 
-def checkpoint(job_dir: Path, call: SamCall, proxy: Proxy) -> SamCall | None:
-    """This call's earlier live answer for the same proxy, if one was recorded and succeeded (never a synthetic one)."""
+def checkpoint(job_dir: Path, call: SamCall, proxy: Proxy, *, model: str) -> SamCall | None:
+    """This call's earlier live answer for the same proxy and model, if one was recorded and succeeded (never a
+    synthetic one)."""
     if not replay.exists(job_dir, RAW_STAGE, call.key):
         return None
     raw = replay.load_call(job_dir, RAW_STAGE, call.key)
     if raw.synthetic or raw.failure() is not None or raw.events is None:
         return None
-    if raw.request.get("text") != call.text or raw.request.get("sam_frames") != proxy.frames:
+    if raw.request.get("text") != call.text or raw.request.get("sam_frames") != proxy.frames or raw.model != model:
         return None
     call.events = raw.events
     call.file_id = str(raw.request.get("file_id") or "")

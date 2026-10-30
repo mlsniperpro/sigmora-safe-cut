@@ -6,7 +6,8 @@
   "frames": [
    210,
    240,
-   270
+   270,
+   337
   ]
  },
  "events": [
@@ -29,7 +30,7 @@
       "content": [
        {
         "type": "output_text",
-        "text": "{\"rulings\":[{\"track_id\":\"face:5\",\"role\":\"bystander\",\"frames\":[210,240],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"person:5\",\"role\":\"bystander\",\"frames\":[210,240],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"}]}"
+        "text": "{\"rulings\":[{\"track_id\":\"face:5\",\"role\":\"bystander\",\"frames\":[210,240],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"face:6\",\"role\":\"participant\",\"frames\":[337],\"evidence\":\"Same green top and build as Kev, back at the host's side where he stood.\",\"why_others_wrong\":\"The unsure judge weighed the turned head over the clothes and position.\"},{\"track_id\":\"person:5\",\"role\":\"bystander\",\"frames\":[210,240],\"evidence\":\"Walks past behind the host and guest; nobody addresses or introduces them.\",\"why_others_wrong\":\"The unsure judge relied on the figure's size, not on any exchange.\"},{\"track_id\":\"person:6\",\"role\":\"participant\",\"frames\":[337],\"evidence\":\"Same green top and build as Kev, back at the host's side where he stood.\",\"why_others_wrong\":\"The unsure judge weighed the turned head over the clothes and position.\"}]}"
        }
       ]
      }

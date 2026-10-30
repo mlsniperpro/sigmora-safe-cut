@@ -157,3 +157,15 @@ async def test_parsing_never_blocks_the_event_loop() -> None:
     task.cancel()
     assert len(seg.detections) == 160
     assert ticks > 10
+
+
+def test_a_repeated_object_on_a_frame_is_joined_never_dropped() -> None:
+    """Two records for one object on one frame: the union box (hides both), without a mask (neither fits it)."""
+    first = stream_text({"0": {3: (10, 10, 20, 20)}, "1": {3: (40, 30, 50, 40)}}, (W, H))
+    again = stream_text({"0": {3: (30, 12, 44, 30)}}, (W, H))
+    seg = parse(chunked(first + again, []))
+    got = {d.object_id: d for d in seg.detections}
+    assert got["0"].box == (10, 10, 44, 30)
+    assert got["0"].mask is None
+    assert got["1"].box == (40, 30, 50, 40)
+    assert got["1"].mask is not None

@@ -21,6 +21,10 @@ Every judging criterion, brief requirement and audit finding for the perception 
 - [x] **Done for this lane**: every SENSE stage runs in replay with valid contracts on main; E2's SENSE stages and E8 are OK. Evidence: entry-check on main `569066a`: `E2: OK`, `E3: OK`, `E8: OK`.
 - [x] **Then E3 (perception side)**: every should-hide entity of the demo job is tracked on every visible frame or inside the guard's back-fill/extension. Evidence: `tests/test_demo_job.py::test_every_hidden_entity_is_covered_on_every_visible_frame`; entry-check `E3: OK`.
 - [x] **Then E9 (detector_only, muse_no_track)**: perception for both baselines, with offline replays on the demo job. Evidence: `safecut/scout/boxes.py`, `fixtures/jobs/demo/variants/muse_no_track/raw/`, `tests/test_demo_job.py` (both baselines). The runner `eval/run.py` is SHIP's.
+- [x] **SHIP's E9 hook**: `safecut.scout.baselines.muse_keyframe_boxes(job_dir, *, replay)` → keyframe → Muse's sensitive boxes, replayed from `raw/baseline_muse/` (recorded into the demo job). Evidence: `tests/test_demo_job.py::test_muse_keyframe_boxes_replays_the_main_recordings`, `::test_muse_keyframe_boxes_fails_loudly_without_recordings`.
+- [x] **SHIP's E6 case**: a participant re-entry in the demo job (the guest steps out 2.3 s and returns): a new ID, disputed, escalated, never auto-kept. Evidence: `tests/test_demo_job.py::test_roles_match_the_scene`.
+- [x] **SHIP's interface requests**: prepare rejection reasons `too_long`/`too_large`/`bad_media`/`no_source` with `duration_s`/`size_bytes`; per-code service caps on SENSE calls. Evidence: `tests/test_prepare.py`, `safecut/meta/session.py`.
+- [x] **Re-audits**: three full independent audits logged and every finding fixed with a test. Evidence: `.agent/win/SAFECUT-SENSE/reaudit.md`.
 
 ## Judging criteria
 
