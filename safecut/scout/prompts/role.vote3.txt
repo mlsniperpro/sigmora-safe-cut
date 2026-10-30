@@ -1,0 +1,2 @@
+Labels per frame: {labels_per_frame}
+Take the labels one at a time, in this order: {labels_reversed}. For each, answer: which of the four roles (participant, bystander, child, unsure) fits it, and what in these frames shows it? Then list any missed items.

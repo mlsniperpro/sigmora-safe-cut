@@ -1,0 +1,232 @@
+{
+ "synthetic": true,
+ "stage": "track",
+ "model": "sam-3.1",
+ "request": {
+  "kind": "object_prompt",
+  "concept": null,
+  "text": "<64f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360|><|point;x=396;y=321;w=640;h=360|>",
+  "sam_frames": 96,
+  "file_id": "file-synthetic",
+  "labels": {
+   "1": {
+    "concept": "envelope",
+    "prompt": "envelope",
+    "child_phrase": false
+   }
+  }
+ },
+ "events": [
+  {
+   "type": "response.created",
+   "response": {
+    "id": "resp_synthetic_objects_loop1",
+    "status": "in_progress"
+   }
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<64f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<65f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<66f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<67f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<68f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<69f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<70f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<71f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<72f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<73f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<74f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<75f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<76f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<77f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<78f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<79f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<80f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<81f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<82f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<83f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<84f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<85f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<86f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<87f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<88f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.output_text.delta",
+   "delta": "<89f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0
+  },
+  {
+   "type": "response.content_part.done",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0,
+   "part": {
+    "type": "output_text",
+    "text": "<64f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n<65f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n<66f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n<67f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n<68f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n<69f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n<70f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n<71f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n<72f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n<73f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n<74f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n<75f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n<76f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n<77f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n<78f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n<79f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n<80f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n<81f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n<82f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n<83f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n<84f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n<85f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n<86f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n<87f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n<88f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n<89f>1<|box;x1=360;y1=300;x2=431;y2=341;w=640;h=360;c=0.90|><|mask;x=0;y=0;data=42,72,!!!!!(y:SEN?Y-|>\n"
+   }
+  },
+  {
+   "type": "response.completed",
+   "response": {
+    "id": "resp_synthetic_objects_loop1",
+    "status": "completed",
+    "usage": {
+     "video_frames_processed": 96
+    }
+   }
+  }
+ ],
+ "response": null,
+ "usd": 0.0
+}

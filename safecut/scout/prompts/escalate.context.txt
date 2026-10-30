@@ -1,0 +1,2 @@
+{scene_summary}
+Speech by frame: {transcript_by_frames}

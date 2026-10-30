@@ -1,0 +1,11 @@
+Labels per frame: {labels_per_frame}
+
+Disputed labels and what each judge said:
+{disputes}
+
+For each disputed label, answer:
+- participant only if you can cite at least two frames shown here with explicit evidence: they're introduced, interviewed, spoken to by name, or clearly presenting alongside the creator. Quote the speech if it's the evidence.
+- bystander if the evidence shows they aren't part of the video.
+- child if they may be under 18.
+- unsure otherwise.
+Then say in one sentence which judge's reasoning was wrong and why.

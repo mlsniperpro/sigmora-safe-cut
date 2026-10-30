@@ -1,0 +1,8 @@
+Transcribe all speech in this video's soundtrack, split into turns. A new turn starts when the speaker changes or after a pause of more than about one second.
+For each turn give:
+- speaker: S1, S2, … in order of first appearance. Use the same label for the same voice throughout. If you can't tell which earlier voice this is, use a new label U1, U2, … (one per uncertain turn, never reused). Never put two possibly different people under one label;
+- start and end in seconds from the start of the video, to one decimal. Give your best estimate; these will be cross-checked;
+- text: the words, verbatim, including names exactly as heard;
+- self_intro: the name if the speaker introduces themself in this turn ("I'm Amina"), else null;
+- addresses: the name if the speaker addresses or introduces someone else by name in this turn ("this is Kev", "Amina, tell us…"), else null.
+If there's no speech, return an empty list. Spelling hints for names: {names}.
