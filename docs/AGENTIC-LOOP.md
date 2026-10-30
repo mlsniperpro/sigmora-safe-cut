@@ -2,7 +2,7 @@
 
 Safe Cut runs as a loop of perception, reasoning, policy, action and verification, with the creator as the final authority. This page walks one job through it, using the files it wrote.
 
-> **Synthetic trace.** The job is the demo clip `fixtures/clips/SC-A-91-synthetic-20261030.mp4` (drawn shapes on a market set) replayed from `fixtures/jobs/demo/raw/`. Every "model" answer below was generated from the clip's ground truth by `scripts/make_demo_job.py`, not returned by SAM 3.1, Muse Spark or Voice Transcribe. It shows what each stage receives and decides; it is not evidence of model quality. The same commands on a consented hero clip with `MODEL_API_KEY` set record real responses (`scripts/go-live.sh`), and this page is then regenerated from those.
+> **Synthetic trace.** The job is the demo clip `fixtures/clips/SC-A-91-synthetic-20261030.mp4` (drawn shapes on a market set) replayed from `fixtures/jobs/demo/raw/`. Every "model" answer below was generated from the clip's ground truth by `scripts/make_demo_job.py`, not returned by SAM 3.1, Muse Spark or Voice Transcribe. It shows what each stage receives and decides; it is not evidence of model quality. The same commands on a consented hero clip with `MODEL_API_KEY` set record real responses (`scripts/go-live.sh`), and this page is then rewritten by hand from that run's files.
 
 Reproduce it with:
 

@@ -230,15 +230,20 @@ class Service:
             if not (data.demo or data.pinned) or data.source is None:
                 continue
             job_id = hero_job_id(recording.name)
+            clip = Path(self.fixtures.parent.parent / data.source)
+            stamp = demo_stamp(recording, clip)
             try:
-                if self.store.get(job_id).status == "done":
+                existing = self.store.get(job_id)
+                if existing.status == "done" and existing.demo_stamp == stamp:
                     built.append(recording.name)
                     continue
-                self.store.delete(job_id)
+                self.store.delete(job_id)  # a re-recorded hero, a new clip or new code: built again
             except JobNotFound:
                 pass
             try:
-                self._precompute(job_id, recording, Path(self.fixtures.parent.parent / data.source))
+                self._precompute(job_id, recording, clip)
+                with self.store.update(job_id) as state:
+                    state.demo_stamp = stamp
                 built.append(recording.name)
             except Exception as exc:
                 log.warning("demo job %s not built: %s", recording.name, exc)
@@ -518,6 +523,22 @@ def _parse_ip(host: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None
         except ValueError:
             continue
     return None
+
+
+def demo_stamp(recording: Path, clip: Path) -> str:
+    """What a pinned demo job was built from: every file of its recording (path and bytes), its clip, and the
+    ``safecut`` source. Any change (a retake under the same id, a contract change in a new deploy) rebuilds it."""
+    package = Path(__file__).resolve().parent.parent
+    labelled = [(f"raw:{p.relative_to(recording)}", p) for p in sorted(recording.rglob("*")) if p.is_file()]
+    labelled.append(("clip", clip))
+    labelled += [
+        (f"code:{p.relative_to(package)}", p) for p in sorted(package.rglob("*.py")) if "__pycache__" not in p.parts
+    ]
+    digest = hashlib.sha256()
+    for label, path in labelled:
+        digest.update(label.encode())
+        digest.update(path.read_bytes() if path.is_file() else b"missing")
+    return digest.hexdigest()
 
 
 def refuse_pinned(state: JobState) -> None:

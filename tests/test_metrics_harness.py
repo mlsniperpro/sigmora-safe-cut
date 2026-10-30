@@ -434,3 +434,13 @@ def test_a_try_out_run_can_go_to_a_scratch_results_dir(tmp_path: Path, monkeypat
         == 0
     )
     assert seen["out"] == tmp_path / "scratch"
+
+
+def test_report_rounds_like_the_landing_page_never_up() -> None:
+    """RESULTS.md, the README table and the landing page show one figure per metric, rounded unflatteringly."""
+    assert report.pct(11 / 12, "higher") == "91.6%"  # recall down, not 91.7%
+    assert report.pct(0.0441, "lower") == "4.5%"  # exposure and over-blur up, not 4.4%
+    assert report.pct(0.5, "higher") == report.pct(0.5, "lower") == "50.0%"
+    assert report.pct(None, "higher") == "n/a"
+    table = (Path(__file__).resolve().parent.parent / "web/src/components/landing/ResultsTable.tsx").read_text()
+    assert "Math.floor(v * 1000 + 1e-9) : Math.ceil(v * 1000 - 1e-9)" in table  # the rule this mirrors

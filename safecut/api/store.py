@@ -102,6 +102,8 @@ class JobState(BaseModel):
     service: str | None = None
     upload: UploadSpec | None = None
     pinned: bool = False
+    #: A pinned demo job's build stamp (its recording, its clip and the code): a different stamp rebuilds it.
+    demo_stamp: str | None = None
     started_at: datetime | None = None
     #: How many times a ``retry_later`` job was re-queued (once at most, UI-SPEC §8 request 1).
     requeues: int = 0
