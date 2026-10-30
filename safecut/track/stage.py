@@ -51,6 +51,8 @@ class Proxy:
     path: Path
     fps: int
     frames: int
+    width: int
+    height: int
 
 
 @dataclass
@@ -96,15 +98,19 @@ def make_proxy(job_dir: Path, job: Job, settings: Settings) -> Proxy:
     fps = sam_fps_eff(job.fps, settings.sam_fps)
     out = job_dir / PROXY
     partial = job_dir / f".{PROXY}.partial.mp4"
-    media.run(["-y", "-i", str(job_dir / job.prepared), "-vf", f"fps={fps}", "-an", "-c:v", "libx264",
-               "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", "-g", str(2 * fps),
-               "-movflags", "+faststart", "-map_metadata", "-1", str(partial)])  # fmt: skip
-    size = media.facts(partial).size
+    try:
+        media.run(["-y", "-i", str(job_dir / job.prepared), "-vf", f"fps={fps}", "-an", "-c:v", "libx264",
+                   "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", "-g", str(2 * fps),
+                   "-movflags", "+faststart", "-map_metadata", "-1", str(partial)])  # fmt: skip
+        size = media.facts(partial).size
+    except BaseException:
+        partial.unlink(missing_ok=True)
+        raise
     if size != (job.width, job.height):
         partial.unlink(missing_ok=True)
         raise TrackError(f"proxy is {size}, not the prepared {job.width}x{job.height}")
     partial.replace(out)
-    return Proxy(path=out, fps=fps, frames=media.frame_count(out))
+    return Proxy(path=out, fps=fps, frames=media.frame_count(out), width=size[0], height=size[1])
 
 
 def recording(call: SamCall, *, model: str, frames: int, synthetic: bool = False) -> replay.RawCall:
@@ -116,13 +122,17 @@ def recording(call: SamCall, *, model: str, frames: int, synthetic: bool = False
                           usd=call.usd)  # fmt: skip
 
 
-def replayed(job_dir: Path, call: SamCall) -> SamCall:
+def replayed(job_dir: Path, call: SamCall, proxy: Proxy) -> SamCall:
     raw = replay.load_call(job_dir, RAW_STAGE, call.key)
     failure = raw.failure()
     if failure is not None:
         raise RecordedFailure(f"recorded SAM failure: {failure[0]}")
     if raw.request.get("text") != call.text or raw.events is None:
         raise replay.ReplayMissing(f"replay: {call.key} was recorded for a different request")
+    if raw.request.get("sam_frames") != proxy.frames:
+        # Recorded against another proxy: its frame numbers would land on the wrong prepared frames.
+        recorded = raw.request.get("sam_frames")
+        raise replay.ReplayMissing(f"replay: {call.key} was recorded for a {recorded}-frame proxy, not {proxy.frames}")
     call.events = raw.events
     call.file_id = str(raw.request.get("file_id") or "")
     return call
@@ -137,26 +147,61 @@ async def sweep(
     calls: Sequence[SamCall],
     responses: sam.ResponseLog | None,
 ) -> list[sam.Segmentation]:
-    """Run ``calls`` live against the uploaded proxy, in parallel; record each before parsing it."""
-    file_id = await store.upload(proxy.path, PROXY)
+    """Run ``calls`` live against the uploaded proxy, in parallel; record each before parsing it.
+
+    A request this job already answered live for the same proxy is reused from its recording, never re-billed
+    (PRE-A §10.4 checkpoints: a stage re-run after one failed concept re-pays only that one). If any request fails,
+    the others are cancelled before the caller deletes the uploads (``TaskGroup``)."""
+    upload_lock = asyncio.Lock()
+    uploaded: list[str] = []
+
+    async def file_id() -> str:
+        async with upload_lock:
+            if not uploaded:
+                uploaded.append(await store.upload(proxy.path, PROXY))
+            return uploaded[0]
 
     async def one(call: SamCall) -> sam.Segmentation:
+        reused = checkpoint(job_dir, call, proxy)
+        if reused is not None:
+            return await sam.parse_video_events(reused.events, size=(proxy.width, proxy.height))
+
         async def send(fid: str) -> sam.StreamResult:
             call.file_id = fid
             body = sam.video_body(client.settings, file_id=fid, text=call.text,
                                   object_prompt=call.kind == "object_prompt")  # fmt: skip
             return await sam.segment_video(client, body, sam_frames=proxy.frames, responses=responses)
 
-        result = await store.call_with_reupload(proxy.path, PROXY, file_id, send)
+        result = await store.call_with_reupload(proxy.path, PROXY, await file_id(), send)
         call.events, call.usd = result.events, result.usd
         replay.save(job_dir, RAW_STAGE, call.key, recording(call, model=client.settings.sam_model, frames=proxy.frames))
-        return await sam.parse_video_events(result.events)
+        return await sam.parse_video_events(result.events, size=(proxy.width, proxy.height))
 
     try:
-        return list(await asyncio.gather(*(one(c) for c in calls)))
+        async with asyncio.TaskGroup() as group:
+            tasks = [group.create_task(one(c)) for c in calls]
+    except* MetaError as failed:
+        raise failed.exceptions[0] from None
     finally:
         if responses is not None:
             await responses.delete_pending(client)
+    return [t.result() for t in tasks]
+
+
+def checkpoint(job_dir: Path, call: SamCall, proxy: Proxy) -> SamCall | None:
+    """This call's earlier live answer for the same proxy, if one was recorded and succeeded (never a synthetic one)."""
+    if not replay.exists(job_dir, RAW_STAGE, call.key):
+        return None
+    raw = replay.load_call(job_dir, RAW_STAGE, call.key)
+    if raw.synthetic or raw.failure() is not None or raw.events is None:
+        return None
+    if raw.request.get("text") != call.text or raw.request.get("sam_frames") != proxy.frames:
+        return None
+    call.events = raw.events
+    call.file_id = str(raw.request.get("file_id") or "")
+    call.usd = 0.0  # spent by the earlier run, already in cost.jsonl
+    log.info("SAM request reused from this job's recording", extra={"key": call.key})
+    return call
 
 
 def build(
@@ -179,6 +224,10 @@ def build(
     numbering = next_ids(t.track_id for t in tracks)
 
     for call, seg in zip(calls, parsed, strict=True):
+        past = [d.frame for d in seg.detections if d.frame >= proxy.frames]
+        if past:
+            # Fail closed: a detection we can't place on the prepared clip would leave someone untracked.
+            raise TrackError(f"SAM answered frame {past[0]}, past the proxy's {proxy.frames} frames ({call.key})")
         index = len(requests)
         table_of_masks = mask_table(seg.detections, job.height, job.width) if with_masks else {}
         requests.append(
@@ -233,7 +282,8 @@ async def run_calls(
         for c in calls:
             replay.save(job_dir, RAW_STAGE, c.key, responder(RAW_STAGE, c.key, c.info(proxy.frames)))
     if replay_mode or responder is not None:
-        return [await sam.parse_video_events(replayed(job_dir, c).events) for c in calls]
+        size = (proxy.width, proxy.height)
+        return [await sam.parse_video_events(replayed(job_dir, c, proxy).events, size=size) for c in calls]
     if client is None:
         async with job_client(job_dir, settings) as own:
             return await run_calls(job_dir, job, proxy, calls, settings=settings, replay_mode=False, client=own)
@@ -245,11 +295,14 @@ async def run_calls(
         await store.delete_all()
 
 
-def existing_proxy(job_dir: Path, job: Job, settings: Settings) -> Proxy:
-    path = job_dir / PROXY
-    if not path.exists():
-        return make_proxy(job_dir, job, settings)
-    return Proxy(path=path, fps=sam_fps_eff(job.fps, settings.sam_fps), frames=media.frame_count(path))
+def proxy_for(job_dir: Path, job: Job, settings: Settings, tracks: Tracks) -> Proxy:
+    """The proxy the job's tracks were made from (the miss loop's object prompts need its frame table): rebuilt
+    from ``prepared.mp4`` and checked against ``tracks.json``, never trusted from a leftover file."""
+    proxy = make_proxy(job_dir, job, settings)
+    if (proxy.fps, proxy.frames) != (tracks.sam_fps, tracks.sam_frames):
+        raise TrackError(f"proxy is {proxy.frames} frames at {proxy.fps} fps; tracks.json was made from "
+                         f"{tracks.sam_frames} at {tracks.sam_fps}")  # fmt: skip
+    return proxy
 
 
 async def run_async(

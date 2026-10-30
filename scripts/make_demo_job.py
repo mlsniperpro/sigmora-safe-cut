@@ -278,7 +278,7 @@ SCENE_ANSWER: dict[str, Any] = {
 }  # fmt: skip
 
 
-def _responses_events(answer: Mapping[str, Any], response_id: str) -> list[dict[str, Any]]:
+def responses_events(answer: Mapping[str, Any], response_id: str) -> list[dict[str, Any]]:
     text = json.dumps(answer, separators=(",", ":"))
     response = {
         "id": response_id, "status": "completed",
@@ -376,7 +376,7 @@ class Responder:
                 "audioDurationMs": round(SECONDS * 1000), "turns": turns}  # fmt: skip
 
     def scene(self, key: str, _info: Mapping[str, Any]) -> Any:
-        return _responses_events(SCENE_ANSWER, f"resp_synthetic_{key}")
+        return responses_events(SCENE_ANSWER, f"resp_synthetic_{key}")
 
     # -- role votes and escalation ---------------------------------------------
 
@@ -408,7 +408,7 @@ class Responder:
             frame = next((f for f in sent if object_box("e7", f) is not None), None)
             if frame is not None:
                 answer["missed"].append(self._missed(frame))
-        return _responses_events(answer, f"resp_synthetic_{key.replace('-', '_')}")
+        return responses_events(answer, f"resp_synthetic_{key.replace('-', '_')}")
 
     def _person(self, entity: str | None, track: Track, k: int) -> tuple[str, str, int | None]:
         if entity == "e1":
@@ -453,7 +453,7 @@ class Responder:
                 if (box := object_box(entity, f)) is not None:
                     objects.append({"kind": kind, "box": self.grid_box(box)})
             frames.append({"frame": f, "objects": objects})
-        return _responses_events({"frames": frames}, f"resp_synthetic_boxes_{key}")
+        return responses_events({"frames": frames}, f"resp_synthetic_boxes_{key}")
 
     def escalate(self, key: str, info: Mapping[str, Any]) -> Any:
         tracks = self._tracks()
@@ -466,7 +466,7 @@ class Responder:
                 "evidence": "Walks past behind the host and guest; nobody addresses or introduces them.",
                 "why_others_wrong": "The unsure judge relied on the figure's size, not on any exchange.",
             })  # fmt: skip
-        return _responses_events({"rulings": rulings}, f"resp_synthetic_escalate_{key}")
+        return responses_events({"rulings": rulings}, f"resp_synthetic_escalate_{key}")
 
 
 def prepare_proxy_frames(job_dir: Path) -> int:

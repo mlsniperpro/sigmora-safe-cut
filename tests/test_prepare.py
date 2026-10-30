@@ -114,9 +114,17 @@ def test_t9_late_video_start_is_normalised(tmp_path: Path) -> None:
     job = _check(clip, tmp_path / "j_t9")
     assert job.audio
     video = media.packets(tmp_path / "j_t9" / prepare.PREPARED)
-    audio = media.packets(tmp_path / "j_t9" / prepare.PREPARED, "a:0")
     assert video.start == 0
-    assert abs(float(audio.start)) < 0.03  # both streams on one origin (AAC priming aside)
+    assert abs(float(media.decoded_start(tmp_path / "j_t9" / prepare.PREPARED, "a:0"))) < 0.001  # one origin
+
+
+def test_aac_priming_is_not_mistaken_for_an_audio_lead() -> None:
+    """The fixture's first AAC packet sits at -1024 samples (priming the decoder drops): no trim is due."""
+    found = prepare.probe(Path("fixtures/clips/counter_30fps_audio.mp4"))
+    assert found.audio is not None
+    assert found.audio.start < 0
+    assert found.audio_start == 0
+    assert prepare._audio_filter(found.video, found.audio_start) == "asetpts=PTS-STARTPTS"  # pyright: ignore[reportPrivateUsage] -- the filter is the unit
 
 
 def test_fixture_clips_and_keyframes(tmp_path: Path) -> None:

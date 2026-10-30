@@ -53,7 +53,10 @@ def transcript_text(job: Job, transcript: Transcript | None) -> str:
         return "speech unavailable"
     if not transcript.turns:
         return "none (no speech was recognised)"
-    return "\n".join(f"[#{i} {t.speaker} {t.start:.1f}–{t.end:.1f} s] {t.text}" for i, t in enumerate(transcript.turns))
+    return "\n".join(
+        f"[#{i} {t.speaker} {t.start:.1f}–{t.end:.1f} s] {prompts.inline(t.text)}"
+        for i, t in enumerate(transcript.turns)
+    )
 
 
 def check_participant(p: SceneParticipant, transcript: Transcript | None) -> Participant:
@@ -68,7 +71,7 @@ def check_participant(p: SceneParticipant, transcript: Transcript | None) -> Par
         and quote is not None
         and 0 <= turn < len(turns)
         and len(normalise(quote).split()) >= 2
-        and normalise(quote) in normalise(turns[turn].text)
+        and f" {normalise(quote)} " in f" {normalise(turns[turn].text)} "  # whole words: "my mat" isn't "my mate"
     )
     return Participant(
         description=p.description,

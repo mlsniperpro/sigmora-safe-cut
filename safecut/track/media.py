@@ -98,6 +98,23 @@ def packets(path: Path, stream: str = "v:0") -> Packets:
     return Packets(time_base=time_base, pts=tuple(p for p, _ in rows), last_duration=rows[-1][1])
 
 
+def decoded_start(path: Path, stream: str = "a:0") -> Fraction:
+    """The first *decoded* frame's time, in seconds. For AAC this differs from the first packet's: the encoder's
+    priming samples (a packet at a negative pts, marked to be skipped) are discarded by the decoder."""
+    out = run(["-i", str(path), "-map", f"0:{stream}", "-frames:" + stream[0], "1", "-f", "framemd5", "-"])
+    time_base: Fraction | None = None
+    for line in out.splitlines():
+        if line.startswith("#"):
+            match = _TB.match(line)
+            if match:
+                time_base = Fraction(int(match.group(2)), int(match.group(3)))
+            continue
+        fields = [f.strip() for f in line.split(",")]
+        if time_base is not None and len(fields) >= 6:
+            return int(fields[2]) * time_base
+    raise MediaError(f"no decodable {stream} frame in {path.name}")
+
+
 def frame_count(path: Path) -> int:
     """Frames ffmpeg actually wrote into an encoded clip (PRE-A §5b step 5: read back, never computed)."""
     return packets(path).count

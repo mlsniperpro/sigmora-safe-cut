@@ -23,7 +23,8 @@ DEFAULT_CAP = 3.00
 
 
 def clip_id(clip: Path) -> str:
-    return re.sub(r"[^a-z0-9_-]+", "-", clip.stem.lower()).strip("-")[:60] or "clip"
+    """A fixture directory name: lowercase ``[a-z0-9_-]`` only, never empty, ``.`` or ``..``."""
+    return re.sub(r"[^a-z0-9_-]+", "-", clip.name.removesuffix(clip.suffix).lower()).strip("-")[:60] or "clip"
 
 
 def allowed(clip: Path, consented: bool) -> bool:
@@ -53,20 +54,25 @@ def manifest(clip: Path, cost_path: Path, *, sha256: str) -> dict[str, object]:
 
 
 def keep(job_dir: Path, out: Path, clip: Path) -> Path:
-    """Copy the job's recordings and spend to ``out`` (replacing an earlier recording of the same id)."""
+    """Copy the job's recordings and spend to ``out``: built beside it first, then swapped in, so a failure never
+    leaves a half-written or emptied fixture."""
     from safecut import pipeline  # noqa: PLC0415
 
+    staging = out.parent / f".{out.name}.staging"
+    if staging.exists():
+        shutil.rmtree(staging)
     raw = job_dir / "raw"
+    if raw.is_dir():
+        shutil.copytree(raw, staging / "raw")
+    else:
+        (staging / "raw").mkdir(parents=True)
+    if (job_dir / "cost.jsonl").exists():
+        shutil.copyfile(job_dir / "cost.jsonl", staging / "cost.jsonl")
+    data = manifest(clip, job_dir / "cost.jsonl", sha256=pipeline.sha256_file(clip))
+    (staging / "raw" / "manifest.json").write_text(json.dumps(data, indent=1) + "\n")
     if out.exists():
         shutil.rmtree(out)
-    if raw.is_dir():
-        shutil.copytree(raw, out / "raw")
-    else:
-        (out / "raw").mkdir(parents=True)
-    if (job_dir / "cost.jsonl").exists():
-        shutil.copyfile(job_dir / "cost.jsonl", out / "cost.jsonl")
-    data = manifest(clip, job_dir / "cost.jsonl", sha256=pipeline.sha256_file(clip))
-    (out / "raw" / "manifest.json").write_text(json.dumps(data, indent=1) + "\n")
+    staging.replace(out)
     return out
 
 
@@ -77,6 +83,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--usd-cap", type=float, default=DEFAULT_CAP, help="the job's USD cap (default 3.00)")
     parser.add_argument("--consented", action="store_true", help="a consented hero/dev clip (AGENTS rules 4-5)")
     parser.add_argument("--analyse-only", action="store_true", help="stop after the analysis (prepare … guard)")
+    parser.add_argument("--replace", action="store_true", help="replace an earlier recording with the same id")
     parser.add_argument("--out-root", type=Path, default=ROOT, help="where jobs/ and fixtures/ are (default: repo)")
     args = parser.parse_args(argv)
     root: Path = args.out_root
@@ -96,7 +103,11 @@ def main(argv: list[str] | None = None) -> int:
     from safecut import pipeline  # noqa: PLC0415 -- settings read the env set above
     from safecut.stages import StageUnavailable  # noqa: PLC0415
 
-    name = args.id or clip_id(clip)
+    name = clip_id(Path(args.id)) if args.id else clip_id(clip)  # never a path: only [a-z0-9_-]
+    if (root / "fixtures" / "jobs" / name).exists() and not args.replace:
+        print(f"go-live: fixtures/jobs/{name} already holds a recording; pass --replace or another --id",
+              file=sys.stderr)  # fmt: skip
+        return 2
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     job_dir = root / "jobs" / "live" / f"{name}-{stamp}"
     pipeline.create_job(clip, job_dir, mode="live", consented=args.consented)
