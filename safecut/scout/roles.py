@@ -319,7 +319,8 @@ async def escalate(
     if not disputed:
         return {}
     by_id = {t.track_id: t for t in tracks.tracks}
-    frames = [f for f in som.keyframe_numbers(ctx.job) if any(f in by_id[d].boxes for d in disputed)]
+    pool = set(som.keyframe_numbers(ctx.job)) | set(som.extra_keyframes(ctx.job, [by_id[d] for d in disputed]))
+    frames = [f for f in sorted(pool) if any(f in by_id[d].boxes for d in disputed)]
     som.write(ctx.job_dir, ctx.job, tracks, frames)
     context = prompts.render("escalate.context", scene_summary=context_summary, transcript_by_frames=transcript_frames)
     system = calls.system(prompts.text("escalate.system"))
@@ -405,7 +406,6 @@ async def miss_loops(ctx: calls.Context, state: State, first: PassResult, scene:
                      transcript: Transcript | None) -> None:  # fmt: skip
     """Loop 1 on the first pass's misses, a role re-pass on its new tracks, loop 2 on the re-pass's misses."""
     job = ctx.job
-    keyframes = som.keyframe_numbers(job)
     loop_misses = validated_misses(first, job, state.tracks)
     for loop in range(1, miss.MAX_LOOPS + 1):
         if not loop_misses:
@@ -422,6 +422,7 @@ async def miss_loops(ctx: calls.Context, state: State, first: PassResult, scene:
         if loop == miss.MAX_LOOPS or not new_judged:
             return  # loop 2's tracks get no role pass: they stay hidden for the creator
         reach = REPASS_REACH_S * job.fps
+        keyframes = sorted(set(som.keyframe_numbers(job)) | set(som.extra_keyframes(job, new_judged)))
         near = [f for f in keyframes if any(t.first - reach <= f <= t.last + reach for t in new_judged)]
         added = ", ".join(t.track_id for t in new_judged)
         context = context_text(job, scene, transcript, state.swept) + f"\nThese were added last round: {added}."
@@ -470,8 +471,8 @@ async def roles(ctx: calls.Context) -> Roles:
     tracks = load(ctx.job_dir / TRACKS, Tracks)
     scene = load_optional(ctx.job_dir / SCENE, Scene)
     transcript = load_optional(ctx.job_dir / TRANSCRIPT, Transcript)
-    keyframes = som.keyframe_numbers(job)
     judged = [t for t in tracks.tracks if som.judged(t)]
+    keyframes = sorted(set(som.keyframe_numbers(job)) | set(som.extra_keyframes(job, judged)))
     swept = list(tracks.concepts)
     context = context_text(job, scene, transcript, swept)
     first = await role_pass(ctx, tracks=tracks, judged=judged, frames=keyframes, context=context, tag="pass1")

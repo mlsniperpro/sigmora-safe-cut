@@ -110,4 +110,15 @@ def test_missing_keyframe_is_an_error(job_dir: Path) -> None:
     job = load(job_dir / "job.json", Job)
     tracks = Tracks(concepts=[], sam_fps=8, sam_frames=24, tracks=[])
     with pytest.raises(FileNotFoundError):
-        som.write(job_dir, job, tracks, frames=[1])
+        som.write(job_dir, job, tracks, frames=[200])  # past the clip: nothing to extract
+
+
+def test_a_track_between_keyframes_gets_its_own_keyframe(job_dir: Path) -> None:
+    job = load(job_dir / "job.json", Job)
+    brief = track("face:9", (100, 100, 140, 140), range(40, 50))  # 1/3 s, between keyframes 30 and 60
+    static = track("envelope:1", (10, 10, 30, 30), range(40, 50), origin="static")
+    assert som.extra_keyframes(job, [brief, static, track("face:1", (0, 0, 9, 9), range(90))]) == [45]
+    tracks = Tracks(concepts=["face"], sam_fps=8, sam_frames=24, tracks=[brief])
+    written = som.write(job_dir, job, tracks, frames=[45])
+    assert written[0].labels == ("face:9",)
+    assert (job_dir / "keyframes" / "000045.jpg").is_file()

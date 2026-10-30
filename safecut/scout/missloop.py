@@ -74,7 +74,8 @@ async def _send(
         out: list[sam.Segmentation | None] = []
         for c in calls_:
             try:
-                out.append(await sam.parse_video_events(track_stage.replayed(ctx.job_dir, c).events))
+                events = track_stage.replayed(ctx.job_dir, c, proxy).events
+                out.append(await sam.parse_video_events(events, size=(proxy.width, proxy.height)))
             except (track_stage.RecordedFailure, MetaError):
                 out.append(None)
         return out
@@ -97,7 +98,7 @@ async def _send(
             c.events, c.usd = result.events, result.usd
             replay.save(ctx.job_dir, track_stage.RAW_STAGE, c.key,
                         track_stage.recording(c, model=ctx.settings.sam_model, frames=proxy.frames))  # fmt: skip
-            return await sam.parse_video_events(result.events)
+            return await sam.parse_video_events(result.events, size=(proxy.width, proxy.height))
         except MetaError as exc:  # BudgetExceeded included: the item falls back to a static box
             log.warning("miss-loop SAM request failed", extra={"key": c.key, "error": type(exc).__name__})
             request = {"kind": c.kind, "text": c.text}
@@ -130,46 +131,56 @@ async def affordable(ctx: calls.Context, proxy: track_stage.Proxy, requests: int
     return True
 
 
-async def run_loop(
+async def _sam_for(
     ctx: calls.Context, tracks: Tracks, *, prompts_: list[Miss], sweeps: list[Miss], static: list[Miss], loop: int
-) -> LoopResult:
-    """One loop: SAM for the planned items, static boxes for everything SAM didn't return. Updates each miss's
-    ``track_ids`` and returns the job's tracks with the new ones appended."""
+) -> tuple[Tracks, list[Track], list[Miss]]:
+    """The loop's SAM requests: the batched object prompt and the phrase sweeps. Sets each answered miss's
+    ``track_ids``; returns the tracks with SAM's new ones and those new tracks (an unanswered prompt keeps no
+    ``track_ids``, so the caller gives it a static box)."""
     job = ctx.job
-    proxy = track_stage.existing_proxy(ctx.job_dir, job, ctx.settings)
+    proxy = track_stage.proxy_for(ctx.job_dir, job, ctx.settings, tracks)
     calls_: list[track_stage.SamCall] = []
     if prompts_:
         calls_.append(_object_call(job, proxy, prompts_, loop))
     for m in sweeps:
         calls_.append(track_stage.SamCall(kind="phrase", concept=m.concept.concept, text=m.phrase,
                                           child_phrase=m.concept.child_phrase))  # fmt: skip
-    if ctx.settings.miss_sam == "stub" and calls_:
-        for m in prompts_:
-            m.notes.append("miss_sam_stub")
-        static = [*static, *prompts_]
-        calls_, prompts_ = [], []
     if not await affordable(ctx, proxy, len(calls_)):
-        for m in [*prompts_]:
+        for m in prompts_:
             m.notes.append("budget")
-        static = [*static, *prompts_]
-        calls_, prompts_ = [], []
-    results = await _send(ctx, proxy, calls_) if calls_ else []
+        return tracks, [], static
+    results = await _send(ctx, proxy, calls_)
     done = [(c, r) for c, r in zip(calls_, results, strict=True) if r is not None]
+    if not done:
+        return tracks, [], static
     updated = track_stage.build(job, proxy, [c for c, _ in done], [r for _, r in done], model=ctx.settings.sam_model,
                                 existing=tracks)  # fmt: skip
     new = updated.tracks[len(tracks.tracks) :]
-    index_of = {id(c): i for i, (c, _) in enumerate(done)}
-    first_request = len(tracks.requests)
+    request_of = {id(c): len(tracks.requests) + i for i, (c, _) in enumerate(done)}
+    prompt_request = request_of.get(id(calls_[0])) if prompts_ else None
     for m_index, m in enumerate(prompts_, start=1):
-        call = calls_[0] if calls_ and calls_[0].kind == "object_prompt" else None
-        request = first_request + index_of[id(call)] if call is not None and id(call) in index_of else None
-        m.track_ids = [t.track_id for t in new if t.sam_object and t.sam_object.request == request
+        m.track_ids = [t.track_id for t in new if t.sam_object and t.sam_object.request == prompt_request
                        and t.sam_object.object_id == str(m_index)]  # fmt: skip
     for m in sweeps:
         call = next((c for c in calls_ if c.kind == "phrase" and c.text == m.phrase), None)
-        if call is not None and id(call) in index_of:
-            request = first_request + index_of[id(call)]
-            m.track_ids += [t.track_id for t in new if t.sam_object and t.sam_object.request == request]
+        if call is not None and id(call) in request_of:
+            m.track_ids += [t.track_id for t in new if t.sam_object and t.sam_object.request == request_of[id(call)]]
+    return updated, new, static
+
+
+async def run_loop(
+    ctx: calls.Context, tracks: Tracks, *, prompts_: list[Miss], sweeps: list[Miss], static: list[Miss], loop: int
+) -> LoopResult:
+    """One loop: SAM for the planned items, static boxes for everything SAM didn't return. Updates each miss's
+    ``track_ids`` and returns the job's tracks with the new ones appended."""
+    job = ctx.job
+    if ctx.settings.miss_sam == "stub" and (prompts_ or sweeps):
+        for m in prompts_:
+            m.notes.append("miss_sam_stub")
+        static, prompts_, sweeps = [*static, *prompts_], [], []
+    updated, new = tracks, []
+    if prompts_ or sweeps:
+        updated, new, static = await _sam_for(ctx, tracks, prompts_=prompts_, sweeps=sweeps, static=static, loop=loop)
     numbering = next_ids(t.track_id for t in updated.tracks)
     statics: list[Track] = []
     for m in [*prompts_, *static]:

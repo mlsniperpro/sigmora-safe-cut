@@ -103,3 +103,14 @@ def test_a_failed_sweep_fails_the_track_stage(prepared: Path) -> None:
             asyncio.run(track_stage.run_async(job, settings=settings))
     assert load(job / "files.json", FilesIndex).all_deleted  # deleted even when the stage fails
     assert not (job / "tracks.json").exists()  # never a partial tracks.json
+
+
+def test_a_rerun_reuses_this_jobs_sam_answers(live_job: tuple[Path, FakeMeta]) -> None:
+    job, fake = live_job
+    settings = Settings(model_api_key=SecretStr("sk-test-not-a-real-key"), sam_fps=8)
+    asyncio.run(track_stage.run_async(job, settings=settings))
+    first = fake.calls.count("sam")
+    tracks = (job / "tracks.json").read_bytes()
+    asyncio.run(track_stage.run_async(job, settings=settings))
+    assert fake.calls.count("sam") == first  # nothing re-billed (PRE-A §10.4 checkpoints)
+    assert load(job / "tracks.json", Tracks).tracks == Tracks.model_validate_json(tracks).tracks
