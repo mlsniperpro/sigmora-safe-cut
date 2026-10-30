@@ -1,4 +1,4 @@
-AUDITED_COMMIT: b7269be
+AUDITED_COMMIT: 145fbfb
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -47,3 +47,19 @@ Not clean. All verified here (each repro rerun or the code read) and fixed with 
 - L go-live relative paths after `cd` → resolved from the caller (`test_relative_paths_are_the_callers`)
 - L one-frame upload → `bad_media`; repeated (frame, object) records → union box without a mask (`test_a_repeated_object_on_a_frame_is_joined_never_dropped`); a sweep's mixed failures → one typed error; checkpoints keyed on the SAM model too (`test_a_checkpoint_from_another_model_is_not_reused`)
 - Unverified item made real: an `.m3u8` upload makes ffmpeg's HLS demuxer read the local files it names (reproduced) → only the mov demuxer may open an upload (`test_a_playlist_upload_is_refused_before_ffmpeg_opens_what_it_names`). The other unverified item (framemd5 output held in memory) is bounded by the 150 MB / 60 s limits checked first: accepted.
+
+## Audit 4 (two auditors: perception; reasoning and go-live) at 145fbfb: 0 critical, 0 high, 4 medium, 9 low
+Not clean. Every finding verified (repro rerun, or the code read) and fixed; each new test fails on 145fbfb.
+- M (perception) a tiny-frame upload held every packet in memory before any limit ran (480k packets → +190 MB reproduced) → packets read incrementally, more than 20,000 refused (`test_millions_of_tiny_frames_are_refused_without_reading_them_all`)
+- M a failure outside a Meta call in the miss loop (proxy rebuild, ledger) crashed `roles` → static boxes; a ledger that can't answer refuses the spend (`test_a_proxy_that_cannot_be_rebuilt_leaves_static_boxes`, `test_a_ledger_that_cannot_answer_refuses_the_spend`)
+- M `roles` appends to tracks.json, so a resumed `analyse` re-ran (and in live, re-billed) `track` and `roles` → this job's own live answers are reused (body-hash checkpoints for Muse calls, SAM checkpoints in the miss loop): the re-run is free and writes byte-identical files (`test_a_resumed_roles_stage_re_bills_nothing_and_writes_the_same_files`). The pipeline still re-runs the two stages (compute only); a Stage `also_writes` in SHIP's registry would skip them.
+- M an object-prompt track away from the reported point counted as covering the miss → bound only if it holds the point near the frame (`test_a_prompt_track_away_from_the_miss_does_not_cover_it`)
+- L SAM checkpoints not tied to the clip → the upload's sha256 is recorded and must match (`test_a_recording_for_another_clip_is_never_reused`)
+- L a mask larger than the proxy decoded before the size check → refused first (`test_a_mask_larger_than_the_proxy_is_refused_before_decoding`)
+- L the sweep docstring over-claimed what a re-run re-pays → corrected (in-flight siblings are cancelled, by design, before the uploads are deleted)
+- L escalation could spend the audit reserve and cite crowded frames → reserve checked, crowded frames never evidence (covered by the ledger test; the crowded rule mirrors `Window.present`)
+- L sibling votes not cancelled on a raise → `TaskGroup` in `three_votes` and the miss loop's `_send` (`test_a_vote_that_raises_cancels_its_siblings`)
+- L planned sweeps counted as searched before they ran → only answered sweeps (`test_only_sweeps_that_ran_count_as_searched`)
+- L transcript turns cut at 300 chars in prompts → 1,500 (`prompts.TURN_CHARS`)
+- L a turn after the clip clamped to its last frame → dropped (`test_a_turn_after_the_clip_ends_is_dropped_not_clamped`)
+- L go-live's swap deleted the old recording before the new one was in place → renamed aside and restored after a crash, staging outside fixtures/jobs (`test_a_swap_killed_halfway_restores_the_earlier_recording`)

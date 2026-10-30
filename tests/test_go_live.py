@@ -100,3 +100,19 @@ def test_relative_paths_are_the_callers(tmp_path: Path, monkeypatch: pytest.Monk
     err = capsys.readouterr().err
     assert "no such clip" not in err
     assert "--usd-cap" in err
+
+
+def test_a_swap_killed_halfway_restores_the_earlier_recording(tmp_path: Path) -> None:
+    """keep() moves the old recording aside (never deletes it first); a later run puts it back if the swap died."""
+    out = tmp_path / "fixtures" / "jobs" / "x"
+    old = tmp_path / "fixtures" / ".go-live" / "x.old"
+    (old / "raw").mkdir(parents=True)
+    (old / "raw" / "a.json").write_text("{}")  # as a crash between the two renames leaves it
+    job = tmp_path / "job"
+    (job / "raw" / "track").mkdir(parents=True)
+    (job / "raw" / "track" / "b.json").write_text("{}")
+    go_live.keep(job, out, CLIP)
+    assert (out / "raw" / "track" / "b.json").is_file()
+    assert not (out / "raw" / "a.json").exists()
+    assert not (tmp_path / "fixtures" / ".go-live").exists()
+    assert [p.name for p in (tmp_path / "fixtures" / "jobs").iterdir()] == ["x"]  # no stray manifest to match

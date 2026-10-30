@@ -530,7 +530,11 @@ async def parse_video_events(
     if outcome.status != "completed":
         reason = getattr(outcome, "reason", None)
         raise MetaIncomplete(f"SAM stream incomplete ({reason})", eof=reason == "eof")
-    pixels = sum(int(h) * int(w) for h, w in _MASK_SIZE.findall(text))
+    sizes = [(int(h), int(w)) for h, w in _MASK_SIZE.findall(text)]
+    if size is not None and any(h > size[1] or w > size[0] for h, w in sizes):
+        # A box-sized mask can't be bigger than the frame; refused before Meta's parser decodes it (1 µs a pixel).
+        raise MetaIncomplete(f"SAM sent a mask larger than the {size[0]}x{size[1]} proxy", eof=False)
+    pixels = sum(h * w for h, w in sizes)
     parts = parallel.workers() * 2 if pixels >= PARALLEL_MIN_PIXELS else 1
     # In a worker thread: parsing a long stream takes seconds, and other SAM streams of the job are still being
     # read on this event loop meanwhile.

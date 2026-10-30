@@ -16,10 +16,11 @@ from safecut import config
 from safecut.contracts import Job, Track, Tracks
 from safecut.meta import cost, replay, sam
 from safecut.meta.client import CallSpec
-from safecut.meta.errors import BudgetExceeded, MetaError
+from safecut.meta.errors import MetaError
 from safecut.meta.retry import RetryPolicy
 from safecut.scout import calls
 from safecut.scout.miss import Miss, static_track
+from safecut.track import media
 from safecut.track import stage as track_stage
 from safecut.track.axes import from_proxy_table, to_proxy
 from safecut.track.link import ObjectLabel, next_ids
@@ -62,6 +63,8 @@ def covers(track: Track, miss: Miss, *, reach: int) -> bool:
 class LoopResult:
     tracks: Tracks
     new: list[Track]
+    #: The phrases SAM actually swept (answered), for "already searched" in later prompts.
+    swept: list[str]
 
 
 def _object_call(job: Job, proxy: track_stage.Proxy, items: Sequence[Miss], loop: int) -> track_stage.SamCall:
@@ -110,6 +113,13 @@ async def _send(
             return uploaded[0]
 
     async def one(c: track_stage.SamCall) -> sam.Segmentation | None:
+        reused = track_stage.checkpoint(ctx.job_dir, c, proxy, model=ctx.settings.sam_model)
+        if reused is not None:  # this job's own earlier answer (a resumed stage): never re-billed
+            try:
+                return await sam.parse_video_events(reused.events, size=(proxy.width, proxy.height))
+            except MetaError:
+                log.warning("recorded miss-loop answer unusable; asking again", extra={"key": c.key})
+
         async def send(fid: str) -> sam.StreamResult:
             c.file_id = fid
             body = sam.video_body(ctx.settings, file_id=fid, text=c.text, object_prompt=c.kind == "object_prompt")
@@ -121,7 +131,8 @@ async def _send(
             result = await store.call_with_reupload(proxy.path, track_stage.PROXY, await file_id(), send)
             c.events, c.usd = result.events, result.usd
             replay.save(ctx.job_dir, track_stage.RAW_STAGE, c.key,
-                        track_stage.recording(c, model=ctx.settings.sam_model, frames=proxy.frames))  # fmt: skip
+                        track_stage.recording(c, model=ctx.settings.sam_model, frames=proxy.frames,
+                                              source_sha256=proxy.source_sha256))  # fmt: skip
             return await sam.parse_video_events(result.events, size=(proxy.width, proxy.height))
         except MetaError as exc:  # BudgetExceeded included: the item falls back to a static box
             log.warning("miss-loop SAM request failed", extra={"key": c.key, "error": type(exc).__name__})
@@ -134,10 +145,15 @@ async def _send(
             return None
 
     try:
-        return list(await asyncio.gather(*(one(c) for c in calls_)))
+        # A TaskGroup: an unexpected error in one request cancels the others before their responses are deleted.
+        async with asyncio.TaskGroup() as group:
+            tasks = [group.create_task(one(c)) for c in calls_]
+    except ExceptionGroup as failed:
+        raise failed.exceptions[0] from None
     finally:
         if responses is not None:
             await responses.delete_pending(client)
+    return [t.result() for t in tasks]
 
 
 async def _fits(ctx: calls.Context, usd: float, ctx_tracks: Tracks) -> bool:
@@ -149,7 +165,8 @@ async def _fits(ctx: calls.Context, usd: float, ctx_tracks: Tracks) -> bool:
     reserve = audit_reserve(ctx.job, ctx.settings.redteam_model, len(ctx_tracks.tracks))
     try:
         await ctx.client.preflight(spec, usd + reserve)
-    except BudgetExceeded:
+    except MetaError as exc:  # over budget, or the ledger can't answer (API-NOTES §10.5): never spend blind
+        log.warning("miss loop: budget check refused", extra={"error": type(exc).__name__})
         return False
     return True
 
@@ -164,11 +181,18 @@ async def affordable(ctx: calls.Context, proxy: track_stage.Proxy, requests: int
 ROLE_TEXT_BYTES = 24_000
 
 
-async def repass_affordable(ctx: calls.Context, windows: Sequence[Sequence[int]], ctx_tracks: Tracks) -> bool:
-    """Step 6 for the loop-1 role re-pass: its three votes per window, at their worst case, plus the audit reserve
-    must fit the remaining budget; otherwise the re-pass is skipped and loop 1's tracks stay hidden."""
-    model, effort = ctx.settings.role_model, ctx.settings.role_effort
-    per_window = [
+async def calls_affordable(
+    ctx: calls.Context,
+    windows: Sequence[Sequence[int]],
+    ctx_tracks: Tracks,
+    *,
+    model: str,
+    effort: str,
+    per_window: int,
+) -> bool:
+    """``per_window`` image calls per window, at their worst case, plus the audit reserve fit the remaining budget
+    (step 6: nothing after the first role pass may spend the money the audit needs)."""
+    worst = [
         cost.responses_estimate(
             model,
             counted=None,
@@ -177,55 +201,71 @@ async def repass_affordable(ctx: calls.Context, windows: Sequence[Sequence[int]]
         )
         for w in windows
     ]
-    return await _fits(ctx, 3 * sum(per_window), ctx_tracks)
+    return await _fits(ctx, per_window * sum(worst), ctx_tracks)
+
+
+async def repass_affordable(ctx: calls.Context, windows: Sequence[Sequence[int]], ctx_tracks: Tracks) -> bool:
+    """Step 6 for the loop-1 role re-pass: its three votes per window plus the audit reserve must fit the remaining
+    budget; otherwise the re-pass is skipped and loop 1's tracks stay hidden."""
+    return await calls_affordable(ctx, windows, ctx_tracks, model=ctx.settings.role_model,
+                                  effort=ctx.settings.role_effort, per_window=3)  # fmt: skip
+
+
+#: Failures outside a Meta call (a proxy that can't be rebuilt or doesn't match, a disk error, a recording that
+#: doesn't validate): the loop's misses fall back to static boxes instead of crashing ``roles``.
+LOCAL_FAILURES = (track_stage.TrackError, media.MediaError, OSError, ValueError)
 
 
 async def _sam_for(
     ctx: calls.Context, tracks: Tracks, *, prompts_: list[Miss], sweeps: list[Miss], static: list[Miss], loop: int
-) -> tuple[Tracks, list[Track], list[Miss]]:
+) -> tuple[Tracks, list[Track], list[str]]:
     """The loop's SAM requests: the batched object prompt and the phrase sweeps. Sets each answered miss's
-    ``track_ids``; returns the tracks with SAM's new ones and those new tracks (an unanswered prompt keeps no
-    ``track_ids``, so the caller gives it a static box)."""
+    ``track_ids`` (only tracks that hold its point near its frame); returns the tracks with SAM's new ones, those
+    new tracks and the phrases actually swept. A miss left without ``track_ids`` gets a static box from the caller."""
     job = ctx.job
-    proxy = track_stage.proxy_for(ctx.job_dir, job, ctx.settings, tracks)
-    calls_: list[track_stage.SamCall] = []
-    if prompts_:
-        calls_.append(_object_call(job, proxy, prompts_, loop))
-    for m in sweeps:
-        calls_.append(track_stage.SamCall(kind="phrase", concept=m.concept.concept, text=m.phrase,
-                                          child_phrase=m.concept.child_phrase))  # fmt: skip
-    if not await affordable(ctx, proxy, len(calls_), tracks):
-        for m in prompts_:
-            m.notes.append("budget")
-        return tracks, [], static
-    results = await _send(ctx, proxy, calls_)
-    done = [(c, r) for c, r in zip(calls_, results, strict=True) if r is not None]
-    if not done:
-        return tracks, [], static
     try:
+        proxy = track_stage.proxy_for(ctx.job_dir, job, ctx.settings, tracks)
+        calls_: list[track_stage.SamCall] = []
+        if prompts_:
+            calls_.append(_object_call(job, proxy, prompts_, loop))
+        for m in sweeps:
+            calls_.append(track_stage.SamCall(kind="phrase", concept=m.concept.concept, text=m.phrase,
+                                              child_phrase=m.concept.child_phrase))  # fmt: skip
+        if not await affordable(ctx, proxy, len(calls_), tracks):
+            for m in prompts_:
+                m.notes.append("budget")
+            return tracks, [], []
+        results = await _send(ctx, proxy, calls_)
+        done = [(c, r) for c, r in zip(calls_, results, strict=True) if r is not None]
+        if not done:
+            return tracks, [], []
         updated = track_stage.build(job, proxy, [c for c, _ in done], [r for _, r in done],
                                     model=ctx.settings.sam_model, existing=tracks)  # fmt: skip
-    except track_stage.TrackError as err:
-        # An answer that can't be placed on the clip (a frame past the proxy, an unnamed object) is no answer:
-        # every miss of this loop falls back to a static box (M11: never dropped).
-        log.warning("miss loop: SAM's answers can't be used", extra={"loop": loop, "error": str(err)})
+    except LOCAL_FAILURES as err:
+        # An answer that can't be placed on the clip (a frame past the proxy, an unnamed object), or no proxy to
+        # ask with, is no answer: every miss of this loop falls back to a static box (M11: never dropped).
+        log.warning("miss loop: SAM can't be used", extra={"loop": loop, "error": f"{type(err).__name__}: {err}"})
         for m in prompts_:
             m.notes.append("sam_unusable")
-        return tracks, [], static
+        return tracks, [], []
     new = updated.tracks[len(tracks.tracks) :]
     request_of = {id(c): len(tracks.requests) + i for i, (c, _) in enumerate(done)}
     prompt_request = request_of.get(id(calls_[0])) if prompts_ else None
     for m_index, m in enumerate(prompts_, start=1):
+        # Like a sweep's, a prompt's track covers the miss only if it holds the point near the reported frame: SAM
+        # can answer an object prompt somewhere else entirely (the track stays; the miss gets a static box too).
         m.track_ids = [t.track_id for t in new if t.sam_object and t.sam_object.request == prompt_request
-                       and t.sam_object.object_id == str(m_index)]  # fmt: skip
+                       and t.sam_object.object_id == str(m_index) and covers(t, m, reach=job.fps)]  # fmt: skip
+    swept: list[str] = []
     for m in sweeps:
         call = next((c for c in calls_ if c.kind == "phrase" and c.text == m.phrase), None)
         if call is not None and id(call) in request_of:
-            swept = [t for t in new if t.sam_object and t.sam_object.request == request_of[id(call)]]
+            swept.append(m.phrase)
+            found = [t for t in new if t.sam_object and t.sam_object.request == request_of[id(call)]]
             # A sweep's track covers this miss only if it holds the reported point near the reported frame; one
             # found elsewhere leaves the miss to its point prompt or a static box (M11: never dropped).
-            m.track_ids += [t.track_id for t in swept if covers(t, m, reach=job.fps)]
-    return updated, new, static
+            m.track_ids += [t.track_id for t in found if covers(t, m, reach=job.fps)]
+    return updated, new, swept
 
 
 async def run_loop(
@@ -238,9 +278,9 @@ async def run_loop(
         for m in prompts_:
             m.notes.append("miss_sam_stub")
         static, prompts_, sweeps = [*static, *prompts_], [], []
-    updated, new = tracks, []
+    updated, new, swept = tracks, [], []
     if prompts_ or sweeps:
-        updated, new, static = await _sam_for(ctx, tracks, prompts_=prompts_, sweeps=sweeps, static=static, loop=loop)
+        updated, new, swept = await _sam_for(ctx, tracks, prompts_=prompts_, sweeps=sweeps, static=static, loop=loop)
     numbering = next_ids(t.track_id for t in updated.tracks)
     statics: list[Track] = []
     for m in [*prompts_, *static]:
@@ -254,4 +294,4 @@ async def run_loop(
         m.notes.append("static")
         statics.append(track)
     final = updated.model_copy(update={"tracks": [*updated.tracks, *statics]})
-    return LoopResult(tracks=Tracks.model_validate(final.model_dump()), new=[*new, *statics])
+    return LoopResult(tracks=Tracks.model_validate(final.model_dump()), new=[*new, *statics], swept=swept)

@@ -58,7 +58,16 @@ def keep(job_dir: Path, out: Path, clip: Path) -> Path:
     leaves a half-written or emptied fixture."""
     from safecut import pipeline  # noqa: PLC0415
 
-    staging = out.parent / f".{out.name}.staging"
+    # Staging and the old copy live outside fixtures/jobs/, so a crash mid-swap never leaves a second manifest
+    # there for find_recording to match.
+    work = out.parent.parent / ".go-live"
+    staging, old = work / f"{out.name}.staging", work / f"{out.name}.old"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if old.exists():  # a run killed mid-swap: put the earlier recording back first
+        if out.exists():
+            shutil.rmtree(old)
+        else:
+            old.replace(out)
     if staging.exists():
         shutil.rmtree(staging)
     raw = job_dir / "raw"
@@ -71,8 +80,11 @@ def keep(job_dir: Path, out: Path, clip: Path) -> Path:
     data = manifest(clip, job_dir / "cost.jsonl", sha256=pipeline.sha256_file(clip))
     (staging / "raw" / "manifest.json").write_text(json.dumps(data, indent=1) + "\n")
     if out.exists():
-        shutil.rmtree(out)
+        out.replace(old)  # a rename: the earlier recording is never deleted before the new one is in place
     staging.replace(out)
+    if old.exists():
+        shutil.rmtree(old)
+    work.rmdir()
     return out
 
 

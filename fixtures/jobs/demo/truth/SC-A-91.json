@@ -22,7 +22,7 @@
    "id": "e2",
    "category": "participant",
    "should_hide": false,
-   "reason": "the guest: introduced by the host as her friend Kev, answers her, steps out and comes back",
+   "reason": "the guest: introduced by the host as her friend Kev, answers her, walks out and comes back",
    "difficulty": [
     "reentry"
    ],

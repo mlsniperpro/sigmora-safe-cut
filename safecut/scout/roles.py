@@ -16,9 +16,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Callable, Coroutine, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from safecut import config
 from safecut.config import Settings
@@ -98,7 +99,7 @@ def transcript_by_frames(job: Job, transcript: Transcript | None) -> str:
     for t in transcript.turns:
         a = time_to_frame(t.start - widen, job.fps, job.frames)
         b = time_to_frame(t.end + widen, job.fps, job.frames)
-        lines.append(f'[{t.speaker} frames {a}–{b}] "{prompts.inline(t.text)}"')
+        lines.append(f'[{t.speaker} frames {a}–{b}] "{prompts.inline(t.text, prompts.TURN_CHARS)}"')
     return "\n".join(lines)
 
 
@@ -206,19 +207,20 @@ def to_vote(answer: RolePassOut, judged: set[str], participants: int) -> tuple[v
 
 
 async def three_votes(
-    make: Callable[[int], Awaitable[calls.Outcome[RolePassOut]]], *, stagger: bool
+    make: Callable[[int], Coroutine[Any, Any, calls.Outcome[RolePassOut]]], *, stagger: bool
 ) -> list[calls.Outcome[RolePassOut]]:
     """Vote 1 first; votes 2 and 3 together once vote 1 has answered or ``STAGGER_S`` passed, so they read the
     prefix vote 1 cached (``role-pass.md`` rule 1)."""
-    first = asyncio.ensure_future(make(1))
     try:
-        if stagger:
-            await asyncio.wait({first}, timeout=STAGGER_S)
-        rest = await asyncio.gather(make(2), make(3))
-    except BaseException:
-        first.cancel()  # never leave a paid call running unwatched
-        raise
-    return [await first, *rest]
+        # A TaskGroup: if any vote raises, the others are cancelled (never a paid call left running unwatched).
+        async with asyncio.TaskGroup() as group:
+            first = group.create_task(make(1))
+            if stagger:
+                await asyncio.wait({first}, timeout=STAGGER_S)
+            rest = [group.create_task(make(2)), group.create_task(make(3))]
+    except ExceptionGroup as failed:
+        raise failed.exceptions[0] from None
+    return [first.result(), *(r.result() for r in rest)]
 
 
 async def role_pass(
@@ -250,7 +252,7 @@ async def role_pass(
         images = [calls.image_part(ctx.job_dir / som.SOM_DIR / f"{f:06d}.jpg") for f in window.frames]
         prefix = [calls.text_part(context), *images]
 
-        def make(k: int) -> Awaitable[calls.Outcome[RolePassOut]]:
+        def make(k: int) -> Coroutine[Any, Any, calls.Outcome[RolePassOut]]:
             final = calls.text_part(vote_text(k, window.per_frame))
             info = {"vote": k, "frames": window.frames, "labels_per_frame": window.per_frame}
             return calls.call_json(ctx, stage=VOTE_STAGE, key=f"{tag}-w{window.index}-v{k}", info=info,
@@ -361,14 +363,24 @@ async def escalate(
     by_id = {t.track_id: t for t in tracks.tracks}
     pool = set(som.keyframe_numbers(ctx.job)) | set(som.extra_keyframes(ctx.job, [by_id[d] for d in disputed]))
     frames = [f for f in sorted(pool) if any(f in by_id[d].boxes for d in disputed)]
+    chunks = windows(frames, ctx.job.fps)
+    settings = ctx.settings
+    if not await missloop.calls_affordable(ctx, chunks, tracks, model=settings.escalate_model,
+                                           effort=settings.escalate_effort, per_window=1):  # fmt: skip
+        log.warning("escalation skipped: no budget beside the audit reserve", extra={"disputed": len(disputed)})
+        return {}  # advisory only: the disputed tracks stay unsure, with no suggestion
+    crowded = frozenset(tracks.crowded_frames)
     som.write(ctx.job_dir, ctx.job, tracks, frames)
     context = prompts.render("escalate.context", scene_summary=context_summary, transcript_by_frames=transcript_frames)
     system = calls.system(prompts.text("escalate.system"))
     rulings: dict[str, list[votes.Ruling | None]] = {d: [] for d in disputed}
 
     async def one(index: int, chunk: list[int]) -> None:
-        present = {d: frozenset(f for f in chunk if f in by_id[d].boxes) for d in disputed}
-        here = [d for d in disputed if present[d]]
+        shown = {d: [f for f in chunk if f in by_id[d].boxes] for d in disputed}
+        # Crowded frames are shown but never evidence (as in the role pass): a ruling citing only them is invalid,
+        # except a child ruling, which locks whatever it cites.
+        present = {d: frozenset(f for f in shown[d] if f not in crowded) for d in disputed}
+        here = [d for d in disputed if shown[d]]
         if not here:
             return
         per_frame = [(f, [d for d in here if f in by_id[d].boxes]) for f in chunk]
@@ -391,7 +403,7 @@ async def escalate(
         for d in here:
             rulings[d].append(votes.check_ruling(answers.get(d), present[d]))
 
-    await asyncio.gather(*(one(i, chunk) for i, chunk in enumerate(windows(frames, ctx.job.fps))))
+    await asyncio.gather(*(one(i, chunk) for i, chunk in enumerate(chunks)))
     return {d: votes.apply_rulings(r) for d, r in rulings.items() if r}
 
 
@@ -452,11 +464,11 @@ async def miss_loops(ctx: calls.Context, state: State, first: PassResult, scene:
         if not loop_misses:
             return
         planned = miss.plan(loop_misses, swept=state.swept)
-        state.swept += [m.phrase for m in planned.sweeps]
         outcome = await missloop.run_loop(
             ctx, state.tracks, prompts_=planned.prompts, sweeps=planned.sweeps, static=planned.static, loop=loop
         )
         state.misses += loop_misses
+        state.swept += outcome.swept  # only what SAM really searched counts as "already searched"
         state.tracks = outcome.tracks
         dump(state.tracks, ctx.job_dir / TRACKS)
         new_judged = [t for t in outcome.new if som.judged(t)]
