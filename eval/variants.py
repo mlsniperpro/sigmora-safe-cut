@@ -133,6 +133,12 @@ class VariantResult:
     detail: dict[str, str] = field(default_factory=dict[str, str])
 
 
+def preflight(variant: Variant) -> None:
+    """Raise :class:`VariantUnavailable` now, before anything is counted or spent, if the variant can't run here."""
+    if variant == "muse_no_track":
+        _hook("safecut.scout.baselines", "muse_keyframe_boxes")
+
+
 def run_variant(variant: Variant, job_dir: Path, *, replay: bool) -> VariantResult:
     """Run ``variant`` in ``job_dir`` (a created job with its recording attached) and return what it renders."""
     analyse = pipeline.analyse

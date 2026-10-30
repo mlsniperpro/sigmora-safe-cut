@@ -35,6 +35,8 @@ class Signer:
             return False
         if int(exp) < int((now or datetime.now(UTC)).timestamp()):
             return False
+        if not sig.isascii():  # compare_digest raises on non-ASCII str: a forged link is a refusal, never a 500
+            return False
         return hmac.compare_digest(self._mac(path, int(exp), extra), sig)
 
 

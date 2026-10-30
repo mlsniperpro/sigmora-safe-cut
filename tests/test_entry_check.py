@@ -7,7 +7,7 @@ import re
 import shutil
 import subprocess
 import types
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -218,27 +218,51 @@ def test_e3_never_passes_on_a_truth_file_with_nothing_to_check(tmp_path: Path) -
 
 
 def test_e3_checks_the_rendered_pixels_not_only_the_plan(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A plan that hides everything and a renderer that draws nothing must not pass E3."""
+    """A plan that hides everything must not pass E3 with a renderer that draws nothing, tints the frame, or covers
+    only a sliver of the box; a real cover passes, and a kept entity must come through unaltered."""
     import numpy as np  # noqa: PLC0415 -- only this test needs it
 
     from safecut.render import video  # noqa: PLC0415
 
     meta = types.SimpleNamespace(width=40, height=20, prepared="prepared.mp4")
     monkeypatch.setattr("safecut.contracts.load", lambda path, model=None: meta)
-    labels = types.SimpleNamespace(
-        width=40,
-        height=20,
-        entities=[types.SimpleNamespace(id="e1", should_hide=True, dense={0: (0, 0, 10, 10), 1: (0, 0, 10, 10)})],
-    )
-    source = [np.full((20, 40, 3), 120, np.uint8) for _ in range(2)]
+    hide = types.SimpleNamespace(id="e1", should_hide=True, dense={0: (0, 0, 10, 10), 1: (0, 0, 10, 10)})
+    keep = types.SimpleNamespace(id="e2", should_hide=False, dense={0: (20, 0, 30, 10), 1: (20, 0, 30, 10)})
+    labels = types.SimpleNamespace(width=40, height=20, entities=[hide, keep])
+    source = []
+    for _ in range(2):
+        frame = np.full((20, 40, 3), 120, np.uint8)
+        frame[2:8, 2:5] = 220  # the hidden entity's features
+        frame[2:8, 22:25] = 30  # the kept entity's
+        source.append(frame)
 
-    def frames(rendered: list[np.ndarray]) -> Callable[..., Iterator[np.ndarray]]:
-        return lambda path, job: iter(source if path.name == "prepared.mp4" else rendered)
+    def rendered(edit: Callable[[np.ndarray], None]) -> list[str]:
+        frames = []
+        for f in source:
+            out = f.copy()
+            edit(out)
+            frames.append(out)
+        monkeypatch.setattr(
+            video, "read_frames", lambda path, job: iter(source if path.name == "prepared.mp4" else frames)
+        )
+        return entry_check.render_hides(Path("job"), labels)
 
-    monkeypatch.setattr(video, "read_frames", frames(source))  # the renderer drew nothing
-    assert entry_check.render_hides(Path("job"), labels) == ["e1: covered in redacted.mp4 on only 0/2 visible frames"]
-    covered = [f.copy() for f in source]
-    for f in covered:
+    def cover(f: np.ndarray) -> None:
         f[0:10, 0:10] = 0
-    monkeypatch.setattr(video, "read_frames", frames(covered))
-    assert entry_check.render_hides(Path("job"), labels) == []
+
+    def tint(f: np.ndarray) -> None:
+        f[:] = np.clip(f.astype(int) + 10, 0, 255).astype(np.uint8)
+
+    def sliver(f: np.ndarray) -> None:
+        f[0:10, 0:1] = 0
+
+    def nothing(f: np.ndarray) -> None:
+        return None
+
+    assert rendered(cover) == []
+    assert rendered(nothing) == ["e1: still legible in redacted.mp4 on 2/2 visible frames"]
+    assert rendered(sliver) == ["e1: still legible in redacted.mp4 on 2/2 visible frames"]
+    assert rendered(tint) == [
+        "e1: still legible in redacted.mp4 on 2/2 visible frames",
+        "e2 (keep): altered in redacted.mp4 on 2/2 visible frames",
+    ]

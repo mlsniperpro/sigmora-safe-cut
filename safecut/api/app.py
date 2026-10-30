@@ -301,6 +301,22 @@ class Service:
                 raise ApiRefusal(404, "expired", "This clip has been deleted.") from None
             raise ApiRefusal(404, "not_found", "We couldn't find that clip.") from None
 
+    def refuse_when_busy(self, job_id: str) -> None:
+        """``429`` once ``SAFECUT_MAX_ACTIVE_JOBS`` other jobs are processing or rendering (the demo excluded)."""
+        active = 0
+        for other in self.store.ids():
+            if other == job_id:
+                continue
+            try:
+                state = load(self.store.path(other) / "state.json", JobState)
+            except ContractError:
+                continue
+            active += not state.pinned and state.status in ("processing", "rendering")
+        if active >= self.settings.max_active_jobs:
+            raise ApiRefusal(
+                429, "rate_limited", "Safe Cut is busy right now. Try again in a minute.", retry_after_s=60
+            )
+
     def paid_grant(self, state: JobState) -> Grant | None:
         """Re-check the job's bound code before paid work: ``401`` when revoked, ``code_not_active`` outside its
         window. Local jobs with no code (the CLI, the precomputed heroes) have no grant."""
@@ -478,6 +494,7 @@ def start(svc: Svc, job_id: str) -> JSONResponse:
         grant = svc.paid_grant(state)
         if svc.worker.busy(job_id) or state.status in ("processing", "rendering", "retry_later"):
             raise ApiRefusal(409, "already_running", "This clip is already being processed.")
+        svc.refuse_when_busy(job_id)
         if state.status not in ("created", "failed"):
             raise ApiRefusal(409, "already_started", "This clip has already been processed.")
         job_dir = svc.store.path(job_id)
@@ -624,6 +641,7 @@ def render(svc: Svc, job_id: str) -> JSONResponse:
         )
         if state.status != "review" and not retry:
             raise ApiRefusal(409, "not_reviewable", "This clip isn't waiting for a render.")
+        svc.refuse_when_busy(job_id)
         if state.mode == "live" and grant is not None:
             check_caps(svc.settings, svc.ledger, grant, estimate=0.01)
         pipeline.approve(svc.store.path(job_id), how="review")
@@ -731,6 +749,9 @@ def production_problems(settings: Settings) -> list[str]:
     for code in settings.access_codes:
         if len(code.code.get_secret_value()) < MIN_CODE_CHARS:
             problems.append(f"a {code.kind} access code is shorter than {MIN_CODE_CHARS} characters")
+    for key in settings.service_keys:
+        if len(key.key.get_secret_value()) < MIN_URL_SECRET_CHARS:
+            problems.append(f"service key {key.name!r} is shorter than {MIN_URL_SECRET_CHARS} characters")
     secret = settings.url_secret.get_secret_value() if settings.url_secret else ""
     if len(secret) < MIN_URL_SECRET_CHARS:
         problems.append(f"SAFECUT_URL_SECRET is unset or shorter than {MIN_URL_SECRET_CHARS} characters")

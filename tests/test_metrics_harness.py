@@ -308,3 +308,22 @@ def test_the_report_refuses_a_run_made_from_uncommitted_code(base: Path) -> None
     (run_dir / "config.json").write_text(json.dumps(config))
     with pytest.raises(ValueError, match="uncommitted code"):
         report.load_runs(base / "results")
+
+
+def test_a_refused_test_run_is_never_counted(base: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only a run that starts paid work uses one of the test split's 3: a dirty tree or a missing hook refuses
+    before the counter is written."""
+    splits = base / "splits"
+    runner.freeze("test", splits, base)
+    monkeypatch.setattr(runner, "git_sha", lambda: "0123456789abcdef-dirty")
+    with pytest.raises(runner.EvalError, match="uncommitted"):
+        runner.run("test", "full", replay=False, out=base / "results", splits=splits, base=base)
+    monkeypatch.setattr(runner, "git_sha", lambda: "0123456789abcdef")
+
+    def missing(variant: str) -> None:
+        raise VariantUnavailable("safecut.scout.baselines.muse_keyframe_boxes isn't in this build")
+
+    monkeypatch.setattr(runner, "preflight", missing)
+    with pytest.raises(VariantUnavailable):
+        runner.run("test", "muse_no_track", replay=False, out=base / "results", splits=splits, base=base)
+    assert runner.runs_made(splits) == []

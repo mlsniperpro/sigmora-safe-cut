@@ -35,7 +35,7 @@ from pydantic import BaseModel, ConfigDict, Field  # noqa: E402 -- after the sys
 
 from eval.labels import load_labels  # noqa: E402 -- after the sys.path line above, on purpose
 from eval.metrics import JobScore, score_job, summarize  # noqa: E402 -- after the sys.path line above, on purpose
-from eval.variants import VARIANTS, Variant, VariantUnavailable, run_variant  # noqa: E402 -- as above
+from eval.variants import VARIANTS, Variant, VariantUnavailable, preflight, run_variant  # noqa: E402 -- as above
 from safecut import netguard, pipeline  # noqa: E402 -- after the sys.path line above, on purpose
 from safecut.config import load_settings  # noqa: E402 -- after the sys.path line above, on purpose
 
@@ -160,17 +160,19 @@ def run(
     clip once its Meta spend reaches ``max_usd`` (each job also keeps its own ``SAFECUT_JOB_USD_CAP``)."""
     split = load_split(split_name, splits)
     now = now or datetime.now(UTC)
-    if split_name == "test":
-        if replay:
-            raise EvalError("the test split is reported from live runs only")
-        check_test_split(split, splits, base)
-        # Counted before any paid call: a run that crashes halfway still used one of the 3.
-        counter = RunCounter(runs=[*runs_made(splits), f"{now_id(now)}-test-{variant}"])
-        (splits / "test.runs.json").write_text(counter.model_dump_json(indent=1) + "\n", encoding="utf-8")
+    # Everything that can refuse the run is checked before a test run is counted: a refusal never costs one of
+    # the 3, while a run that crashes halfway (after paid calls) still does.
     sha = git_sha()
     if not replay and sha.endswith("-dirty"):
         # A live run costs credits (and a test run one of its 3): only committed code can back a reported number.
         raise EvalError("the working tree has uncommitted changes; commit them before a live run")
+    preflight(variant)
+    if split_name == "test":
+        if replay:
+            raise EvalError("the test split is reported from live runs only")
+        check_test_split(split, splits, base)
+        counter = RunCounter(runs=[*runs_made(splits), f"{now_id(now)}-test-{variant}"])
+        (splits / "test.runs.json").write_text(counter.model_dump_json(indent=1) + "\n", encoding="utf-8")
     run_id = f"{now_id(now)}-{split_name}-{variant}-{sha[:7]}"
     scores: list[JobScore] = []
     detail: dict[str, str] = {}

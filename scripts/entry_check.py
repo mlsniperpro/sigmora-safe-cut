@@ -199,47 +199,81 @@ def e3() -> None:
         shutil.rmtree(work, ignore_errors=True)
 
 
-#: Mean absolute change (0–255, over the truth box) that counts a should-hide entity's frame as really covered in
-#: the rendered video: the demo's covers change it by 15 to 190, the codec alone moves a kept face by about 2.5.
-RENDER_CHANGE = 8.0
+#: A pixel is the entity's content (a face's features, a plate's characters, a screen's text) when it differs from
+#: the box's median colour by more than this (0–255, any channel) in the prepared clip.
+CONTENT_DELTA = 25
+#: Hidden means the content can no longer be told from its background in ``redacted.mp4``: the content-vs-background
+#: contrast left over, as a share of the source's. The demo's covers leave 0.00; a tint or a sliver of a cover
+#: leaves almost all of it (a +10 tint: 1.00).
+RESIDUAL_CONTRAST = 0.25
+#: A kept entity's box changes by less than this mean (0–255) on most of its frames: the codec moves a kept face by
+#: about 2.5; a renderer that tints or blurs the whole frame moves every box.
+KEPT_CHANGE = 8.0
+
+
+def _box(box: Any, sx: float, sy: float, width: int, height: int) -> tuple[int, int, int, int] | None:
+    import math  # noqa: PLC0415
+
+    x1, y1 = max(int(box[0] * sx), 0), max(int(box[1] * sy), 0)
+    x2, y2 = min(math.ceil(box[2] * sx), width), min(math.ceil(box[3] * sy), height)
+    return (x1, y1, x2, y2) if x2 > x1 and y2 > y1 else None
 
 
 def render_hides(job: Path, clip_labels: Any) -> list[str]:
-    """The plan is scored above; this checks the **pixels**: in ``redacted.mp4``, every should-hide entity's truth
-    box differs from the prepared clip on at least 99 % of its visible frames (a renderer that draws nothing, or
-    draws in the wrong place, fails here even when the plan is right)."""
+    """The plan is scored above; this checks the **pixels** of ``redacted.mp4`` against the prepared clip:
+
+    - every should-hide entity's content (pixels that stand out from its box's background) can't be told from that
+      background any more on at least 99 % of its visible frames (a renderer that draws nothing, a tint, or a cover
+      over a sliver of the box fails);
+    - every kept entity's box is left as it was (mean change below :data:`KEPT_CHANGE`) on at least 75 % of its
+      frames (a renderer that alters the whole frame fails; a short legitimate hide, like the guest's re-entry
+      before a creator merges it, is under the plan's own over-blur rule above).
+    """
     import numpy as np  # noqa: PLC0415 -- the check's own dependencies, loaded only when E3 runs
 
     video = importlib.import_module("safecut.render.video")
     contracts = importlib.import_module("safecut.contracts")
     meta = contracts.load(job / "job.json", contracts.Job)
     sx, sy = meta.width / clip_labels.width, meta.height / clip_labels.height
-    hides = [e for e in clip_labels.entities if e.should_hide and e.dense]
-    changed = dict.fromkeys((e.id for e in hides), 0)
-    seen = dict.fromkeys((e.id for e in hides), 0)
+    entities = [e for e in clip_labels.entities if e.dense]
+    good = dict.fromkeys((e.id for e in entities), 0)
+    seen = dict.fromkeys((e.id for e in entities), 0)
     rendered_frames = video.read_frames(job / "redacted.mp4", meta)
     frames = zip(video.read_frames(job / meta.prepared, meta), rendered_frames, strict=True)
     for f, (source, rendered) in enumerate(frames):
-        for entity in hides:
+        for entity in entities:
             box = entity.dense.get(f)
-            if box is None:
+            region = None if box is None else _box(box, sx, sy, meta.width, meta.height)
+            if region is None:
                 continue
-            x1, y1 = max(int(box[0] * sx), 0), max(int(box[1] * sy), 0)
-            x2, y2 = min(int(np.ceil(box[2] * sx)), meta.width), min(int(np.ceil(box[3] * sy)), meta.height)
-            if x2 <= x1 or y2 <= y1:
-                continue
+            x1, y1, x2, y2 = region
+            a = source[y1:y2, x1:x2].astype(np.float32)
+            b = rendered[y1:y2, x1:x2].astype(np.float32)
             seen[entity.id] += 1
-            a = source[y1:y2, x1:x2].astype(np.int16)
-            b = rendered[y1:y2, x1:x2].astype(np.int16)
-            if float(np.abs(a - b).mean()) >= RENDER_CHANGE:
-                changed[entity.id] += 1
-    if not any(seen.values()):
+            if not entity.should_hide:
+                good[entity.id] += float(np.abs(a - b).mean()) < KEPT_CHANGE
+                continue
+            content = np.abs(a - np.median(a.reshape(-1, 3), axis=0)).max(axis=2) > CONTENT_DELTA
+            if not content.any() or content.all():
+                good[entity.id] += float(np.abs(a - b).mean()) >= KEPT_CHANGE  # a flat box: it must at least change
+                continue
+            before = float(np.abs(a[content].mean(axis=0) - a[~content].mean(axis=0)).max())
+            after = float(np.abs(b[content].mean(axis=0) - b[~content].mean(axis=0)).max())
+            good[entity.id] += after <= RESIDUAL_CONTRAST * max(before, 1.0)
+    hidden = {e.id for e in entities if e.should_hide}
+    if not any(seen[i] for i in hidden):
         return ["the rendered video shows none of the should-hide entities' frames"]
-    return [
-        f"{eid}: covered in redacted.mp4 on only {changed[eid]}/{n} visible frames"
+    problems = [
+        f"{eid}: still legible in redacted.mp4 on {n - good[eid]}/{n} visible frames"
         for eid, n in seen.items()
-        if n and changed[eid] / n < 0.99
+        if eid in hidden and n and good[eid] / n < 0.99
     ]
+    problems += [
+        f"{eid} (keep): altered in redacted.mp4 on {n - good[eid]}/{n} visible frames"
+        for eid, n in seen.items()
+        if eid not in hidden and n and good[eid] / n < 0.75
+    ]
+    return problems
 
 
 def score_against_truth(job: Path, truth: Path) -> None:
@@ -458,9 +492,14 @@ def e7() -> None:
         "the ASGI app": r"@[\w.]*asgi_app",
         "a Volume": r"Volume\.from_name",
         "the 24 h deletion cron": r"schedule\s*=\s*modal\.(Cron|Period)",
-        "a worker function": r"def \w*work\w*\(",
+        # The pipeline's workers are threads in the API container (one container, one ledger writer): the ASGI
+        # function must build the real app, whose Service starts them, and a worker smoke must run the pipeline.
+        "the API app that runs the pipeline workers": r"return create_app\(",
+        "a pipeline worker smoke run": r"def pipeline_worker_smoke\(",
     }
     missing = [what for what, pattern in needs.items() if not re.search(pattern, text)]
+    if not re.search(r"self\.worker = worker or Worker\(", (ROOT / "safecut" / "api" / "app.py").read_text("utf-8")):
+        missing.append("the Service's pipeline Worker (safecut/api/app.py)")
     if missing:
         raise CheckFailed(f"deploy/modal_app.py lacks {', '.join(missing)}")
     imp = sh([str(BIN / "python"), "-c", "import deploy.modal_app"], timeout=120)
@@ -591,7 +630,8 @@ MARKER = re.compile(r"\b(" + "|".join(("TO" + "DO", "FIX" + "ME", "X" + "XX")) +
 
 
 def e11() -> None:
-    history = sh(["git", "log", "-p", "--all", "--no-color", "--format=commit %H"], timeout=600)
+    # --cc adds what a merge commit itself introduced (a conflict resolution), which plain -p never shows.
+    history = sh(["git", "log", "-p", "--cc", "--all", "--no-color", "--format=commit %H"], timeout=600)
     hits = [
         line
         for line in history.stdout.splitlines()
@@ -603,6 +643,18 @@ def e11() -> None:
     ]
     if hits:
         raise CheckFailed(f"secret-shaped text in git history: {hits[0][:80]}…")
+    # And the tree as it stands, every tracked text file; only the scanner and its own tests may hold key shapes.
+    scanner = {"scripts/entry_check.py", "tests/test_entry_check.py"}
+    for name in sh(["git", "ls-files"]).stdout.split():
+        path = ROOT / name
+        if name in scanner or not path.is_file() or path.stat().st_size > 5_000_000:
+            continue
+        data = path.read_bytes()
+        if b"\x00" in data:
+            continue
+        for number, line in enumerate(data.decode("utf-8", errors="replace").splitlines(), 1):
+            if SECRET.search(line):
+                raise CheckFailed(f"{name}:{number}: secret-shaped text in the tree")
     tracked = sh(["git", "ls-files", "--", *SHIPPED]).stdout.split()
     for name in tracked:
         path = ROOT / name

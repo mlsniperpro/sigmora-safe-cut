@@ -1002,9 +1002,12 @@ def test_production_refuses_weak_secrets(tmp_path: Path) -> None:
     assert any("judge access code" in p for p in problems)
     assert any("SAFECUT_URL_SECRET" in p for p in problems)
     assert any("SAFECUT_PUBLIC_URL" in p for p in problems)
+    weak_key = settings_for(tmp_path, service_keys=(ServiceKey(key=SecretStr("k" * 16), name="sigmora"),))
+    assert any("service key 'sigmora'" in p for p in production_problems(weak_key))
     strong = settings_for(
         tmp_path,
         access_codes=(AccessCode(code=SecretStr("j" * 12), kind="judge"),),
+        service_keys=(ServiceKey(key=SecretStr("k" * 32), name="sigmora"),),
         url_secret=SecretStr("s" * 32),
         public_url="https://safecut--api.modal.run",
     )
@@ -1078,3 +1081,35 @@ def test_the_sweep_trusts_a_valid_created_at_in_an_unreadable_state(tmp_path: Pa
         path.write_text(path.read_text().replace('"status"', '"a_field_from_the_future": 1, "status"'))
     assert store.sweep(now=datetime.now(UTC) + timedelta(minutes=5)) == [old.job_id]
     assert store.path(young.job_id).is_dir()
+
+
+def test_a_non_ascii_signature_is_a_refusal_not_a_500(make_client: Callable[..., tuple[TestClient, Service]]) -> None:
+    client, svc = make_client()
+    assert not svc.signer.verify("/p", "9999999999", "é")
+    job_id = upload_clip(client)
+    media = client.get(f"/v1/jobs/{job_id}/media/redacted.mp4", params={"exp": "9999999999", "sig": "é"})
+    assert media.status_code == 403
+    body = {"code": JUDGE, "size_bytes": CLIP.stat().st_size, "content_type": "video/mp4", "file_name": "a.mp4"}
+    created = client.post("/v1/jobs", json=body).json()
+    put = client.put(
+        f"/v1/uploads/{created['job_id']}",
+        params={"exp": "9999999999", "sig": "é"},
+        content=CLIP.read_bytes(),
+        headers={"Content-Type": "video/mp4"},
+    )
+    assert put.status_code == 403
+
+
+def test_a_busy_service_asks_new_work_to_wait(make_client: Callable[..., tuple[TestClient, Service]]) -> None:
+    client, svc = make_client(max_active_jobs=1)
+    running = upload_clip(client)
+    waiting = upload_clip(client)
+    with svc.store.update(running) as state:
+        state.status, state.stage = "processing", "track"
+    refused = client.post(f"/v1/jobs/{waiting}/start")
+    assert refused.status_code == 429
+    assert refused.json()["error"]["code"] == "rate_limited"
+    assert refused.headers["Retry-After"] == "60"
+    with svc.store.update(running) as state:
+        state.status, state.stage = "review", "review"
+    assert client.post(f"/v1/jobs/{waiting}/start").status_code == 202
