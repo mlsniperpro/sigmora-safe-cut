@@ -47,7 +47,7 @@ describe("result and receipt (UI-SPEC §5)", () => {
     expect(screen.getByRole("link", { name: "Back to review" })).toHaveAttribute("href", "/jobs/result-unresolved?view=review&from=sigmora&demo=1");
   });
 
-  it("a result without captions_url, status or frames still loads, with captions from the job's transcript", async () => {
+  it("a result without job_id, captions_url, status or frames still loads, with captions from the job's transcript", async () => {
     nav.id = "result-clean";
     nav.search = "";
     const backend = new MockBackend({ latencyMs: 0 });
@@ -57,7 +57,7 @@ describe("result and receipt (UI-SPEC §5)", () => {
         backend.request(init).then((raw) => {
           if (!init.path.endsWith("/result") || raw.status !== 200) return raw;
           const body: Record<string, unknown> = { ...(raw.body as Record<string, unknown>) };
-          for (const key of ["captions_url", "status", "frames"]) delete body[key];
+          for (const key of ["job_id", "captions_url", "status", "frames"]) delete body[key];
           return { ...raw, body };
         }),
     };
@@ -97,7 +97,7 @@ describe("result and receipt (UI-SPEC §5)", () => {
     Object.defineProperty(window, "opener", { configurable: true, value: opener });
     const user = setup("result-clean", "from=sigmora");
     await user.click(await screen.findByRole("button", { name: "Publish to Sigmora" }));
-    expect(opener.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "safecut:publish", job_id: "j_hero1" }), "https://sigmora.org");
+    expect(opener.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "safecut:publish", job_id: "result-clean" }), "https://sigmora.org");
     expect(screen.getByText("Sent to Sigmora. You can close this tab.")).toBeInTheDocument();
     Object.defineProperty(window, "opener", { configurable: true, value: null });
   });

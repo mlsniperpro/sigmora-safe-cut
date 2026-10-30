@@ -1010,7 +1010,7 @@ function BottomBar({
           {cause === "pilot_pool_cap" && <span className="text-sm">{COPY.pilotPoolJob}</span>}
           {downloadLink}
           {cause === "job_cap" && (
-            <Link href="/try" className={btn.secondary}>
+            <Link href={`/try${query}`} className={btn.secondary}>
               Try another clip
             </Link>
           )}

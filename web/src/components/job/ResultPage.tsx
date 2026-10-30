@@ -30,14 +30,15 @@ const RECEIPT_TIMEOUT_MS = 15_000;
 type ResultLoad = { kind: "idle" } | { kind: "ready"; result: ResultResponse; video: string; receipt: string } | { kind: "error"; error: unknown };
 
 /** Tells Sigmora the result is approved: to the opener when there is one, otherwise by returning to Sigmora. */
-export function publishToSigmora(result: Pick<ResultResponse, "job_id" | "video_url" | "receipt_json_url">): void {
+export function publishToSigmora(jobId: string, result: Pick<ResultResponse, "video_url" | "receipt_json_url">): void {
   const origin = new URL(SITE.sigmoraUrl).origin;
-  const message = { type: "safecut:publish", job_id: result.job_id, video_url: result.video_url, receipt_json_url: result.receipt_json_url };
+  // The route's job ID, as for every request: /result needn't carry one (§8).
+  const message = { type: "safecut:publish", job_id: jobId, video_url: result.video_url, receipt_json_url: result.receipt_json_url };
   if (window.opener && window.opener !== window) {
     (window.opener as Window).postMessage(message, origin);
     return;
   }
-  window.open(new URL(`/safecut/return?job_id=${encodeURIComponent(result.job_id)}`, SITE.sigmoraUrl).toString(), "_self");
+  window.open(new URL(`/safecut/return?job_id=${encodeURIComponent(jobId)}`, SITE.sigmoraUrl).toString(), "_self");
 }
 
 export function ResultPage() {
@@ -156,7 +157,7 @@ export function ResultPage() {
   };
 
   if (load.kind === "loading" || redirect) return <JobSkeleton />;
-  if (load.kind !== "ready") return loadMessage(load.kind, resume);
+  if (load.kind !== "ready") return loadMessage(load.kind, resume, keptQuery(params));
   const j = load.job;
   if (j.status === "rendering") {
     return (
@@ -168,16 +169,16 @@ export function ResultPage() {
       </section>
     );
   }
-  if (j.status === "failed") return <FailedJob jobId={id} job={j} onResume={resume} onDeleted={markDeleted} />;
-  if (j.status === "created") return <MessagePage message={COPY.created} actions={[{ label: "Upload again", href: "/try" }]} />;
-  if (j.status !== "done") return loadMessage("unexpected", resume);
+  if (j.status === "failed") return <FailedJob jobId={id} job={j} onResume={resume} onDeleted={markDeleted} query={keptQuery(params)} />;
+  if (j.status === "created") return <MessagePage message={COPY.created} actions={[{ label: "Upload again", href: `/try${keptQuery(params)}` }]} />;
+  if (j.status !== "done") return loadMessage("unexpected", resume, keptQuery(params));
   if (result.kind === "error") {
     const e = result.error instanceof ApiError ? result.error : null;
-    return loadMessage(e?.status === 404 ? (e.code === "expired" ? "expired" : "not_found") : e?.kind === "network" || e?.kind === "timeout" ? "unreachable" : "unexpected", retryResult);
+    return loadMessage(e?.status === 404 ? (e.code === "expired" ? "expired" : "not_found") : e?.kind === "network" || e?.kind === "timeout" ? "unreachable" : "unexpected", retryResult, keptQuery(params));
   }
   if (result.kind !== "ready") return <JobSkeleton />;
 
-  if (mediaFailed) return loadMessage("unexpected", retryResult);
+  if (mediaFailed) return loadMessage("unexpected", retryResult, keptQuery(params));
   const r = result.result;
   const summary = auditSummary(r.audit, j.job?.frames ?? r.frames ?? r.audit.frames_scanned);
   const doDelete = async () => {
@@ -261,7 +262,7 @@ export function ResultPage() {
                 title={summary.publishable ? undefined : "Publishing is off until every spot is fixed."}
                 aria-describedby={summary.publishable ? undefined : "publish-off"}
                 onClick={() => {
-                  publishToSigmora(r);
+                  publishToSigmora(id, r);
                   setPublished(true);
                 }}
               >

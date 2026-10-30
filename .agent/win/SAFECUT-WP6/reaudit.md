@@ -1,4 +1,4 @@
-AUDITED_COMMIT: b5ed253
+AUDITED_COMMIT: 4a5bb7c
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -481,3 +481,21 @@ Noted, not counted:
 | 5 | low | Unfixed-spot (U) chips had no ⋯ menu, so no "Jump to first appearance" (§3.1, §3.8) | fixed: spot chips get the menu with Jump only. view test (fails on b5ed253) |
 
 Every new test was run against b5ed253's code (fixes stashed) and fails there: 7 tests. On the fix commit: `checks.sh` exit 0, 867 tests, e2e 143/143.
+
+## Round 38 (audited 4a5bb7c by a Sonnet reviewer: a live-mode build against a fake https API answering every request with only the spec-named fields, every navigation and redirect for `from`/`demo`, and round 37's changes; fixes in the next commit)
+
+0 critical, 0 high, 4 medium, 1 low. CLEAN_AUDITS_IN_A_ROW stays 0. No regressions from round 37. The four mediums are one class, which round 37 fixed only for `/result`'s `status` and `frames`: a schema demanding a field the spec never gives that response. I checked every response schema for the same thing.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | medium | `actionAckSchema` required `job_id`; the 202 ack is `status` and `stage` (render-ack.json, audit-ack.json, ACTION_ACK), so Start, Approve & render, Run the audit again and a failed job's Try again showed the error page against a spec-shaped server | fixed: optional (nothing reads it). contracts test (fails on 4a5bb7c) |
+| 2 | medium | `reviewAckSchema` required `edit_id`; §8 Edits gives the ack `items`, `plan`, `status`, `has_render` and `audit.spots`, so every edit was rejected and reverted | fixed: optional; the page matches acks by the request's own `edit_id`. contracts test (fails on 4a5bb7c) |
+| 3 | medium | `demoResponseSchema` required `hero_id`, which request 19 doesn't give, so the landing hero showed "The demo video didn't load" | fixed: removed (nothing read it). contracts test (fails on 4a5bb7c) |
+| 4 | medium | `resultResponseSchema` still required `job_id` | fixed: optional; Publish to Sigmora sends the route's job ID, like every request. contracts and ResultPage tests (fail on 4a5bb7c); the publish test now expects the route's ID |
+| 5 | low | Without a `models` map the Why drawer's Details listed a fixed "Muse Spark 1.3 · SAM 3.1 · Muse Voice Transcribe", even when the job's passes named other models (§4.3: the receipt-style list) | fixed: the list comes from `models`, else from `roles.model`, `scene.model`, SAM 3.1 when there are tracks (§4.3's copy names it) and `transcript.source`; the line is left out when none is named. model test (fails on 4a5bb7c) |
+
+Also fixed, from the auditor's "noted, not counted" list: "Try another clip" and "Upload again" (expired, not found, deleted, created, failed and the `job_cap` bar) now keep `from` and `demo`, so a Sigmora user keeps "Back to Sigmora" (§0). JobPage tests (fail on 4a5bb7c).
+
+Noted, not counted (no spec field to build from, or by design): in live mode the hero poster and hero captions come only from the non-spec `poster_url`/`captions_url` (a WP8 static asset or a first-frame poster is the fix, listed for WP5/WP8); `POST /v1/jobs` sends `file_name`, which request 17 doesn't list; `eta_s` isn't defined in the spec, so "~N s left" shows only when WP5 adds it (already requested); a linked speaker with no overlapping turns shows the heading with no lines (the spec is silent); the mobile tab strip scrolls by design.
+
+On the fix commit: `checks.sh` exit 0, 875 tests, e2e 143/143.

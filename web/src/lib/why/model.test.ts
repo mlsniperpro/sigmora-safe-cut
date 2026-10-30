@@ -155,6 +155,15 @@ describe("Why drawer (UI-SPEC §4.3)", () => {
     expect(why(heroMock, "i_1").details.cover).toBe("Cover: none (kept clear)");
     expect(d.models).toBe("Models: Muse Spark 1.3 · SAM 3.1 · Muse Voice Transcribe");
   });
+
+  it("without a models map, lists only the models the job's own passes name, and omits the line if none (§4.3)", () => {
+    const noMap: Record<string, unknown> = { ...heroMock };
+    delete noMap.models;
+    expect(why({ ...noMap, roles: { ...heroMock.roles, model: "muse-spark-1.2" }, scene: { ...heroMock.scene, model: "muse-spark-1.2" } }, "i_4").details.models).toBe(
+      "Models: Muse Spark 1.2 · SAM 3.1 · Muse Voice Transcribe",
+    );
+    expect(why({ ...noMap, roles: { ...heroMock.roles, model: null }, tracks: [], scene: { ...heroMock.scene, model: null }, transcript: { ...heroMock.transcript, source: null } }, "i_4").details.models).toBeNull();
+  });
 });
 
 describe("speech lines and footer (§4.3, §4.6)", () => {

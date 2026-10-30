@@ -336,6 +336,15 @@ describe("review panel", () => {
     await waitFor(() => expect(document.title).toBe(title));
   });
 
+  it.each([
+    ["nope", "Try another clip"],
+    ["job-failed-job-cap", "Try another clip"],
+    ["job-created", "Upload again"],
+  ])("the link back to /try keeps from and demo (§10.4): %s", async (id, label) => {
+    setup(id, "from=sigmora&demo=1");
+    expect(await screen.findByRole("link", { name: label })).toHaveAttribute("href", "/try?from=sigmora&demo=1");
+  });
+
   it("items with no keyframe show only their origin's caption in the Why drawer (§4.3)", async () => {
     const user = setup("result-unresolved-review", "view=review");
     await user.click(await screen.findByRole("button", { name: "Cover it Unfixed spot U1" }));

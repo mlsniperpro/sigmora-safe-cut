@@ -168,6 +168,12 @@ Round 14 (fixes in the round-14 commit; details in `reaudit.md`):
 - [x] R15-1 (low) a late fresh URL brings the review player back: JobPage test
 - [x] R15-2 (low) an action's GET isn't made quiet by a cut-short refresh: useJob test
 - [x] Self-found: fixture dates shift with the clock, so the mock and the tests hold on any date: mock-backend tests, suite run at clock shifts up to +400 days
+- [x] R38-1 (medium) 202 acks without `job_id` parse: contracts test
+- [x] R38-2 (medium) review acks without `edit_id` parse: contracts test
+- [x] R38-3 (medium) the demo answer without `hero_id` parses: contracts test
+- [x] R38-4 (medium) `/result` without `job_id` parses; publish uses the route ID: contracts and ResultPage tests
+- [x] R38-5 (low) Why Details model list from the job's own models, or left out: model test
+- [x] R38 noted item: links back to /try keep `from` and `demo`: JobPage tests
 - [x] R37-1 (medium) result captions from the job's transcript (§5.5): ResultPage test
 - [x] R37-2 (low) `/result` without `status`/`frames` loads: ResultPage test
 - [x] R37-3 (low) `from` and `demo` kept from /try to the job page and on the result links: TryFlow and ResultPage tests

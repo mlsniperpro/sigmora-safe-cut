@@ -16,16 +16,17 @@ import { MessagePage } from "../ui";
 import { FailedJob } from "./FailedJob";
 import { ProgressView } from "./ProgressView";
 
-export function loadMessage(kind: Exclude<JobLoad["kind"], "loading" | "ready">, retry: () => void): React.ReactNode {
+/** `query` is the page's kept `from` and `demo` (§10.4), so "Try another clip" keeps "Back to Sigmora". */
+export function loadMessage(kind: Exclude<JobLoad["kind"], "loading" | "ready">, retry: () => void, query = ""): React.ReactNode {
   switch (kind) {
     case "expired":
-      return <MessagePage message={COPY.expired} actions={[{ label: "Try another clip", href: "/try" }]} />;
+      return <MessagePage message={COPY.expired} actions={[{ label: "Try another clip", href: `/try${query}` }]} />;
     case "not_found":
-      return <MessagePage message={COPY.notFound} actions={[{ label: "Try another clip", href: "/try" }]} />;
+      return <MessagePage message={COPY.notFound} actions={[{ label: "Try another clip", href: `/try${query}` }]} />;
     case "unreachable":
       return <MessagePage message={COPY.unreachable} actions={[{ label: "Try again", onClick: retry }, { label: "Watch the demo", href: "/" }]} />;
     case "deleted":
-      return <MessagePage message={COPY.deleted} actions={[{ label: "Try another clip", href: "/try" }]} />;
+      return <MessagePage message={COPY.deleted} actions={[{ label: "Try another clip", href: `/try${query}` }]} />;
     case "unexpected":
       return <MessagePage message={COPY.unexpected} actions={[{ label: "Try again", onClick: retry }, { label: "Go to the home page", href: "/" }]} />;
   }
@@ -75,15 +76,15 @@ export function JobPage() {
   }, [status]);
 
   if (load.kind === "loading") return <JobSkeleton />;
-  if (load.kind !== "ready") return loadMessage(load.kind, resume);
+  if (load.kind !== "ready") return loadMessage(load.kind, resume, keptQuery(params));
   const j = load.job;
   if (j.job && checkTimeline(j.job) !== null) {
     console.error(`job ${id}: prepared timeline failed the §3.6 checks`);
-    return loadMessage("unexpected", resume);
+    return loadMessage("unexpected", resume, keptQuery(params));
   }
   switch (j.status) {
     case "created":
-      return <MessagePage message={COPY.created} actions={[{ label: "Upload again", href: "/try" }]} />;
+      return <MessagePage message={COPY.created} actions={[{ label: "Upload again", href: `/try${keptQuery(params)}` }]} />;
     case "processing":
     case "retry_later":
       return (
@@ -111,6 +112,7 @@ export function JobPage() {
             resume();
           }}
           onDeleted={markDeleted}
+          query={keptQuery(params)}
         />
       );
     case "done":

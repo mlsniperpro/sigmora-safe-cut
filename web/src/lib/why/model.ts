@@ -31,7 +31,7 @@ export interface WhyModel {
   evidenceFrames: number[];
   /** False for items with no SoM keyframe (§4.3): added by the audit, or static areas SAM 3.1 couldn't track. */
   hasKeyframe: boolean;
-  details: { decidedBy: string; cover: string; tracks: string; frames: string | null; museWords: string | null; models: string };
+  details: { decidedBy: string; cover: string; tracks: string; frames: string | null; museWords: string | null; models: string | null };
 }
 
 const MODEL_NAMES: Readonly<Record<string, string>> = {
@@ -42,9 +42,15 @@ const MODEL_NAMES: Readonly<Record<string, string>> = {
   "muse-voice-transcribe-1.0": "Muse Voice Transcribe",
 };
 
-export function modelList(models: Record<string, string> | undefined): string {
-  const ids = models ? [...new Set(Object.values(models))] : ["muse-spark-1.3", "sam-3.1", "muse-voice-transcribe-1.0"];
-  return ids.map((id) => MODEL_NAMES[id] ?? id).join(" · ");
+/**
+ * The receipt-style model list (§4.3 Details): the job's `models`, or else the models its own
+ * passes name. Null when the response names none, so no list is made up.
+ */
+export function modelList(job: Pick<JobResponse, "models" | "roles" | "scene" | "transcript" | "tracks">): string | null {
+  // Tracks come only from SAM 3.1 (the model §4.3's own copy names); the rest name their model.
+  const named = job.models ? Object.values(job.models) : [job.roles?.model, job.scene?.model, job.tracks.length ? "sam-3.1" : null, job.transcript?.source];
+  const ids = [...new Set(named.filter((id): id is string => !!id))];
+  return ids.length ? ids.map((id) => MODEL_NAMES[id] ?? id).join(" · ") : null;
 }
 
 export function buildWhy(job: JobResponse, itemId: string, local: LocalItemState): WhyModel | null {
@@ -90,7 +96,10 @@ export function buildWhy(job: JobResponse, itemId: string, local: LocalItemState
       tracks: `Tracks: ${local.track_ids.length ? local.track_ids.join(" · ") : "none"}`,
       frames: span ? `Frames ${span.first}–${span.last}` : null,
       museWords: primary?.evidence ? `Muse Spark's words: “${primary.evidence}”` : null,
-      models: `Models: ${modelList(job.models)}`,
+      models: (() => {
+        const list = modelList(job);
+        return list ? `Models: ${list}` : null;
+      })(),
     },
   };
 }

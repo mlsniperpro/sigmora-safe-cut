@@ -11,7 +11,7 @@ import type { JobResponse } from "@/lib/contracts";
 import { COPY, expiresBefore, failureView, formatLocal, jobRefusalMessage } from "@/lib/copy";
 import { ActionError, ConfirmDialog, btn } from "../ui";
 
-export function FailedJob({ jobId, job, onResume, onDeleted }: { jobId: string; job: JobResponse; onResume: () => void; onDeleted: () => void }) {
+export function FailedJob({ jobId, job, onResume, onDeleted, query }: { jobId: string; job: JobResponse; onResume: () => void; onDeleted: () => void; /** The kept `from` and `demo` (§10.4). */ query: string }) {
   const view = failureView(job);
   const [note, setNote] = useState<string | null>(null);
   const [blocked, setBlocked] = useState(false);
@@ -104,7 +104,7 @@ export function FailedJob({ jobId, job, onResume, onDeleted }: { jobId: string; 
           </>
         )}
         {view.actions.includes("try_another") && (
-          <Link href="/try" className={btn.secondary}>
+          <Link href={`/try${query}`} className={btn.secondary}>
             Try another clip
           </Link>
         )}

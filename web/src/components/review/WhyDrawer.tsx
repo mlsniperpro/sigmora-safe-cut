@@ -338,7 +338,7 @@ export function WhyDrawer({
                 <li className="font-mono text-xs">{model.details.tracks}</li>
                 {model.details.frames && <li className="font-mono text-xs">{model.details.frames}</li>}
                 {model.details.museWords && <li>{model.details.museWords}</li>}
-                <li>{model.details.models}</li>
+                {model.details.models && <li>{model.details.models}</li>}
               </ul>
             </details>
           </div>

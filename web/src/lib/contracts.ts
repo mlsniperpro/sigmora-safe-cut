@@ -334,7 +334,8 @@ export const jobResponseSchema = z.object({
 export type JobResponse = z.infer<typeof jobResponseSchema>;
 
 export const resultResponseSchema = z.object({
-  job_id: z.string(),
+  // §8 doesn't give /result its job ID either: the page has it from the route.
+  job_id: z.string().optional(),
   mode: modeSchema,
   // §8/§5.6 don't give /result these; the page reads the job's own status and frames first.
   status: jobStatusSchema.optional(),
@@ -349,8 +350,8 @@ export const resultResponseSchema = z.object({
 });
 export type ResultResponse = z.infer<typeof resultResponseSchema>;
 
+// Request 19: the result shape plus `job` and `audit`; nothing here reads a hero ID.
 export const demoResponseSchema = z.object({
-  hero_id: z.string(),
   mode: z.literal("replay"),
   job: z.object({
     prepared_url: mediaUrl,
@@ -381,16 +382,18 @@ export const createJobResponseSchema = z.object({
 });
 export type CreateJobResponse = z.infer<typeof createJobResponseSchema>;
 
+// The 202 ack is `status` and `stage` (render-ack.json, audit-ack.json, ACTION_ACK).
 export const actionAckSchema = z.object({
-  job_id: z.string(),
+  job_id: z.string().optional(),
   status: jobStatusSchema,
   stage: stageSchema.nullable().optional(),
   mode: modeSchema.default("live"),
 });
 export type ActionAck = z.infer<typeof actionAckSchema>;
 
+// §8 Edits: items, plan, status, has_render and audit.spots. The page knows the edit_id it sent.
 export const reviewAckSchema = z.object({
-  edit_id: z.string(),
+  edit_id: z.string().optional(),
   mode: modeSchema.default("live"),
   status: jobStatusSchema,
   has_render: z.boolean(),
