@@ -234,11 +234,12 @@ class LiveRedTeam:
         request after an invalid answer. A second refusal or invalid answer raises (its frames stay unresolved)."""
         soft = False
         for attempt in range(2):
-            result = await responses.create(
-                self._client, self._body(frames, approved, bar, soft=soft), stage="redteam",
-                effort=self._settings.redteam_effort,
-            )  # fmt: skip
             try:
+                # The client raises a refusal while streaming; output_text raises one found in the message.
+                result = await responses.create(
+                    self._client, self._body(frames, approved, bar, soft=soft), stage="redteam",
+                    effort=self._settings.redteam_effort,
+                )  # fmt: skip
                 return RedteamOutput.model_validate_json(responses.output_text(result.response))
             except MetaRefusal:
                 if attempt:

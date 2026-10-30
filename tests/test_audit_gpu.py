@@ -5,8 +5,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from safecut.audit import gpu
+from safecut.audit import auditor_available, detectors, gpu
 from safecut.audit.detectors import YuNet
+from safecut.config import Settings
 from tests.safety_jobs import Scenario, frame_image
 
 
@@ -34,3 +35,9 @@ def test_a_remote_answer_is_validated() -> None:
     assert d.box == (0, 1, 10, 20)
     with pytest.raises(ValueError, match="decode"):
         gpu.decode(b"not a png")
+
+
+def test_auditor_available_says_whether_any_detector_can_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert auditor_available(Settings(egoblur_weights_dir="/nonexistent"))  # EgoBlur missing: YuNet stands in
+    monkeypatch.setattr(detectors, "YUNET_SHA256", "0" * 64)  # altered weights are refused
+    assert not auditor_available(Settings(egoblur_model="yunet-face"))

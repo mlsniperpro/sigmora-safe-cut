@@ -12,13 +12,13 @@ import pytest
 from safecut import contracts, pipeline
 from safecut.audit import run as audit_run
 from safecut.config import Settings
-from safecut.contracts import ContractError, CostLine, Receipt, append_cost_line, load
+from safecut.contracts import Audit, ContractError, CostLine, Receipt, append_cost_line, load
 from safecut.decide import run as decide_run
 from safecut.guard import run as guard_run
 from safecut.receipt import RECEIPT, RECEIPT_HTML, ReceiptError, history, verify_chain
 from safecut.receipt import run as receipt_run
 from safecut.receipt.__main__ import main as cli
-from safecut.receipt.build import SYNTHETIC_NOTE, YUNET_NOTE, build
+from safecut.receipt.build import BASETEN_NOTE, SYNTHETIC_NOTE, YUNET_NOTE, build, data_handling
 from safecut.render import render
 from tests.safety_jobs import make_job
 
@@ -94,6 +94,10 @@ def test_the_page_is_self_contained_and_says_what_happened(job_dir: Path) -> Non
     assert "https://" not in page
     assert load(job_dir / RECEIPT, Receipt).hash in page
     assert "<script" not in page
+    # Auto-approved: the page never claims a creator's review, nor more than the audit checked.
+    assert "accepted without review (auto-approve)" in page
+    assert "approved by the creator" not in page
+    assert "Every output frame was checked" not in page
 
 
 def test_a_blocked_audit_is_receipted_as_blocked_and_costs_add_up(job_dir: Path) -> None:
@@ -112,6 +116,16 @@ def test_a_blocked_audit_is_receipted_as_blocked_and_costs_add_up(job_dir: Path)
     assert receipt.cost_usd == pytest.approx(0.0123)
     assert (receipt.audit.unresolved, receipt.audit.blocked_reason) == (2, "audit_failed")
     assert "Publishing blocked" in (job_dir / RECEIPT_HTML).read_text()
+    assert SYNTHETIC_NOTE not in receipt.data_handling.notes  # a paid call: "no model was called" would be false
+
+
+def test_a_second_opinion_on_baseten_is_disclosed(job_dir: Path) -> None:
+    audit = load(job_dir / "audit.json", Audit)
+    models = {"auditor": "yunet-face", "open_weight": "meta-models/muse-spark-open-1026"}
+    handling = data_handling(job_dir, models, audit)
+    assert BASETEN_NOTE in handling.notes
+    assert "meta-models/muse-spark-open-1026" in handling.no_store_param
+    assert BASETEN_NOTE not in data_handling(job_dir, {"auditor": "yunet-face"}, audit).notes
 
 
 def test_no_receipt_before_the_audit(tmp_path: Path) -> None:
