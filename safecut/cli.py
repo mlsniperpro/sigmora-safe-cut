@@ -22,7 +22,7 @@ import typer
 
 from safecut import netguard, pipeline
 from safecut.config import ConfigError, load_settings
-from safecut.contracts import Audit, ContractError, load, validate_job_dir
+from safecut.contracts import Audit, ContractError, Intake, load, validate_job_dir
 from safecut.stages import INTAKE, RECEIPT_HTML, REDACTED, STAGES, Stage, StageError, StageUnavailable
 
 app = typer.Typer(
@@ -47,7 +47,11 @@ def _fail(code: int, message: str) -> NoReturn:
     raise typer.Exit(code)
 
 
-def _replay(flag: bool | None) -> bool:
+def _replay(flag: bool | None, job: Path | None = None) -> bool:
+    """``--replay``/``--live`` when given; else the job's own mode (``intake.json``, so a replay job stopped for
+    review publishes in replay without the flag); else ``SAFECUT_REPLAY``."""
+    if flag is None and job is not None and (job / INTAKE).is_file():
+        flag = load(job / INTAKE, Intake).mode == "replay"
     replay = load_settings().replay if flag is None else flag
     if replay:
         netguard.block()
@@ -73,7 +77,7 @@ def _stage_command(stage: Stage) -> Callable[..., None]:
         def go() -> None:
             if stage.phase == "publish":
                 pipeline.check_approval(job)  # render, audit and receipt run only on an approved plan
-            result = pipeline.run_stage(job, stage, replay=_replay(replay), force=True)
+            result = pipeline.run_stage(job, stage, replay=_replay(replay, job), force=True)
             typer.echo(f"{stage.name}: wrote {result.output} ({result.elapsed_s:.2f} s)")
             if stage.name in ("audit", "receipt"):
                 _refuse_if_blocked(job)  # the audit's verdict decides here too: exit 6 on a blocked audit
@@ -153,7 +157,7 @@ def run(
         if not auto_approve_policy:
             typer.echo(
                 f"job {out.name}: waiting for review. Edit decisions in the web app, or approve as is with:\n"
-                f"  safecut approve --job {out} && safecut publish --job {out}"
+                f"  safecut approve --job {out} && safecut publish --job {out}"  # the job's mode: replay stays replay
             )
             return
         pipeline.approve(out, how="auto_policy")
@@ -176,7 +180,7 @@ def publish(job: JobOpt, replay: ReplayOpt = None) -> None:
     """Render, audit and seal the receipt for an approved job."""
 
     def go() -> None:
-        _report(pipeline.publish(job, replay=_replay(replay)))
+        _report(pipeline.publish(job, replay=_replay(replay, job)))
         _refuse_if_blocked(job)
 
     _guarded(go)

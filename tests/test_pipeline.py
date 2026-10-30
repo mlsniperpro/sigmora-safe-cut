@@ -576,3 +576,20 @@ def test_the_single_stage_audit_command_exits_6_on_a_blocked_audit(
     for command in ("audit", "receipt"):
         result = runner.invoke(app, [command, "--job", str(tmp_path), "--replay"])
         assert result.exit_code == 6, (command, result.output)
+
+
+def test_publish_without_a_flag_keeps_the_jobs_own_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The review hint after a replay run (`safecut publish --job <dir>`) must publish in replay, not call Meta."""
+    job = tmp_path / "j_replay"
+    pipeline.create_job(CLIP, job, mode="replay")
+    seen: list[bool] = []
+    monkeypatch.setattr(pipeline, "publish", lambda job_dir, replay: seen.append(replay) or [])
+    real_load = load
+
+    def load_audit_stub(path: Path, model: type) -> object:  # the real intake.json; a passing audit
+        return real_load(path, model) if model is Intake else types.SimpleNamespace(blocked_reason=None)
+
+    monkeypatch.setattr("safecut.cli.load", load_audit_stub)
+    assert runner.invoke(app, ["publish", "--job", str(job)]).exit_code == 0
+    assert runner.invoke(app, ["publish", "--job", str(job), "--live"]).exit_code == 0
+    assert seen == [True, False]
