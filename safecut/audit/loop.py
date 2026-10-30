@@ -106,8 +106,9 @@ def frames_of(job_dir: Path, job: Job, wanted: set[int]) -> Iterator[tuple[int, 
 
 
 def scan(state: State, job_dir: Path, detector: Detector, wanted: set[int], *, count: bool = False) -> list[Leak]:
-    """The detector on every frame in ``wanted``; a crash stops the scan and leaves the rest unscanned. With ``count``
-    (pass 1, every frame) its detections are tallied for ``egoblur.faces``/``plates``."""
+    """The detector on every frame in ``wanted``; a crash stops the scan and leaves the rest unscanned. A frame's
+    detections are tallied for ``egoblur.faces``/``plates`` the first time it is scanned. With ``count`` (pass 1) the
+    frames it didn't reach count through ``frames_scanned``; on a re-check they are unanswered."""
     by_track = {t.track_id: t for t in state.tracks.tracks}
     found: list[Leak] = []
     done: set[int] = set()
@@ -116,10 +117,11 @@ def scan(state: State, job_dir: Path, detector: Detector, wanted: set[int], *, c
         for index, frame in frames_of(job_dir, state.job, wanted):
             detections: list[Detection] = detector.detect(frame)
             state.detector_calls += 1
+            first = index not in state.scanned  # tallied once per frame: pass 1, or the pass that first scanned it
             for d in detections:
-                if count and d.kind == "face":
+                if first and d.kind == "face":
                     state.faces += 1
-                elif count:
+                elif first:
                     state.plates += 1
                 if rules.excluded_by(d.kind, d.box, index, state.decisions, by_track) is None:
                     found.append(Leak(frame=index, box=d.box, kind=d.kind, detector="egoblur", patched_item=None))
@@ -317,9 +319,9 @@ def reopened(leaks: list[Leak], plan: Plan, decisions: Decisions, *, height: int
         # The pixels the renderer fills solid on that frame (a mask entry hides its mask, not its box).
         solid = [e for e in plan.frames.get(leak.frame, []) if e.style != "pixelate"]
         fills = [f for f in plan.crowd_fills if leak.frame in f.frames]
-        hidden = hidden_mask(solid, fills, height, width)
+        filled = hidden_mask(solid, fills, height, width)
         x1, y1, x2, y2 = leak.box
-        if not bool(hidden[y1:y2, x1:x2].all()):
+        if not bool(filled[y1:y2, x1:x2].all()):
             out.append(leak.model_copy(update={"unresolved": False, "patched_item": None}))
     return out
 
@@ -427,7 +429,8 @@ async def audit_job(
     words = approved(decisions, roles, scene)
     everything = set(range(job.frames))
     found = scan(state, job_dir, detector, everything, count=True)
-    found += reopen
+    seen = {(leak.frame, leak.box, leak.kind, leak.detector) for leak in found}
+    found += [leak for leak in reopen if (leak.frame, leak.box, leak.kind, leak.detector) not in seen]
     flagged = {leak.frame for leak in found}  # redteam.md Inputs: "and every frame EgoBlur flagged"
     # The fixes earlier runs made for the red team are re-read on every run (the model saw what the detector can't).
     refix = {leak.frame for leak in state.leaks if leak.detector != "egoblur"}

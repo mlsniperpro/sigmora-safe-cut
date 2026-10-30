@@ -1,4 +1,4 @@
-AUDITED_COMMIT: c437aa3fc7517e1f9ca4a6e5ce3c363d3c15e382
+AUDITED_COMMIT: b29ce28a2732244edd4c5ca0d8d90c476ba45305
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -175,4 +175,14 @@ verified here before it is fixed, and fixed with a named test. The counter reset
 - Notes kept as notes: mosaic block limit is width-based (the contract's reading); pixelated bodies use the face's
   cell; red-team re-checks the leak frame (spec), not the patch span; scene descriptions in the approved words.
 
-## Round 9: running at c437aa3 (main efd8b9d)
+## Round 9 (at c437aa3): WP3 no findings (≈ 9,000 random jobs, 2,500 policy runs, ≈ 9,000 review-edit sequences, 10,329
+ground-truth frames, all clean); WP4 2 medium reproduced, fixed at b29ce28 (merged aa5773c)
+- WP4 medium: a crash right after the blocked placeholder replaced audit.json forgot earlier unresolved leaks → they
+  go on the pending record first (`test_a_crash_right_after_the_placeholder_never_forgets_an_unresolved_leak`, fails without the fix).
+- WP4 medium: a mask entry's bounding box counted as cover → only the pixels the renderer fills
+  (`test_a_mask_entry_covers_only_its_mask_not_its_box`, fails without the fix).
+- Notes kept as notes: chain truncation undetectable by design (per-job chain, DESIGN's "per project" wording);
+  RemoteDetector wiring is WP5's deploy; synthetic-only label timing; the checker's zero-width interpolation on
+  1-px sparse anchors (unreachable: tracks are densified); one-frame tracks' zero edge velocity (accepted fallback).
+
+## Round 10: running at b29ce28 (main aa5773c)
