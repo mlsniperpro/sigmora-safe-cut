@@ -12,17 +12,23 @@ makes the opinion ``failed``, and a budget stop leaves it ``off``.
 from __future__ import annotations
 
 import base64
+import json
+import logging
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import cv2
+from pydantic import TypeAdapter
 
 from safecut import open_weight
 from safecut.audit import leaks as rules
 from safecut.audit.redteam import with_bar
-from safecut.contracts import Decisions, Job, Leak, OpenWeightSummary, RedteamHit, RedteamNone, Track
+from safecut.contracts import Decisions, Job, Leak, OpenWeightSummary, Plan, RedteamHit, RedteamNone, Track
 from safecut.meta.errors import BudgetExceeded
 from safecut.render.draw import Frame
+
+log = logging.getLogger(__name__)
 
 #: ``second_opinion`` bound to a client and settings: frames as (number, data URL), the kept-clear words.
 Ask = Callable[[Sequence[tuple[int, str]], str], Awaitable[open_weight.SecondOpinion]]
@@ -47,12 +53,13 @@ def entries_for(
     answer: open_weight.SecondOpinion,
     job: Job,
     decisions: Decisions,
+    plan: Plan,
     by_track: dict[str, Track],
     *,
     grid_ok: bool,
 ) -> tuple[list[RedteamNone | RedteamHit], list[Leak]]:
-    """The opinion's frames as ``redteam_open`` entries (the red team's own mapping and exclusion rules), and the
-    leaks to patch when its grid is confirmed."""
+    """The opinion's frames as ``redteam_open`` entries (the red team's own mapping, exclusion and read-through
+    rules), and the leaks to patch when its grid is confirmed."""
     bar = rules.bar_height(job.height)
     entries: list[RedteamNone | RedteamHit] = []
     found: list[Leak] = []
@@ -66,15 +73,23 @@ def entries_for(
             )
             if mapped == "in_bar" and finding.kind == "text" and rules.is_frame_label(finding.text):
                 continue
-            box = (0, 0, job.width, job.height) if mapped in (None, "in_bar") else mapped
-            exclude = rules.excluded_by(finding.kind, box, frame.frame, decisions, by_track)
+            placed = mapped not in (None, "in_bar")
+            box = mapped if isinstance(mapped, tuple) else (0, 0, job.width, job.height)
+            # A whole-frame box stands for a finding we couldn't place (fail closed): nothing kept excuses it.
+            exclude = rules.excluded_by(finding.kind, box, frame.frame, decisions, by_track) if placed else None
             entries.append(RedteamHit(frame=frame.frame, finding="hit", kind=finding.kind, text=finding.text,
                                       detail=finding.detail, box=box, confidence=finding.confidence,
                                       excluded_by=exclude))  # fmt: skip
             hits += 1
             if exclude is None and grid_ok:
+                through = (
+                    rules.through_item(box, frame.frame, decisions, plan)
+                    if finding.kind in ("text", "screen", "plate")
+                    else None
+                )
                 found.append(Leak(frame=frame.frame, box=box, kind=finding.kind, detector="redteam_open",
-                                  patched_item=None))  # fmt: skip
+                                  patched_item=None, flag="redaction_too_weak" if through else None,
+                                  through_item=through))  # fmt: skip
         if not hits:
             entries.append(RedteamNone(frame=frame.frame, finding="none"))
     return entries, found
@@ -82,19 +97,46 @@ def entries_for(
 
 async def consult(
     ask: Ask,
-    frames: Sequence[tuple[int, Frame]],
+    frames: Sequence[tuple[int, str]],
     *,
+    model: str,
     words: str,
     job: Job,
     decisions: Decisions,
+    plan: Plan,
     by_track: dict[str, Track],
     grid_ok: bool,
 ) -> Opinion:
-    """One second opinion on ``frames``; a budget stop (raised before any call) leaves it off."""
-    bar = rules.bar_height(job.height)
+    """One second opinion on ``frames`` (number, data URL). It never blocks the job: a budget stop (raised before
+    any call) leaves it off; any other failure leaves it failed, with nothing to add."""
     try:
-        answer = await ask([(f, data_url(img, f, bar)) for f, img in frames], words)
+        answer = await ask(frames, words)
     except BudgetExceeded:
         return Opinion()
-    entries, found = entries_for(answer, job, decisions, by_track, grid_ok=grid_ok)
+    except Exception as exc:  # an optional second look: any failure is recorded, never raised into the audit
+        log.warning("open-weight second opinion failed (%s); the audit continues without it", type(exc).__name__)
+        return Opinion(summary=OpenWeightSummary(model=model, status="failed"))
+    entries, found = entries_for(answer, job, decisions, plan, by_track, grid_ok=grid_ok)
     return Opinion(summary=answer.summary(entries), entries=entries, leaks=found)
+
+
+#: The opinion as it came back, saved at once: it runs once per job, so a later crash must not lose it.
+RECORD = Path("raw/audit/opinion.json")
+
+
+def save(job_dir: Path, opinion: Opinion) -> None:
+    path = job_dir / RECORD
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = {"summary": opinion.summary.model_dump(mode="json"), "entries": [e.model_dump(mode="json")
+                                                                             for e in opinion.entries]}  # fmt: skip
+    path.write_text(json.dumps(data))
+
+
+def recorded(job_dir: Path) -> Opinion | None:
+    """The saved opinion of an earlier run (its leaks were patched then; nothing to patch again)."""
+    path = job_dir / RECORD
+    if not path.exists():
+        return None
+    data = json.loads(path.read_text(encoding="utf-8"))
+    entries = TypeAdapter(list[RedteamNone | RedteamHit]).validate_python(data["entries"])
+    return Opinion(summary=OpenWeightSummary.model_validate(data["summary"]), entries=entries)

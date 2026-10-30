@@ -63,8 +63,12 @@ async def _live(job_dir: Path, settings: Settings, detector: Detector, client: M
     job = load(job_dir / "job.json", Job)
     # The job's own caller (judge, pilot, owner …): its caps hold, and the open-weight gate reads its code kind.
     caller = pipeline.job_caller(job_dir, settings) if (job_dir / pipeline.INTAKE).exists() else Caller.local()
-    eligible = not job.open_weight_attempted and open_weight.enabled_for(
-        settings, consented=job.consented, code_kind=caller.code_kind
+    # Eligible, and actually able to run: a missing Baseten key or price would fail every batch.
+    eligible = (
+        not job.open_weight_attempted
+        and open_weight.enabled_for(settings, consented=job.consented, code_kind=caller.code_kind)
+        and settings.baseten_api_key is not None
+        and settings.open_weight_price is not None
     )
     # The service's one spend ledger: the daily, code and pilot-pool caps count every job's calls, not just this one.
     ledger = pipeline.job_ledger(settings)
@@ -87,7 +91,8 @@ async def _live(job_dir: Path, settings: Settings, detector: Detector, client: M
             opinion = ask
 
         audit, _ = await audit_job(job_dir, detector=detector, redteam=LiveRedTeam(meta, settings, job_dir),
-                                   opinion=opinion, opinion_grid_ok=settings.open_weight_grid_ok)  # fmt: skip
+                                   opinion=opinion, opinion_grid_ok=settings.open_weight_grid_ok,
+                                   opinion_model=settings.open_weight_model)  # fmt: skip
         return audit
 
 

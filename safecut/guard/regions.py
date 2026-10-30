@@ -6,8 +6,9 @@ everything else 8 % plus 8 px. Outside the frames SAM saw the object, the guard 
 * **anchors** (a box from SAM): the padded box, or the padded SAM mask when one exists;
 * **between anchors**, within SAM's own sampling step: the interpolated box, or both neighbouring masks shifted to
   it (API-NOTES §12), padded;
-* **gaps** (SAM lost the object between anchors): the last box held and grown 2 % a frame, joined with the
-  interpolated box, so a box that moved during the gap is still covered;
+* **gaps** (SAM lost the object between anchors): the box on each side held and grown 2 % a frame (forward from
+  where it was lost, backward from where it came back), joined with the interpolated box, so a box that moved
+  during the gap is still covered;
 * **back-fill** (``backfill`` frames before the first detection, SAM's late confirmation) and **extend** (8 frames
   after the last): the edge box held, grown 2 % a frame, and swept along the track's own motion at its edge (an
   object SAM confirmed late was usually already moving the same way).
@@ -214,5 +215,8 @@ class TrackRegions:
                 if region is not None:
                     return region
             return Region(self._pad(interpolated))
+        # A long gap is held from both ends: growing forward from where it was lost and backward from where it
+        # came back, plus the straight path between, so a reappearance far from the loss is covered too.
         held = held_box(t.boxes[before], frame - before, (0.0, 0.0), self.width, self.height)
-        return Region(self._pad(union([held, interpolated])))
+        back = held_box(t.boxes[after], after - frame, (0.0, 0.0), self.width, self.height)
+        return Region(self._pad(union([held, back, interpolated])))

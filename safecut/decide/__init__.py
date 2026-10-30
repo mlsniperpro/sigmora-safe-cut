@@ -53,7 +53,9 @@ def run(job_dir: Path, *, replay: bool = False) -> Path:
     if (job_dir / REVIEW).exists():
         # A covered spot's patch is already among the kept audit patches; the other edits replay on the policy.
         edits = [edit for edit in load(job_dir / REVIEW, ReviewLog).root if not isinstance(edit, CoverSpotEdit)]
-        decisions = apply_review(decisions, edits).decisions
+        # A re-run replays the creator's log on fresh policy decisions: an edit that no longer applies (a re-analysis
+        # locked that item, say) is skipped, never fatal to the stage.
+        decisions = apply_review(decisions, edits, strict=False).decisions
     return dump(decisions, job_dir / DECISIONS)
 
 

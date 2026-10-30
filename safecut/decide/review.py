@@ -94,18 +94,31 @@ class ReviewResult:
 
 def effective(edits: Sequence[ReviewEdit]) -> list[ReviewEdit]:
     """The edits still in force: first copy of each ``edit_id`` only, minus every edit an effective undo reverts
-    (an undo of an undo restores its target), in log order, without the undos themselves."""
+    (an undo of an undo restores its target), in log order, without the undos themselves. An undo counts only for
+    an edit made before it; one naming an unknown or later edit reverts nothing."""
+    unique = _unique(edits)
+    reverted = _reverted(unique)
+    return [e for e in unique if not isinstance(e, UndoEdit) and e.edit_id not in reverted]
+
+
+def _unique(edits: Sequence[ReviewEdit]) -> list[ReviewEdit]:
     seen: set[str] = set()
     unique: list[ReviewEdit] = []
     for edit in edits:
         if edit.edit_id not in seen:
             seen.add(edit.edit_id)
             unique.append(edit)
+    return unique
+
+
+def _reverted(unique: list[ReviewEdit]) -> set[str]:
+    position = {edit.edit_id: i for i, edit in enumerate(unique)}
     reverted: set[str] = set()
-    for edit in reversed(unique):  # a later undo decides about an earlier edit, so walk back
-        if isinstance(edit, UndoEdit) and edit.edit_id not in reverted:
+    for i in range(len(unique) - 1, -1, -1):  # a later undo decides about an earlier edit, so walk back
+        edit = unique[i]
+        if isinstance(edit, UndoEdit) and edit.edit_id not in reverted and position.get(edit.reverts, i) < i:
             reverted.add(edit.reverts)
-    return [e for e in unique if not isinstance(e, UndoEdit) and e.edit_id not in reverted]
+    return reverted
 
 
 def _default_style(item: DecisionItem) -> Style:
@@ -159,6 +172,8 @@ class _Fold:
                 )
             case HideEdit():
                 item = self.get(edit.edit_id, edit.item_id)
+                if item.locked:  # already hidden, and its decider (the policy) isn't the creator's to take over
+                    raise ReviewError("locked", edit.edit_id, f"{item.item_id} is locked hidden ({item.kind})")
                 style = item.style or _default_style(item)
                 self.put(item.model_copy(update={"decision": "hide", "style": style, "decided_by": "creator"}))
             case RemovePersonEdit():
@@ -195,8 +210,10 @@ class _Fold:
         if audit is None or self.frames is None:
             raise ReviewError("invalid_edit", edit.edit_id, "covering a spot needs the audit and the job")
         spot = next((s for s in audit.spots if s.spot_id == edit.spot_id), None)
-        if spot is None or spot.covered_by is not None:
-            raise ReviewError("invalid_spot", edit.edit_id, f"no uncovered spot {edit.spot_id}")
+        if spot is not None and spot.covered_by is not None and spot.covered_by in self.items:
+            return  # already covered by the patch this very edit made (a replay of the log): nothing to do
+        if spot is None:
+            raise ReviewError("invalid_spot", edit.edit_id, f"no spot {edit.spot_id}")
         labels = [int(i.audit_label[1:]) for i in self.items.values() if i.audit_label]
         patches = [int(i.item_id[2:]) for i in self.items.values() if i.item_id.startswith("p_")]
         label, number = max(labels, default=0) + 1, max(patches, default=0) + 1
@@ -230,6 +247,21 @@ class _Fold:
         ]
         self.audit = Audit.model_validate({**audit.model_dump(), "spots": spots})
 
+    def uncover(self, spot_id: str) -> None:
+        """An undone ``cover_spot``: its patch goes and the spot is open again (UI-SPEC §8 request 5)."""
+        audit = self.audit
+        spot = next((s for s in audit.spots if s.spot_id == spot_id), None) if audit is not None else None
+        if audit is None or spot is None or spot.covered_by is None:
+            return
+        patch = spot.covered_by
+        if patch in self.items and self.items[patch].origin == "audit_patch":
+            del self.items[patch]
+            self.order.remove(patch)
+        spots = [
+            {**s.model_dump(), "covered_by": None} if s.spot_id == spot_id else s.model_dump() for s in audit.spots
+        ]
+        self.audit = Audit.model_validate({**audit.model_dump(), "spots": spots})
+
     def result(self) -> tuple[Decisions, Audit | None]:
         return Decisions(items=[self.items[i] for i in self.order]), self.audit
 
@@ -241,21 +273,33 @@ def apply_review(
     audit: Audit | None = None,
     frames: int | None = None,
     extend: int = 8,
+    strict: bool = True,
 ) -> ReviewResult:
     """Fold the review log over ``decisions`` (the policy's, plus any audit patches).
 
     ``frames`` (``job.frames``) and ``audit`` are needed only for ``cover_spot``; ``extend`` is the plan's
-    ``temporal.extend``. An edit that can't apply raises :class:`ReviewError` when it is the last effective edit
-    (the one just sent); an earlier one that an undo left inapplicable is skipped and listed in ``skipped``.
+    ``temporal.extend``. A ``cover_spot`` already in force (its patch present) replays as a no-op, and an undone one
+    removes its patch and reopens the spot. An edit that can't apply raises :class:`ReviewError` when it is the last
+    entry of the log (the one just sent) and ``strict``; any other inapplicable edit (one an undo or a re-analysis
+    left stale) is skipped and listed in ``skipped``.
     """
     fold = _Fold(decisions, audit, frames, extend)
-    active = effective(edits)
+    unique = _unique(edits)
+    if strict and unique and isinstance(unique[-1], UndoEdit):
+        last = unique[-1]
+        if last.reverts not in {e.edit_id for e in unique[:-1]}:
+            raise ReviewError("unknown_edit", last.edit_id, f"no earlier edit {last.reverts} to undo")
+    reverted = _reverted(unique)
+    for edit in unique:
+        if isinstance(edit, CoverSpotEdit) and edit.edit_id in reverted:
+            fold.uncover(edit.spot_id)
+    active = effective(unique)
     skipped: list[str] = []
     for index, edit in enumerate(active):
         try:
             fold.apply(edit)
         except ReviewError:
-            if index == len(active) - 1:
+            if strict and index == len(active) - 1 and edit is unique[-1]:
                 raise
             skipped.append(edit.edit_id)
     decided, audited = fold.result()

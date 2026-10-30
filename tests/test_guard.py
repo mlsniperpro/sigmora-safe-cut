@@ -119,6 +119,17 @@ def test_a_gap_up_to_2_s_holds_the_last_box_and_the_resumed_one() -> None:
         assert covered(p, frame, "i_1", interp), frame
 
 
+def test_a_gap_is_held_from_both_ends() -> None:
+    """The object came back at frame 45 near its resumed box: the frames just before are covered around it too,
+    not only around where it was lost and the straight path between."""
+    t = track("face:1", 0, 50, (40, 40, 60, 60), step=(2, 0), anchors=[0, 1, 2, 3, 45, 46, 47, 48, 49, 50])
+    ts = tracks(t)
+    p = plan(JOB, ts, hide_all(ts))
+    resumed = t.boxes[45]
+    for frame in range(4, 45):
+        assert covered(p, frame, "i_1", held_box(resumed, 45 - frame, (0.0, 0.0), W, H)), frame
+
+
 def test_crowded_frames_get_a_fill_over_every_hidden_object() -> None:
     ts = tracks(track("face:1", 0, 20, (10, 10, 30, 30)), track("face:2", 0, 20, (200, 100, 230, 130)),
                 crowded=[5, 6, 7, 12])  # fmt: skip

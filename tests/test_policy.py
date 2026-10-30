@@ -237,6 +237,35 @@ def test_hold_precedence_writes_the_first_in_order() -> None:
     assert HOLD_ORDER == ("no_scene", "no_speech", "no_roles", "unmatched_child", "no_speech_link")
 
 
+@pytest.mark.parametrize(
+    ("kw", "hold"),
+    [
+        ({"scene": scene(status="failed")}, "no_scene"),
+        ({"transcript": transcript(status="failed")}, "no_speech"),
+        ({}, "no_roles"),
+    ],
+)
+def test_a_role_failure_still_writes_the_first_hold_in_order(kw: dict[str, Any], hold: str) -> None:
+    failed = row("face:1", "unsure", "unsure", "unsure", failed_votes=3, escalated=False)
+    unescalated = row("face:2", "participant", "participant", "unsure", escalated=False)
+    got = run(track("face:1", 0, 20), track("face:2", 0, 20, (200, 10, 240, 50)), rs=[failed, unescalated], **kw)
+    assert (only(got, "face:1")["hold"], only(got, "face:2")["hold"]) == (hold, hold)
+    assert only(got, "face:1")["reason"] == "the role check couldn't judge this person"
+
+
+def test_every_id_of_a_child_is_locked_across_reentries() -> None:
+    a = track("face:1", 0, 10)
+    b = track("face:2", 20, 30, reentry_of="face:1")
+    c = track("face:3", 40, 50, reentry_of="face:2")
+    # The child vote lands on the middle ID only; the earlier and later IDs are the same child.
+    rs = [matched("face:1", frames=(2, 8)), row("face:2", "child", "participant", "participant", frames=(22, 28)),
+          matched("face:3", frames=(42, 48))]  # fmt: skip
+    got = run(a, b, c, rs=rs)
+    for track_id in ("face:1", "face:2", "face:3"):
+        item = only(got, track_id)
+        assert (item["decision"], item["kind"], item["locked"]) == ("hide", "child", True), track_id
+
+
 def test_a_matched_scene_child_lets_participants_be_kept() -> None:  # P3
     kid = track("face:4", 0, 20, (200, 10, 240, 50))
     got = run(
