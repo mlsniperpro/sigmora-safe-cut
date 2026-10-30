@@ -332,3 +332,9 @@ def test_e11_history_scan_passes_on_this_repo() -> None:
         check=True,
     ).stdout
     assert entry_check.history_hits(log) == []
+
+
+def test_bearer_tokens_are_secrets_in_any_case() -> None:
+    token = "Zx81kdJq0LmnB7Yt5" + "ExP2rVw9sAc"
+    assert entry_check.secret_hit(f"Authorization: Bearer {token}")
+    assert entry_check.secret_hit(f"authorization: bearer {token}")

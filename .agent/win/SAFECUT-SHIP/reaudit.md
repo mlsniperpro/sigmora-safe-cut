@@ -155,3 +155,17 @@ It ran E2, E3, E5, E7, E9, E10, E11 and E12: all OK; 230 targeted tests passed; 
 Also noted: a Modal redeploy may briefly overlap two containers on the Volume and ledger; BLOCKED now says not to push to main during the judging window.
 
 Round 9 was not clean (two medium): the clean count goes back to 0.
+
+## Round 10 (on 3a029bd): 0 critical, 0 high, 2 medium, 5 low. Closed in the next commit.
+
+| # | Sev | Finding | Resolution | Test |
+|---|---|---|---|---|
+| M1 | medium | A live test run was counted before `MODEL_API_KEY` was checked; `ConfigError` escaped as a traceback | `refuse_early` checks the key (every live variant but `egoblur`) with the commit, the hook and the labels, before counting; `main` reports `ConfigError`; BLOCKED says to export it | `test_a_live_run_without_the_key_is_refused_before_it_counts` |
+| M2 | medium | BLOCKED's EgoBlur step put a CPU-only EgoBlur in the deployed audit (about 45 min per 30 s clip) and in the test-split run | BLOCKED: EgoBlur only on a GPU; don't set `SAFECUT_DEPLOY_AUDIT` for this CPU-only service; the deployed audit stays on YuNet and says so; the workflow and modal_app comments agree | review |
+| L1 | low | The marker scan still split `git ls-files` on whitespace | `-z` | E11 |
+| L2 | low | `BEARER` was case-sensitive (the API accepts any case) | `re.IGNORECASE` | `test_bearer_tokens_are_secrets_in_any_case` |
+| L3 | low | A direct caller's 95 s clip got `422 job_cap` at start instead of `too_long` | The start estimate is capped at the 60 s limit, so the clip reaches prepare (free) and fails `too_long` with its duration, as UI-SPEC's path says | `test_a_clip_over_60_s_is_never_priced_past_the_limit`, `test_a_clip_over_60_s_fails_in_prepare_with_its_duration` |
+| L4 | low | `safecut run --live` without a key printed a traceback | `_guarded` maps `ConfigError` to exit 1 | review |
+| L5 | low | The report never checked a test run's `split_hash` against `test.sha256` | `load_runs` refuses a test run whose split isn't the frozen one | `test_the_report_refuses_a_test_run_on_a_split_that_isnt_the_frozen_one` |
+
+Round 10 was not clean (two medium): the count stays at 0.

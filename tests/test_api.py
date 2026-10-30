@@ -21,7 +21,7 @@ from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
 from safecut import pipeline
-from safecut.api.access import RateLimiter
+from safecut.api.access import MAX_DURATION_S, RateLimiter, estimate_usd
 from safecut.api.app import Service, create_app, hero_job_id, production_problems, safe_name
 from safecut.api.store import JobNotFound, JobStore
 from safecut.api.views import public_audit
@@ -1116,3 +1116,10 @@ def test_a_busy_service_asks_new_work_to_wait(make_client: Callable[..., tuple[T
     with svc.store.update(running) as state:
         state.status, state.stage = "review", "review"
     assert client.post(f"/v1/jobs/{waiting}/start").status_code == 202
+
+
+def test_a_clip_over_60_s_is_never_priced_past_the_limit(tmp_path: Path) -> None:
+    """A direct API caller's 95 s clip is priced as 60 s at start, so it reaches prepare and fails there as
+    too_long with its duration, instead of a misleading per-clip cost refusal."""
+    assert estimate_usd(min(95.0, MAX_DURATION_S)) <= Settings().job_usd_cap
+    assert estimate_usd(95.0) > Settings().job_usd_cap

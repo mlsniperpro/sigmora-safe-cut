@@ -21,7 +21,7 @@ from typing import Annotated, NoReturn
 import typer
 
 from safecut import netguard, pipeline
-from safecut.config import load_settings
+from safecut.config import ConfigError, load_settings
 from safecut.contracts import Audit, ContractError, load, validate_job_dir
 from safecut.stages import INTAKE, RECEIPT_HTML, REDACTED, STAGES, Stage, StageError, StageUnavailable
 
@@ -64,7 +64,7 @@ def _guarded(action: Callable[[], None]) -> None:
         _fail(4, str(exc))
     except netguard.NetworkBlocked as exc:
         _fail(5, str(exc))
-    except (pipeline.PipelineError, StageError) as exc:
+    except (pipeline.PipelineError, StageError, ConfigError) as exc:
         _fail(1, str(exc))
 
 

@@ -45,7 +45,7 @@ COLOURS = {
 }
 
 
-def load_runs(root: Path = RESULTS_DIR) -> list[dict[str, Any]]:
+def load_runs(root: Path = RESULTS_DIR, splits: Path = ROOT / "eval" / "splits") -> list[dict[str, Any]]:
     runs: list[dict[str, Any]] = []
     for config_path in sorted(root.glob("*/config.json")):
         metrics_path = config_path.parent / "metrics.json"
@@ -54,6 +54,11 @@ def load_runs(root: Path = RESULTS_DIR) -> list[dict[str, Any]]:
         config = json.loads(config_path.read_text(encoding="utf-8"))
         if str(config.get("git_sha", "")).endswith("-dirty"):
             raise ValueError(f"{config_path.parent.name} ran on uncommitted code; only committed code backs a number")
+        frozen = splits / "test.sha256"
+        if config.get("split") == "test" and (
+            not frozen.is_file() or frozen.read_text(encoding="utf-8").strip() != config.get("split_hash")
+        ):
+            raise ValueError(f"{config_path.parent.name} scored a test split that isn't the frozen one (test.sha256)")
         metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
         runs.append({"dir": config_path.parent.name, "config": config, "metrics": metrics})
     return runs

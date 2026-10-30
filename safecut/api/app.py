@@ -32,7 +32,16 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
 from safecut import netguard, pipeline, receipt
-from safecut.api.access import MAX_UPLOAD_BYTES, Access, ApiRefusal, Grant, RateLimiter, check_caps, estimate_usd
+from safecut.api.access import (
+    MAX_DURATION_S,
+    MAX_UPLOAD_BYTES,
+    Access,
+    ApiRefusal,
+    Grant,
+    RateLimiter,
+    check_caps,
+    estimate_usd,
+)
 from safecut.api.store import Failure, JobNotFound, JobState, JobStore, UploadSpec
 from safecut.api.urls import UPLOAD_TTL_S, Signer, expiry
 from safecut.api.views import Views, iso
@@ -518,7 +527,14 @@ def start(svc: Svc, job_id: str) -> JSONResponse:
             if not auditor_available(svc.settings):
                 raise ApiRefusal(503, "auditor_unavailable", "Safe Cut's final check isn't available right now.")
             if grant is not None:
-                check_caps(svc.settings, svc.ledger, grant, estimate=estimate_usd(duration))
+                check_caps(
+                    # Priced at most at the 60 s limit: a longer clip fails in prepare (free) as too_long with its
+                    # duration, never as a misleading per-clip cost refusal.
+                    svc.settings,
+                    svc.ledger,
+                    grant,
+                    estimate=estimate_usd(min(duration, MAX_DURATION_S) if duration is not None else None),
+                )
         if not (job_dir / INTAKE).is_file():
             dump(
                 Intake(

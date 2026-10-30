@@ -665,7 +665,7 @@ def secret_hit(line: str) -> bool:
 
 
 #: A bearer token pasted anywhere (a service key, or a Meta key whose shape we don't know).
-BEARER = re.compile(r"\bBearer\s+([A-Za-z0-9._~+/=\-]{20,})")
+BEARER = re.compile(r"\bBearer\s+([A-Za-z0-9._~+/=\-]{20,})", re.IGNORECASE)  # the API accepts any case
 
 
 SHIPPED = ("safecut", "eval", "deploy", "scripts", "web/src", "web/e2e", "web/scripts", ".github")
@@ -731,7 +731,7 @@ def e11() -> None:
         for number, line in enumerate(path.read_bytes().decode("utf-8", errors="replace").splitlines(), 1):
             if secret_hit(line):
                 raise CheckFailed(f"{name}:{number}: secret-shaped text in the tree")
-    tracked = sh(["git", "ls-files", "--", *SHIPPED]).stdout.split()
+    tracked = [n for n in sh(["git", "ls-files", "-z", "--", *SHIPPED]).stdout.split("\0") if n]
     for name in tracked:
         path = ROOT / name
         if (

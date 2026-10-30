@@ -24,6 +24,7 @@ from tests.fake_stages import CLIP, EXAMPLE, fake_runner
 def fake_stages(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(Stage, "runner", fake_runner)
     monkeypatch.setattr(runner, "git_sha", lambda: "0123456789abcdef")
+    monkeypatch.setenv("MODEL_API_KEY", "stand-in-key-for-the-fake-stages")  # live runs check it before counting
 
 
 @pytest.fixture
@@ -374,3 +375,24 @@ def test_a_bad_label_refuses_the_run_before_anything_is_counted_or_called(base: 
     with pytest.raises(ValueError, match=r"a\.json"):  # LabelError, before any job is created
         runner.run("dev", "full", replay=False, out=base / "results", splits=splits, base=base)
     assert not (base / "results").exists() or not any((base / "results").iterdir())
+
+
+def test_a_live_run_without_the_key_is_refused_before_it_counts(base: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    splits = base / "splits"
+    runner.freeze("test", splits, base)
+    monkeypatch.delenv("MODEL_API_KEY", raising=False)
+    with pytest.raises(runner.EvalError, match="MODEL_API_KEY"):
+        runner.run("test", "blur_all", replay=False, out=base / "results", splits=splits, base=base)
+    assert runner.runs_made(splits) == []
+
+
+def test_the_report_refuses_a_test_run_on_a_split_that_isnt_the_frozen_one(base: Path) -> None:
+    splits = base / "splits"
+    run_dir = runner.run("dev", "full", replay=True, out=base / "results", splits=splits, base=base)
+    config = json.loads((run_dir / "config.json").read_text())
+    config["split"] = "test"
+    (run_dir / "config.json").write_text(json.dumps(config))
+    with pytest.raises(ValueError, match="frozen"):
+        report.load_runs(base / "results", splits)
+    (splits / "test.sha256").write_text(config["split_hash"] + "\n")
+    assert report.load_runs(base / "results", splits)

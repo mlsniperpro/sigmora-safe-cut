@@ -27,9 +27,9 @@ ROOT = Path(__file__).resolve().parent.parent
 JOBS = "/data/jobs"
 APP_NAME = "safecut"
 
-#: ``SAFECUT_DEPLOY_AUDIT=1`` at deploy time builds the image with the ``audit`` group (EgoBlur + torch), once the
-#: gated weights are on the ``safecut-models`` Volume (BLOCKED.md). Without it the audit runs the bundled YuNet
-#: face detector on OpenCV (the main dependencies ship it), and audit.json and the receipt say so.
+#: ``SAFECUT_DEPLOY_AUDIT=1`` at deploy time builds the image with the ``audit`` group (EgoBlur + torch). Leave it
+#: unset for this CPU-only container: EgoBlur needs a GPU (about 1.5 s per frame per detector on a CPU, BLOCKED.md),
+#: so the deployed audit runs the bundled YuNet face detector on OpenCV, and audit.json and the receipt say so.
 AUDIT_GROUPS = ["audit"] if os.environ.get("SAFECUT_DEPLOY_AUDIT") == "1" else []
 
 #: What the image leaves out of the source packages: bytecode only; every data file ships.
