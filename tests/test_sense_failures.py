@@ -332,3 +332,57 @@ def test_escalation_evidence_follows_time_order_not_completion(tracked: Path, mo
     got = asyncio.run(roles.escalate(ctx, tracks=tracks, disputed=["person:1"], ballots_of={"person:1": ballots},
                                      context_summary="-", transcript_frames="-"))  # fmt: skip
     assert got["person:1"].evidence == "window 0"
+
+
+def test_a_re_run_after_a_phrase_sweep_re_bills_nothing(tracked: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A recurring miss makes the loop sweep its phrase, which adds a concept (and maybe crowded frames) to
+    tracks.json: a re-run of ``roles`` restores its exact input, so nothing is asked again (re-audit 6)."""
+    original = demo.Responder._missed  # pyright: ignore[reportPrivateUsage] -- the demo answer under test
+
+    def recurring(self: demo.Responder, frame: int) -> dict[str, object]:
+        return {**original(self, frame), "recurs": True}
+
+    monkeypatch.setattr(demo.Responder, "_missed", recurring)
+    fake = FakeMeta(tracked)
+    settings = live()
+    with serving(fake):
+        asyncio.run(track_stage.run_async(tracked, settings=settings))
+    run(tracked, fake, "transcribe", "scene", "roles")
+    tracks = load(tracked / "tracks.json", demo.Tracks)
+    assert "envelope" in tracks.concepts  # the sweep ran and added its concept
+    first = {name: (tracked / name).read_bytes() for name in ("tracks.json", "roles.json")}
+    paid = list(fake.calls)
+    run(tracked, fake, "roles")
+    assert fake.calls[len(paid) :] == []
+    assert {name: (tracked / name).read_bytes() for name in first} == first
+
+
+def test_a_child_ruling_on_an_unasked_label_locks_it(tracked: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from safecut.contracts import Job, Tracks  # noqa: PLC0415 -- only this test drives escalation by hand
+    from safecut.scout import calls, votes  # noqa: PLC0415
+    from safecut.scout.schemas import EscalationOut  # noqa: PLC0415
+
+    job = load(tracked / "job.json", Job)
+    tracks = load(tracked / "tracks.json", Tracks)
+
+    async def answer(_ctx: object, **_kw: object) -> calls.Outcome[EscalationOut]:
+        out = EscalationOut.model_validate({"rulings": [{"track_id": "person:2", "role": "child", "evidence": "small",
+                                                         "frames": [], "why_others_wrong": "-"}]})  # fmt: skip
+        return calls.Outcome(status="ok", value=out)
+
+    monkeypatch.setattr(roles.calls, "call_json", answer)
+    ctx = calls.Context(job_dir=tracked, job=job, settings=Settings(replay=True), replay=True)
+    got = asyncio.run(roles.escalate(ctx, tracks=tracks, disputed=["person:1"],
+                                     ballots_of={"person:1": [[votes.Vote()] * 3]}, context_summary="-",
+                                     transcript_frames="-"))  # fmt: skip
+    assert got["person:2"].role == "child"  # asked about person:1 only; the child ruling on person:2 still locks
+    assert roles.role_track("person:2", roles.UNSEEN, got["person:2"]).role == "child"
+
+
+def test_a_corrupt_scene_file_still_writes_roles(tracked: Path) -> None:
+    run(tracked, FakeMeta(tracked), "transcribe", "scene")
+    (tracked / "scene.json").write_text('{"broken": ')
+    run(tracked, FakeMeta(tracked), "roles")
+    result = load(tracked / "roles.json", Roles)
+    assert result.status == "ok"
+    assert all(t.role != "participant" or t.matches_participant is None for t in result.tracks)

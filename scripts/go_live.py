@@ -28,6 +28,11 @@ def clip_id(clip: Path) -> str:
     return re.sub(r"[^a-z0-9_-]+", "-", clip.name.removesuffix(clip.suffix).lower()).strip("-")[:60] or "clip"
 
 
+def fixture_id(given: str) -> str:
+    """An ``--id`` as a fixture directory name: like :func:`clip_id`, but a dot is part of the id (``v1.5``)."""
+    return re.sub(r"[^a-z0-9_-]+", "-", given.lower()).strip("-")[:60] or "clip"
+
+
 def allowed(clip: Path, consented: bool) -> bool:
     """Synthetic clips from ``fixtures/clips/``, or a clip the owner marks consented (AGENTS rules 4–5)."""
     return consented or clip.resolve().parent == SYNTHETIC_CLIPS.resolve()
@@ -119,7 +124,7 @@ def main(argv: list[str] | None = None) -> int:
     from safecut import pipeline  # noqa: PLC0415 -- settings read the env set above
     from safecut.stages import StageUnavailable  # noqa: PLC0415
 
-    name = clip_id(Path(args.id)) if args.id else clip_id(clip)  # never a path: only [a-z0-9_-]
+    name = fixture_id(args.id) if args.id else clip_id(clip)  # never a path: only [a-z0-9_-]
     # A run killed mid-swap leaves the earlier recording aside in fixtures/.go-live/: it still counts as one.
     aside = root / "fixtures" / ".go-live" / f"{name}.old"
     if ((root / "fixtures" / "jobs" / name).exists() or aside.exists()) and not args.replace:
@@ -145,14 +150,15 @@ def main(argv: list[str] | None = None) -> int:
     recorded = (job_dir / "raw").is_dir() and any((job_dir / "raw").rglob("*.json"))
     if not recorded or ((out.exists() or aside.exists()) and (status or stopped)):
         # A run that recorded nothing, or an unfinished one, never replaces an earlier (paid-for) recording.
-        print(f"go-live: kept {out if out.exists() else 'nothing'}; this run's responses stay in {job_dir}",
+        kept = out if out.exists() else aside if aside.exists() else "nothing"
+        print(f"go-live: kept {kept}; this run's responses stay in {job_dir}",
               file=sys.stderr)  # fmt: skip
         return status or 1
     out = keep(job_dir, out, clip)
     data = json.loads((out / "raw" / "manifest.json").read_text())
     print(f"go-live: recorded {data['calls']} call(s), ${data['usd']:.4f} measured "
           f"(+${data['usd_estimated']:.4f} possibly billed) into {out}")  # fmt: skip
-    return status
+    return status or (1 if stopped else 0)  # a stopped run is unfinished: never reported as success
 
 
 if __name__ == "__main__":

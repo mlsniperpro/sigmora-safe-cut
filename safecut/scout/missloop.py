@@ -117,7 +117,7 @@ async def _send(
         if reused is not None:  # this job's own earlier answer (a resumed stage): never re-billed
             try:
                 return await sam.parse_video_events(reused.events, size=(proxy.width, proxy.height))
-            except MetaError:
+            except (MetaError, ValueError):
                 log.warning("recorded miss-loop answer unusable; asking again", extra={"key": c.key})
 
         async def send(fid: str) -> sam.StreamResult:

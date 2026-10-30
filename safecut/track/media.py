@@ -1,7 +1,7 @@
 """The bundled ffmpeg (``imageio-ffmpeg``): packet timestamps, frame counts and stream facts (PRE-A §5b).
 
 ``imageio-ffmpeg`` ships no ffprobe, so timestamps come from ``-c copy -f framemd5`` (exact integer ``pts`` in the
-stream's own time base) and stream facts from ``imageio_ffmpeg.read_frames``' first (meta) item.
+stream's own time base) and stream facts from the header ffmpeg prints for ``-i`` (imageio-ffmpeg's parser).
 """
 
 from __future__ import annotations
@@ -83,23 +83,30 @@ def ffmpeg() -> str:
 #: The address space an ffmpeg child that reads an upload's index may use. A crafted MP4 under the size limit can
 #: declare tens of millions of samples, and ffmpeg indexes them all before printing anything (2 GB for 80M); a
 #: real 60 s clip needs a few MB. Over it, ffmpeg fails and the upload is refused as bad media.
-PROBE_MEMORY_BYTES = 1 << 30
+PROBE_MEMORY_BYTES = 2 << 30
+#: The address space for the transcode of an upload (decode up to the pixel cap, scale, encode ≤ 1280 px), with
+#: its thread counts fixed so a many-core host doesn't multiply it.
+TRANSCODE_MEMORY_BYTES = 6 << 30
+TRANSCODE_THREADS = ("-threads", "4", "-filter_threads", "2")
+#: Probe decodes (one frame) on one thread: ffmpeg's default is about two filter threads per core.
+PROBE_THREADS = ("-threads", "1", "-filter_threads", "1")
 
 
-def limited(cmd: list[str]) -> list[str]:
-    """``cmd`` under the probe memory limit, through ``sh``'s ``ulimit`` (no ``preexec_fn``: the API runs this in
-    worker threads). Where the limit can't be set (macOS), the command still runs."""
-    kib = PROBE_MEMORY_BYTES // 1024
+def limited(cmd: list[str], memory: int | None = None) -> list[str]:
+    """``cmd`` under a memory limit (default: the probe's), through ``sh``'s ``ulimit`` (no ``preexec_fn``: the
+    API runs this in worker threads). Where the limit can't be set (macOS), the command still runs."""
+    kib = (memory or PROBE_MEMORY_BYTES) // 1024
     return ["/bin/sh", "-c", 'ulimit -v "$0" 2>/dev/null; exec "$@"', str(kib), *cmd]
 
 
-def run(args: list[str], *, timeout: float = FFMPEG_TIMEOUT_S, probe: bool = False) -> str:
+def run(args: list[str], *, timeout: float = FFMPEG_TIMEOUT_S, probe: bool = False, memory: int | None = None) -> str:
     """Run the bundled ffmpeg; its stdout, or ``MediaError`` with the tail of stderr. ``probe``: it reads an upload,
-    so it runs under the probe memory limit."""
+    so it runs under the probe memory limit (or ``memory``)."""
     cmd = [ffmpeg(), "-nostdin", "-hide_banner", "-loglevel", "error", *args]
-    cmd = limited(cmd) if probe else cmd
+    cmd = limited(cmd, memory) if probe or memory else cmd
     try:
-        done = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)  # noqa: S603 -- bundled ffmpeg, list argv
+        # errors="replace": an upload's metadata can hold any bytes; a message must never be a UnicodeDecodeError.
+        done = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout, check=False)  # noqa: S603 -- bundled ffmpeg, list argv
     except subprocess.TimeoutExpired as exc:
         raise MediaError(f"ffmpeg timed out after {timeout:.0f} s") from exc
     if done.returncode != 0:
@@ -136,7 +143,10 @@ def packets(path: Path, stream: str = "v:0", *, limit: int = MAX_PACKETS) -> Pac
     More than ``limit`` packets is a ``MediaError`` (ffmpeg is stopped as soon as the count passes it)."""
     cmd = limited([ffmpeg(), "-nostdin", "-hide_banner", "-loglevel", "error", *SAFE_INPUT, "-i", str(path), "-map",
                    f"0:{stream}", "-c", "copy", "-f", "framemd5", "-"])  # fmt: skip
-    with tempfile.TemporaryFile() as err, subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=err, text=True) as proc:  # noqa: S603 -- bundled ffmpeg, list argv
+    with (
+        tempfile.TemporaryFile() as err,
+        subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=err, text=True, errors="replace") as proc,  # noqa: S603 -- bundled ffmpeg, list argv
+    ):
         watchdog = threading.Timer(FFMPEG_TIMEOUT_S, proc.kill)  # ffmpeg may stall without printing a line
         watchdog.start()
         try:
@@ -161,7 +171,7 @@ def decoded_start(path: Path, stream: str = "a:0") -> Fraction:
     """The first *decoded* frame's time, in seconds. It can differ from the first packet's: AAC's priming samples
     and an MP4 edit list's hidden video frames (packets at a negative pts) are discarded by the decoder."""
     # ``demux``: the stream's own time base, so the time is exact (a decoder's default, 1/fps, would round it).
-    out = run([*SAFE_INPUT, "-threads", "1", "-i", str(path), "-map", f"0:{stream}", "-frames:" + stream[0], "1",
+    out = run([*SAFE_INPUT, *PROBE_THREADS, "-i", str(path), "-map", f"0:{stream}", "-frames:" + stream[0], "1",
                "-enc_time_base:" + stream[0], "demux", "-f", "framemd5", "-"], probe=True)  # fmt: skip
     time_base: Fraction | None = None
     for line in out.splitlines():
@@ -185,15 +195,19 @@ def facts(path: Path) -> StreamFacts:
     """The stream header ffmpeg prints for ``-i`` (read under the probe memory limit), parsed by ``imageio-ffmpeg``."""
     cmd = limited([ffmpeg(), "-nostdin", "-hide_banner", *SAFE_INPUT, "-i", str(path)])
     try:
-        done = subprocess.run(cmd, capture_output=True, text=True, timeout=FFMPEG_TIMEOUT_S, check=False)  # noqa: S603 -- bundled ffmpeg, list argv
+        done = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=FFMPEG_TIMEOUT_S,  # noqa: S603 -- bundled ffmpeg, list argv
+                              check=False)  # fmt: skip
     except subprocess.TimeoutExpired as exc:
         raise MediaError(f"ffmpeg timed out after {FFMPEG_TIMEOUT_S:.0f} s reading {path.name}") from exc
     lines = [line for line in done.stderr.splitlines() if line.strip()]
     if not any("Video:" in line for line in lines):  # ffmpeg exits 1 without an output; the header is the answer
         last = lines[-1].strip() if lines else f"ffmpeg exited {done.returncode}"
         raise MediaError(f"can't read {path.name}: {last[:300]}")
+    # Only ffmpeg's own header lines (metadata is printed indented below them): a title saying "Duration: 00:00:01"
+    # or " Video: " must never be read as the clip's.
+    header = [line for line in lines if line.startswith(("Input #", "  Duration:", "  Stream #"))]
     try:
-        meta = cast(dict[str, Any], parse_ffmpeg_header(done.stderr))
+        meta = cast(dict[str, Any], parse_ffmpeg_header("\n".join(header)))
     except (ValueError, IndexError, KeyError) as exc:
         raise MediaError(f"can't read {path.name}: {exc}") from exc
     size = cast(tuple[int, int], tuple(meta.get("size") or (0, 0)))

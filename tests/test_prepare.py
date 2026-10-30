@@ -325,3 +325,35 @@ def test_every_read_of_an_upload_runs_under_the_probe_memory_limit(monkeypatch: 
     with pytest.raises(prepare.PrepareError) as err:
         prepare.probe(clip)
     assert err.value.reason == "bad_media"
+
+
+def test_a_resolution_bomb_is_refused_before_any_full_decode(tmp_path: Path) -> None:
+    bomb = tmp_path / "bomb.mp4"
+    media.run(["-y", "-f", "lavfi", "-i", "color=c=gray:size=8192x8192:rate=30", "-frames:v", "2", "-c:v", "libx264",
+               "-preset", "ultrafast", "-pix_fmt", "yuv420p", str(bomb)])  # fmt: skip
+    with pytest.raises(prepare.PrepareError, match="Mpx limit") as err:
+        prepare.probe(bomb)
+    assert err.value.reason == "bad_media"
+
+
+def test_the_transcode_runs_under_its_own_memory_limit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(media, "TRANSCODE_MEMORY_BYTES", 8 << 20)
+    with pytest.raises(prepare.PrepareError) as err:
+        prepare.prepare(Path("fixtures/clips/counter_30fps_audio.mp4"), tmp_path / "j")
+    assert err.value.reason == "bad_media"
+    assert not (tmp_path / "j" / prepare.PREPARED).exists()
+
+
+def test_metadata_bytes_and_lies_never_break_the_stream_facts(tmp_path: Path) -> None:
+    """A title in Latin-1 (not UTF-8) and a title that says "Duration: 00:00:01.00" on a 3 s clip: the facts come
+    from ffmpeg's own header lines, decoded without ever raising."""
+    clip = tmp_path / "titled.mp4"
+    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+    for title in (b"caf\xe9 \xff\xfe", b"Duration: 00:00:01.00, start: 0.000000, bitrate: 1 kb/s Video: x 16x16"):
+        cmd = [ffmpeg.encode(), b"-y", b"-loglevel", b"error", b"-i", b"fixtures/clips/counter_30fps_audio.mp4",
+               b"-c", b"copy", b"-metadata", b"title=" + title, str(clip).encode()]  # fmt: skip
+        subprocess.run(cmd, check=True)  # noqa: S603 -- fixed argv
+        found = media.facts(clip)
+        assert (found.size, found.audio) == ((320, 180), True)
+        assert abs(found.duration - 3.0) < 0.1
+        assert prepare.probe(clip).video.count == 90

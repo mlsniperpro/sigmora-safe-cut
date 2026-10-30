@@ -42,6 +42,7 @@ SINGULAR = {
     "mens": "man",
     "womens": "woman",
     "peoples": "person",
+    "schoolchildrens": "schoolchild",
 }
 CHILD_SET = frozenset(
     {
@@ -66,6 +67,12 @@ CHILD_SET = frozenset(
         "preteen",
         "tween",
         "kiddo",
+        "youth",
+        "juvenile",
+        "adolescent",
+        "preschooler",
+        "kindergartener",
+        "kindergartner",
     }
 )
 PERSON_SET = (

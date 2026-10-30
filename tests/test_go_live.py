@@ -131,3 +131,23 @@ def test_another_ids_leftover_does_not_fail_a_good_swap(tmp_path: Path) -> None:
     (job / "raw" / "track" / "b.json").write_text("{}")
     out = go_live.keep(job, tmp_path / "fixtures" / "jobs" / "x", CLIP)
     assert (out / "raw" / "manifest.json").is_file()
+
+
+@pytest.mark.parametrize(("given", "want"), [("v1.5", "v1-5"), ("../..", "clip"), ("Hero 1/A", "hero-1-a")])
+def test_ids_keep_their_dots_as_separators(given: str, want: str) -> None:
+    assert go_live.fixture_id(given) == want
+
+
+def test_a_stopped_run_is_not_reported_as_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from safecut.stages import BY_NAME, StageUnavailable  # noqa: PLC0415 -- only this test stops a run
+
+    monkeypatch.setenv("MODEL_API_KEY", "sk-test-not-a-real-key")
+
+    def stops(job_dir: Path, **_kwargs: object) -> None:
+        (job_dir / "raw" / "track").mkdir(parents=True)
+        (job_dir / "raw" / "track" / "a.json").write_text("{}")
+        raise StageUnavailable(BY_NAME["decide"])
+
+    monkeypatch.setattr(pipeline, "analyse", stops)
+    assert go_live.main([str(CLIP), "--id", "stopped", "--out-root", str(tmp_path)]) == 1
+    assert (tmp_path / "fixtures" / "jobs" / "stopped" / "raw" / "track" / "a.json").is_file()  # still kept

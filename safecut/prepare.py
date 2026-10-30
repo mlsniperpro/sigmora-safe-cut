@@ -72,6 +72,8 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+#: The most pixels a source frame may have: 8K (7680×4320, 33 Mpx) passes, a decoding bomb doesn't.
+MAX_SOURCE_PIXELS = 40_000_000
 #: The fewest frames an upload may have.
 MIN_FRAMES = 2
 
@@ -109,6 +111,10 @@ def probe(source: Path) -> SourceProbe:
         facts = media.facts(source)
     except media.MediaError as exc:
         raise PrepareError("bad_media", f"can't read the video stream: {exc}", size_bytes=size) from exc
+    width, height = facts.size
+    if width * height > MAX_SOURCE_PIXELS:  # before any full decode (8K is 33 Mpx)
+        raise PrepareError("bad_media", f"{width}x{height} is over the {MAX_SOURCE_PIXELS // 1_000_000} Mpx limit",
+                           size_bytes=size)  # fmt: skip
     # The header's duration first, so an over-long upload is refused as too_long before its packets are read.
     if facts.duration > config.MAX_CLIP_SECONDS:
         raise PrepareError("too_long", f"{facts.duration:.2f} s is over the {config.MAX_CLIP_SECONDS} s limit",
@@ -158,7 +164,8 @@ def _audio_filter(video: media.Packets, audio_start: Fraction) -> str:
 
 
 def transcode(source: Path, out: Path, probe_result: SourceProbe) -> None:
-    args = ["-y", *media.SAFE_INPUT, "-i", str(source), "-map", "0:v:0", "-vf", _video_filter(probe_result.fps)]
+    args = ["-y", *media.SAFE_INPUT, *media.TRANSCODE_THREADS, "-i", str(source), "-map", "0:v:0", "-vf",
+            _video_filter(probe_result.fps)]  # fmt: skip
     if probe_result.audio is not None and probe_result.audio_start is not None:
         args += ["-map", "0:a:0", "-af", _audio_filter(probe_result.video, probe_result.audio_start), "-c:a", "aac",
                  "-b:a", "128k"]  # fmt: skip
@@ -166,7 +173,7 @@ def transcode(source: Path, out: Path, probe_result: SourceProbe) -> None:
         args += ["-an"]
     args += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
              "-g", str(2 * probe_result.fps), "-movflags", "+faststart", "-map_metadata", "-1", str(out)]  # fmt: skip
-    media.run(args)
+    media.run(args, memory=media.TRANSCODE_MEMORY_BYTES)
 
 
 def extract_keyframes(prepared: Path, out_dir: Path, *, fps: int, frames: int) -> list[int]:

@@ -111,9 +111,9 @@ async def primary(ctx: calls.Context) -> tuple[str, Any]:
 
     try:
         wav = await asyncio.to_thread(extract_wav, ctx.job_dir, ctx.job)
-    except media.MediaError as exc:
-        record(response={"failed": "MediaError", "reason": str(exc)[:300]})
-        return "failed", "MediaError"
+    except (media.MediaError, OSError) as exc:  # no WAV (ffmpeg or the disk): the fallback reads the video instead
+        record(response={"failed": type(exc).__name__, "reason": str(exc)[:300]})
+        return "failed", type(exc).__name__
     try:
         body = await asr.transcribe_raw(ctx.client, wav, model=settings.asr_model,
                                         language_bias=settings.asr_language_bias)  # fmt: skip

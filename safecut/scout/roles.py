@@ -15,7 +15,9 @@ The stage always writes ``roles.json`` (``failed``/``skipped`` with every track 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
+import shutil
 from collections.abc import Callable, Coroutine, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -386,6 +388,7 @@ async def escalate(
     # Per window index, combined in time order (escalation.md: the evidence is the first window's), not in the order
     # the concurrent calls happen to finish.
     rulings: dict[str, dict[int, votes.Ruling | None]] = {d: {} for d in disputed}
+    children: dict[str, votes.Ruling] = {}
 
     async def one(index: int, chunk: list[int]) -> None:
         shown = {d: [f for f in chunk if f in by_id[d].boxes] for d in disputed}
@@ -414,16 +417,33 @@ async def escalate(
             log.info("escalation", extra={"track": got.track_id, "why_others_wrong": got.why_others_wrong[:200]})
         for d in here:
             rulings[d][index] = votes.check_ruling(answers.get(d), present[d])
+        for track_id, ruling in answers.items():
+            # Every tag is drawn on the images: a child ruling on a label it wasn't asked about still locks it.
+            if track_id not in here and ruling.role == "child" and track_id in by_id and is_person(by_id[track_id]):
+                children.setdefault(track_id, ruling)
 
     await asyncio.gather(*(one(i, chunk) for i, chunk in enumerate(chunks)))
-    return {d: votes.apply_rulings([r[i] for i in sorted(r)]) for d, r in rulings.items() if r}
+    out = {d: votes.apply_rulings([r[i] for i in sorted(r)]) for d, r in rulings.items() if r}
+    for track_id, ruling in children.items():
+        if out.get(track_id, votes.NO_ESCALATION).role != "child":
+            out[track_id] = votes.Escalation(role="child", escalated=True, suggested_role=None,
+                                             evidence=ruling.evidence, frames=())  # fmt: skip
+    return out
 
 
 # ---------------------------------------------------------------------------- the stage
 
 
 def load_optional[M: Scene | Transcript](path: Path, model: type[M]) -> M | None:
-    return load(path, model) if path.exists() else None
+    """The earlier stage's file, or ``None`` when it is missing or unreadable: the role pass then runs without that
+    context (no scene participants or speech to support a keep, so it leans to unsure, the safe side)."""
+    if not path.exists():
+        return None
+    try:
+        return load(path, model)
+    except ValueError as exc:  # ContractError: a corrupt file is no context, never a crash before roles.json
+        log.warning("context file unreadable; judged without it", extra={"file": path.name, "error": str(exc)[:200]})
+        return None
 
 
 def role_track(track_id: str, result: votes.TrackResult, escalation: votes.Escalation | None) -> RoleTrack:
@@ -483,6 +503,7 @@ async def miss_loops(ctx: calls.Context, state: State, first: PassResult, scene:
         state.swept += outcome.swept  # only what SAM really searched counts as "already searched"
         state.tracks = outcome.tracks
         dump(state.tracks, ctx.job_dir / TRACKS)
+        stamp_output(ctx.job_dir)  # even if this run dies later, a re-run still knows its own appends
         new_judged = [t for t in outcome.new if som.judged(t)]
         if loop == miss.MAX_LOOPS or not new_judged:
             return  # loop 2's tracks get no role pass: they stay hidden for the creator
@@ -540,24 +561,37 @@ def assemble(state: State, status: calls.Status, escalations: dict[str, votes.Es
     )
 
 
-def track_stage_tracks(tracks: Tracks) -> Tracks:
-    """``tracks.json`` as the ``track`` stage wrote it: without what an earlier run of this stage appended (the miss
-    loop's static boxes, and SAM tracks from requests after the track stage's one sweep per concept). A re-run of
-    ``roles`` on its own output then sees the same input, so its calls match their recordings (never re-billed)."""
-    base = 0
-    while (base < len(tracks.requests) and base < len(tracks.concepts) and tracks.requests[base].kind == "phrase"
-           and tracks.requests[base].concept == tracks.concepts[base]):  # fmt: skip
-        base += 1
-    kept = [t for t in tracks.tracks if t.origin != "static" and not (t.sam_object and t.sam_object.request >= base)]
-    if len(kept) == len(tracks.tracks) and len(tracks.requests) == base:
-        return tracks
-    log.info("roles: earlier miss-loop tracks set aside", extra={"tracks": len(tracks.tracks) - len(kept)})
-    return tracks.model_copy(update={"tracks": kept, "requests": tracks.requests[:base]})
+#: What ``roles`` was given (``tracks.json`` as the track stage wrote it) and the digest of the ``tracks.json`` it
+#: left (with the miss loop's tracks appended). Job-local bookkeeping, never a recording.
+INPUT_COPY = ".roles-input-tracks.json"
+OUTPUT_STAMP = ".roles-output-tracks.sha256"
+
+
+def _digest(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def track_stage_tracks(job_dir: Path) -> Tracks:
+    """``tracks.json`` as the ``track`` stage wrote it. When it is still exactly what an earlier run of this stage
+    left, that run's input is restored (tracks, requests, concepts and crowded frames), so a re-run of ``roles`` on
+    its own output asks the same calls and reuses their recordings (never re-billed); otherwise it is the input."""
+    path, copy, stamp = job_dir / TRACKS, job_dir / INPUT_COPY, job_dir / OUTPUT_STAMP
+    if copy.is_file() and stamp.is_file() and stamp.read_text().strip() == _digest(path):
+        log.info("roles: this stage's earlier output; starting from its input again")
+        shutil.copyfile(copy, path)
+    else:
+        shutil.copyfile(path, copy)
+        stamp.unlink(missing_ok=True)
+    return load(path, Tracks)
+
+
+def stamp_output(job_dir: Path) -> None:
+    (job_dir / OUTPUT_STAMP).write_text(_digest(job_dir / TRACKS) + "\n")
 
 
 async def roles(ctx: calls.Context) -> Roles:
     job = ctx.job
-    tracks = track_stage_tracks(load(ctx.job_dir / TRACKS, Tracks))
+    tracks = track_stage_tracks(ctx.job_dir)
     scene = load_optional(ctx.job_dir / SCENE, Scene)
     transcript = load_optional(ctx.job_dir / TRANSCRIPT, Transcript)
     judged = [t for t in tracks.tracks if som.judged(t)]
@@ -584,7 +618,9 @@ async def roles(ctx: calls.Context) -> Roles:
         ctx, tracks=state.tracks, disputed=disputed, ballots_of=state.ballots_of, context_summary=summary,
         transcript_frames=transcript_by_frames(job, transcript),
     )  # fmt: skip
-    return assemble(state, status, escalations, ctx.settings.role_model, keyframes)
+    result = assemble(state, status, escalations, ctx.settings.role_model, keyframes)
+    stamp_output(ctx.job_dir)
+    return result
 
 
 async def run_async(

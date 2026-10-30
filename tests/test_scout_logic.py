@@ -489,3 +489,9 @@ def test_a_child_vote_locks_even_where_the_track_was_not_shown_or_asked() -> Non
 def test_more_child_words_lock(phrase: str) -> None:
     got = miss.concept_for(miss.normalise(phrase))
     assert (got.concept, got.child_phrase) == ("person", True)
+
+
+@pytest.mark.parametrize("phrase", ["schoolchildren's bag", "a youth", "two adolescents", "preschoolers"])
+def test_possessives_and_more_child_words_lock(phrase: str) -> None:
+    got = miss.concept_for(miss.normalise(phrase))
+    assert (got.concept, got.child_phrase) == ("person", True)

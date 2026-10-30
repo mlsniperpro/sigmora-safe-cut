@@ -235,12 +235,23 @@ def test_a_clip_too_short_for_sam_fails_before_any_call(tmp_path: Path) -> None:
                "ultrafast", "-pix_fmt", "yuv420p", str(clip)])  # fmt: skip
     job = tmp_path / "short"
     prepare.prepare(clip, job)
-    with pytest.raises(stage.TrackError, match="needs 15"):
+    with pytest.raises(stage.ClipTooShort, match="needs 15") as err:
         asyncio.run(stage.run_async(job, settings=Settings(sam_fps=8, replay=True)))
     assert not (job / "tracks.json").exists()
+    from safecut.api.worker import failure_for  # noqa: PLC0415 -- the service's reading of the refusal
+
+    failure, transient = failure_for(err.value, "track")
+    assert (failure.reason, transient) == ("bad_media", False)  # the upload's problem, never "internal"
 
 
 def test_a_huge_object_id_fails_closed() -> None:
     text = stream_text({"1234567890": {3: (10, 10, 20, 20)}}, (64, 48))
-    with pytest.raises(MetaIncomplete, match="object id of 10 digits"):
+    with pytest.raises(MetaIncomplete, match="10 or more digits"):
+        asyncio.run(sam.parse_video_events(events(text, response_id="r", frames_billed=4), size=(64, 48)))
+
+
+def test_a_huge_mask_size_fails_closed() -> None:
+    text = stream_text({"1": {3: (10, 10, 20, 20)}}, (64, 48)).replace("data=10,10,", "data=12345678901,10,", 1)
+    assert "data=12345678901," in text
+    with pytest.raises(MetaIncomplete, match="10 or more digits"):
         asyncio.run(sam.parse_video_events(events(text, response_id="r", frames_billed=4), size=(64, 48)))

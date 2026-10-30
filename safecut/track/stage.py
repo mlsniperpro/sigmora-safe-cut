@@ -42,6 +42,17 @@ class TrackError(RuntimeError):
     """The track stage can't produce a trustworthy ``tracks.json`` (a failed sweep, a bad proxy)."""
 
 
+class ClipTooShort(TrackError):
+    """Too short for SAM to confirm any object: a media rejection (it carries ``prepare``'s ``reason`` code, so the
+    service shows it as the upload's problem, not an internal error)."""
+
+    reason = "bad_media"
+
+    def __init__(self, message: str, *, duration_s: float) -> None:
+        super().__init__(message)
+        self.duration_s = duration_s
+
+
 class RecordedFailure(MetaError):
     """Replay of a SAM request that failed when it was recorded (the miss loop's static-box path)."""
 
@@ -177,7 +188,7 @@ async def sweep(
         if reused is not None:
             try:
                 seg = await sam.parse_video_events(reused.events, size=(proxy.width, proxy.height))
-            except MetaError as exc:
+            except (MetaError, ValueError) as exc:
                 seg = None  # a recorded answer that never parsed is no checkpoint: ask again (it is overwritten)
                 log.warning("recorded SAM answer unusable; asking again", extra={"key": call.key, "error": str(exc)})
             if seg is not None and all(d.frame < proxy.frames for d in seg.detections):
@@ -346,9 +357,9 @@ async def run_async(
     if proxy.frames < SAM_HOTSTART_FRAMES:
         # SAM confirms an object only after 15 of its input frames (API-NOTES §5b): a shorter proxy would come back
         # with no tracks at all and hide nothing. Fail the stage (the job publishes nothing) before any call.
-        raise TrackError(
-            f"the SAM proxy has {proxy.frames} frames; SAM needs {SAM_HOTSTART_FRAMES} to confirm anything"
-        )
+        seconds = job.frames / job.fps
+        raise ClipTooShort(f"too short: the {seconds:.2f} s clip makes {proxy.frames} SAM frames; SAM needs "
+                           f"{SAM_HOTSTART_FRAMES} to confirm anything", duration_s=seconds)  # fmt: skip
     calls = phrase_calls(concepts)
     parsed = await run_calls(
         job_dir, job, proxy, calls, settings=settings, replay_mode=replay_mode, client=client, responder=responder
