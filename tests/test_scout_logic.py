@@ -394,3 +394,50 @@ def test_held_tracks_skip_unsent_frames_bad_boxes_and_repeats() -> None:
     tracks = boxes.held_tracks(job, [([0, 30], answer), ([30, 60], repeat)], "muse-spark-1.3")
     assert [(t.track_id, t.first, t.last) for t in tracks] == [("face:1", 0, 29), ("face:2", 30, 59)]
     assert tracks[0].boxes[0] == (128, 36, 256, 188)
+
+
+def test_a_window_with_the_track_only_on_crowded_frames_still_counts() -> None:
+    """A child vote in a window where the track was shown only on crowded frames still locks it (rule 3), and an
+    object there stays sensitive; such a window can never count toward a keep."""
+    from safecut.scout import roles  # noqa: PLC0415 -- the aggregation needs the stage's window type
+
+    face = Track(track_id="face:7", concept="face", first=90, last=210, boxes=dict.fromkeys(range(90, 211),
+                 (10, 10, 50, 50)), source="sam-3.1", prompt="face")  # fmt: skip
+    screen = Track(track_id="screen:1", concept="screen", first=90, last=210, boxes=dict.fromkeys(range(90, 211),
+                   (60, 10, 90, 50)), source="sam-3.1", prompt="screen")  # fmt: skip
+    calm = roles.Window(
+        index=0, frames=[90, 120], per_frame=[(90, ["face:7", "screen:1"]), (120, ["face:7", "screen:1"])]
+    )
+    crowd = roles.Window(index=1, frames=[180, 210], per_frame=[(180, ["face:7", "screen:1"]), (210, ["face:7"])],
+                         crowded=frozenset({180, 210}))  # fmt: skip
+    clear = ObjectVote(sensitive=False, content="blank", frames=(90, 120))
+    keep = Vote(tracks={"face:7": TrackVote("participant", "host", (90, 120))}, objects={"screen:1": clear})
+    child = Vote(tracks={"face:7": TrackVote("child", "a child", (180, 210))},
+                 objects={"screen:1": ObjectVote(sensitive=False, content="blank", frames=(180,))})  # fmt: skip
+    result = roles.PassResult(windows=[calm, crowd], ballots=[[keep] * 3, [child] * 3])
+    judged = roles.aggregate(result, [face, screen])
+    assert judged.person["face:7"].role == "child"
+    assert judged.objects["screen:1"].sensitive  # crowded frames are never valid evidence, so never cleared
+    shy = Vote(tracks={"face:7": TrackVote("participant", "host", (180, 210))})
+    judged = roles.aggregate(roles.PassResult(windows=[calm, crowd], ballots=[[keep] * 3, [shy] * 3]), [face])
+    assert judged.person["face:7"].role == "unsure"
+
+
+def test_a_child_miss_inside_an_adults_box_is_still_a_miss() -> None:
+    def tracked(concept: str, *, child: bool = False, box: tuple[int, int, int, int] = (500, 200, 900, 700)) -> Track:
+        return Track(track_id=f"{concept}:1", concept=concept, first=420, last=420, boxes={420: box},
+                     source="sam-3.1", prompt=concept, child_phrase=child)  # fmt: skip
+
+    child = miss.validate(raw("small child", point=(500, 500)), sent=SENT, width=W, height=H)
+    assert child is not None
+    assert child.concept.child_phrase
+    assert miss.untracked([child], [tracked("person")]) == [child]  # an adult's box doesn't track a child
+    assert miss.untracked([child], [tracked("person", child=True)]) == []
+    # A boxed miss counts as tracked only if a same-concept box covers half of it, not just its point.
+    boxed = miss.validate(raw("envelope", point=(500, 500), box=(400, 400, 600, 600)), sent=SENT, width=W, height=H)
+    assert boxed is not None
+    assert boxed.box is not None
+    x1, y1, x2, y2 = boxed.box
+    corner = (x1 + (x2 - x1) * 2 // 5, y1 + (y2 - y1) * 2 // 5, x2 + 50, y2 + 50)  # holds the point, ~36 % of the box
+    assert miss.untracked([boxed], [tracked("envelope", box=corner)]) == [boxed]
+    assert miss.untracked([boxed], [tracked("envelope", box=(x1, y1, x2, y2))]) == []

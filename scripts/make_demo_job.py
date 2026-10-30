@@ -43,8 +43,8 @@ from safecut import prepare
 from safecut.config import Settings
 from safecut.contracts import Job, Track, Tracks, load
 from safecut.meta import replay, sam
+from safecut.scout import baselines, grid, roles, scene
 from safecut.scout import boxes as keyframe_boxes
-from safecut.scout import grid, roles, scene
 from safecut.speech import stage as speech
 from safecut.track import stage as track_stage
 from safecut.track.axes import from_proxy_table
@@ -99,7 +99,8 @@ def _child(f: int) -> tuple[int, int]:
 
 FIGURES: dict[str, tuple[Figure, Any]] = {
     "e1": (Figure("e1", (40, 120, 235), 32, 110, 200, (range(FRAMES),)), _host),
-    "e2": (Figure("e2", (60, 170, 60), 31, 104, 200, (range(60, 330),)), _guest),
+    # The guest steps out for over 2 s and comes back briefly (a participant re-entry: SHIP's E6 review case).
+    "e2": (Figure("e2", (60, 170, 60), 31, 104, 200, (range(60, 262), range(330, 345))), _guest),
     "e3": (Figure("e3", (180, 90, 40), 19, 64, 110, (range(20, 140), range(200, 290))), _passerby),
     "e4": (Figure("e4", (160, 40, 150), 15, 42, 70, (range(90, 210),)), _child),
 }
@@ -214,10 +215,10 @@ def write_clip(path: Path) -> None:
 
 CATEGORY = {"e1": "participant", "e2": "participant", "e3": "bystander", "e4": "child", "e5": "screen",
             "e6": "plate", "e7": "document"}  # fmt: skip
-DIFFICULTY = {"e3": ["reentry"], "e4": ["small"]}
+DIFFICULTY = {"e2": ["reentry"], "e3": ["reentry"], "e4": ["small"]}
 REASON = {
     "e1": "the host: introduces herself as Amina and talks to camera",
-    "e2": "the guest: introduced by the host as her friend Kev, answers her",
+    "e2": "the guest: introduced by the host as her friend Kev, answers her, steps out and comes back",
     "e3": "walks past behind them twice, never addressed",
     "e4": "a child crossing the middle of the frame",
     "e5": "a wall screen showing an email inbox with names",
@@ -321,10 +322,10 @@ class Responder:
 
     def __call__(self, stage: str, key: str, info: Mapping[str, Any]) -> replay.RawCall:
         answer = {"sam": self.sam, "asr": self.asr, "scene": self.scene, "roles": self.vote,
-                  "escalate": self.escalate, "boxes": self.boxes}[stage](key, info)  # fmt: skip
+                  "escalate": self.escalate, keyframe_boxes.STAGE: self.boxes}[stage](key, info)  # fmt: skip
         model = {"sam": self.settings.sam_model, "asr": self.settings.asr_model, "scene": self.settings.scene_model,
                  "roles": self.settings.role_model, "escalate": self.settings.escalate_model,
-                 "boxes": self.settings.role_model}[stage]  # fmt: skip
+                 keyframe_boxes.STAGE: self.settings.role_model}[stage]  # fmt: skip
         request = {k: v for k, v in info.items() if k in ("kind", "concept", "text", "sam_frames", "vote", "frames")}
         if stage == "sam":
             request["file_id"] = SYNTHETIC_FILE
@@ -413,6 +414,8 @@ class Responder:
     def _person(self, entity: str | None, track: Track, k: int) -> tuple[str, str, int | None]:
         if entity == "e1":
             return "participant", "The host: introduces herself as Amina (S1) and talks to camera.", 0
+        if entity == "e2" and track.reentry_of is not None and k == 2:
+            return "unsure", "Back on one frame only, half turned away; can't confirm it is Kev.", None
         if entity == "e2":
             return "participant", "Introduced by the host as her friend Kev; he answers her (S2).", 1
         if entity == "e4":
@@ -461,6 +464,13 @@ class Responder:
         rulings: list[dict[str, Any]] = []
         for track_id in cast(Sequence[str], info["disputed"]):
             frames = [f for f in sent if f in tracks[track_id].boxes][:2]
+            if entity_of(tracks[track_id]) == "e2":
+                rulings.append({
+                    "track_id": track_id, "role": "participant", "frames": frames,
+                    "evidence": "Same green top and build as Kev, back at the host's side where he stood.",
+                    "why_others_wrong": "The unsure judge weighed the turned head over the clothes and position.",
+                })  # fmt: skip
+                continue
             rulings.append({
                 "track_id": track_id, "role": "bystander", "frames": frames,
                 "evidence": "Walks past behind the host and guest; nobody addresses or introduces them.",
@@ -488,6 +498,8 @@ async def record(clip: Path, job_dir: Path) -> None:
     await speech.run_async(job_dir, settings=settings, responder=responder)
     await scene.run_async(job_dir, settings=settings, responder=responder)
     await roles.run_async(job_dir, settings=settings, responder=responder)
+    # SHIP's eval harness replays the muse_no_track detector from the main recordings (``raw/baseline_muse/``).
+    await baselines.muse_keyframe_boxes_async(job_dir, replay=False, settings=settings, responder=responder)
 
 
 #: Baselines whose perception differs from the full pipeline, recorded under ``variants/<name>/raw/`` (EVAL §3).

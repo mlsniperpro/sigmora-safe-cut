@@ -148,6 +148,10 @@ class Window:
     def sent(self) -> frozenset[int]:
         return frozenset(self.frames)
 
+    def shown(self, track_id: str) -> bool:
+        """Whether this window showed the track at all (crowded frames included)."""
+        return any(track_id in labels for _, labels in self.per_frame)
+
     def present(self, track_id: str) -> frozenset[int]:
         """The keyframes that can count as this track's evidence: sent, showing it, and not crowded."""
         return frozenset(f for f, labels in self.per_frame if track_id in labels and f not in self.crowded)
@@ -294,9 +298,11 @@ def aggregate(result: PassResult, judged: Sequence[Track]) -> Judged:
         per_window: list[votes.TrackResult] = []
         per_object: list[votes.ObjectResult] = []
         for window, ballots in zip(result.windows, result.ballots, strict=True):
-            present = window.present(track.track_id)
-            if not present or len(ballots) != votes.VOTES:
+            # A window that showed the track only on crowded frames is still judged, with no valid evidence: a
+            # child vote there still locks it, anything else there can't count toward a keep.
+            if not window.shown(track.track_id) or len(ballots) != votes.VOTES:
                 continue
+            present = window.present(track.track_id)
             if is_person(track):
                 per_window.append(votes.judge_window(track.track_id, ballots, present))
             else:

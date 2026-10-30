@@ -15,8 +15,8 @@ from safecut import pipeline, prepare
 from safecut.config import Settings
 from safecut.contracts import Roles, Scene, Tracks, Transcript, load, validate_job_dir
 from safecut.meta import replay, sam
+from safecut.scout import baselines, roles, scene
 from safecut.scout import boxes as keyframe_boxes
-from safecut.scout import roles, scene
 from safecut.speech import stage as speech
 from safecut.track import stage as track_stage
 from safecut.track.axes import backfill_frames
@@ -98,18 +98,26 @@ def test_roles_match_the_scene(replayed: Path) -> None:
     for t in result.tracks:
         by_entity.setdefault(_entity(t.track_id, replayed), set()).add(t.role)
     assert by_entity["e1"] == {"participant"}
-    assert by_entity["e2"] == {"participant"}
+    assert by_entity["e2"] == {"participant", "unsure"}  # the guest's brief return is a new ID: never auto-kept
     assert by_entity["e3"] == {"bystander", "unsure"}  # the re-entry is a new ID, disputed and escalated
     assert by_entity["e4"] == {"child"}
     reentered = [t for t in result.tracks if t.role == "unsure"]
-    assert reentered
-    assert all(t.escalated and t.suggested_role == "bystander" for t in reentered)
     tracks = {t.track_id: t for t in load(replayed / "tracks.json", Tracks).tracks}
-    assert all(tracks[t.track_id].reentry_of is not None for t in reentered)
+    assert all(t.escalated and tracks[t.track_id].reentry_of is not None for t in reentered)
+    suggested = {_entity(t.track_id, replayed): t.suggested_role for t in reentered}
+    # The passer-by's escalation suggests bystander; the guest's return is on one keyframe only, so a ruling of
+    # "participant" can't cite the two frames it needs and suggests nothing (the reviewer decides, SHIP's E6 case).
+    assert suggested == {"e3": "bystander", "e2": None}
+    returned = [tracks[t.track_id] for t in reentered if _entity(t.track_id, replayed) == "e2"]
+    assert {result_role(result, tracks[t.reentry_of or ""].track_id) for t in returned} == {"participant"}
     assert {o.track_id: o.sensitive for o in result.objects} == {
         "license plate:1": True, "screen:1": True, "envelope:1": True,
     }  # fmt: skip
     assert [m.track_ids for m in result.missed] == [["envelope:1"]]  # found by the miss loop, not the base sweep
+
+
+def result_role(result: Roles, track_id: str) -> str:
+    return next(t.role for t in result.tracks if t.track_id == track_id)
 
 
 def test_tracks_follow_the_truth(replayed: Path) -> None:
@@ -209,3 +217,28 @@ def test_detector_only_and_blur_all_replay_from_the_main_recordings(tmp_path: Pa
 
 def area(box: tuple[int, int, int, int]) -> int:
     return (box[2] - box[0]) * (box[3] - box[1])
+
+
+def test_muse_keyframe_boxes_replays_the_main_recordings(tmp_path: Path) -> None:
+    """SHIP's E9 hook: per 1 fps keyframe, Muse's boxes for the sensitive things (no whole-person boxes), replayed
+    offline from ``raw/baseline_muse/``."""
+    job = tmp_path / "demo"
+    pipeline.create_job(Path(MANIFEST["source"]), job, mode="replay")
+    shutil.copytree(DEMO / replay.RAW, job / replay.RAW)
+    prepare.run(job)
+    found = baselines.muse_keyframe_boxes(job, replay=True)
+    assert sorted(found) == list(range(0, demo.FRAMES, 30))
+    for frame, got in found.items():
+        want = [b for e in ("e1", "e2", "e3", "e4") if (b := demo.face_box(e, frame)) is not None]
+        want += [b for e in ("e5", "e6", "e7") if (b := demo.object_box(e, frame)) is not None]
+        assert len(got) == len(want), frame
+        for truth in want:  # each sensitive thing has a box over it (grid rounding: within a few pixels)
+            assert any(demo.iou(b, truth) >= 0.8 for b in got), (frame, truth)
+
+
+def test_muse_keyframe_boxes_fails_loudly_without_recordings(tmp_path: Path) -> None:
+    job = tmp_path / "demo"
+    pipeline.create_job(Path(MANIFEST["source"]), job, mode="replay")
+    prepare.run(job)
+    with pytest.raises(replay.ReplayMissing):
+        baselines.muse_keyframe_boxes(job, replay=True)
