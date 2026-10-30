@@ -1,7 +1,7 @@
 AUDITED_COMMIT: b9b13d8
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
-CLEAN_AUDITS_IN_A_ROW: 0
+CLEAN_AUDITS_IN_A_ROW: 1
 
 # SAFECUT-SENSE re-audit log
 
@@ -108,3 +108,17 @@ fuzz ran 9 full jobs on hostile schema-valid answers, all valid).
 - L (reasoning) `clip_id` could end in a separator → stripped (`test_clip_ids_never_end_in_a_separator`); fallback turns unbounded → at most 300 (`test_the_fallback_keeps_a_bounded_number_of_turns`)
 - Decision: person misses inside a same-concept track's box are tracked by it (audit 3's rule; a child miss counts only for a child_phrase track); per-word phrase length, non-ASCII SoM tags drawn as `?`, replay failure text in a scene summary, a hand-edited corrupt ASR recording, and `--usd-cap` rounding are cosmetic or need tampered input: recorded, not changed.
 - Added after audit 7: a hypothesis property that any schema-valid votes and rulings assemble into a roles.json the contracts accept (`test_any_schema_valid_answers_assemble_into_a_valid_roles_file`).
+
+## Audit 9 (two auditors) at 3b6d537: 0 critical, 0 high, 0 medium, 7 low: CLEAN
+Both halves clean at Medium and above (interrupted by a usage limit at 18:05 UTC and resumed at 19:23 from their saved
+state). The reasoning half fuzzed ~45 full speech/scene/roles runs with hostile schema-valid answers and 3,000
+multi-window cases against an independent oracle: every output valid, every participant on 3/3 valid votes over ≥ 2
+distinct non-crowded frames. The perception half prepared 20+ legitimate clip shapes (rates, rotation, 10-bit HDR,
+8K, fragmented MP4, edit-list trims, audio first or longer) with no regression from the `-t` cut.
+- L (reasoning) the roles property was a weak oracle → it now asserts the keep rule itself (≥ 2 distinct cited frames, none crowded or unsent); A1–A16 and the crowded-frame tests already covered the rules
+- L a WAV half-written by a failed extract stayed in the job → removed (`test_a_failed_wav_extract_leaves_no_partial_file`)
+- Decision: a stream that changes resolution mid-stream (crafted: small first frame, huge later ones) is bounded by the 6 GiB transcode limit and the timeout; `times` still match the read-back frames' own count. Not refused upfront (that would need a full decode).
+- Decision: `-t` at the video span could drop a final frame only if the last packet reports a zero duration (not reproducible with a normal muxer; at most 1/fps).
+- Decision: an attached picture (cover art) as the first video stream is refused as bad_media (typed, fail closed).
+- Decision: a track with one failed vote in each of several windows counts as all-failed and isn't escalated: it stays hidden (fail closed); escalation is advisory.
+- Decision: votes 2 and 3 start when vote 1 answers or after 20 s; the "first output item" trigger needs a streaming hook the client doesn't expose. Latency only.
