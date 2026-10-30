@@ -1,0 +1,23 @@
+{
+ "run_id": "20261030T145018Z-dev-blur_all-c573ca2",
+ "split": "dev",
+ "variant": "blur_all",
+ "replay": true,
+ "synthetic": true,
+ "git_sha": "c573ca20354f1436bce57cf7b3fc93c6da2845bb",
+ "split_hash": "1fd76cc3074b5e5f6337d92c3d51a6c7a1448c4b3c5cdfd047d43cb2ffa4ea04",
+ "created_at": "2026-10-30T14:50:18.620456Z",
+ "clips": [
+  "fixtures/clips/SC-A-91-synthetic-20261030.mp4"
+ ],
+ "models": {
+  "sam": "sam-3.1",
+  "scene": "muse-spark-1.3",
+  "roles": "muse-spark-1.3",
+  "escalate": "muse-spark-1.3",
+  "asr": "muse-voice-transcribe-1.0",
+  "redteam": "muse-spark-1.3",
+  "auditor": "egoblur-gen2"
+ },
+ "detail": {}
+}
