@@ -20,6 +20,7 @@ from safecut.config import Settings
 from safecut.contracts import (
     Approval,
     Audit,
+    ContractError,
     DataHandling,
     Decisions,
     FilesIndex,
@@ -81,8 +82,9 @@ def is_replay(job_dir: Path) -> bool:
     return intake.exists() and load(intake, Intake).mode == "replay"
 
 
-class ReceiptError(ValueError):
-    """The job can't be receipted yet (no audit, no decisions)."""
+class ReceiptError(ContractError):
+    """The job can't be receipted: its files don't support one (no audit or approval, a stale video or audit, a job
+    directory that doesn't validate). A contract failure, so every caller reports it like one."""
 
 
 def _recorded_model(folder: Path) -> str | None:

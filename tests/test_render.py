@@ -6,9 +6,11 @@ from __future__ import annotations
 import json
 import math
 import shutil
+import subprocess
 from pathlib import Path
 
 import cv2
+import imageio_ffmpeg
 import numpy as np
 import pytest
 
@@ -243,3 +245,16 @@ def test_coverage_scores_what_the_renderer_hides(rendered: Path) -> None:
     assert coverage(plan, 30, (0, 0, 0, 0), 320, 240) == 1.0
     assert ObjectScore("x", should_hide=True).share == 1.0
     assert ObjectScore("x", should_hide=False).share == 0.0
+
+
+def test_the_original_audio_is_muxed_back_bit_for_bit(rendered: Path) -> None:
+    """WP4 step 1: "mux the original audio back": the prepared clip's audio packets, not a second lossy encode."""
+
+    def audio_packets(path: Path) -> bytes:
+        argv = [imageio_ffmpeg.get_ffmpeg_exe(), "-v", "error", "-i", str(path), "-map", "0:a:0", "-c:a", "copy",
+                "-f", "adts", "-"]  # fmt: skip
+        return subprocess.run(argv, capture_output=True, check=True).stdout  # noqa: S603 -- fixed argv, bundled ffmpeg
+
+    original = audio_packets(rendered / "prepared.mp4")
+    assert original
+    assert audio_packets(rendered / REDACTED) == original

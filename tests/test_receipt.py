@@ -287,3 +287,17 @@ def test_the_escalation_model_is_the_one_its_calls_recorded(job_dir: Path) -> No
     audit = load(job_dir / "audit.json", Audit)
     models = models_ran(job_dir, SETTINGS.model_copy(update={"escalate_model": "muse-wonder-1.0"}), audit)
     assert models["escalate"] == "muse-spark-1.3"
+
+
+def test_a_refused_receipt_is_one_line_from_the_cli(job_dir: Path) -> None:
+    """A receipt the job's files can't support is a contract failure: the CLI says why in one line, no traceback."""
+    from typer.testing import CliRunner  # noqa: PLC0415 -- only this test drives the CLI
+
+    from safecut.cli import app  # noqa: PLC0415
+
+    (job_dir / "audit.json").unlink()
+    result = CliRunner().invoke(app, ["receipt", "--job", str(job_dir), "--replay"])
+    assert result.exit_code != 0
+    assert "safecut: " in result.output
+    assert "Traceback" not in result.output
+    assert isinstance(ReceiptError("x"), ContractError)
