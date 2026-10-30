@@ -50,7 +50,7 @@ export function modelList(job: Pick<JobResponse, "models" | "roles" | "scene" | 
   // Tracks come only from SAM 3.1 (the model §4.3's own copy names); the rest name their model.
   const named = job.models ? Object.values(job.models) : [job.roles?.model, job.scene?.model, job.tracks.length ? "sam-3.1" : null, job.transcript?.source];
   const ids = [...new Set(named.filter((id): id is string => !!id))];
-  return ids.length ? ids.map((id) => MODEL_NAMES[id] ?? id).join(" · ") : null;
+  return ids.length ? ids.map((id) => (Object.hasOwn(MODEL_NAMES, id) ? MODEL_NAMES[id] : id)).join(" · ") : null;
 }
 
 export function buildWhy(job: JobResponse, itemId: string, local: LocalItemState): WhyModel | null {

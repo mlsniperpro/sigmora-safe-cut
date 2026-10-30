@@ -87,10 +87,11 @@
 - Audit round 41 (on 3c5f1ea): 1 medium (the sample's Safe Cut render left the passer-by's face visible: 4 px pixelate cells) and 1 low (the in-front passer-by drawn bigger than tracked), fixed in the round-41 commit with the sample media, mock and screenshots regenerated. On that commit: 883 tests, e2e 143/143.
 - Audit round 42 (on f76be71): 2 low (pixelate covers drawn solid after a paused seek; overprinted keyframe labels), fixed in the round-42 commit. Break-it passed on f76be71 (883 tests, e2e 143/143; 300,000 fuzz sequences, 352 s) but is void now. On the round-42 commit: 884 tests, e2e 144/144.
 - Audit round 43 (on c83e97a): 1 low (paused redraws mapped currentTime, so a scrub late in a frame drew the next frame; partly a round-42 regression), fixed in the round-43 commit. Break-it passed on c83e97a (884 tests, e2e 144/144; 300,000 fuzz sequences, 382 s) but is void now. On the round-43 commit: 885 tests, e2e 145/145.
+- Audit round 44 (on 3c6ce0c): 1 low (prototype names as mock job IDs and codes), fixed in the round-44 commit with two more own-key lookups. Break-it passed on 3c6ce0c (885 tests, e2e 145/145; 300,000 fuzz sequences, 400 s) but is void now. On the round-44 commit: 893 tests, e2e 145/145.
 - CLEAN_AUDITS_IN_A_ROW is 0. Two clean full audits are still needed, then a fresh break-it.md (fresh clone + FUZZ_RUNS=100000).
 
 ## Next steps, in order
-1. Run the next full audit round on HEAD (round 44 is next). If it finds anything, fix it and reset CLEAN_AUDITS_IN_A_ROW to 0. Repeat until two consecutive audits find nothing. Then set AUDITED_COMMIT to the last code commit and CLEAN_AUDITS_IN_A_ROW to 2.
+1. Run the next full audit round on HEAD (round 45 is next). If it finds anything, fix it and reset CLEAN_AUDITS_IN_A_ROW to 0. Repeat until two consecutive audits find nothing. Then set AUDITED_COMMIT to the last code commit and CLEAN_AUDITS_IN_A_ROW to 2.
 2. After the last code change, run the fresh-clone `checks.sh` (`git clone --branch wp6-web` into an empty dir) and the FUZZ_RUNS=100000 agreement soak. Rewrite break-it.md with TESTED_COMMIT set to that commit.
 3. Run the gate until it prints `GATE: PASS` on the pushed HEAD. Then post the final status on PR #4, including the gate's last line.
 4. If time remains: live deployment (owner sets up Vercel), Safari/Firefox runs.

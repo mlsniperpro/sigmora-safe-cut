@@ -24,7 +24,7 @@ export function trackLabel(trackId: string): string {
   }
   const concept = match[1] ?? "";
   const n = match[2] ?? "";
-  const word = CONCEPT_WORDS[concept] ?? concept.charAt(0).toUpperCase() + concept.slice(1);
+  const word = (Object.hasOwn(CONCEPT_WORDS, concept) ? CONCEPT_WORDS[concept] : undefined) ?? concept.charAt(0).toUpperCase() + concept.slice(1);
   return `${word} ${n}`;
 }
 

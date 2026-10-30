@@ -1,4 +1,4 @@
-AUDITED_COMMIT: c83e97a
+AUDITED_COMMIT: 3c6ce0c
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -562,3 +562,13 @@ On the fix commit: `checks.sh` exit 0, 884 tests, e2e 144/144.
 Noted, not counted: the auditor suspected that an ack for a later edit arriving before an earlier edit's ack could revert the later one, but did not reproduce it; the model-based agreement fuzz (interleaved acks and rejects over pending edits) finds client and server state agreeing.
 
 On the fix commit: `checks.sh` exit 0, 885 tests, e2e 145/145.
+
+## Round 44 (audited 3c6ce0c by a Sonnet reviewer: round 43's paused-redraw fix against the frame on screen at fractions 0.1–0.9, fast seeks, play/pause, the toggle, resizes, chip seeks, edits while paused, the rAF fallback and a §10.7 URL refresh; then URL edge cases, a live-mode flow and the keyboard paths; fixes in the next commit)
+
+0 critical, 0 high, 0 medium, 1 low. CLEAN_AUDITS_IN_A_ROW stays 0. Round 43's fix held in every case.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | low | Mock mode: `/jobs/__proto__` (and `__defineGetter__`, `__lookupSetter__`, …) stayed on "Loading your clip…": `id in MOCK_LOADERS` also matched inherited `Object.prototype` names, and calling one threw. A typed access code `toString` was kept in localStorage, against "a real code typed into the preview never lands in storage" | fixed: fixture IDs and scripted codes are looked up by own key (`Object.hasOwn`, one `scriptFor` helper). I swept `src` for the same pattern and fixed two more lookups keyed by API strings: a track concept or model ID named like a prototype member (`constructor`) would have printed a function's source in a label. mock-backend and labels tests (fail on 3c6ce0c) |
+
+On the fix commit: `checks.sh` exit 0, 893 tests, e2e 145/145.

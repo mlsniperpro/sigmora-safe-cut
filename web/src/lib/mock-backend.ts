@@ -38,6 +38,11 @@ export const MOCK_CODES: Readonly<Record<string, { check?: MockName; create?: Mo
   "upload-lost": { start: "error-409-upload-incomplete" },
 };
 
+/** A scripted code's script, by own key only (a typed "toString" or "__proto__" is just a code). */
+function scriptFor(code: string | null | undefined): (typeof MOCK_CODES)[string] | undefined {
+  return code && Object.hasOwn(MOCK_CODES, code) ? MOCK_CODES[code] : undefined;
+}
+
 interface History {
   items: Record<string, Item | null>;
   regions: Record<string, Array<[string, Region]>>;
@@ -154,7 +159,7 @@ export class MockBackend implements Transport {
     const stored: Record<string, StoredJob> = {};
     for (const [id, j] of this.jobs) {
       // Only a scripted code is kept: a real code typed into the preview never lands in storage.
-      const code = j.code !== null && j.code in MOCK_CODES ? j.code : null;
+      const code = scriptFor(j.code) ? j.code : null;
       if (isCreated(id)) stored[id] = { data: j.data, code, timeline: j.timeline, edits: [...j.edits], deleted: j.deleted };
     }
     try {
@@ -245,14 +250,14 @@ export class MockBackend implements Transport {
 
   private checkCode(body: unknown): Promise<RawResponse> | RawResponse {
     const code = typeof body === "object" && body && "code" in body ? String((body as { code: unknown }).code) : "";
-    const scripted = MOCK_CODES[code]?.check;
+    const scripted = scriptFor(code)?.check;
     if (scripted) return this.envelope(scripted);
     return this.envelope("code-check-ok");
   }
 
   private async createJob(body: unknown): Promise<RawResponse> {
     const input = (body ?? {}) as { code?: string; size_bytes?: number };
-    const scripted = MOCK_CODES[input.code ?? ""]?.create;
+    const scripted = scriptFor(input.code)?.create;
     if (scripted) return this.envelope(scripted);
     if ((input.size_bytes ?? 0) > 157_286_400) return this.envelope("error-413");
     const id = `j_mock${this.nextId++}`;
@@ -274,7 +279,7 @@ export class MockBackend implements Transport {
   }
 
   private async start(id: string): Promise<RawResponse> {
-    const scripted = MOCK_CODES[this.codes.get(id) ?? ""]?.start;
+    const scripted = scriptFor(this.codes.get(id))?.start;
     if (scripted) return this.envelope(scripted);
     const job = await this.load(id);
     if (!job) return notFound();
@@ -292,7 +297,7 @@ export class MockBackend implements Transport {
   }
 
   private async getResult(id: string): Promise<RawResponse> {
-    if (id.startsWith("result-") && id in MOCK_LOADERS) {
+    if (id.startsWith("result-") && Object.hasOwn(MOCK_LOADERS, id)) {
       const data = (await this.fixture(id as MockName)) as Record<string, unknown>;
       if ("receipt_html_url" in data) {
         // With sample media (the app's mock mode), its URLs and frame count replace the fixture's,
@@ -361,7 +366,8 @@ export class MockBackend implements Transport {
   private async load(id: string): Promise<MockJob | null> {
     const existing = this.jobs.get(id);
     if (existing) return existing.deleted ? null : existing;
-    if (!(id in MOCK_LOADERS)) return null;
+    // Own keys only: `in` would also take `__proto__` and the other Object.prototype names.
+    if (!Object.hasOwn(MOCK_LOADERS, id)) return null;
     const data = (await this.fixture(id as MockName)) as JobResponse & { status?: unknown };
     if (typeof data !== "object" || data === null || typeof data.status !== "string" || !("deletes_at" in data)) return null;
     const sampleFrames = this.sample ? (jobResponseSchema.parse(await this.fixture(this.sample.job)).job?.frames ?? null) : null;

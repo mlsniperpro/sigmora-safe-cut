@@ -95,6 +95,25 @@ describe("MockBackend storage", () => {
   });
 });
 
+describe("MockBackend IDs and codes are own keys only", () => {
+  it.each(["__proto__", "__lookupSetter__", "toString", "constructor"])("/jobs/%s is not found, as any unknown ID", async (id) => {
+    const backend = new MockBackend({ latencyMs: 0 });
+    expect((await backend.request({ method: "GET", path: `/v1/jobs/${id}` })).status).toBe(404);
+    expect((await backend.request({ method: "GET", path: `/v1/jobs/${id}/result` })).status).toBe(404);
+  });
+
+  it("a typed code named like an Object.prototype member isn't scripted and never reaches storage", async () => {
+    const storage = memoryStorage();
+    const backend = new MockBackend({ latencyMs: 0, stepMs: 1, storage });
+    const created = await backend.request({ method: "POST", path: "/v1/jobs", body: { code: "toString", size_bytes: 1000 } });
+    expect(created.status).toBe(201);
+    const id = (created.body as { job_id: string }).job_id;
+    await backend.request({ method: "POST", path: `/v1/jobs/${id}/start` });
+    expect(storage.data.get("safecut.mock-jobs")).toBeDefined();
+    expect(storage.data.get("safecut.mock-jobs")).not.toContain('"toString"');
+  });
+});
+
 describe("MockBackend fixture times", () => {
   const refusal = async (now: number, code: string) => {
     const backend = new MockBackend({ latencyMs: 0, now: () => now });
