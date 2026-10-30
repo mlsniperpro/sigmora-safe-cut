@@ -20,6 +20,7 @@ from safecut.config import Settings
 from safecut.contracts import Job, SamRequest, Track, Tracks, dump, load
 from safecut.meta import replay, sam
 from safecut.meta.client import MetaClient
+from safecut.meta.errors import MetaError
 from safecut.meta.files import FileStore
 from safecut.meta.session import job_client
 from safecut.track import media
@@ -41,6 +42,10 @@ class TrackError(RuntimeError):
     """The track stage can't produce a trustworthy ``tracks.json`` (a failed sweep, a bad proxy)."""
 
 
+class RecordedFailure(MetaError):
+    """Replay of a SAM request that failed when it was recorded (the miss loop's static-box path)."""
+
+
 @dataclass(frozen=True)
 class Proxy:
     path: Path
@@ -59,14 +64,22 @@ class SamCall:
     file_id: str = ""
     events: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
     usd: float = 0.0
+    #: The recording's name for an object-prompt batch (``objects-loop1``); phrases are named by their text.
+    name: str = ""
+    #: A miss-loop phrase in the child set (``kids``): its tracks are ``child_phrase`` (WP3 rule 0).
+    child_phrase: bool = False
 
     @property
     def key(self) -> str:
-        return f"phrase-{replay.slug(self.text)}" if self.kind == "phrase" else f"objects-{replay.slug(self.text)[:40]}"
+        if self.kind == "object_prompt":
+            if not self.name:
+                raise ValueError("an object-prompt request needs a recording name")
+            return self.name
+        return f"phrase-{replay.slug(self.text)}"
 
     def label(self, object_id: str) -> ObjectLabel:
         if self.kind == "phrase":
-            return ObjectLabel(concept=self.concept or self.text, prompt=self.text)
+            return ObjectLabel(concept=self.concept or self.text, prompt=self.text, child_phrase=self.child_phrase)
         if object_id not in self.labels:
             raise TrackError(f"SAM answered object {object_id}, which the object-prompt request never named")
         return self.labels[object_id]
@@ -99,6 +112,9 @@ def recording(call: SamCall, *, model: str, frames: int, synthetic: bool = False
 
 def replayed(job_dir: Path, call: SamCall) -> SamCall:
     raw = replay.load_call(job_dir, RAW_STAGE, call.key)
+    failure = raw.failure()
+    if failure is not None:
+        raise RecordedFailure(f"recorded SAM failure: {failure[0]}")
     if raw.request.get("text") != call.text or raw.events is None:
         raise replay.ReplayMissing(f"replay: {call.key} was recorded for a different request")
     call.events = raw.events
@@ -172,7 +188,7 @@ def build(
                 usd=call.usd,
             )
         )
-        if call.kind == "phrase" and call.concept not in concepts:
+        if call.kind == "phrase" and call.text not in concepts:
             concepts.append(call.text)
         tracks += link_request(seg.detections, request=index, labels=call.label, geometry=geometry, source=model,
                                numbering=numbering, masks=masks if with_masks else None)  # fmt: skip
