@@ -33,6 +33,9 @@ weights/
 *.pt
 *.pth
 *.onnx
+# ...except the audit's bundled YuNet face detector (232 KB, MIT; LICENSE-yunet next to it), so the audit runs offline
+!safecut/audit/weights/
+!safecut/audit/weights/face_detection_yunet_2023mar.onnx
 .DS_Store
 # synthetic test clips (tiny, generated with ffmpeg)
 !fixtures/clips/*.mp4

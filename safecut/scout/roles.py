@@ -277,13 +277,16 @@ def aggregate(result: PassResult, judged: Sequence[Track]) -> Judged:
 # ---------------------------------------------------------------------------- miss loop
 
 
-def validated_misses(result: PassResult, job: Job) -> list[miss.Miss]:
+def validated_misses(result: PassResult, job: Job, tracks: Tracks) -> list[miss.Miss]:
     valid: list[miss.Miss] = []
     for raw, w in zip(result.misses, result.window_of_miss, strict=True):
         item = miss.validate(raw, sent=result.windows[w].sent, width=job.width, height=job.height)
         if item is not None:
             valid.append(item)
-    return miss.dedupe(valid, job.width, job.height)
+    fresh = miss.untracked(miss.dedupe(valid, job.width, job.height), tracks.tracks)
+    if len(fresh) < len(valid):
+        log.info("misses dropped as duplicates or already tracked", extra={"count": len(valid) - len(fresh)})
+    return fresh
 
 
 def to_missed(m: miss.Miss) -> Missed:
@@ -403,7 +406,7 @@ async def miss_loops(ctx: calls.Context, state: State, first: PassResult, scene:
     """Loop 1 on the first pass's misses, a role re-pass on its new tracks, loop 2 on the re-pass's misses."""
     job = ctx.job
     keyframes = som.keyframe_numbers(job)
-    loop_misses = validated_misses(first, job)
+    loop_misses = validated_misses(first, job, state.tracks)
     for loop in range(1, miss.MAX_LOOPS + 1):
         if not loop_misses:
             return
@@ -430,7 +433,7 @@ async def miss_loops(ctx: calls.Context, state: State, first: PassResult, scene:
         state.results.person.update(later.person)
         state.results.objects.update(later.objects)
         state.ballots_of.update({t.track_id: again.ballots for t in new_judged})
-        loop_misses = validated_misses(again, job)
+        loop_misses = validated_misses(again, job, state.tracks)
 
 
 def assemble(state: State, status: calls.Status, escalations: dict[str, votes.Escalation], model: str,

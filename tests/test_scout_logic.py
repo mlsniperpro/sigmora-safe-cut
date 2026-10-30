@@ -9,6 +9,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
+from safecut.contracts import Track
 from safecut.scout import grid, miss, votes
 from safecut.scout.votes import ObjectVote, Ruling, TrackVote, Vote
 
@@ -359,3 +360,15 @@ def test_property_normalise_is_idempotent_and_concepts_are_ids(phrase: str) -> N
         concept = miss.concept_for(norm)
         assert ":" not in concept.concept
         assert concept.concept.strip() == concept.concept
+
+
+def test_a_miss_already_tracked_is_dropped_but_another_concepts_box_does_not_count() -> None:
+    def tracked(concept: str) -> Track:
+        return Track(track_id=f"{concept}:1", concept=concept, first=420, last=420, boxes={420: (600, 300, 700, 400)},
+                     source="sam-3.1", prompt=concept)  # fmt: skip
+
+    item = miss.validate(raw("envelope", point=(500, 500)), sent=SENT, width=W, height=H)
+    assert item is not None
+    assert item.point == (640, 340)
+    assert miss.untracked([item], [tracked("envelope")]) == []
+    assert miss.untracked([item], [tracked("screen")]) == [item]
