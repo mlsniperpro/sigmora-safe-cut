@@ -42,6 +42,6 @@ Sigmora Safe Cut: publish real-world footage without exposing the people who nev
 
 Safe Cut tracks every face, person, plate and screen. It decides from context who is part of the story, hides everything uncertain, and lets you approve each decision with its reason. It then audits the final render before anything is published, and gives you a privacy receipt.
 
-Everyone on screen is an actor who signed a release. Results and how we measured them: github.com/mlsniperpro/sigmora-safe-cut/blob/main/eval/RESULTS.md
+Safe Cut redacts the picture; the audio is kept as recorded. Everyone on screen is an actor who signed a release. Results and how we measured them: github.com/mlsniperpro/sigmora-safe-cut/blob/main/eval/RESULTS.md
 
 Live demo: https://safecut.sigmora.org · Code (MIT): https://github.com/mlsniperpro/sigmora-safe-cut

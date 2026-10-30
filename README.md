@@ -4,6 +4,8 @@
 
 Safe Cut takes a clip filmed in public and decides, from context, what shouldn't be published: bystanders (as opposed to the people in the story), children, number plates, and screens and documents that show personal data. Muse Spark reasons about who is part of the story. SAM 3.1 keeps each hidden thing covered on every frame. Anything uncertain stays hidden by default. A second pass audits the final render before anything goes live. The creator approves every decision and gets a hash-chained privacy receipt.
 
+**Scope: Safe Cut redacts the picture, not the soundtrack.** The audio is kept as recorded, so a bystander's voice, or a name or number said aloud, is still heard; the result page's captions come from the same unredacted transcript. The receipt says so too. Mute or edit the audio yourself when that matters.
+
 Built for the **Meta Global AI Developer Hackathon** (Startup track, "Build for Your World"), on the Meta Model API.
 
 > **Status.** The whole pipeline runs end to end in replay on a **synthetic** demo clip: drawn shapes, with recorded answers generated from the clip's ground truth rather than returned by Meta. Live runs on consented footage, the deployed service and the reported numbers wait on the owner inputs in [`BLOCKED.md`](BLOCKED.md). Every line of product code here is dated after the kickoff (Oct 26, 12:00 ET).

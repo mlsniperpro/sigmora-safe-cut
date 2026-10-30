@@ -183,3 +183,18 @@ It ran E2, E3, E5, E7, E9, E10, E11 and E12: all OK; the six dev runs replay byt
 | L3 | low | A live run is all or nothing at `--max-usd` | BLOCKED says so and to size `--max-usd` to the split | review |
 
 Round 11 was not clean (two medium): the count stays at 0.
+
+## Round 12 (on b296a92 = origin/main): 0 critical, 0 high, 1 medium, 5 low.
+
+It ran E2, E3, E5, E7, E8, E9, E10, E11 and E12: all OK; about 175 targeted tests passed; the API's bodies parse with the web's zod schemas; a fresh demo run matches AGENTIC-LOOP.
+
+| # | Sev | Finding | Resolution | Test |
+|---|---|---|---|---|
+| M1 | medium | Nothing outside the receipt says the soundtrack is kept as recorded (SAFETY round 12 copies the audio), while the docs promise not to expose people | README (a scope paragraph), SUBMISSION (description and judge step 3), LAUNCH and VIDEO-SCRIPT say the picture is redacted and the audio is not. Docs only. Request to WP6 (web): the same sentence on the result page | review |
+| L1 | low | A refused receipt reaches the web as `failed`/`internal`, and Retry repeats it | **Kept**: it only happens when the job's own files contradict each other (fail closed); the job stays deletable, and nothing is published | n/a |
+| L2 | low | `models_recorded` duplicates the receipt's recorded-model reading | **Kept**: both are tested against the same fixture (`test_the_model_list_names_the_recorded_models`, the receipt tests); the auditor checked they agree on the demo | n/a |
+| L3 | low | Judge codes open Nov 5 00:00 UTC, after submission | Owner decision added to BLOCKED (how to open them at submission) | review |
+| L4 | low | Signed media URLs live 1 h; UI-SPEC says 15 min | **Kept**: the web refreshes them every 10 minutes, and the URLs are signed per job and expire with it; a longer TTL breaks nothing | n/a |
+| L5 | low | Production starts with no access code at all | **Kept**: then no one can start paid work (fail closed), and BLOCKED's codes step is required before the window | n/a |
+
+Round 12 found one medium (fixed in the docs, no code change): the clean count stays at 0.
