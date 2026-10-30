@@ -93,6 +93,10 @@ def test_a_replay_run_writes_every_result_file(base: Path) -> None:
     assert config["synthetic"] is True
     assert config["variant"] == "full"
     assert config["models"]["sam"] == "sam-3.1"
+    # The detector the job's own audit.json names, never the configured default; a synthetic replay says no model ran.
+    audit = json.loads((EXAMPLE / "audit.json").read_text())
+    assert config["models"]["auditor"] == audit["egoblur"]["model"]
+    assert config["models_note"] == "synthetic recordings replayed: no Meta model was called"
     assert config["detail"] == {}
     assert len(config["split_hash"]) == 64
     metrics = json.loads((run_dir / "metrics.json").read_text())

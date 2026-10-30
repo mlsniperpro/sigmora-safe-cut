@@ -302,7 +302,10 @@ class Service:
             raise ApiRefusal(404, "not_found", "We couldn't find that clip.") from None
 
     def refuse_when_busy(self, job_id: str) -> None:
-        """``429`` once ``SAFECUT_MAX_ACTIVE_JOBS`` other jobs are processing or rendering (the demo excluded)."""
+        """``429`` once ``SAFECUT_MAX_ACTIVE_JOBS`` other jobs are processing, rendering or waiting to retry (the demo
+        excluded). Checked after the job's own status checks, so a retried start of a finished job still gets its
+        idempotent 409. A best-effort ceiling: two starts of different jobs racing can overshoot it by one each, and
+        the spend caps (reserved per call in the ledger) are what bound money."""
         active = 0
         for other in self.store.ids():
             if other == job_id:
@@ -311,7 +314,7 @@ class Service:
                 state = load(self.store.path(other) / "state.json", JobState)
             except ContractError:
                 continue
-            active += not state.pinned and state.status in ("processing", "rendering")
+            active += not state.pinned and state.status in ("processing", "rendering", "retry_later")
         if active >= self.settings.max_active_jobs:
             raise ApiRefusal(
                 429, "rate_limited", "Safe Cut is busy right now. Try again in a minute.", retry_after_s=60
@@ -494,9 +497,9 @@ def start(svc: Svc, job_id: str) -> JSONResponse:
         grant = svc.paid_grant(state)
         if svc.worker.busy(job_id) or state.status in ("processing", "rendering", "retry_later"):
             raise ApiRefusal(409, "already_running", "This clip is already being processed.")
-        svc.refuse_when_busy(job_id)
         if state.status not in ("created", "failed"):
             raise ApiRefusal(409, "already_started", "This clip has already been processed.")
+        svc.refuse_when_busy(job_id)
         job_dir = svc.store.path(job_id)
         spec = state.upload
         clip = job_dir / SOURCE_DIR / spec.file_name if spec else None

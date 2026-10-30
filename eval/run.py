@@ -37,6 +37,7 @@ from eval.labels import load_labels  # noqa: E402 -- after the sys.path line abo
 from eval.metrics import JobScore, score_job, summarize  # noqa: E402 -- after the sys.path line above, on purpose
 from eval.variants import VARIANTS, Variant, VariantUnavailable, preflight, run_variant  # noqa: E402 -- as above
 from safecut import netguard, pipeline  # noqa: E402 -- after the sys.path line above, on purpose
+from safecut.api.views import models_used  # noqa: E402 -- after the sys.path line above, on purpose
 from safecut.config import load_settings  # noqa: E402 -- after the sys.path line above, on purpose
 
 SPLITS = ("hero", "dev", "public", "test")
@@ -177,6 +178,8 @@ def run(
     scores: list[JobScore] = []
     detail: dict[str, str] = {}
     synthetic = False
+    settings = load_settings()
+    ran: dict[str, set[str]] = {}
     work = Path(tempfile.mkdtemp(prefix=f"eval-{run_id}-"))
     try:
         spent = 0.0
@@ -199,6 +202,8 @@ def run(
                 synthetic = synthetic or pipeline.recording_is_synthetic(job_dir)
             result = run_variant(variant, job_dir, replay=replay)
             detail.update(result.detail)
+            for role, model in models_used(job_dir, settings).items():
+                ran.setdefault(role, set()).add(model)
             scores.append(score_job(job_dir, load_labels(base / entry.labels), result.regions))
             spent += pipeline.job_spend(job_dir)
     finally:
@@ -218,24 +223,14 @@ def run(
             "split_hash": split_hash(split, base),
             "created_at": now.isoformat().replace("+00:00", "Z"),
             "clips": [e.clip for e in split.clips],
-            "models": models(),
+            # What each job's own files say ran (the audit's detector, the transcript's source…), never the
+            # configured defaults; a synthetic replay ran no model at all and says so.
+            "models": {role: " / ".join(sorted(names)) for role, names in sorted(ran.items())},
+            "models_note": "synthetic recordings replayed: no Meta model was called" if synthetic else None,
             "detail": detail,
         },
     )
     return run_dir
-
-
-def models() -> dict[str, str]:
-    s = load_settings()
-    return {
-        "sam": s.sam_model,
-        "scene": s.scene_model,
-        "roles": s.role_model,
-        "escalate": s.escalate_model,
-        "asr": s.asr_model,
-        "redteam": s.redteam_model,
-        "auditor": s.egoblur_model,
-    }
 
 
 def write_run(run_dir: Path, scores: list[JobScore], *, config: dict[str, Any]) -> None:

@@ -259,10 +259,23 @@ def test_e3_checks_the_rendered_pixels_not_only_the_plan(monkeypatch: pytest.Mon
     def nothing(f: np.ndarray) -> None:
         return None
 
+    def dim(f: np.ndarray) -> None:
+        f[0:10, 0:10] = (f[0:10, 0:10] * 0.2).astype(np.uint8)  # a contrast stretch would bring it back
+
     assert rendered(cover) == []
     assert rendered(nothing) == ["e1: still legible in redacted.mp4 on 2/2 visible frames"]
     assert rendered(sliver) == ["e1: still legible in redacted.mp4 on 2/2 visible frames"]
+    assert rendered(dim) == ["e1: still legible in redacted.mp4 on 2/2 visible frames"]
     assert rendered(tint) == [
         "e1: still legible in redacted.mp4 on 2/2 visible frames",
         "e2 (keep): altered in redacted.mp4 on 2/2 visible frames",
     ]
+
+
+def test_secret_pattern_knows_this_projects_own_secrets() -> None:
+    # Key-shaped test data: the scanner's own tests are the one place allowed to hold it.
+    assert entry_check.SECRET.search("HF_TOKEN=hf_abcdefghijklmnopqrstuvwxyzABCDEFGH12")
+    assert entry_check.SECRET.search("SAFECUT_URL_SECRET=Zx81kdJq0LmnB7Yt5ExP2rVw9sAc")
+    assert entry_check.SECRET.search('[{"code": "Q7mz2LpX9vRt4KsW8nBy3HcD", "kind": "judge"}]')
+    assert not entry_check.SECRET.search('"key": "sigmora-service-key-0123456789"')  # a named test stand-in
+    assert not entry_check.SECRET.search('SAFECUT_URL_SECRET: "e2e-url-secret"')

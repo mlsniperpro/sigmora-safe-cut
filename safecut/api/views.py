@@ -65,6 +65,33 @@ def _optional[M: BaseModel](path: Path, model: type[M]) -> M | None:
     return load(path, model) if path.is_file() else None
 
 
+def models_used(job_dir: Path, s: Settings) -> dict[str, str]:
+    """Which model did which job, from the job's own files where they recorded it, else the config (the API's job
+    body and the eval's run config both say this, so neither claims a model that didn't run)."""
+    models = {
+        "sam": s.sam_model,
+        "scene": s.scene_model,
+        "roles": s.role_model,
+        "escalate": s.escalate_model,
+        "asr": s.asr_model,
+        "redteam": s.redteam_model,
+        "auditor": s.egoblur_model,
+    }
+    scene = _optional(job_dir / "scene.json", Scene)
+    if scene is not None and scene.model:
+        models["scene"] = scene.model
+    roles = _optional(job_dir / "roles.json", Roles)
+    if roles is not None and roles.model:
+        models["roles"] = roles.model
+    transcript = _optional(job_dir / "transcript.json", Transcript)
+    if transcript is not None and transcript.source:
+        models["asr"] = transcript.source
+    audit = _optional(job_dir / "audit.json", Audit)
+    if audit is not None:
+        models["auditor"] = audit.egoblur.model
+    return models
+
+
 class Views:
     def __init__(self, settings: Settings, signer: Signer) -> None:
         self.settings = settings
@@ -243,30 +270,7 @@ class Views:
         }
 
     def models(self, job_dir: Path) -> dict[str, str]:
-        """Which model did which job, from the job's own files where they recorded it, else the config."""
-        s = self.settings
-        models = {
-            "sam": s.sam_model,
-            "scene": s.scene_model,
-            "roles": s.role_model,
-            "escalate": s.escalate_model,
-            "asr": s.asr_model,
-            "redteam": s.redteam_model,
-            "auditor": s.egoblur_model,
-        }
-        scene = _optional(job_dir / "scene.json", Scene)
-        if scene is not None and scene.model:
-            models["scene"] = scene.model
-        roles = _optional(job_dir / "roles.json", Roles)
-        if roles is not None and roles.model:
-            models["roles"] = roles.model
-        transcript = _optional(job_dir / "transcript.json", Transcript)
-        if transcript is not None and transcript.source:
-            models["asr"] = transcript.source
-        audit = _optional(job_dir / "audit.json", Audit)
-        if audit is not None:
-            models["auditor"] = audit.egoblur.model
-        return models
+        return models_used(job_dir, self.settings)
 
     @staticmethod
     def keyframe_geometry(job_dir: Path, roles: Roles, job: Job | None) -> dict[str, int] | None:

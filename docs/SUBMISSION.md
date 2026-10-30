@@ -48,7 +48,7 @@ SAM 3.1 · Muse Spark (`muse-spark-1.3`, and `muse-spark-1.2` as the speech fall
 ## Testing instructions for judges
 
 1. Open https://safecut.sigmora.org. The landing page plays the demo job, labelled as a demo. The Raw / Safe Cut toggle compares the original and the result.
-2. Press **Try it** and enter the access code ⟨owner: judge code from `SAFECUT_ACCESS_CODES`⟩. It works from Nov 5 00:00 to Nov 10 23:59 UTC, within a daily spend cap.
+2. Press **Try it** and enter the access code ⟨owner: type the judge code here in the form itself, never in this file: the repo is public⟩. It works from Nov 5 00:00 to Nov 10 23:59 UTC, within a daily spend cap.
 3. Upload a clip of up to 60 seconds and 150 MB (MP4 or MOV), tick the rights box and press Start.
 4. When the review panel appears, open **Why?** on any item to see the numbered keyframe and the three votes. Try:
    - **Hide** or **Keep clear** on an item;

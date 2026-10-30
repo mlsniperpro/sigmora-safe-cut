@@ -59,12 +59,12 @@ jobs:
       - name: Install the deploy tools
         if: steps.gate.outputs.run == 'true'
         run: uv sync --locked --python 3.12 --group deploy
-      - name: Deploy the API, worker smoke and deletion cron
-        if: steps.gate.outputs.run == 'true'
-        run: uv run modal deploy deploy/modal_app.py
-      - name: Smoke-test the deployed image (the synthetic demo job, replayed)
+      - name: Smoke-test the image before it goes live (the synthetic demo job replayed, and the ledger on the Volume)
         if: steps.gate.outputs.run == 'true'
         run: uv run modal run deploy/modal_app.py
+      - name: Deploy the API, worker smoke and deletion cron (only after the smoke passed)
+        if: steps.gate.outputs.run == 'true'
+        run: uv run modal deploy deploy/modal_app.py
       - name: Check the live URLs
         if: steps.gate.outputs.run == 'true'
         run: |

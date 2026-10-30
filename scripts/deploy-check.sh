@@ -2,7 +2,8 @@
 # scripts/deploy-check.sh <api-url> <web-url|-> [hero-id]: smoke-test a deployed Safe Cut.
 #
 # Checks the API (health, CORS for the web origin, the demo job, refusals) and the web app (pages, security
-# headers). Pass "-" as the web URL to check the API alone. Every request is bounded (curl -m 20). Prints one
+# headers). Pass "-" as the web URL to check the API alone. The API must run live with MODEL_API_KEY set, unless
+# DEPLOY_REPLAY_OK=1. Every request is bounded (curl -m 20). Prints one
 # "ok"/"FAIL" line per check and ends with DEPLOY: PASS or DEPLOY: FAIL (<n>); exits 0 only on PASS.
 set -uo pipefail
 
@@ -36,6 +37,15 @@ if [ "$code" = "200" ] && [ "$(json health "['status']")" = "ok" ]; then
   ok "API /healthz: ok (mode $(json health "['mode']"), meta $(json health "['meta']"))"
 else
   fail "API /healthz answered $code: $(head -c 200 "$TMP/health.body" 2>/dev/null)"
+fi
+# A deployment the judges can use runs live with its Meta key; a demo-mode deployment passes only when asked to
+# (DEPLOY_REPLAY_OK=1, e.g. after the judging window, or this script's own tests).
+if [ "$(json health "['mode']")" = "live" ] && [ "$(json health "['key']")" = "True" ]; then
+  ok "API runs live, with MODEL_API_KEY set"
+elif [ "${DEPLOY_REPLAY_OK:-}" = "1" ]; then
+  ok "API in mode $(json health "['mode']") (key $(json health "['key']")), accepted by DEPLOY_REPLAY_OK=1"
+else
+  fail "API isn't live with a Meta key (mode $(json health "['mode']"), key $(json health "['key']")): every judge upload would fail"
 fi
 
 code="$(fetch missing "$API/v1/jobs/j_0000000000000000000000")"

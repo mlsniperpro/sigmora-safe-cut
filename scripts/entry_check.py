@@ -206,6 +206,10 @@ CONTENT_DELTA = 25
 #: contrast left over, as a share of the source's. The demo's covers leave 0.00; a tint or a sliver of a cover
 #: leaves almost all of it (a +10 tint: 1.00).
 RESIDUAL_CONTRAST = 0.25
+#: And the render inside the box no longer follows the source: a dimmed or translucent cover keeps the content's
+#: shape (its correlation with the source stays near 1, and a contrast stretch brings it back); the demo's covers
+#: correlate at 0.12 at most.
+RESIDUAL_CORRELATION = 0.5
 #: A kept entity's box changes by less than this mean (0–255) on most of its frames: the codec moves a kept face by
 #: about 2.5; a renderer that tints or blurs the whole frame moves every box.
 KEPT_CHANGE = 8.0
@@ -223,8 +227,9 @@ def render_hides(job: Path, clip_labels: Any) -> list[str]:
     """The plan is scored above; this checks the **pixels** of ``redacted.mp4`` against the prepared clip:
 
     - every should-hide entity's content (pixels that stand out from its box's background) can't be told from that
-      background any more on at least 99 % of its visible frames (a renderer that draws nothing, a tint, or a cover
-      over a sliver of the box fails);
+      background any more, and the box no longer follows the source, on at least 99 % of its visible frames (a
+      renderer that draws nothing, a tint, a dimmed or translucent cover, or a cover over a sliver of the box
+      fails);
     - every kept entity's box is left as it was (mean change below :data:`KEPT_CHANGE`) on at least 75 % of its
       frames (a renderer that alters the whole frame fails; a short legitimate hide, like the guest's re-entry
       before a creator merges it, is under the plan's own over-blur rule above).
@@ -259,7 +264,10 @@ def render_hides(job: Path, clip_labels: Any) -> list[str]:
                 continue
             before = float(np.abs(a[content].mean(axis=0) - a[~content].mean(axis=0)).max())
             after = float(np.abs(b[content].mean(axis=0) - b[~content].mean(axis=0)).max())
-            good[entity.id] += after <= RESIDUAL_CONTRAST * max(before, 1.0)
+            ga, gb = a.mean(axis=2).ravel(), b.mean(axis=2).ravel()
+            flat = float(gb.std()) < 1.0 or float(ga.std()) < 1.0
+            follows = 0.0 if flat else abs(float(np.corrcoef(ga, gb)[0, 1]))
+            good[entity.id] += after <= RESIDUAL_CONTRAST * max(before, 1.0) and follows < RESIDUAL_CORRELATION
     hidden = {e.id for e in entities if e.should_hide}
     if not any(seen[i] for i in hidden):
         return ["the rendered video shows none of the should-hide entities' frames"]
@@ -623,6 +631,11 @@ SECRET = re.compile(
     r"|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|xox[abpr]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{35}"
     r"|-----BEGIN ([A-Z]+ )?PRIVATE KEY-----|\"private_key\":\s*\"-----BEGIN"
     r"|[\"']?(MODEL_API_KEY|BASETEN_API_KEY|MODAL_TOKEN_SECRET|MODAL_TOKEN_ID)[\"']?\s*[=:]\s*['\"]?[A-Za-z0-9_\-]{20,}"
+    # This project's own secrets: Hugging Face tokens, the URL key and the clips token by value, and any access
+    # code or service key long enough to be a real one (the tests' stand-ins are shorter, or named so).
+    r"|\bhf_[A-Za-z0-9]{30,}"
+    r"|[\"']?(SAFECUT_URL_SECRET|SAFECUT_CLIPS_TOKEN|HF_TOKEN)[\"']?\s*[=:]\s*['\"]?[A-Za-z0-9_\-+/]{24,}"
+    r"|[\"'](code|key)[\"']\s*:\s*[\"'](?![a-z]+(-[a-z]+)*-[0-9]{0,12}[\"'])[A-Za-z0-9_\-]{24,}[\"']"
 )
 SHIPPED = ("safecut", "eval", "deploy", "scripts", "web/src", "web/e2e", "web/scripts", ".github")
 #: The three unfinished-work markers, spelt in pieces so this file doesn't match its own check.

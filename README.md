@@ -71,7 +71,7 @@ The honest failures on this clip: the YuNet baseline finds no drawn face at all 
   - per-code caps and a shared pilot pool;
   - a worst-case estimate refused up front.
 - **Uploads:** signed `PUT` URLs, valid 15 minutes, for the exact size and type declared; up to 60 s and 150 MB.
-- **Deletion:** every job is deleted 24 hours after it is created, by a cron and an in-process sweep, and any job past its deletion time is refused and deleted on sight. `DELETE /v1/jobs/{id}` works in every state of a creator's job (the pinned demo job is read-only); a stage still running stops at its next step, and anything it wrote after the delete is removed as soon as it returns.
+- **Deletion:** every job is deleted within a day of being created (its 24-hour lifetime plus at most one 15-minute sweep), by a cron and an in-process sweep, and any job past its deletion time is refused and deleted on sight. `DELETE /v1/jobs/{id}` works in every state of a creator's job (the pinned demo job is read-only); a stage still running finishes its current call (still under the per-clip cap) and stops before the next one, and anything it wrote after the delete is removed as soon as it returns.
 - **Replay mode:**
   - it reads the saved responses in `raw/` and refuses every outbound connection: process-wide for the CLI and for a demo-mode server, and per stage, in a child process, when a live server precomputes the demo job;
   - every response says `mode: "replay"`, and `synthetic: true` when the recordings are synthetic;

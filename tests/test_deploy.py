@@ -113,13 +113,18 @@ def web_server(csp: bool) -> tuple[ThreadingHTTPServer, str]:
     return server, f"http://127.0.0.1:{server.server_address[1]}"
 
 
-def deploy_check(*args: str) -> subprocess.CompletedProcess[str]:
+def deploy_check(*args: str, replay_ok: bool = True) -> subprocess.CompletedProcess[str]:
+    """The API under test runs in demo mode (no Meta key in tests), which the check accepts only when told to."""
+    env = {k: v for k, v in os.environ.items() if k != "DEPLOY_REPLAY_OK"}
+    if replay_ok:
+        env["DEPLOY_REPLAY_OK"] = "1"
     return subprocess.run(  # noqa: S603 -- fixed argv: bash and our script
         [BASH, str(ROOT / "scripts" / "deploy-check.sh"), *args],
         capture_output=True,
         text=True,
         timeout=120,
         check=False,
+        env=env,
     )
 
 
@@ -187,3 +192,10 @@ def test_deploy_never_runs_a_forks_code_with_the_secrets() -> None:
         "github.event.workflow_run.head_repository.full_name == github.repository",
     ):
         assert clause in condition
+
+
+def test_deploy_check_fails_a_deployment_judges_cant_use(api: str) -> None:
+    """Demo mode, or no MODEL_API_KEY, means every judge upload fails: the check says so unless told it's fine."""
+    result = deploy_check(api, "-", replay_ok=False)
+    assert result.returncode != 0
+    assert "isn't live with a Meta key (mode replay" in result.stdout
