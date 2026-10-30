@@ -59,8 +59,9 @@ def test_any_valid_stream_parses_to_exactly_its_boxes(objs: dict[str, dict[int, 
     junk=st.text(alphabet=string.printable, min_size=1, max_size=6),
 )
 def test_a_corrupted_stream_never_parses_silently_wrong(objs: dict[str, dict[int, Any]], at: int, junk: str) -> None:
-    """Splice junk anywhere into a valid stream: the result is either exactly the original boxes (the junk landed
-    harmlessly, e.g. in a mask payload that still decodes to a canonical mask of the same box) or a typed error."""
+    """Splice junk anywhere into a valid stream. Junk without digits gives exactly the original boxes (e.g. an extra
+    optional comma) or a typed error. A digit can legitimately make another valid number (``<0f>`` → ``<10f>``: the
+    wire is the truth), so then the result is a typed error or well-formed, in-frame detections."""
     text = stream_text(objs, (W, H))
     if not text:
         return
@@ -72,10 +73,12 @@ def test_a_corrupted_stream_never_parses_silently_wrong(objs: dict[str, dict[int
     except (MetaIncomplete, MetaRefusal):
         return
     got = {(d.object_id, d.frame): d.box for d in seg.detections}
-    assert set(got) <= set(want) | {k for k in got if k[0] not in objs}  # never a box moved onto another object
-    for key, value in got.items():
-        if key in want:
-            assert value == want[key] or junk.strip().isdigit()  # a digit spliced into a coordinate is a new value
+    if not any(c.isdigit() for c in junk):
+        assert got == want
+    for d in seg.detections:
+        assert d.object_id.isdigit()
+        assert 0 <= d.box[0] < d.box[2] <= W
+        assert 0 <= d.box[1] < d.box[3] <= H
 
 
 @given(objs=objects.filter(bool))

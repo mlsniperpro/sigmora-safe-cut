@@ -28,6 +28,7 @@ from meta_sam_parser import (
     SegmentationBoxRecord,
     SegmentationMask,
     SegmentationMaskRecord,
+    SegmentationTextRecord,
     build_object_prompt,
     parse_responses_stream,
     video_segmentation_format,
@@ -398,13 +399,15 @@ class _LaneText:
         return _LaneCollector()
 
 
-#: A parsed record, picklable across the pool: ("box", frame, id, left, top, right, bottom, confidence) or
-#: ("mask", frame, id, revision, encoding, payload, width, height).
+#: A parsed record, picklable across the pool: ("box", frame, id, left, top, right, bottom, confidence),
+#: ("mask", frame, id, revision, encoding, payload, width, height) or ("text", order) for a stray line.
 _Record = tuple[Any, ...]
 _Diagnostic = tuple[str, str, int]
 #: Below this many mask pixels a stream is parsed in-process (a pool costs more than it saves).
 PARALLEL_MIN_PIXELS = 1_500_000
 _MASK_SIZE = re.compile(r"data=([0-9]+),([0-9]+),")
+#: A line with frame-record syntax (a ``<Nf>`` header or ``<|token|>``s) that the parser couldn't read as one.
+_RECORD_SYNTAX = re.compile(r"<\s*[0-9]+\s*f|<\|")
 
 
 def parse_lines(chunk: tuple[str, int]) -> tuple[list[_Record], list[_Diagnostic]]:
@@ -417,6 +420,10 @@ def parse_lines(chunk: tuple[str, int]) -> tuple[list[_Record], list[_Diagnostic
     for r in result.records:
         if isinstance(r, SegmentationBoxRecord) and r.frame is not None:
             records.append(("box", r.frame.frame_index, r.object_id, r.left, r.top, r.right, r.bottom, r.confidence))
+        elif isinstance(r, SegmentationTextRecord) and _RECORD_SYNTAX.search(r.text):
+            records.append(("text", r.order))
+        elif isinstance(r, SegmentationTextRecord) and r.text.strip():
+            log.warning("SAM stream carried a prose line; ignored", extra={"chars": len(r.text)})
         elif isinstance(r, SegmentationMaskRecord) and r.frame is not None:
             m = r.mask
             mask = ("mask", r.frame.frame_index, r.object_id, r.revision, m.encoding, m.payload, m.width, m.height)
@@ -465,6 +472,11 @@ async def parse_video_events(events: Sequence[Mapping[str, Any]]) -> Segmentatio
     # read on this event loop meanwhile.
     results = await asyncio.to_thread(parallel.map_in_pool, parse_lines, _chunks(text, parts), parallel=parts > 1)
     errors = [d for _, ds in results for d in ds if d[0] == "error"]
+    # Meta's parser keeps a line it can't read as a frame record as free text, without a diagnostic. One that has
+    # record syntax is a frame we couldn't read: fail closed, like a dropped line (prose is only logged).
+    stray = sum(1 for records, _ in results for r in records if r[0] == "text")
+    if stray:
+        raise MetaIncomplete(f"SAM stream has {stray} line(s) that aren't frame records", eof=False)
     if errors:
         raise MetaIncomplete(f"SAM parser dropped {len(errors)} line(s): {errors[0][1]} at line {errors[0][2]}",
                              eof=False)  # fmt: skip

@@ -184,3 +184,13 @@ def test_zero_matches_is_valid_and_out_of_order_frames_are_fine() -> None:
     reversed_text = "\n".join(reversed(lines)) + "\n"
     seg = asyncio.run(sam.parse_video_events(events(reversed_text, response_id="resp_r", frames_billed=10)))
     assert [d.frame for d in seg.detections] == [7, 9]
+
+
+def test_a_mangled_record_line_fails_but_prose_is_ignored() -> None:
+    good = stream_text({"0": {0: (10, 20, 15, 25)}}, (100, 80))
+    with pytest.raises(MetaIncomplete, match="aren't frame records"):
+        asyncio.run(sam.parse_video_events(events(":" + good, response_id="resp_m", frames_billed=10)))
+    seg = asyncio.run(
+        sam.parse_video_events(events("Found one object.\n" + good, response_id="resp_p", frames_billed=10))
+    )
+    assert [d.frame for d in seg.detections] == [0]
