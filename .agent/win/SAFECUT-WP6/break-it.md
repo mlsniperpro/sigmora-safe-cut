@@ -1,11 +1,11 @@
-TESTED_COMMIT: 3807d13
+TESTED_COMMIT: 9363e91
 
 # Break-it log: SAFECUT-WP6
 
-Everything below ran against the code at TESTED_COMMIT (no code changed after it). Run on 2026-10-30; audit rounds 45 and 46 found the same code clean.
+Everything below ran against the code at TESTED_COMMIT (no code changed after it). Run on 2026-10-30.
 
 ## Fresh clone, the way a judge runs it
-`git clone --branch wp6-web` into an empty directory, checked out at 3807d13, then `bash .agent/win/SAFECUT-WP6/checks.sh`. The steps:
+`git clone --branch wp6-web` into an empty directory, checked out at 9363e91, then `bash .agent/win/SAFECUT-WP6/checks.sh`. The steps:
 1. install (frozen lockfile)
 2. lint (0 warnings)
 3. typecheck (with `next typegen`)
@@ -13,7 +13,7 @@ Everything below ran against the code at TESTED_COMMIT (no code changed after it
 5. production build
 6. Playwright e2e **145/145**
 
-Exit 0 in 234 s.
+Exit 0 in 218 s.
 
 Earlier fresh-clone runs are what found three shipping bugs (all fixed):
 1. `pnpm typecheck` failed before any build (route types). Fixed with `next typegen && tsc` (f7efd29).
@@ -59,7 +59,7 @@ Two checks run on every screen:
 
 ## Fuzz and soak
 - **Model-based agreement fuzz** (`src/lib/review/agreement.test.ts`): random sequences of keep/hide/remove/confirm/cancel/merge/cover/undo, with interleaved acks and injected rejects, go through the reducer and the mock server. Once nothing is pending, the client's view must equal the server's, and a child is never kept.
-  - `FUZZ_RUNS=100000` on TESTED_COMMIT 3807d13, in the same fresh clone: 3 properties × 100,000 = 300,000 sequences. **Pass** (403 s).
+  - `FUZZ_RUNS=100000` on TESTED_COMMIT 9363e91, in the same fresh clone: 3 properties × 100,000 = 300,000 sequences. **Pass** (384 s).
   - Earlier: `FUZZ_RUNS=200000` on 4a36a77 (600,000 sequences, pass).
 - **Property tests** (fast-check, in the normal suite):
   - frame mapping;
@@ -82,7 +82,7 @@ Two checks run on every screen:
   - Spec-shaped answers with no IDs the spec doesn't give: `/result` without `job_id`, `captions_url`, `status` or `frames` (the page loads, with captions from the job's transcript), 202 acks without `job_id`, review acks without `edit_id`, the demo without `hero_id`.
   - 5xx on the demo: one retry.
 - **API client tests:** timeouts (15 s), network errors with 2/4/8 s backoff on GETs only, malformed JSON and schema violations.
-- **Independent audits:** rounds 3–44 also drove a live-mode build against a fake https API with fault injection: signed-URL expiry and refresh, hangs, dropped connections and every status code. See `reaudit.md`.
+- **Independent audits:** rounds 3–46 also drove a live-mode build against a fake https API with fault injection: signed-URL expiry and refresh, hangs, dropped connections and every status code. See `reaudit.md`.
 
 ## Not covered
 - **The live API:** WP5 doesn't exist yet. The client is schema-validated, so a contract mismatch shows up as a typed error page, not a broken render.

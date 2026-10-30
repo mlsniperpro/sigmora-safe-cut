@@ -1,7 +1,7 @@
 AUDITED_COMMIT: 9363e91
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
-CLEAN_AUDITS_IN_A_ROW: 1
+CLEAN_AUDITS_IN_A_ROW: 2
 
 # Re-audit log: SAFECUT-WP6
 
@@ -606,3 +606,11 @@ This is a code change after 3807d13, so CLEAN_AUDITS_IN_A_ROW is back to 0: two 
 - **Noted, not counted:** with one core shared with 4 busy loops (about 20% of a core), two TryFlow tests about a delete racing the upload can fail because the 30 ms mock upload finishes while userEvent is still in the confirm dialog. It fails the same way with the old 1 s wait, so it is test timing under extreme starvation, not a product defect. The decorative `aria-hidden` timeline bars lose their colour in forced colours.
 
 CLEAN_AUDITS_IN_A_ROW is 1 (no code change since 9363e91).
+
+## Round 48 (audited a7396ff, code identical to 9363e91, by a Sonnet reviewer told to take a fresh look rather than repeat round 47): CLEAN
+
+0 critical, 0 high, 0 medium, 0 low.
+- Mock mode: the landing page, `/try` and `job-review-sample` at 1280 and 390 px (Pixel 7 profile: tabs, the Why bottom sheet); route status codes (404s, 308 trailing slashes); titles, h1s, `lang` and robots meta on 16 routes; every internal link on 15 routes; WCAG 1.4.12 text spacing on 11 routes at two widths (no overflow, only `sr-only` clipped); 191-character, HTML-and-quotes and right-to-left file names; the 12 scripted access codes against §2.6, §2.6.1 and §10.3; the code field (64-character cap, mask, empty message, Enter, selection after a 401, focus, Tab order); edits and persistence on fixture and uploaded jobs.
+- Live mode against the fake https API: 413, PUT 500/403, start 500, 409 `upload_incomplete`, 422 `job_cap`, a garbage 500 body, a malformed 201 and a 503 on the code check, each with the §2.6/§7 copy and buttons; 429 with `Retry-After: 4` on the code check, `POST /v1/jobs` and `/start` holding the button for exactly 4 s.
+
+Two consecutive clean full audits (rounds 47 and 48) on the last code commit, 9363e91. CLEAN_AUDITS_IN_A_ROW is 2.
