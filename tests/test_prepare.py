@@ -228,6 +228,11 @@ def test_unreadable_and_videoless_uploads(tmp_path: Path) -> None:
     with pytest.raises(prepare.PrepareError) as err:
         prepare.prepare(audio_only, tmp_path / "j2")
     assert err.value.reason == "bad_media"
+    still = make_clip(tmp_path / "still.mp4", [0.0])  # one frame: a picture, not a video
+    with pytest.raises(prepare.PrepareError) as err:
+        prepare.prepare(still, tmp_path / "j3")
+    assert err.value.reason == "bad_media"
+    assert not (tmp_path / "j3" / prepare.PREPARED).exists()
 
 
 def test_run_finds_the_one_upload(tmp_path: Path) -> None:
@@ -263,3 +268,18 @@ def test_job_fps_rounds_half_up() -> None:
     assert prepare.job_fps(fast) == 30
     single = media.Packets(time_base=Fraction(1, 1000), pts=(0,), last_duration=0)
     assert prepare.job_fps(single) == 1
+
+
+def test_a_playlist_upload_is_refused_before_ffmpeg_opens_what_it_names(tmp_path: Path) -> None:
+    """An HLS playlist would make ffmpeg read the local files it lists (here a real clip): only the mov demuxer
+    may open an upload."""
+    playlist = tmp_path / "evil.m3u8"
+    target = Path("fixtures/clips/counter_30fps_audio.mp4").resolve()
+    playlist.write_text(f"#EXTM3U\\n#EXT-X-TARGETDURATION:1\\n#EXTINF:1,\\n{target}\\n#EXT-X-ENDLIST\\n")
+    for read in (media.packets, media.decoded_start):
+        with pytest.raises(media.MediaError, match="whitelist"):
+            read(playlist, "v:0")
+    with pytest.raises(prepare.PrepareError) as err:
+        prepare.prepare(playlist, tmp_path / "j")
+    assert err.value.reason == "bad_media"
+    assert not (tmp_path / "j" / prepare.PREPARED).exists()

@@ -15,6 +15,9 @@ from typing import Any, cast
 
 import imageio_ffmpeg
 
+#: Uploads are MP4 or MOV (the API and the web app take nothing else), read only by the mov demuxer: never a
+#: playlist (an ``.m3u8`` makes ffmpeg's HLS demuxer open the local files it names) or any other demuxer.
+SAFE_INPUT = ("-format_whitelist", "mov,mp4,m4a,3gp,3g2,mj2")
 #: Generous: a 60 s, 150 MB upload transcodes in well under this on one CPU.
 FFMPEG_TIMEOUT_S = 600.0
 _TB = re.compile(r"^#tb (\d+): (\d+)/(\d+)$")
@@ -88,7 +91,7 @@ def run(args: list[str], *, timeout: float = FFMPEG_TIMEOUT_S) -> str:
 
 def packets(path: Path, stream: str = "v:0") -> Packets:
     """``-map 0:<stream> -c copy -f framemd5``: one line per packet (decode order), sorted here by ``pts``."""
-    out = run(["-i", str(path), "-map", f"0:{stream}", "-c", "copy", "-f", "framemd5", "-"])
+    out = run([*SAFE_INPUT, "-i", str(path), "-map", f"0:{stream}", "-c", "copy", "-f", "framemd5", "-"])
     time_base: Fraction | None = None
     rows: list[tuple[int, int]] = []
     for line in out.splitlines():
@@ -111,7 +114,7 @@ def decoded_start(path: Path, stream: str = "a:0") -> Fraction:
     """The first *decoded* frame's time, in seconds. It can differ from the first packet's: AAC's priming samples
     and an MP4 edit list's hidden video frames (packets at a negative pts) are discarded by the decoder."""
     # ``demux``: the stream's own time base, so the time is exact (a decoder's default, 1/fps, would round it).
-    out = run(["-i", str(path), "-map", f"0:{stream}", "-frames:" + stream[0], "1",
+    out = run([*SAFE_INPUT, "-i", str(path), "-map", f"0:{stream}", "-frames:" + stream[0], "1",
                "-enc_time_base:" + stream[0], "demux", "-f", "framemd5", "-"])  # fmt: skip
     time_base: Fraction | None = None
     for line in out.splitlines():
@@ -132,7 +135,7 @@ def frame_count(path: Path) -> int:
 
 
 def facts(path: Path) -> StreamFacts:
-    gen = imageio_ffmpeg.read_frames(str(path))
+    gen = imageio_ffmpeg.read_frames(str(path), input_params=list(SAFE_INPUT))
     try:
         meta = cast(dict[str, Any], next(gen))
     except (RuntimeError, OSError, StopIteration) as exc:

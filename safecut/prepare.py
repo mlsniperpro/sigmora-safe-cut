@@ -72,6 +72,10 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+#: The fewest frames an upload may have.
+MIN_FRAMES = 2
+
+
 def job_fps(video: media.Packets) -> int:
     """``min(30, round(source average fps))`` from the packet count over the stream's exact span (≥ 1)."""
     span = video.span
@@ -107,6 +111,9 @@ def probe(source: Path) -> SourceProbe:
         video = media.packets(source, "v:0").from_time(media.decoded_start(source, "v:0"))
     except media.MediaError as exc:
         raise PrepareError("bad_media", f"can't read the video stream: {exc}", size_bytes=size) from exc
+    if video.count < MIN_FRAMES:
+        # A single picture has no motion to track and makes a zero-frame SAM proxy (§5b: at least one frame).
+        raise PrepareError("bad_media", f"{video.count} frame: a video needs at least {MIN_FRAMES}", size_bytes=size)
     audio: media.Packets | None = None
     audio_start: Fraction | None = None
     if facts.audio:
@@ -144,7 +151,7 @@ def _audio_filter(video: media.Packets, audio_start: Fraction) -> str:
 
 
 def transcode(source: Path, out: Path, probe_result: SourceProbe) -> None:
-    args = ["-y", "-i", str(source), "-map", "0:v:0", "-vf", _video_filter(probe_result.fps)]
+    args = ["-y", *media.SAFE_INPUT, "-i", str(source), "-map", "0:v:0", "-vf", _video_filter(probe_result.fps)]
     if probe_result.audio is not None and probe_result.audio_start is not None:
         args += ["-map", "0:a:0", "-af", _audio_filter(probe_result.video, probe_result.audio_start), "-c:a", "aac",
                  "-b:a", "128k"]  # fmt: skip
