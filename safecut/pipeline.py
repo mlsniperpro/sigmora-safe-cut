@@ -148,7 +148,7 @@ def recording_is_synthetic(job_dir: Path) -> bool:
     so nothing unlabelled is ever presented as a real run)."""
     manifest = job_dir / RAW_DIR / RAW_MANIFEST
     if not manifest.is_file():
-        return False
+        return (job_dir / RAW_DIR).is_dir()  # replayed recordings with no manifest: unknown, so labelled synthetic
     try:
         data = json.loads(manifest.read_text(encoding="utf-8"))
     except (OSError, ValueError):

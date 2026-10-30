@@ -92,6 +92,35 @@ def models_used(job_dir: Path, s: Settings) -> dict[str, str]:
     return models
 
 
+def models_recorded(job_dir: Path, s: Settings) -> dict[str, str]:
+    """Only what the job's files show ran: the trackers named on its tracks, the scene, roles and speech models
+    their files record, the escalation when a ruling exists, the auditor ``audit.json`` names and the red team when
+    it answered. A stage that never ran is absent (the eval's run configs; the API's job body shows the plan)."""
+    ran: dict[str, str] = {}
+    tracks = _optional(job_dir / "tracks.json", Tracks)
+    if tracks is not None:
+        sources = sorted({t.source for t in tracks.tracks if t.source})
+        if sources:
+            ran["tracks"] = " / ".join(sources)
+    scene = _optional(job_dir / "scene.json", Scene)
+    if scene is not None and scene.model:
+        ran["scene"] = scene.model
+    roles = _optional(job_dir / "roles.json", Roles)
+    if roles is not None and roles.model:
+        ran["roles"] = roles.model
+        if any(t.suggested_role is not None for t in roles.tracks):
+            ran["escalate"] = s.escalate_model
+    transcript = _optional(job_dir / "transcript.json", Transcript)
+    if transcript is not None and transcript.source:
+        ran["asr"] = transcript.source
+    audit = _optional(job_dir / "audit.json", Audit)
+    if audit is not None:
+        ran["auditor"] = audit.egoblur.model
+        if audit.redteam:
+            ran["redteam"] = s.redteam_model
+    return ran
+
+
 class Views:
     def __init__(self, settings: Settings, signer: Signer) -> None:
         self.settings = settings

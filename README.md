@@ -111,7 +111,7 @@ Safe Cut is a new, standalone codebase, written during the event. It plugs into 
 - A redaction layer (blur, pixelate or solid boxes on source-anchored tracks) and a renderer.
 - An agent action with priced approval cards, an editor tracking UI, and a publishing queue.
 
-None of that code is copied here. Sigmora calls Safe Cut's API as its host app (`docs/DESIGN.md` §3). Before the kickoff this repo held design documents only.
+None of that code is copied here. Safe Cut is built to be called by Sigmora as its host app, through service keys (`docs/DESIGN.md` §3). Before the kickoff this repo held design documents only.
 
 ## Docs
 

@@ -92,7 +92,7 @@ def test_a_replay_run_writes_every_result_file(base: Path) -> None:
     config = json.loads((run_dir / "config.json").read_text())
     assert config["synthetic"] is True
     assert config["variant"] == "full"
-    assert config["models"]["sam"] == "sam-3.1"
+    assert config["models"]["tracks"] == "sam-3.1"  # the model the tracks themselves name
     # The detector the job's own audit.json names, never the configured default; a synthetic replay says no model ran.
     audit = json.loads((EXAMPLE / "audit.json").read_text())
     assert config["models"]["auditor"] == audit["egoblur"]["model"]
@@ -331,3 +331,22 @@ def test_a_refused_test_run_is_never_counted(base: Path, monkeypatch: pytest.Mon
     with pytest.raises(VariantUnavailable):
         runner.run("test", "muse_no_track", replay=False, out=base / "results", splits=splits, base=base)
     assert runner.runs_made(splits) == []
+
+
+@pytest.mark.parametrize(
+    ("variant", "absent"),
+    [
+        ("full", set()),
+        ("no_audit", {"auditor", "redteam"}),
+        ("blur_all", {"auditor", "redteam", "roles", "scene", "asr", "escalate"}),
+        ("detector_only", {"auditor", "redteam", "roles", "scene", "asr", "escalate"}),
+    ],
+)
+def test_a_run_config_names_only_the_models_that_ran(base: Path, variant: str, absent: set[str]) -> None:
+    """AGENTS rule 9: a baseline that skips a stage never claims that stage's model."""
+    run_dir = runner.run(
+        "dev", cast(Variant, variant), replay=True, out=base / "results", splits=base / "splits", base=base
+    )
+    models = json.loads((run_dir / "config.json").read_text())["models"]
+    assert not absent & set(models), models
+    assert "tracks" in models

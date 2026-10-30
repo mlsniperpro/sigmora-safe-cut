@@ -28,7 +28,7 @@ Safe Cut decides from context what shouldn't be published, and proves it:
 7. Before anything is published, an independent detector checks every rendered frame and a Muse Spark red team checks sampled frames. Leaks are patched automatically.
 8. A hash-chained privacy receipt records every decision, who made it, and how the data was handled.
 
-It is a production service: an API with access codes, service keys for Sigmora, per-clip and daily spend caps, signed uploads, 24-hour deletion and a labelled demo mode, a review web app, and a CLI. Sigmora, our existing creator platform, calls it as its host app. All of Safe Cut was built during the hackathon; what existed before is listed in the README.
+It is a production service: an API with access codes, service keys for Sigmora, per-clip and daily spend caps, signed uploads, 24-hour deletion and a labelled demo mode, a review web app, and a CLI. It is built to be called by Sigmora, our existing creator platform, as its host app (service keys). All of Safe Cut was built during the hackathon; what existed before is listed in the README.
 
 ## Meta models used
 

@@ -55,7 +55,13 @@ else fail "API: an unknown job answered $code"; fi
 code="$(fetch badcode -X POST -H 'Content-Type: application/json' --data '{"code":"deploy-check-not-a-code"}' "$API/v1/codes/check")"
 if [ "$code" = "401" ]; then ok "API: a wrong access code is refused (401)"; else fail "API: a wrong access code answered $code"; fi
 
+# The demo job is precomputed in the background after a cold start (about a minute): wait for it before judging.
+deadline=$(( $(date +%s) + ${DEPLOY_DEMO_WAIT_S:-300} ))
 code="$(fetch demo "$API/v1/demo/$HERO")"
+while [ "$code" = "404" ] && [ "$(date +%s)" -lt "$deadline" ]; do
+  sleep 5
+  code="$(fetch demo "$API/v1/demo/$HERO")"
+done
 if [ "$code" = "200" ] && [ "$(json demo "['mode']")" = "replay" ]; then
   ok "API: the demo job '$HERO' replays (synthetic: $(json demo "['synthetic']"))"
   video="$(json demo "['video_url']")"

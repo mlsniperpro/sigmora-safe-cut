@@ -41,7 +41,7 @@ A beat whose number has no committed source changes its shot (beat 7 below); nob
 
 ## Before recording
 
-- Use the deployed app with the owner's recording code (`BLOCKED.md`), on hero clips 1 and 2.
+- Use the deployed app with the owner code (`BLOCKED.md`), on hero clips 1 and 2.
 - Record at 1080p with the cursor visible, and keep captions on.
 - Show no real keys, emails or private footage on screen.
 - If something the script expects didn't happen on the real run (for example the audit found no leak), change the script to what did happen.

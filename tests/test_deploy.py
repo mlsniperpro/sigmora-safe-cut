@@ -113,9 +113,10 @@ def web_server(csp: bool) -> tuple[ThreadingHTTPServer, str]:
     return server, f"http://127.0.0.1:{server.server_address[1]}"
 
 
-def deploy_check(*args: str, replay_ok: bool = True) -> subprocess.CompletedProcess[str]:
+def deploy_check(*args: str, replay_ok: bool = True, **extra: str) -> subprocess.CompletedProcess[str]:
     """The API under test runs in demo mode (no Meta key in tests), which the check accepts only when told to."""
-    env = {k: v for k, v in os.environ.items() if k != "DEPLOY_REPLAY_OK"}
+    # The fixture's API has built its demo job before the check runs, so the cold-start wait stays short here.
+    env = {k: v for k, v in os.environ.items() if k != "DEPLOY_REPLAY_OK"} | {"DEPLOY_DEMO_WAIT_S": "5"} | extra
     if replay_ok:
         env["DEPLOY_REPLAY_OK"] = "1"
     return subprocess.run(  # noqa: S603 -- fixed argv: bash and our script
@@ -199,3 +200,28 @@ def test_deploy_check_fails_a_deployment_judges_cant_use(api: str) -> None:
     result = deploy_check(api, "-", replay_ok=False)
     assert result.returncode != 0
     assert "isn't live with a Meta key (mode replay" in result.stdout
+
+
+def test_deploy_check_accepts_a_live_api_with_its_key() -> None:
+    """The passing branch, on a stub whose /healthz says what a judge-ready deployment says."""
+
+    class Live(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            body = json.dumps({"status": "ok", "mode": "live", "key": True, "meta": "ok"}).encode()
+            self.send_response(200 if self.path == "/healthz" else 404)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(body if self.path == "/healthz" else b"{}")
+
+        def log_message(self, format: str, *args: object) -> None:
+            return None
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Live)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        result = deploy_check(
+            f"http://127.0.0.1:{server.server_address[1]}", "-", replay_ok=False, DEPLOY_DEMO_WAIT_S="0"
+        )
+    finally:
+        server.shutdown()
+    assert "ok    API runs live, with MODEL_API_KEY set" in result.stdout

@@ -37,7 +37,7 @@ from eval.labels import load_labels  # noqa: E402 -- after the sys.path line abo
 from eval.metrics import JobScore, score_job, summarize  # noqa: E402 -- after the sys.path line above, on purpose
 from eval.variants import VARIANTS, Variant, VariantUnavailable, preflight, run_variant  # noqa: E402 -- as above
 from safecut import netguard, pipeline  # noqa: E402 -- after the sys.path line above, on purpose
-from safecut.api.views import models_used  # noqa: E402 -- after the sys.path line above, on purpose
+from safecut.api.views import models_recorded  # noqa: E402 -- after the sys.path line above, on purpose
 from safecut.config import load_settings  # noqa: E402 -- after the sys.path line above, on purpose
 
 SPLITS = ("hero", "dev", "public", "test")
@@ -202,7 +202,10 @@ def run(
                 synthetic = synthetic or pipeline.recording_is_synthetic(job_dir)
             result = run_variant(variant, job_dir, replay=replay)
             detail.update(result.detail)
-            for role, model in models_used(job_dir, settings).items():
+            recorded = models_recorded(job_dir, settings)
+            if "detector" in result.detail:  # the egoblur baseline's detector, which writes no audit.json
+                recorded["auditor"] = result.detail["detector"]
+            for role, model in recorded.items():
                 ran.setdefault(role, set()).add(model)
             scores.append(score_job(job_dir, load_labels(base / entry.labels), result.regions))
             spent += pipeline.job_spend(job_dir)

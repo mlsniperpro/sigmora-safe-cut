@@ -635,8 +635,22 @@ SECRET = re.compile(
     # code or service key long enough to be a real one (the tests' stand-ins are shorter, or named so).
     r"|\bhf_[A-Za-z0-9]{30,}"
     r"|[\"']?(SAFECUT_URL_SECRET|SAFECUT_CLIPS_TOKEN|HF_TOKEN)[\"']?\s*[=:]\s*['\"]?[A-Za-z0-9_\-+/]{24,}"
-    r"|[\"'](code|key)[\"']\s*:\s*[\"'](?![a-z]+(-[a-z]+)*-[0-9]{0,12}[\"'])[A-Za-z0-9_\-]{24,}[\"']"
+    # Any access code or service key value of BLOCKED's 12+ characters, except an error code (a lowercase
+    # identifier like "code_not_active") and the tests' own named stand-ins (STAND_INS, checked by `secret_hit`).
+    r"|[\"'](code|key)[\"']\s*:\s*[\"'](?![a-z]+(_[a-z]+)*[\"'])(?P<credential>[A-Za-z0-9_\-+/=.]{12,})[\"']"
 )
+#: The exact access codes and service keys the tests and docs use as stand-ins; any other 12+ character value in a
+#: "code" or "key" field is treated as a real one.
+STAND_INS = frozenset(
+    {"deploy-check-not-a-code", "judge-secret-7", "local-judge-code", "sigmora-service-key-0123456789"}
+)
+
+
+def secret_hit(line: str) -> bool:
+    """A key-shaped value on ``line`` that isn't one of the tests' named stand-ins."""
+    return any(m.group("credential") not in STAND_INS for m in SECRET.finditer(line))
+
+
 SHIPPED = ("safecut", "eval", "deploy", "scripts", "web/src", "web/e2e", "web/scripts", ".github")
 #: The three unfinished-work markers, spelt in pieces so this file doesn't match its own check.
 MARKER = re.compile(r"\b(" + "|".join(("TO" + "DO", "FIX" + "ME", "X" + "XX")) + r")\b")
@@ -649,7 +663,7 @@ def e11() -> None:
         line
         for line in history.stdout.splitlines()
         if line.startswith("+")
-        and SECRET.search(line)
+        and secret_hit(line)
         and "SECRET_RE" not in line
         and "SECRET = re.compile" not in line
         and "SECRET.search(" not in line  # the scanner's own tests feed it key-shaped strings
@@ -666,7 +680,7 @@ def e11() -> None:
         if b"\x00" in data:
             continue
         for number, line in enumerate(data.decode("utf-8", errors="replace").splitlines(), 1):
-            if SECRET.search(line):
+            if secret_hit(line):
                 raise CheckFailed(f"{name}:{number}: secret-shaped text in the tree")
     tracked = sh(["git", "ls-files", "--", *SHIPPED]).stdout.split()
     for name in tracked:
