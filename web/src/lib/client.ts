@@ -1,31 +1,24 @@
 /**
- * The app-wide API client: live when `NEXT_PUBLIC_SAFECUT_API` is set, the
- * in-browser mock backend otherwise.
+ * The app-wide API client, always the live Safe Cut API at `NEXT_PUBLIC_SAFECUT_API`. Without one configured,
+ * every call fails as a network error, so each page shows its "service isn't responding" state rather than
+ * made-up data. (The in-browser mock backend is test support only: `src/test/mock-backend.ts`.)
  */
-import { SafeCutClient, apiBaseUrl } from "./api";
-import { MockBackend } from "./mock-backend";
+import { ApiError, SafeCutClient, apiBaseUrl, type Transport } from "./api";
 import { liveTransport } from "./transport-live";
 
 let client: SafeCutClient | null = null;
 
-export const SAMPLE_MEDIA_BASE = "/sample";
+/** A transport for a build with no API configured: every request fails loudly, nothing is faked. */
+export function unconfiguredTransport(): Transport {
+  const fail = () => Promise.reject(new ApiError({ kind: "network", message: "NEXT_PUBLIC_SAFECUT_API is not set" }));
+  return { request: fail, upload: fail };
+}
 
 export function getClient(): SafeCutClient {
   if (client) return client;
   const base = apiBaseUrl();
-  client = new SafeCutClient({
-    transport: base ? liveTransport(base) : new MockBackend({ sample: { job: "job-review-sample", mediaBase: SAMPLE_MEDIA_BASE }, storage: browserStorage() }),
-  });
+  client = new SafeCutClient({ transport: base ? liveTransport(base) : unconfiguredTransport() });
   return client;
-}
-
-/** localStorage, or null where it's blocked (a private window, a sandboxed frame). */
-function browserStorage(): Storage | null {
-  try {
-    return typeof window === "undefined" ? null : window.localStorage;
-  } catch {
-    return null;
-  }
 }
 
 /** Tests swap the client for one on a scripted backend. */

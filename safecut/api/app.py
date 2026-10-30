@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import importlib
 import logging
 import re
 import subprocess
@@ -81,6 +82,19 @@ def clip_duration(path: Path) -> float | None:
         return None
     hours, minutes, seconds = match.groups()
     return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+
+
+def auditor_available(settings: Settings) -> bool:
+    """PRE-A §12: a live job never starts without its audit. The audit stage may say its detector can't load
+    (``safecut.audit.auditor_available``); a build without the audit stage can't audit at all."""
+    try:
+        module = importlib.import_module("safecut.audit")
+    except ModuleNotFoundError as exc:
+        if exc.name in ("safecut.audit", "safecut"):
+            return False
+        raise
+    check = getattr(module, "auditor_available", None)
+    return bool(check(settings)) if callable(check) else True
 
 
 def safe_name(name: str, content_type: str) -> str:
@@ -198,6 +212,7 @@ class Service:
             raise pipeline.PipelineError(f"safecut run exited {proc.returncode}: {proc.stderr.strip()[-300:]}")
         with self.store.update(job_id) as state:
             state.status, state.stage = "done", "done"
+            state.synthetic = pipeline.recording_is_synthetic(job_dir)
 
     # -- health ----------------------------------------------------------------
 
@@ -404,6 +419,8 @@ def start(svc: Svc, job_id: str) -> JSONResponse:
     if state.mode == "live":
         if svc.settings.model_api_key is None:
             raise ApiRefusal(503, "config", "Safe Cut isn't configured to process clips right now.")
+        if not auditor_available(svc.settings):
+            raise ApiRefusal(503, "auditor_unavailable", "Safe Cut's final check isn't available right now.")
         if grant is not None:
             check_caps(svc.settings, svc.ledger, grant, estimate=estimate_usd(duration))
     if not (job_dir / INTAKE).is_file():
@@ -425,6 +442,7 @@ def start(svc: Svc, job_id: str) -> JSONResponse:
         pipeline.attach_recording(job_dir, recording)
     with svc.store.update(job_id) as current:
         current.status, current.stage, current.failure = "processing", "queued", None
+        current.synthetic = pipeline.recording_is_synthetic(job_dir)
         current.duration_s = duration
         current.requeues = 0
         updated = current.model_copy()

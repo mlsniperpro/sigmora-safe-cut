@@ -4,8 +4,8 @@
  * labelled toggle that keeps the playback time (UI-SPEC §1.1, §1.5).
  */
 import { useEffect, useRef, useState } from "react";
-import { ApiError, isMockMode } from "@/lib/api";
-import { SAMPLE_MEDIA_BASE, getClient } from "@/lib/client";
+import { ApiError } from "@/lib/api";
+import { getClient } from "@/lib/client";
 import type { DemoResponse } from "@/lib/contracts";
 import { SITE } from "@/lib/site";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
@@ -33,8 +33,7 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["au
   const failedSrc = useRef<string | null>(null);
   /** A cold start's 5xx on the demo gets one quiet retry before the page says it didn't load. */
   const demoRetried = useRef(false);
-  // The sample hero in mock mode isn't a real run, so it doesn't claim demo mode.
-  useReportMode(isMockMode() ? null : demo?.mode);
+  useReportMode(demo?.mode, demo?.synthetic);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -70,11 +69,10 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["au
   };
 
   const src = demo ? (version === "raw" ? demo.job.prepared_url : demo.video_url) : undefined;
-  const mock = isMockMode();
   const captions = useRemoteCaptions(demo?.captions_url);
   // §1.4: the poster shows while loading and stays under the message if the video fails. Before
   // the first answer only mock mode knows it (the sample's); live mode shows the dark frame.
-  const poster = demo?.poster_url ?? (mock ? `${SAMPLE_MEDIA_BASE}/poster.jpg` : null);
+  const poster = demo?.poster_url ?? null;
 
   return (
     <figure className="overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow)]">
@@ -168,7 +166,7 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["au
         </span>
         <p className="text-muted">
           <span className="font-medium text-text">Precomputed result.</span>{" "}
-          {mock ? "Sample clip: drawn shapes, not real people." : SITE.heroHasChild ? "Staged demo. Everyone shown signed a release (a guardian signed for the child)." : "Staged demo. Everyone shown signed a release."}
+          {demo?.synthetic ? "Synthetic test clip: drawn shapes, not real people." : SITE.heroHasChild ? "Staged demo. Everyone shown signed a release (a guardian signed for the child)." : "Staged demo. Everyone shown signed a release."}
         </p>
         {failed && <p>The demo video didn&apos;t load. You can still try Safe Cut with an access code.</p>}
       </figcaption>

@@ -6,7 +6,7 @@ import twoLabellers from "../../../mocks/results-two-labellers.json";
 import { SafeCutClient } from "@/lib/api";
 import { setClientForTests } from "@/lib/client";
 import { resultsTableSchema } from "@/lib/contracts";
-import { MockBackend } from "@/lib/mock-backend";
+import { MockBackend } from "@/test/mock-backend";
 import { ModeProvider } from "../mode";
 import { HeroAndSteps } from "./HeroAndSteps";
 import { ResultsTable } from "./ResultsTable";

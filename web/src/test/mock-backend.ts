@@ -10,8 +10,8 @@
  *   for failure-path tests.
  */
 import { MOCK_LOADERS, type MockName } from "../../mocks";
-import type { RawResponse, RequestInit, Transport } from "./api";
-import { jobResponseSchema, type Box, type Item, type JobResponse, type Plan, type Region, type ReviewEdit, type Spot, type Stage } from "./contracts";
+import type { RawResponse, RequestInit, Transport } from "@/lib/api";
+import { jobResponseSchema, type Box, type Item, type JobResponse, type Plan, type Region, type ReviewEdit, type Spot, type Stage } from "@/lib/contracts";
 
 interface Envelope {
   status: number;

@@ -30,16 +30,36 @@ describe("demo mode is per page (UI-SPEC §6)", () => {
   });
 });
 
-describe("mock mode (no API configured)", () => {
-  it("says the replayed results are sample data, so the demo banner never claims a real run alone", async () => {
+function SyntheticReporter() {
+  useReportMode("replay", true);
+  return null;
+}
+
+describe("a synthetic replay says so", () => {
+  it("never claims a real run for synthetic recordings", async () => {
     nav.path = "/jobs/job-replay";
     render(
       <ModeProvider>
-        <Reporter />
+        <SyntheticReporter />
         <ModeBanners />
       </ModeProvider>,
     );
-    expect(await screen.findByText(/In this preview the saved results are sample data/)).toBeInTheDocument();
-    expect(screen.getByText(/nothing leaves your browser/)).toBeInTheDocument();
+    expect(await screen.findByText(/saved results for a synthetic test clip/)).toBeInTheDocument();
+    expect(screen.queryByText(/from a real run/)).toBeNull();
+  });
+
+  it("shows no banner for a live response", () => {
+    nav.path = "/";
+    function Live() {
+      useReportMode("live");
+      return null;
+    }
+    render(
+      <ModeProvider>
+        <Live />
+        <ModeBanners />
+      </ModeProvider>,
+    );
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });

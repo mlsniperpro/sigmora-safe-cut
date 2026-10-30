@@ -438,3 +438,17 @@ def test_cli_runs_a_registered_stage(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert result.exit_code == 0, result.output
     assert "prepare: wrote" in result.output
     assert load(tmp_path / "j_cli" / "job.json", Job).job_id == "j_cli"
+
+
+def test_a_replay_is_synthetic_unless_its_manifest_says_otherwise(tmp_path: Path) -> None:
+    assert pipeline.recording_is_synthetic(tmp_path) is False  # no recording: a live job
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    for content, expected in (
+        ('{"synthetic": false}', False),
+        ('{"synthetic": true}', True),
+        ("{}", True),
+        ("not json", True),
+    ):
+        (raw / "manifest.json").write_text(content)
+        assert pipeline.recording_is_synthetic(tmp_path) is expected, content

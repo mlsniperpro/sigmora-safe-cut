@@ -31,9 +31,10 @@ describe("Copy link (UI-SPEC §2.5)", () => {
     expect(screen.getByText(`${window.location.origin}/jobs/job-1`)).toHaveClass("break-all");
   });
 
-  it("in mock mode, says the review link only works in this browser", () => {
+  it("offers the review link with no preview caveat", () => {
     setup();
-    expect(screen.getByText(/in this preview it only works in this browser/)).toBeInTheDocument();
+    expect(screen.getByText(/Your review link:/)).toBeInTheDocument();
+    expect(screen.queryByText(/in this preview/)).toBeNull();
   });
 
   it.each([

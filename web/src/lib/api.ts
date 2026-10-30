@@ -1,9 +1,10 @@
 /**
  * Typed client for the Safe Cut API (WP5; routes and shapes in UI-SPEC §8, §10).
  *
- * With `NEXT_PUBLIC_SAFECUT_API` unset, every call goes to the in-browser mock
- * backend built on `web/mocks/` (WP6 step 2). Every response body is parsed
- * against its schema; anything else becomes a typed `ApiError`.
+ * The client always talks to the API at `NEXT_PUBLIC_SAFECUT_API` (`client.ts`);
+ * unit tests swap in the mock backend (`src/test/mock-backend.ts`). Every
+ * response body is parsed against its schema; anything else becomes a typed
+ * `ApiError`.
  */
 import type { z } from "zod";
 import {
@@ -75,14 +76,7 @@ export interface Transport {
   upload(url: string, file: Blob, contentType: string, onProgress: (fraction: number) => void, signal: AbortSignal): Promise<void>;
 }
 
-export function apiBaseUrl(): string | null {
-  const raw = process.env.NEXT_PUBLIC_SAFECUT_API?.trim();
-  return raw ? raw.replace(/\/+$/, "") : null;
-}
-
-export function isMockMode(): boolean {
-  return apiBaseUrl() === null;
-}
+export { apiBaseUrl } from "./api-base";
 
 function parseRetryAfter(value: string | null): number | null {
   if (!value) return null;

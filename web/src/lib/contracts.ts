@@ -5,6 +5,7 @@
  * half-rendered page.
  */
 import { z } from "zod";
+import { localApiOrigin } from "./api-base";
 
 const frame = z.number().int().nonnegative();
 export const boxSchema = z.tuple([z.number(), z.number(), z.number(), z.number()]);
@@ -14,13 +15,16 @@ const isoTime = z.iso.datetime({ offset: true });
  * A URL the API hands the browser (signed media, keyframes, receipts). Only
  * https, or a same-origin path, so a compromised API can't inject `javascript:`.
  */
+const LOCAL_API = localApiOrigin();
+/** Plain http is accepted only from a loopback API's own origin (a local run or the e2e check). */
+const fromLocalApi = (u: string) => LOCAL_API !== null && u.startsWith(`${LOCAL_API}/`);
 export const mediaUrl = z
   .string()
   // Browsers read a backslash as "/" and strip tabs and newlines, so "/" + backslash (or a tab) +
   // "/evil.com" would be protocol-relative: no backslashes, whitespace or control characters anywhere.
-  .refine((u) => !/[\\\s\u0000-\u001f\u007f]/.test(u) && (u.startsWith("https://") || /^\/(?!\/)/.test(u)), { message: "must be an https URL or a same-origin path" });
-/** The presigned upload URL; the mock backend's `mock://` scheme is accepted only in mock mode's own responses. */
-const uploadUrl = z.string().refine((u) => u.startsWith("https://") || u.startsWith("mock://"), { message: "must be an https URL" });
+  .refine((u) => !/[\\\s\u0000-\u001f\u007f]/.test(u) && (u.startsWith("https://") || /^\/(?!\/)/.test(u) || fromLocalApi(u)), { message: "must be an https URL or a same-origin path" });
+/** The presigned upload URL; the mock backend's `mock://` scheme is accepted only in its unit tests. */
+const uploadUrl = z.string().refine((u) => u.startsWith("https://") || u.startsWith("mock://") || fromLocalApi(u), { message: "must be an https URL" });
 
 export const roleSchema = z.enum(["participant", "bystander", "child", "unsure"]);
 export type Role = z.infer<typeof roleSchema>;
@@ -299,6 +303,8 @@ export type JobMeta = z.infer<typeof jobMetaSchema>;
 export const jobResponseSchema = z.object({
   job_id: z.string().min(1),
   mode: modeSchema,
+  /** A replay of synthetic recordings (the drawn test clip), labelled as such (AGENTS rule 9). */
+  synthetic: z.boolean().default(false),
   status: jobStatusSchema,
   stage: stageSchema.nullable().optional(),
   stage_reason: z.literal("audit_patch").nullable().optional(),
@@ -337,6 +343,7 @@ export const resultResponseSchema = z.object({
   // §8 doesn't give /result its job ID either: the page has it from the route.
   job_id: z.string().optional(),
   mode: modeSchema,
+  synthetic: z.boolean().default(false),
   // §8/§5.6 don't give /result these; the page reads the job's own status and frames first.
   status: jobStatusSchema.optional(),
   deletes_at: isoTime,
@@ -353,6 +360,7 @@ export type ResultResponse = z.infer<typeof resultResponseSchema>;
 // Request 19: the result shape plus `job` and `audit`; nothing here reads a hero ID.
 export const demoResponseSchema = z.object({
   mode: z.literal("replay"),
+  synthetic: z.boolean().default(false),
   job: z.object({
     prepared_url: mediaUrl,
     fps: z.number(),

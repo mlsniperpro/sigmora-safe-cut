@@ -113,6 +113,7 @@ class Views:
         body: dict[str, Any] = {
             "job_id": state.job_id,
             "mode": state.mode,
+            "synthetic": state.synthetic,
             "status": state.status,
             "stage": state.stage,
             "stage_reason": state.stage_reason,
@@ -197,6 +198,7 @@ class Views:
         body: dict[str, Any] = {
             "job_id": state.job_id,
             "mode": state.mode,
+            "synthetic": state.synthetic,
             "status": state.status,
             "deletes_at": iso(state.deletes_at),
             "frames": job.frames,
@@ -212,6 +214,7 @@ class Views:
         result = self.result(state, job_dir)
         return {
             "mode": "replay",
+            "synthetic": state.synthetic,
             "job": {
                 "prepared_url": self.media_url(state.job_id, job.prepared),
                 "fps": job.fps,
