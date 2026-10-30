@@ -168,6 +168,8 @@ Round 14 (fixes in the round-14 commit; details in `reaudit.md`):
 - [x] R15-1 (low) a late fresh URL brings the review player back: JobPage test
 - [x] R15-2 (low) an action's GET isn't made quiet by a cut-short refresh: useJob test
 - [x] Self-found: fixture dates shift with the clock, so the mock and the tests hold on any date: mock-backend tests, suite run at clock shifts up to +400 days
+- [x] R39-1 (low) time-gated retry buttons re-enable at their deadline: useNow test
+- [x] R39-2 (low) a failed job's Try again hidden under the §2.6.1 expiry rule: JobPage test
 - [x] R38-1 (medium) 202 acks without `job_id` parse: contracts test
 - [x] R38-2 (medium) review acks without `edit_id` parse: contracts test
 - [x] R38-3 (medium) the demo answer without `hero_id` parses: contracts test

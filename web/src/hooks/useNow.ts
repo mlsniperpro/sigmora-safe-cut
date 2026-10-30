@@ -1,8 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
 
-/** The current time, refreshed every `ms` so time-gated buttons re-enable on their own. */
-export function useNow(ms: number): number {
+/**
+ * The current time, refreshed every `ms` and also right at each future time in `wakeAt`, so a
+ * button gated on `retry_at` or `Retry-After` re-enables when it says it will, not up to `ms` late.
+ */
+export function useNow(ms: number, wakeAt: readonly (number | null)[] = []): number {
   // Starts at 0 so nothing time-dependent is evaluated during a prerender; set right after mount.
   const [now, setNow] = useState(0);
   useEffect(() => {
@@ -13,5 +16,16 @@ export function useNow(ms: number): number {
       clearInterval(t);
     };
   }, [ms]);
+  const deadlines = wakeAt.filter((at): at is number => at !== null && Number.isFinite(at)).join(",");
+  useEffect(() => {
+    if (!deadlines) return;
+    const timers = deadlines
+      .split(",")
+      .map(Number)
+      .filter((at) => at > Date.now())
+      // Timers can fire a few ms early: wake just after the deadline so `now >= at` holds.
+      .map((at) => setTimeout(() => setNow(Math.max(Date.now(), at)), at - Date.now() + 1));
+    return () => timers.forEach(clearTimeout);
+  }, [deadlines]);
   return now;
 }

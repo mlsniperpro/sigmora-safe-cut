@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 4a5bb7c
+AUDITED_COMMIT: 867bece
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -499,3 +499,14 @@ Also fixed, from the auditor's "noted, not counted" list: "Try another clip" and
 Noted, not counted (no spec field to build from, or by design): in live mode the hero poster and hero captions come only from the non-spec `poster_url`/`captions_url` (a WP8 static asset or a first-frame poster is the fix, listed for WP5/WP8); `POST /v1/jobs` sends `file_name`, which request 17 doesn't list; `eta_s` isn't defined in the spec, so "~N s left" shows only when WP5 adds it (already requested); a linked speaker with no overlapping turns shows the heading with no lines (the spec is silent); the mobile tab strip scrolls by design.
 
 On the fix commit: `checks.sh` exit 0, 875 tests, e2e 143/143.
+
+## Round 39 (audited 867bece by a Sonnet reviewer: round 38's spec-shaped live flow end to end, an error-body matrix for every request against the §2.6/§10.3 tables, signed-URL expiry in live mode, and §2, §5, §7 and §9 copy line by line; fixes in the next commit)
+
+0 critical, 0 high, 0 medium, 2 low. CLEAN_AUDITS_IN_A_ROW stays 0. No regressions from round 38.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | low | Time-gated buttons on the failed-job page (Try again after a 429 `Retry-After`, Try again tomorrow until `retry_at`) and the needs_you "Run the audit again" (`daily_cap` until `retry_at`) re-enabled up to 15 s late: `useNow(15_000)` only ticked every 15 s (§10.3 "disabled until `Retry-After`", §2.6 "disabled until `retry_at`") | fixed: `useNow` also wakes right at each deadline it is given; FailedJob passes `retry_at` and the Retry-After time, ReviewPanel passes `retry_at`. useNow test with fake timers (fails on 867bece) |
+| 2 | low | A failed job's Try again stayed on screen, disabled for good, when a retry got `429 daily_cap` under the §2.6.1 expiry rule ("hidden with the job-page cap line expiry string") | fixed: hidden in that case, with the expiry line (which takes focus). JobPage test (fails on 867bece) |
+
+On the fix commit: `checks.sh` exit 0, 878 tests, e2e 143/143.

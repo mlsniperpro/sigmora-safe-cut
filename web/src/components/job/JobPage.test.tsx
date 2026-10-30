@@ -4,6 +4,7 @@
  */
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { COPY } from "@/lib/copy";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { SafeCutClient } from "@/lib/api";
 import { setClientForTests } from "@/lib/client";
@@ -609,6 +610,23 @@ describe("job states", () => {
     // The disabled button can't keep focus, so the error takes it rather than the page (WCAG 2.4.3).
     // Try again's answer and the delete's share their copy: the delete's is the newer one, and has focus.
     await waitFor(() => expect(screen.getAllByText("Too many tries in a short time. Wait a minute and try again.", { selector: "p[role=alert]" }).at(-1)).toHaveFocus());
+  });
+
+  it("a daily_cap refusal of Try again whose code expires first hides the button (§2.6.1)", async () => {
+    const original = MockBackend.prototype.request;
+    const spy = vi.spyOn(MockBackend.prototype, "request").mockImplementation(async function (this: MockBackend, init) {
+      const raw = await original.call(this, init);
+      if (init.method !== "GET" || raw.status !== 200 || !init.path.startsWith("/v1/jobs/")) return raw;
+      // The code ends in an hour, long before the daily limit resets.
+      return { ...raw, body: { ...(raw.body as object), code_valid_until: new Date(Date.now() + 3_600_000).toISOString() } };
+    });
+    onTestFinished(() => spy.mockRestore());
+    const user = setup("job-failed-roles");
+    await screen.findByRole("button", { name: "Try again" });
+    backend.inject(/\/start$/, "error-429-render-daily-cap-expiring");
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText(COPY.dailyCapJobExpiring)).toHaveFocus();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
   });
 
   it("Approve & render keeps focus while busy and hands it to the render progress", async () => {

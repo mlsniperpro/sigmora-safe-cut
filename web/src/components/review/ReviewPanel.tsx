@@ -122,7 +122,8 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
 
   const desktop = useMediaQuery(DESKTOP_QUERY);
   const captionsUrl = useCaptions(job.transcript, job.job?.audio ?? false);
-  const now = useNow(15_000);
+  // Wakes at `retry_at` too, so "Run the audit again" re-enables on time (§2.6.1).
+  const now = useNow(15_000, [job.retry_at ? Date.parse(job.retry_at) : null]);
   const chips = useMemo(() => buildChips(state, job), [state, job]);
   const columns = useMemo(() => columnsOf(chips), [chips]);
   const bar = selectBar(state, viewReview);

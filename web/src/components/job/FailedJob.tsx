@@ -16,12 +16,14 @@ export function FailedJob({ jobId, job, onResume, onDeleted, query }: { jobId: s
   const [note, setNote] = useState<string | null>(null);
   const [blocked, setBlocked] = useState(false);
   const [blockedUntil, setBlockedUntil] = useState<number | null>(null);
+  /** A daily_cap refusal under the §2.6.1 expiry rule: the code ends first, so the retry is hidden. */
+  const [retryGone, setRetryGone] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const { coolingDown, coolDown } = useCooldown();
-  const now = useNow(15_000);
   const retryAt = view.retryAt ? Date.parse(view.retryAt) : null;
+  const now = useNow(15_000, [retryAt, blockedUntil]);
 
   const retry = async () => {
     setBusy(true);
@@ -43,8 +45,9 @@ export function FailedJob({ jobId, job, onResume, onDeleted, query }: { jobId: s
       } else if (e?.status === 429 && e.code === "daily_cap") {
         const expiring = expiresBefore(e.detail?.retry_at, job.code_valid_until);
         setNote(expiring ? COPY.dailyCapJobExpiring : COPY.dailyCapJob);
-        // Disabled until retry_at (for good when the code expires first, or with no retry_at).
-        if (expiring || !e.detail?.retry_at) setBlocked(true);
+        // Hidden when the code expires first (§2.6.1); disabled until retry_at, or for good without one.
+        if (expiring) setRetryGone(true);
+        else if (!e.detail?.retry_at) setBlocked(true);
         else setBlockedUntil(Date.parse(e.detail.retry_at));
       } else if (e?.status === 422) {
         setNote(COPY.jobCapJob);
@@ -90,12 +93,12 @@ export function FailedJob({ jobId, job, onResume, onDeleted, query }: { jobId: s
       {deleteError && <ActionError message={deleteError} className="mt-3" />}
       {/* While a retry is out the button stays focusable (aria-disabled): `disabled` would drop focus to the page. */}
       <div className="mt-6 flex flex-wrap items-center gap-3">
-        {view.actions.includes("try_again") && (
+        {view.actions.includes("try_again") && !retryGone && (
           <button type="button" className={btn.primary} disabled={blocked || waiting} aria-disabled={busy || undefined} onClick={busy ? undefined : () => void retry()}>
             Try again
           </button>
         )}
-        {view.actions.includes("try_again_tomorrow") && (
+        {view.actions.includes("try_again_tomorrow") && !retryGone && (
           <>
             <button type="button" className={btn.primary} disabled={blocked || waiting} aria-disabled={busy || undefined} onClick={busy ? undefined : () => void retry()}>
               Try again tomorrow
