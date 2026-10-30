@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 86be73c
+AUDITED_COMMIT: ae004d8
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 2
@@ -132,3 +132,12 @@ with fault injection): every job valid, with an independent oracle finding no ke
 distinct present non-crowded frames, no lost child, every miss covered.
 - Outside SENSE (reported to SHIP, its owner): `deploy/modal_app.py` mounts `safecut` with `add_local_python_source`, whose default ignore drops non-.py files, so the deployed image would lack the prompt templates (and SAFETY's YuNet weights).
 - Decisions (lows, no change at the final head): `data= H,W` with a space slips the mask-size pre-check (malformed Meta answer; Meta's parser still refuses it as not box-sized, CPU bounded); the demo's synthetic person boxes stop one row above the drawn feet (synthetic fixture only; E3 scores faces); a truncated upload prepares to the frames that decode (typed, times stay exact); non-square SAR is kept (SAM's space check fails closed if Meta answers in display space; needs the live probe); a turn wholly before the clip clamps to t = 0 (cannot create a keep); counts of scene participants and swept phrase characters are unbounded in prompts (cost only); quotes and brackets inside one quoted line aren't escaped (needs adversarial speech; cannot create a keep); the role-pass agreement-rate logging and order-shuffle contingency aren't built (advisory); a malformed ASR body with a lone surrogate or a 400-digit time fails the primary path loudly (Meta-only); no total cap on static misses beyond the spec's M8 (linear: 300 items stayed small); `make_demo_job` rebuilds the demo in place; escalation affordability is all-or-nothing (advisory).
+
+## Audit 11 (diff check) at ae004d8: behaviour-neutral
+After audit 10 the gate's older system ruff (0.16.9) asked for two lint changes; ae004d8 is them and nothing else
+(`git diff 86be73c ae004d8 -- . ':(exclude).agent'`: `safecut/track/media.py` loads imageio's header parser with
+`importlib` instead of a long suppressed import, and four test-local `noqa` lines gain their reason). An independent
+auditor verified it changes no behaviour: `media.parse_ffmpeg_header is imageio_ffmpeg._parsing.parse_ffmpeg_header`;
+the old and new `facts()` agree field for field on every fixture clip; the test file's AST is unchanged; the monkeypatch
+path still reaches the real call site; pytest (prepare, track, scout logic: 133 passed) and pyright clean. So the
+AUDITED_COMMIT moves to ae004d8 with audits 9 and 10 standing: the code they audited is the code at ae004d8.
