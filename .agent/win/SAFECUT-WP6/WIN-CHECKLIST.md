@@ -168,6 +168,8 @@ Round 14 (fixes in the round-14 commit; details in `reaudit.md`):
 - [x] R15-1 (low) a late fresh URL brings the review player back: JobPage test
 - [x] R15-2 (low) an action's GET isn't made quiet by a cut-short refresh: useJob test
 - [x] Self-found: fixture dates shift with the clock, so the mock and the tests hold on any date: mock-backend tests, suite run at clock shifts up to +400 days
+- [x] R31-1 (medium) ⋯ menu capped to the room left of its trigger at large text: e2e at 200%
+- [x] R31-2 (low) short screens scroll the whole Why sheet: e2e at 200% landscape
 - [x] R30-1 (medium) sticky player and bar step aside at large text sizes (em gates): e2e at 200% default text
 - [x] R29-1 (low) merge button keeps its space: e2e
 - [x] R29-2 (low) all menu items visible above the bar: e2e

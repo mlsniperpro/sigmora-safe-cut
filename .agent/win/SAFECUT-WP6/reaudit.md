@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 140bac7
+AUDITED_COMMIT: 6ad7c81
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -400,3 +400,16 @@ Lesson: a global text rule needs a check that controls stay whole, not just that
 | 1 | medium | At a large default text size (a browser font setting, not zoom), the review page's sticky player and fixed bar left no room on a phone: at 200% on 390×844 the free band was −48 px and no chip could be reached (WCAG 1.4.4). The px height gates (640/480 px) didn't grow with the rem-sized layers | fixed: the gates are in em (40em/30em) in the classes and in the matchMedia that measures them, so they rise with the text size. At 100% text nothing changes. e2e launches Chromium at 200% default text: the band and tab checks fail on 140bac7 (−48 px) and pass now (844 px free). A positive check keeps the phone's player sticky at 100% |
 
 Noted, not counted: at 320 px with 200% text the header scrolls 8 px sideways (no content lost).
+
+## Round 31 (audited 6ad7c81 by a Sonnet reviewer: the em gates at 5 text sizes × ~17 viewports including the exact boundaries and live resizes, real-Tab sweeps of 81 configs against both layers, 855 menu opens over 4 fixtures × 5 text sizes × 9 viewports, axe on 77 routes × 3 widths × light/dark, text-spacing, forced colours, a stateful live build, region proxy, copy against the spec; fixes in the next commit)
+
+0 critical, 0 high, 1 medium, 1 low. Round 30's em gates were verified: the measured offsets match what is sticky and fixed at every size.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | medium | At 125–200% default text the ⋯ menu's rem width (w-64) grew past the room left of its right-anchored trigger, so it ran off the left edge and cut its labels (phones, and the left column on desktop) | fixed: on open, the menu's max-width is capped to the room left of its trigger (minus 8 px). Its items already wrap. e2e at 200% text opens every ⋯ on a phone and requires the menu on screen (fails on 6ad7c81 at x=−179, w=512) |
+| 2 | low | On short screens (landscape phones, 400% zoom, large text) the Why sheet's fixed header and footer left its scrolling body a 32–64 px sliver | fixed: below 36em of height the whole sheet scrolls and the body flows. e2e at 200% text on 844×390 checks the body isn't squeezed (the check relies on a new hook, so on the old code it errors rather than failing) |
+
+Also: the e2e check "reduced motion: Play demo leaves while the clip plays" failed once in about ten runs, because it read the button the moment the video fired `playing`, before React re-rendered. It now waits up to 5 s for the button to go. It still fails if the button stays.
+
+Noted, not counted: at 320 px with 200% text the landing figure scrolls 31 px sideways (the same family as round 30's header note). The toasts overlap the bar's 17 px top padding (no text hidden).

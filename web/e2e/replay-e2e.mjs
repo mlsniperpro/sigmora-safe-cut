@@ -318,7 +318,9 @@ try {
     check("reduced motion: the hero doesn't autoplay", await page.locator("figure video").evaluate((v) => v.paused));
     await button.click();
     await page.locator("figure video").evaluate((v) => new Promise((r) => (v.paused ? v.addEventListener("playing", r, { once: true }) : r())));
-    check("reduced motion: Play demo leaves while the clip plays", (await button.count()) === 0);
+    // React re-renders after the media event: wait for the button to go (it must, within 5 s).
+    const gone = await button.waitFor({ state: "detached", timeout: 5_000 }).then(() => true, () => false);
+    check("reduced motion: Play demo leaves while the clip plays", gone);
     check("reduced motion: focus moves to the player, not the page", await page.locator("figure video").evaluate((v) => document.activeElement === v));
     await page.locator("figure video").evaluate((v) => v.pause());
     check("reduced motion: Play demo is back once paused", await button.isVisible());
@@ -496,6 +498,25 @@ try {
       return el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
     });
     check("200% text: the column tabs aren't covered", reachable);
+    // The ⋯ menu stays within the screen though its rem width grows past a phone's.
+    const off = [];
+    for (const trigger of await page.getByRole("button", { name: /^More actions for / }).all()) {
+      if (!(await trigger.isVisible())) continue;
+      await trigger.scrollIntoViewIfNeeded();
+      await trigger.click();
+      const box = await page.getByRole("menu").boundingBox();
+      if (!box || box.x < 0 || box.x + box.width > 390) off.push(`x=${box ? Math.round(box.x) : "?"} w=${box ? Math.round(box.width) : "?"}`);
+      await page.keyboard.press("Escape");
+    }
+    check("200% text: every ⋯ menu stays on screen", off.length === 0, off.slice(0, 3).join("; "));
+    // On a short landscape screen the Why sheet scrolls as a whole, not through a sliver.
+    const landscape = await (await big.newContext({ viewport: { width: 844, height: 390 } })).newPage();
+    await landscape.goto(`${BASE}/jobs/job-review-cafe`, { waitUntil: "networkidle" });
+    await landscape.getByText(/hidden · /).waitFor();
+    await landscape.getByRole("button", { name: /^Why\? / }).first().click();
+    await landscape.getByRole("dialog").waitFor();
+    const sheet = await landscape.locator("[data-drawer-body]").evaluate((el) => ({ h: el.clientHeight, overflow: getComputedStyle(el).overflowY, vh: innerHeight }));
+    check("200% text, 844×390: the Why sheet's body isn't squeezed", sheet.overflow === "visible" || sheet.h >= sheet.vh * 0.4, `${sheet.h}px of ${sheet.vh} (${sheet.overflow})`);
     await big.close();
     // At the default text size the phone layout keeps its sticky player.
     const normal = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();

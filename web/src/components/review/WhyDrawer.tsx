@@ -170,10 +170,12 @@ export function WhyDrawer({
       aria-labelledby="why-title"
       className={`fixed m-0 max-h-none max-w-none border-border bg-surface p-0 text-text shadow-[var(--shadow)] backdrop:bg-black/40
         inset-x-0 bottom-0 top-auto w-full rounded-t-2xl border-t ${expanded ? "h-[100dvh]" : "h-[85dvh]"}
-        lg:inset-y-0 lg:left-auto lg:right-0 lg:h-full lg:w-[480px] lg:rounded-none lg:border-l lg:border-t-0`}
+        lg:inset-y-0 lg:left-auto lg:right-0 lg:h-full lg:w-[480px] lg:rounded-none lg:border-l lg:border-t-0
+        [@media(max-height:36em)]:overflow-y-auto`}
     >
       {open && model && (
-        <div className="flex h-full flex-col">
+        // On a short screen (landscape, large text) the whole sheet scrolls: a fixed header and footer would leave the body a sliver.
+        <div className="flex h-full flex-col [@media(max-height:36em)]:h-auto">
           <button type="button" className="mx-auto mt-1 flex min-h-11 w-24 items-center justify-center lg:hidden" aria-label={expanded ? "Collapse" : "Expand"} onClick={() => setExpanded((v) => !v)}>
             <span aria-hidden="true" className="h-1.5 w-12 rounded-full bg-border" />
           </button>
@@ -200,7 +202,7 @@ export function WhyDrawer({
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-5 py-4">
+          <div data-drawer-body className="flex-1 overflow-y-auto px-5 py-4 [@media(max-height:36em)]:flex-none [@media(max-height:36em)]:overflow-visible">
             <section aria-label="Keyframe">
               {frame !== undefined ? (
                 <div
