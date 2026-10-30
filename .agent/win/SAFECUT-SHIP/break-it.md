@@ -1,4 +1,4 @@
-TESTED_COMMIT: 17e2e9a
+TESTED_COMMIT: c3fee0c
 
 # SAFECUT-SHIP: what we did to break it
 
@@ -17,6 +17,8 @@ replayed once to prove idempotency) → render → poll → `/result` → GET ev
 | Commit | Flows | Failures | Wall time |
 |---|---|---|---|
 | 0b1b364 | 9 | **0** | 750 s (two workers per API, on a machine also running the test suite) |
+| 5fa2f33 | 9 | **0** | 683 s |
+| c3fee0c | 9 | **0** | 665 s (the tested commit: main through efd8b9d merged in) |
 
 An earlier 4 × 5 attempt (at f881924's parent) had 2 failures, both `no_recording`: the demo clip changed on disk
 mid-run when main was merged into the tree it ran from. That is why every later run uses a pinned worktree.
@@ -31,6 +33,8 @@ random upload bytes, traversal in media names and IDs.
 | Commit | Requests | 5xx | Status mix |
 |---|---|---|---|
 | 0b1b364 | 1,500 | **0** | 200 ×55, 201 ×3, 202 ×1, 307 ×9, 401 ×13, 403 ×84, 404 ×956, 409 ×66, 413 ×9, 415 ×5, 422 ×299 |
+| 5fa2f33 | 1,500 | **0** | the same mix |
+| c3fee0c | 1,500 | **0** | 200 ×55, 201 ×3, 202 ×1, 307 ×9, 401 ×13, 403 ×84, 404 ×956, 409 ×66, 413 ×9, 415 ×5, 422 ×299 |
 
 After the fuzz the fuzzed job and the pinned demo were both intact, and the API process was still alive.
 
@@ -42,6 +46,8 @@ directory, the job is driven to review and rendered, the API is killed again mid
 | Commit | Result |
 |---|---|
 | 17e2e9a | **PASS**: killed in analysis at `prepare`, then in render; `Service.recover()` re-queued it both times and it ended `done` |
+| 5fa2f33 | **PASS** (the same) |
+| c3fee0c | **PASS** (the same) |
 
 The first attempt (0b1b364) failed in the harness, not the service: SIGKILL reached `uv run`, not its uvicorn
 child, which kept the port ("address already in use"). The harness now starts the API in its own session and
