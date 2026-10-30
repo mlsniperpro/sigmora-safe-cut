@@ -511,6 +511,17 @@ def test_cli_approve_and_publish_report_typed_errors(tmp_path: Path) -> None:
     assert "not been approved" in result.output
 
 
+def test_cli_never_reports_a_blocked_audit_as_done(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(pipeline, "publish", lambda job, replay: [])
+    blocked = types.SimpleNamespace(blocked_reason="unresolved_leaks", unresolved=4)
+    monkeypatch.setattr("safecut.cli.load", lambda path, model: blocked)
+    result = runner.invoke(app, ["publish", "--job", str(tmp_path), "--replay"])
+    assert result.exit_code == 6
+    assert "unresolved_leaks, 4 unresolved" in result.output
+    monkeypatch.setattr("safecut.cli.load", lambda path, model: types.SimpleNamespace(blocked_reason=None))
+    assert runner.invoke(app, ["publish", "--job", str(tmp_path), "--replay"]).exit_code == 0
+
+
 def test_cli_runs_a_registered_stage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fakes: FakeStages) -> None:
     fake = fakes.make("job.json")
     monkeypatch.setattr(Stage, "runner", lambda self: sys.modules[fake.module].run)  # pyright: ignore[reportUnknownLambdaType, reportUnknownMemberType] -- routes every stage to the stand-in

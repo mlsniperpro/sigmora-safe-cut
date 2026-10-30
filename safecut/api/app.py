@@ -31,7 +31,7 @@ from imageio_ffmpeg import get_ffmpeg_exe
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
-from safecut import netguard, pipeline
+from safecut import netguard, pipeline, receipt
 from safecut.api.access import MAX_UPLOAD_BYTES, Access, ApiRefusal, Grant, RateLimiter, check_caps, estimate_usd
 from safecut.api.store import Failure, JobNotFound, JobState, JobStore, UploadSpec
 from safecut.api.urls import UPLOAD_TTL_S, Signer, expiry
@@ -602,6 +602,10 @@ def _apply_edit(svc: Service, job_dir: Path, current: JobState, edits: list[Revi
         raise
     dump(ReviewLog([*edits, edit]), job_dir / REVIEW)
     if current.status == "done":
+        # The sealed receipt describes the decisions as they were: it's archived (receipts/, the next one chains
+        # from it), never served beside decisions it no longer matches. The previous render stays downloadable
+        # until a new one replaces it (UI-SPEC §8 request 5).
+        receipt.retire(job_dir)
         current.status, current.stage = "review", "review"
 
 

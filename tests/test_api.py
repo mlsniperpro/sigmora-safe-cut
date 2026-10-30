@@ -184,10 +184,16 @@ def test_edits_after_done_move_back_to_review_and_needs_a_new_render(
     run_to(client, svc, job_id, "start", "review")
     job = run_to(client, svc, job_id, "render", "done")
     item = next(i for i in job["items"] if i["decision"] == "needs_you")
+    assert (svc.store.path(job_id) / "receipt.json").is_file()
     ack = client.post(f"/v1/jobs/{job_id}/review", json={"type": "hide", "edit_id": "late", "item_id": item["item_id"]})
     assert ack.json()["status"] == "review"
     assert ack.json()["has_render"] is True
+    # The old receipt sealed the old decisions: archived, never served beside the edited ones.
+    assert not (svc.store.path(job_id) / "receipt.json").exists()
+    assert list((svc.store.path(job_id) / "receipts").glob("*.json"))
+    assert "receipt_json_url" not in client.get(f"/v1/jobs/{job_id}").json().get("result", {})
     run_to(client, svc, job_id, "render", "done")
+    assert (svc.store.path(job_id) / "receipt.json").is_file()
 
 
 def test_review_refusals(make_client: Callable[..., tuple[TestClient, Service]]) -> None:

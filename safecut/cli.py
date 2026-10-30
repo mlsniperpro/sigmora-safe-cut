@@ -7,7 +7,8 @@
     safecut validate --job <job_dir>                                        cross-check every contract file
 
 Exit codes: 0 ok · 1 the job can't continue · 2 usage · 3 a stage isn't in this build yet · 4 a contract file is
-invalid · 5 replay tried to reach the network.
+invalid · 5 replay tried to reach the network · 6 the audit blocked publishing (the render must not be
+published).
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ import typer
 
 from safecut import netguard, pipeline
 from safecut.config import load_settings
-from safecut.contracts import ContractError, validate_job_dir
+from safecut.contracts import Audit, ContractError, load, validate_job_dir
 from safecut.stages import INTAKE, RECEIPT_HTML, REDACTED, STAGES, Stage, StageError, StageUnavailable
 
 app = typer.Typer(
@@ -156,6 +157,7 @@ def run(
         pipeline.approve(out, how="auto_policy")
         typer.echo(f"job {out.name}: policy decisions approved; publishing")
         _report(pipeline.publish(out, replay=mode))
+        _refuse_if_blocked(out)
         typer.echo(f"job {out.name}: done: {out / REDACTED}, {out / 'receipt.json'}, {out / RECEIPT_HTML}")
 
     _guarded(go)
@@ -170,7 +172,23 @@ def approve(job: JobOpt) -> None:
 @app.command()
 def publish(job: JobOpt, replay: ReplayOpt = None) -> None:
     """Render, audit and seal the receipt for an approved job."""
-    _guarded(lambda: _report(pipeline.publish(job, replay=_replay(replay))))
+
+    def go() -> None:
+        _report(pipeline.publish(job, replay=_replay(replay)))
+        _refuse_if_blocked(job)
+
+    _guarded(go)
+
+
+def _refuse_if_blocked(job: Path) -> None:
+    """The audit's verdict decides: a blocked audit is never reported as done (exit 6, the reason and the count)."""
+    audit = load(job / "audit.json", Audit)
+    if audit.blocked_reason is not None:
+        _fail(
+            6,
+            f"the audit blocked publishing ({audit.blocked_reason}, {audit.unresolved} unresolved): "
+            f"don't publish {job / REDACTED}; review the job and run the audit again",
+        )
 
 
 @app.command()
