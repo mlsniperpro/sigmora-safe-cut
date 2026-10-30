@@ -5,7 +5,8 @@
 * the detector: EgoBlur Gen 2 when its weights are installed, else the bundled YuNet (``detectors.load_detector``);
   it runs locally in both modes;
 * the red-team: live Muse Spark, or in replay the answers recorded from a live run (``raw/redteam/frames.json``), or
-  for a **synthetic** job the ground-truth oracle (``raw/redteam/synthetic_truth.json``). A replay with neither has
+  for a **synthetic** job the ground-truth oracle (``raw/redteam/synthetic_truth.json``, or the label file a
+  synthetic recording's ``raw/manifest.json`` names). A replay with none of these has
   no red-team answer at all: every sampled frame is unresolved (``audit_failed``), never clean.
 
 Per-frame CPU timings and the models that answered go to ``raw/audit/run.json`` (WP4: if a 30 s clip at
@@ -21,10 +22,11 @@ from pathlib import Path
 from safecut.audit.detectors import Detector, load_detector
 from safecut.audit.loop import audit_job
 from safecut.audit.redteam import Answer, LiveRedTeam, RedTeam, ReplayRedTeam, SyntheticRedTeam
+from safecut.audit.truth import load_labels, manifest_truth
 from safecut.config import Settings, load_settings
 from safecut.contracts import Audit, Job, Plan, load
-from safecut.meta.budget import Caller, LocalLedger
 from safecut.meta.client import MetaClient
+from safecut.meta.session import job_client
 from safecut.render.draw import Frame
 
 AUDIT = "audit.json"
@@ -43,23 +45,22 @@ class NoRedTeam:
 def replay_redteam(job_dir: Path) -> RedTeam:
     if (job_dir / RECORDED).exists():
         return ReplayRedTeam.load(job_dir / RECORDED)
+    job = load(job_dir / "job.json", Job)
+    plan_of = lambda: load(job_dir / "plan.json", Plan)  # noqa: E731 -- the oracle re-reads the current plan
     if (job_dir / SYNTHETIC_TRUTH).exists():
-        job = load(job_dir / "job.json", Job)
-        return SyntheticRedTeam.load(
-            job_dir / SYNTHETIC_TRUTH, lambda: load(job_dir / "plan.json", Plan), job.width, job.height
-        )
+        return SyntheticRedTeam.load(job_dir / SYNTHETIC_TRUTH, plan_of, job.width, job.height)
+    labels = manifest_truth(job_dir)
+    if labels is not None:
+        truth = load_labels(labels, width=job.width, height=job.height, frames=job.frames)
+        return SyntheticRedTeam(truth.frames, plan_of, job.width, job.height)
     return NoRedTeam()
 
 
 async def _live(job_dir: Path, settings: Settings, detector: Detector, client: MetaClient | None) -> Audit:
-    job = load(job_dir / "job.json", Job)
     if client is not None:
-        audit, _ = await audit_job(job_dir, detector=detector, redteam=LiveRedTeam(client, settings, job_dir))
-    else:
-        async with MetaClient(settings, job_id=job.job_id, caller=Caller.local(), ledger=LocalLedger(),
-                              cost_path=job_dir / "cost.jsonl") as own:  # fmt: skip
-            audit, _ = await audit_job(job_dir, detector=detector, redteam=LiveRedTeam(own, settings, job_dir))
-    return audit
+        return (await audit_job(job_dir, detector=detector, redteam=LiveRedTeam(client, settings, job_dir)))[0]
+    async with job_client(job_dir, settings) as own:  # seeded with the job's spend so far (the job cap holds)
+        return (await audit_job(job_dir, detector=detector, redteam=LiveRedTeam(own, settings, job_dir)))[0]
 
 
 def run(

@@ -146,7 +146,8 @@ def test_text_read_through_a_mosaic_is_flagged_and_its_item_goes_solid(tmp_path:
     audit_run(job_dir, replay=True, settings=SETTINGS, redteam=read)
     audit = audit_of(job_dir)
     (flagged,) = [leak for leak in audit.leaks if leak.flag]
-    assert (flagged.through_item, flagged.patched_item) == ("i_2", "i_2")
+    assert flagged.through_item == "i_2"
+    assert flagged.patched_item == "p_1"  # the finding's own patch, besides the item going solid
     plan = load(job_dir / "plan.json", Plan)
     assert {e.style for es in plan.frames.values() for e in es if e.item_id == "i_2"} == {"solid"}
     contracts.validate_job_dir(job_dir)

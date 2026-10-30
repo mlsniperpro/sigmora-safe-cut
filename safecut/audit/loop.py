@@ -179,17 +179,16 @@ async def red_team(
 
 
 def patch(state: State, found: list[Leak]) -> tuple[list[Leak], set[int]]:
-    """Turn this pass's leaks into fixes: a flagged leak re-renders its item solid; the rest share audit patches.
-    Returns the leaks with their ``patched_item`` and the frames the fixes changed (the next pass's frames)."""
+    """Turn this pass's leaks into fixes: every leak shares an audit patch over its box (static, padded, held over
+    ``f ± (half + extend)``), and an item a model read text through is re-rendered solid as well. Returns the leaks
+    with their ``patched_item`` and the frames the fixes changed (the next pass re-checks those)."""
     job, plan = state.job, state.plan
-    flagged = [leak.model_copy(update={"patched_item": leak.through_item}) for leak in found if leak.flag]
-    changed = {
-        f for leak in flagged for f, es in plan.frames.items() if any(e.item_id == leak.through_item for e in es)
-    }
+    redrawn = {leak.through_item for leak in found if leak.through_item is not None}
+    changed = {f for f, es in plan.frames.items() if any(e.item_id in redrawn for e in es)}
     number, label = rules.next_numbers(state.decisions)
     new_items: list[DecisionItem] = []
     patched: list[Leak] = []
-    for group in rules.group_leaks([leak for leak in found if not leak.flag], job.fps):
+    for group in rules.group_leaks(found, job.fps):
         item = rules.make_patch(group, number, label, frames=job.frames, sample_step=job.fps,
                                 extend=plan.temporal.extend)  # fmt: skip
         new_items.append(item)
@@ -198,7 +197,7 @@ def patch(state: State, found: list[Leak]) -> tuple[list[Leak], set[int]]:
         if item.first is not None and item.last is not None:
             changed.update(range(item.first, item.last + 1))
     state.decisions = Decisions(items=[*state.decisions.items, *new_items])
-    return flagged + patched, changed
+    return patched, changed
 
 
 def summary(state: State, passes: int, detector: Detector, previous: Audit | None) -> Audit:
@@ -242,7 +241,7 @@ def carried_flags(previous: Audit | None, decisions: Decisions) -> list[Leak]:
     hidden = {i.item_id for i in decisions.items if i.decision in ("hide", "needs_you")}
     return [
         leak for leak in previous.leaks
-        if leak.flag and not leak.unresolved and leak.through_item in hidden and leak.patched_item == leak.through_item
+        if leak.flag and not leak.unresolved and leak.through_item in hidden and leak.patched_item in hidden
     ]  # fmt: skip
 
 
