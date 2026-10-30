@@ -10,44 +10,49 @@ creator's ``review.json`` edits when there are any, and writes ``decisions.json`
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from pydantic import BaseModel
-
-from safecut.contracts import Decisions, Job, Roles, Scene, Tracks, Transcript, dump, load
-from safecut.decide.policy import Inputs, decide
-from safecut.decide.review import CoverSpotEdit, ReviewLog, apply_review
+if TYPE_CHECKING:
+    from safecut.contracts import Decisions
 
 DECISIONS = "decisions.json"
 REVIEW = "review.json"
 
-
-def _optional[M: BaseModel](path: Path, model: type[M]) -> M | None:
-    return load(path, model) if path.exists() else None
+# The package imports nothing heavy at load time: coverage (``--cov=safecut.decide.policy``) and the stage
+# registry import ``safecut.decide`` first, and numpy refuses a second load if it is pulled in before measurement.
 
 
 def policy_decisions(job_dir: Path) -> Decisions:
     """The policy's decisions plus the audit patches already in ``decisions.json``, before any creator edit."""
+    from safecut.contracts import Decisions, Job, Roles, Scene, Tracks, Transcript, load  # noqa: PLC0415 -- see above
+    from safecut.decide.policy import Inputs, decide  # noqa: PLC0415 -- see above
+
+    def optional[M: (Roles, Scene, Transcript, Decisions)](name: str, model: type[M]) -> M | None:
+        return load(job_dir / name, model) if (job_dir / name).exists() else None
+
     inputs = Inputs(
         job=load(job_dir / "job.json", Job),
         tracks=load(job_dir / "tracks.json", Tracks),
-        roles=_optional(job_dir / "roles.json", Roles),
-        scene=_optional(job_dir / "scene.json", Scene),
-        transcript=_optional(job_dir / "transcript.json", Transcript),
+        roles=optional("roles.json", Roles),
+        scene=optional("scene.json", Scene),
+        transcript=optional("transcript.json", Transcript),
     )
     decided = decide(inputs)
-    previous = _optional(job_dir / DECISIONS, Decisions)
+    previous = optional(DECISIONS, Decisions)
     patches = [item for item in previous.items if item.origin == "audit_patch"] if previous is not None else []
     return Decisions(items=[*decided.items, *patches])
 
 
 def run(job_dir: Path, *, replay: bool = False) -> Path:
     """Write ``decisions.json`` and return its path."""
+    from safecut.contracts import dump, load  # noqa: PLC0415 -- see above
+    from safecut.decide.review import CoverSpotEdit, ReviewLog, apply_review  # noqa: PLC0415 -- see above
+
     del replay  # no API call in this stage
     decisions = policy_decisions(job_dir)
-    log = _optional(job_dir / REVIEW, ReviewLog)
-    if log is not None:
+    if (job_dir / REVIEW).exists():
         # A covered spot's patch is already among the kept audit patches; the other edits replay on the policy.
-        edits = [edit for edit in log.root if not isinstance(edit, CoverSpotEdit)]
+        edits = [edit for edit in load(job_dir / REVIEW, ReviewLog).root if not isinstance(edit, CoverSpotEdit)]
         decisions = apply_review(decisions, edits).decisions
     return dump(decisions, job_dir / DECISIONS)
 

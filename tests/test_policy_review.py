@@ -181,6 +181,7 @@ def test_decide_stage_keeps_patches_and_replays_the_review(tmp_path: Path) -> No
     contracts.validate_job_dir(dst)
 
 
+@pytest.mark.entry("E4:child_never_kept")
 @E4
 @given(policy_inputs(), st.lists(st.tuples(st.sampled_from(["keep", "hide", "merge", "remove_person", "undo"]),
                                            st.integers(0, 7), st.integers(0, 7)), max_size=8))  # fmt: skip
