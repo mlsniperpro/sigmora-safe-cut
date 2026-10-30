@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 3c5f1ea
+AUDITED_COMMIT: f76be71
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -539,3 +539,14 @@ On the fix commits: `checks.sh` exit 0, 881 tests, e2e 143/143.
 Noted, not counted: toggling Raw / Safe Cut on a paused hero resumes playback (§1.5 only says switching keeps the time). `public/sample/` isn't drift-checked the way the mocks are (`gen-sample.mjs` needs ffmpeg); its plan is, through `job-review-sample.json`.
 
 On the fix commit: `checks.sh` exit 0, 883 tests, e2e 143/143.
+
+## Round 42 (audited f76be71 by a Sonnet reviewer: all 240 frames of `redacted.mp4` against `prepared.mp4` and the plan, every still, keyframe and screenshot against its caption, and the review overlay read back every 3 frames at three player sizes; fixes in the next commit)
+
+0 critical, 0 high, 0 medium, 2 low. CLEAN_AUDITS_IN_A_ROW stays 0. Round 41's media fixes hold: every hidden head lies inside its cover on every frame, the guest stays clear, and the overlay lines up at every size.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | low | After a paused seek (Enter or a click on a chip, a scrub) a pixelate cover could stay drawn solid until playback or the toggle: the seek's frame callback can fire while `readyState` is 1, when the overlay can't sample the frame, and nothing redrew on `seeked` (§3.6: covers take the render's style). Same area covered, so nothing leaks | fixed: the player redraws on `seeked` and `loadeddata`. VideoPane test (fails on f76be71). The new e2e check of a mosaic after a chip seek passes on both commits in this sandbox (the auditor's timing didn't reproduce here), so it stays as a regression guard only |
+| 2 | low | The Set-of-Mark keyframes' person labels overprinted the face labels at the same corner ("pface:3 2", "peface:8"), also in the chip thumbnails (§4.3's burned-in track IDs) | fixed: person labels sit at the bottom of their box; `som/*.jpg` regenerated and the screenshots re-shot. Checked by eye on frames 75 and 195 |
+
+On the fix commit: `checks.sh` exit 0, 884 tests, e2e 144/144.

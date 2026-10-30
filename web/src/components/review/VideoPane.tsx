@@ -188,6 +188,10 @@ export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function Vi
             preload="auto"
             // A source that loads re-arms the one refresh, for when its signed URL expires later.
             onLoadedMetadata={() => setRefreshedFor(null)}
+            // A paused seek's frame callback can come before the frame is decoded (readyState < 2), when a
+            // pixelate cover can only be drawn solid: redraw once the frame is there, as the render shows it.
+            onSeeked={(e) => draw(e.currentTarget.currentTime)}
+            onLoadedData={(e) => draw(e.currentTarget.currentTime)}
             onError={() => {
               // A background refresh already brought a fresher URL: switch to it first.
               if (src && playing && src !== playing && refreshedFor === null) {

@@ -153,7 +153,9 @@ async function main() {
       if (!box) continue;
       const [x1, y1, x2, y2] = box;
       draws.push(`drawbox=x=${x1}:y=${y1 + BAR_H}:w=${x2 - x1}:h=${y2 - y1}:color=yellow@0.9:t=2`);
-      draws.push(`drawtext=fontfile=${FONT}:text='${esc(t.track_id)}':x=${x1 + 2}:y=${Math.max(BAR_H, y1 + BAR_H - 20)}:fontsize=16:fontcolor=black:box=1:boxcolor=yellow@0.9:boxborderw=2`);
+      // A person's box starts at its face's corner: its label goes at the bottom, so the two don't overprint.
+      const labelY = t.concept === "person" ? Math.min(H + BAR_H, y2 + BAR_H) - 22 : Math.max(BAR_H, y1 + BAR_H - 20);
+      draws.push(`drawtext=fontfile=${FONT}:text='${esc(t.track_id)}':x=${x1 + 2}:y=${labelY}:fontsize=16:fontcolor=black:box=1:boxcolor=yellow@0.9:boxborderw=2`);
     }
     await ffmpeg(["-f", "rawvideo", "-pix_fmt", "rgb24", "-s", `${W}x${H}`, "-i", "-", "-vf", [`pad=${W}:${H + BAR_H}:0:${BAR_H}:black`, ...draws].join(","), "-frames:v", "1", "-q:v", "4", join(OUT, "som", `${String(f).padStart(6, "0")}.jpg`)], function* () { yield rawFrame(f); });
   }

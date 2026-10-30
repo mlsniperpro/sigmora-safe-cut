@@ -577,6 +577,33 @@ try {
     await normal.context().close();
   }
 
+  // A paused seek (Enter on a chip) redraws once the frame is decoded, so a pixelate cover shows as a
+  // mosaic like the render (§3.6), not the solid stand-in drawn while the frame loads.
+  {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const page = await context.newPage();
+    await page.goto(`${BASE}/jobs/job-review-sample`, { waitUntil: "networkidle" });
+    await page.getByText(/hidden · /).waitFor();
+    await page.locator("video").first().evaluate((el) => new Promise((res) => (el.readyState >= 2 ? res(true) : el.addEventListener("loadeddata", () => res(true), { once: true }))));
+    const seeked = page.locator("video").first().evaluate((el) => new Promise((res) => el.addEventListener("seeked", () => res(true), { once: true })));
+    await page.locator('[data-chip-id="i_2"]').focus();
+    await page.keyboard.press("Enter");
+    await seeked;
+    await page.waitForTimeout(500);
+    const colours = await page.evaluate(() => {
+      const canvas = document.querySelector("canvas");
+      const s = canvas.width / 1280;
+      // The passer-by's padded face box on frame 75 (job-review-sample plan, style pixelate).
+      const [x1, y1, x2, y2] = [826, 261, 904, 339].map((n) => Math.round(n * s));
+      const data = canvas.getContext("2d").getImageData(x1, y1, x2 - x1, y2 - y1).data;
+      const seen = new Set();
+      for (let i = 0; i < data.length; i += 4) if (data[i + 3] > 200) seen.add(`${data[i] >> 3},${data[i + 1] >> 3},${data[i + 2] >> 3}`);
+      return seen.size;
+    });
+    check("a paused seek draws a pixelate cover as a mosaic", colours >= 20, `${colours} colours`);
+    await context.close();
+  }
+
   // Turning a tablet across the desktop breakpoint swaps tabs and columns: the focused chip keeps focus.
   {
     const context = await browser.newContext({ viewport: { width: 800, height: 900 } });
