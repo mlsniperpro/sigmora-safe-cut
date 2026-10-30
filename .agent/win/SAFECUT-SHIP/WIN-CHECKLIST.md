@@ -44,6 +44,25 @@ Every E-line SHIP owns, every brief requirement, and the judging criteria, each 
 - [x] #11 deploy not gated on CI, silent URL skip, RESULTS unchecked in CI: fixed; `test_deploy_workflow_skips_without_secrets`.
 - [x] #12 replay through a loopback proxy, unapproved `safecut render`, sync writes on the event loop: fixed; `test_netguard_refuses_a_local_proxy`.
 
+## Audit round 2 and peer findings (`reaudit.md`)
+
+- [x] R2#1 (high) deploy ran a fork PR's code with the Modal secrets: push-to-own-main only; `test_deploy_never_runs_a_forks_code_with_the_secrets`.
+- [x] R2#2 the deployed audit could never use EgoBlur: `SAFECUT_DEPLOY_AUDIT=1` builds the audit group; BLOCKED step; SUBMISSION caveat.
+- [x] R2#3 AGENTIC-LOOP stale: re-traced from the current demo run (15 tracks, Kev's re-entry needs you).
+- [x] R2#4 DELETE raced a writing stage: rename-then-reap; `test_delete_succeeds_while_a_stage_is_still_writing`.
+- [x] R2#5 VO word count wrong: corrected.
+- [x] R2#6 restart resumed revoked codes and skipped retry delays: `test_a_restart_refuses_jobs_whose_code_was_revoked_and_keeps_retry_delays`.
+- [x] R2#7 JobNotFound mid-request was a 500: 404 handler; `test_a_job_deleted_mid_request_is_a_404_not_a_500`.
+- [x] R2#8 a replay without `synthetic` was bannered as real: `mode.test.tsx`.
+- [x] R2#9 weak production secrets: `production_problems`; `test_production_refuses_weak_secrets`.
+- [x] R2#10 README overstatements: reworded.
+- [x] R2#11 eval spend ceiling and dirty runs: `--max-usd`, dirty refused in live runs and the report; two tests.
+- [x] R2 entry-check gaps (E3 vacuous, E10 counts and fences, E12 bare words, E7 placeholders): stricter, with tests.
+- [x] SAFETY: approval vs audit patches (`approved_digest`), private red-team text (`public_audit`), the audit's own cap (`caps_itself`), `apply_review` gets `tracks`/`job`.
+- [x] SENSE: `track` stays fresh after `roles` appends tracks (`Stage.also_writes`).
+- [-] SAFETY: trim the plan from the review ack: kept, UI-SPEC §8's ack includes it and the overlay draws from it.
+- [x] E1 flake: `test_cancel_before_send_releases_and_after_send_charges` waits for the send instead of a 50 ms sleep.
+
 ## Judging criteria
 
 - [P] Impact (30): real numbers need `MODEL_API_KEY`, the consented hero clips and the test split (BLOCKED.md); until then every run is synthetic and labelled so, and the docs quote no numbers.

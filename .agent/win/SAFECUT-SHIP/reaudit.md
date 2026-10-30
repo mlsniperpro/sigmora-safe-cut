@@ -25,3 +25,29 @@ before it was fixed, and each fix has a test that fails without it.
 | 10 | medium | entry-check: E4/E5 passed skipped tests; E1 ignored xfail; the E11 skip scan was too loose; E10 used substring matching and skipped inline code; the secret scan missed JSON form | `require_passed` for E4/E5; E1 also greps xfailed/xpassed; only key-gated `skipif` in `tests/test_live*.py` is allowed; whole-token figure matching with inline code kept; JSON-form key pattern | `tests/test_entry_check.py` (four new tests) |
 | 11 | low | Deploy wasn't gated on CI; the URL check was skipped silently; CI didn't check RESULTS | `workflow_run` on CI success; a `::notice` when the URL vars are unset; CI runs `eval/report.py --check` | `test_deploy_workflow_skips_without_secrets` |
 | 12 | low | Replay could reach the network through a loopback HTTP(S) proxy (true in this sandbox); `safecut render` ran unapproved; sync writes in the async upload handler | Proxy ports refused in replay; the CLI publish stages check approval; writes go through the threadpool | `test_netguard_refuses_a_local_proxy` |
+
+## Round 2 (on bf05010): 1 high, 4 medium, 6 low, 3 entry-check gaps. All closed in 2fd65da / 0b1b364.
+
+"Clean" for the count above means no critical, high or medium finding (lows are fixed or decided too).
+
+| # | Sev | Finding | Resolution | Test |
+|---|---|---|---|---|
+| 1 | high | `deploy.yml`: `workflow_run` with `branches: [main]` also matches a fork PR's head branch named main, so a fork's code could run `modal deploy` with the Modal secrets | The job requires `workflow_run.event == 'push'`, `head_branch == 'main'` and `head_repository.full_name == github.repository` | `test_deploy_never_runs_a_forks_code_with_the_secrets` |
+| 2 | medium | The Modal image never installed the `audit` group, so the deployed audit stays on YuNet even with the EgoBlur weights; SUBMISSION claimed EgoBlur without the caveat | `SAFECUT_DEPLOY_AUDIT=1` (a repo variable) builds with the group; BLOCKED step added; SUBMISSION names the YuNet fallback | E7 import; doc review |
+| 3 | medium | AGENTIC-LOOP stale (13 tracks, one needs-you) | Re-traced from the current demo run: 15 tracks, Kev's re-entry `face:6` needs you | E10; manual diff against `safecut run --replay` |
+| 4 | medium | `JobStore.delete` raced a writing stage (OSError, 500, data left); a stage's `dump` re-created the dir | Rename to `.deleting-<id>-<rand>` under the lock, reap with retries; the sweep reaps stateless dirs over a minute old and leftovers | `test_delete_succeeds_while_a_stage_is_still_writing` |
+| 5 | medium | VIDEO-SCRIPT claimed about 330 VO words (about 246 quoted) | Corrected to about 235 words (one of the two 2:00 lines) | review |
+| 6 | low | `recover` resumed jobs without re-checking their code, and sent `retry_later` jobs straight back | `paid_grant` per job (fails `code_not_active`); `Worker.submit_later` keeps the remaining delay | `test_a_restart_refuses_jobs_whose_code_was_revoked_and_keeps_retry_delays` |
+| 7 | low | `JobNotFound` between a handler's first look and its update was a 500 | App-level handler → 404 `not_found`/`expired`; the upload's final rename too | `test_a_job_deleted_mid_request_is_a_404_not_a_500` |
+| 8 | low | Web `synthetic` defaulted to false, so a replay that omitted it would be bannered as a real run | Optional in the schemas; `useReportMode` treats a missing value on a replay as synthetic; the mock generator says `synthetic: false` explicitly | `mode.test.tsx` "labels a replay synthetic when the response doesn't say" |
+| 9 | low | Short access codes / URL secret accepted | The Modal entry point refuses to start on a code < 12 chars, a URL secret < 32 or a non-https public URL (`production_problems`); tests keep short codes | `test_production_refuses_weak_secrets` |
+| 10 | low | README overstated revocation, "DELETE in every state" and the per-thread guard | Reworded to what the code does | review |
+| 11 | low | Live eval runs had no run-level ceiling; dirty-tree runs were accepted | `--max-usd` (default $15) stops before the next clip; live runs refuse a dirty tree; the report refuses `-dirty` runs | `test_a_live_run_needs_committed_code_and_stops_at_its_ceiling`, `test_the_report_refuses_a_run_made_from_uncommitted_code` |
+| E3 | gap | Could pass on a truth file with nothing to hide | Requires a visible should-hide and a visible keep entity | `test_e3_never_passes_on_a_truth_file_with_nothing_to_check` |
+| E10 | gap | Integer counts and untagged fences unchecked | `COUNT` (leaks, clips, bursts, entities…) checked; only command/data fences are skipped | `test_counts_reported_as_results_are_checked_too`, the fence case |
+| E12 | gap | Bare-word patterns (`public`, `EgoBlur`) | Match the real owner lines | `test_owner_inputs_need_their_real_lines_not_a_bare_word` |
+| E7 | gap | A placeholder `*.modal.run` URL counted as deployed | Placeholder hosts are ignored | review |
+
+Peer-lane findings in SHIP's paths, closed in the same commit: approval vs audit patches, private red-team text, the audit's cap path (SAFETY); `track` freshness after `roles` (SENSE); `apply_review` gets `tracks`/`job`. Kept by decision: the review ack still returns the plan (UI-SPEC §8; the overlay draws from it).
+
+Also fixed: `tests/test_meta_client.py::test_cancel_before_send_releases_and_after_send_charges` raced a 50 ms sleep and failed E1 on a loaded fresh clone; it now waits for the request to be sent.
