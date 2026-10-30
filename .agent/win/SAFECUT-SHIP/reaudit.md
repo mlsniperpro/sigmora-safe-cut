@@ -183,3 +183,37 @@ It ran E2, E3, E5, E7, E9, E10, E11 and E12: all OK; the six dev runs replay byt
 | L3 | low | A live run is all or nothing at `--max-usd` | BLOCKED says so and to size `--max-usd` to the split | review |
 
 Round 11 was not clean (two medium): the count stays at 0.
+
+## Round 12 (on b296a92 = origin/main): 0 critical, 0 high, 1 medium, 5 low.
+
+It ran E2, E3, E5, E7, E8, E9, E10, E11 and E12: all OK; about 175 targeted tests passed; the API's bodies parse with the web's zod schemas; a fresh demo run matches AGENTIC-LOOP.
+
+| # | Sev | Finding | Resolution | Test |
+|---|---|---|---|---|
+| M1 | medium | Nothing outside the receipt says the soundtrack is kept as recorded (SAFETY round 12 copies the audio), while the docs promise not to expose people | README (a scope paragraph), SUBMISSION (description and judge step 3), LAUNCH and VIDEO-SCRIPT say the picture is redacted and the audio is not. Docs only. Request to WP6 (web): the same sentence on the result page | review |
+| L1 | low | A refused receipt reaches the web as `failed`/`internal`, and Retry repeats it | **Kept**: it only happens when the job's own files contradict each other (fail closed); the job stays deletable, and nothing is published | n/a |
+| L2 | low | `models_recorded` duplicates the receipt's recorded-model reading | **Kept**: both are tested against the same fixture (`test_the_model_list_names_the_recorded_models`, the receipt tests); the auditor checked they agree on the demo | n/a |
+| L3 | low | Judge codes open Nov 5 00:00 UTC, after submission | Owner decision added to BLOCKED (how to open them at submission) | review |
+| L4 | low | Signed media URLs live 1 h; UI-SPEC says 15 min | **Kept**: the web refreshes them every 10 minutes, and the URLs are signed per job and expire with it; a longer TTL breaks nothing | n/a |
+| L5 | low | Production starts with no access code at all | **Kept**: then no one can start paid work (fail closed), and BLOCKED's codes step is required before the window | n/a |
+
+Round 12 found one medium (fixed in the docs, no code change): the clean count stays at 0.
+
+## Rounds 13 and 14 (run in parallel on 98dba7c, code = b296a92): neither clean.
+
+Round 13 (reviewer): 0 critical, 0 high, 2 medium, 6 low. Round 14 (judge): 0 critical, 0 high, 3 medium, 4 low. Between them they ran E5, E7, E9, E10, E11 and E12 (all OK), a fresh demo replay (matches AGENTIC-LOOP) and the receipt notes.
+
+| # | Sev | Finding | Resolution | Test |
+|---|---|---|---|---|
+| 13·M1 | medium | Every `GET /v1/jobs/{id}` re-validated every job file (plan.json and tracks.json twice): 0.28 s of CPU per poll on the 12 s demo, about 1.4 s extrapolated for 60 s, against 2 CPUs | `views._optional` caches parsed files by path, model and (mtime_ns, size), 256 entries, thread-safe | `test_a_poll_reuses_parsed_files_until_they_change` |
+| 13·M2 | medium | E10 missed "99 %" (the house style), "3 percent", "$1,200" | `FIGURE` reads all of them; `figure_pattern` matches RESULTS.md with or without the space | `test_e10_reads_percentages_in_every_house_style` |
+| 14·M1 | medium | After a `--replay` run stops for review, the printed `safecut publish --job <dir>` ran live and failed | With no flag, `publish` and the stage commands take the job's mode from `intake.json`; README shows `--replay` | `test_publish_without_a_flag_keeps_the_jobs_own_mode` |
+| 14·M2 | medium | BLOCKED never said to run `eval/report.py` after the test runs (CI would go red and block the deploy) nor how to fill the landing table | BLOCKED: run the report, commit its output, fill `web/src/data/results.ts` from the committed metrics (field by field, plus the labelling facts only the owner has) | review |
+| 14·M3 | medium | BLOCKED's Baseten step never turned the open-weight path on | BLOCKED: `SAFECUT_OPEN_WEIGHT_AUDIT=on` and `SAFECUT_OPEN_WEIGHT_CODE_KINDS` in both places, and don't claim it otherwise | review |
+| 13·L1 | low | A DELETE right after an upload's signature check made the PUT a 500 | `JobNotFound` → 404 | `test_an_upload_to_a_job_deleted_after_its_signature_check_is_a_404` |
+| 13·L2 | low | `receipt.retire` ran outside the edit's rollback | Inside it | covered by `test_edits_after_done_move_back_to_review_and_needs_a_new_render` |
+| 13·L3 | low | deploy-check can't tell a per-client limit from a shared proxy hop | **Kept**: Modal's header can't be observed offline; deploy-check's forged-header test plus the owner's first deploy-check run are the evidence | n/a |
+| 13·L4 | low | IPv6 clients could rotate addresses | Keyed by /64 | `test_ipv6_clients_share_a_limit_per_64` |
+| 13·L5 | low | README's revocation wording | Exact list of re-checks; a running analysis finishes within the caps | review |
+| 13·L6 | low | A judge code's `cap_usd` is ignored | Documented in BLOCKED (judge codes share the daily cap) | review |
+| 14·L1–L4 | low | Deploy order, SUBMISSION's synthetic demo, service-key format and owner-code capacity, VO count and LAUNCH wording | All fixed in the docs | review |

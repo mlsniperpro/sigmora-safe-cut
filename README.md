@@ -4,6 +4,8 @@
 
 Safe Cut takes a clip filmed in public and decides, from context, what shouldn't be published: bystanders (as opposed to the people in the story), children, number plates, and screens and documents that show personal data. Muse Spark reasons about who is part of the story. SAM 3.1 keeps each hidden thing covered on every frame. Anything uncertain stays hidden by default. A second pass audits the final render before anything goes live. The creator approves every decision and gets a hash-chained privacy receipt.
 
+**Scope: Safe Cut redacts the picture, not the soundtrack.** The audio is kept as recorded, so a bystander's voice, or a name or number said aloud, is still heard; the result page's captions come from the same unredacted transcript. The receipt says so too. Mute or edit the audio yourself when that matters.
+
 Built for the **Meta Global AI Developer Hackathon** (Startup track, "Build for Your World"), on the Meta Model API.
 
 > **Status.** The whole pipeline runs end to end in replay on a **synthetic** demo clip: drawn shapes, with recorded answers generated from the clip's ground truth rather than returned by Meta. Live runs on consented footage, the deployed service and the reported numbers wait on the owner inputs in [`BLOCKED.md`](BLOCKED.md). Every line of product code here is dated after the kickoff (Oct 26, 12:00 ET).
@@ -64,7 +66,7 @@ The honest failures on this clip: the YuNet baseline finds no drawn face at all 
 ## Production notes
 
 - **Service:** FastAPI on Modal (`deploy/modal_app.py`). It runs one API container, because the per-IP rate limits and the spend ledger are in-process; the pipeline runs in that container's worker threads. Job folders live on a Volume.
-- **Access:** judge and public access codes, plus pilot, recording and owner codes, each with its own validity window, and Bearer service keys for Sigmora. A code is bound to its job by a non-secret ID, so revoking it (removing it from `SAFECUT_ACCESS_CODES` and redeploying) stops its jobs' paid work at their next paid step: every start, render, audit and re-queue re-checks the code, and so does the restart.
+- **Access:** judge and public access codes, plus pilot, recording and owner codes, each with its own validity window, and Bearer service keys for Sigmora. A code is bound to its job by a non-secret ID, so revoking it (removing it from `SAFECUT_ACCESS_CODES` and redeploying) stops its jobs' paid work at the next start, render, audit, re-queue or restart, which each re-check the code; an analysis already running finishes, within the per-clip and daily caps.
 - **Spend caps,** checked before any paid work. The values are in `eval/RESULTS.md`'s service limits:
   - a per-clip cap;
   - a daily cap for judge and public codes, reset at 00:00 UTC;
@@ -100,7 +102,7 @@ uv run python eval/run.py --split dev --variant full --replay
 ```
 <!-- fresh-clone:end -->
 
-`safecut run` prints each stage and writes `redacted.mp4`, `audit.json`, `receipt.json` and `receipt.html` to the job folder. Without `--auto-approve-policy` it stops for review (`safecut approve --job <dir> && safecut publish --job <dir>`). Single stages run with `safecut <stage> --job <dir> --replay`. With `MODEL_API_KEY` set and without `--replay`, the same commands call Meta.
+`safecut run` prints each stage and writes `redacted.mp4`, `audit.json`, `receipt.json` and `receipt.html` to the job folder. Without `--auto-approve-policy` it stops for review (`safecut approve --job <dir> && safecut publish --job <dir> --replay`; leave out `--replay` for a live job). Single stages run with `safecut <stage> --job <dir> --replay`. With `MODEL_API_KEY` set and without `--replay`, the same commands call Meta.
 
 The API runs with `uv run uvicorn --factory safecut.api.app:create_app --no-proxy-headers` (set `SAFECUT_REPLAY=1` for demo mode). Behind a proxy, drop `--no-proxy-headers` only if that proxy overwrites `X-Forwarded-For`, or set `SAFECUT_TRUST_PROXY=1` as the Modal deploy does; `scripts/deploy-check.sh` tests that forged headers can't dodge the rate limit. The web app is documented in [`web/README.md`](web/README.md), and the routes are in `docs/UI-SPEC.md` §8.
 

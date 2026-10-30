@@ -1,6 +1,6 @@
 # Demo video script (final structure; ends at 2:50)
 
-The beats of `docs/DEMO.md`, shot by shot in `docs/STORYBOARD.md`, timed here to **2:50**. The VO is about 235 words (counting one of the two 2:00 lines), about 1:35 at 150 words a minute, so every beat has room for its screen.
+The beats of `docs/DEMO.md`, shot by shot in `docs/STORYBOARD.md`, timed here to **2:50**. The VO is about 235 to 250 words (depending on which 2:00 line is used), under 1:45 at 150 words a minute, so every beat has room for its screen.
 
 The rules carry over from the storyboard:
 - every screen is a recording of the deployed app;
@@ -44,4 +44,5 @@ A beat whose number has no committed source changes its shot (beat 7 below); nob
 - Use the deployed app with the owner code (`BLOCKED.md`), on hero clips 1 and 2.
 - Record at 1080p with the cursor visible, and keep captions on.
 - Show no real keys, emails or private footage on screen.
+- Don't imply the audio is redacted: Safe Cut covers the picture and keeps the soundtrack as recorded (the receipt says so). The VO says "hides" of people on screen only.
 - If something the script expects didn't happen on the real run (for example the audit found no leak), change the script to what did happen.

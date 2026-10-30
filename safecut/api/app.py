@@ -11,6 +11,7 @@ import base64
 import contextlib
 import hashlib
 import importlib
+import ipaddress
 import logging
 import re
 import subprocess
@@ -295,12 +296,19 @@ class Service:
     # -- request helpers -----------------------------------------------------
 
     def client_ip(self, request: Request) -> str:
+        """The rate limits' key: the client address (the proxy's last hop when it's trusted); an IPv6 client is
+        keyed by its /64, which one subscriber controls whole, so rotating addresses doesn't reset the limits."""
+        host = request.client.host if request.client else "unknown"
         if self.settings.trust_proxy:
             forwarded = request.headers.get("x-forwarded-for", "")
             hops = [h.strip() for h in forwarded.split(",") if h.strip()]
             if hops:
-                return hops[-1]
-        return request.client.host if request.client else "unknown"
+                host = hops[-1]
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError:
+            return host
+        return str(ipaddress.ip_network(f"{address}/64", strict=False)) if address.version == 6 else str(address)
 
     def job(self, job_id: str) -> JobState:
         try:
@@ -466,7 +474,10 @@ async def upload(svc: Svc, job_id: str, request: Request, exp: str | None = None
 
 async def _receive(svc: Service, job_id: str, spec: UploadSpec, request: Request) -> Response:
     folder = svc.store.path(job_id) / SOURCE_DIR
-    folder.mkdir(exist_ok=True)
+    try:
+        folder.mkdir(exist_ok=True)
+    except FileNotFoundError:
+        raise JobNotFound(job_id) from None  # deleted between the signature check and the first write
     partial = folder / f".{spec.file_name}.part"
     received = 0
     with partial.open("wb") as handle:
@@ -632,16 +643,18 @@ def _apply_edit(svc: Service, job_dir: Path, current: JobState, edits: list[Revi
         if result.audit is not None:
             dump(result.audit, job_dir / "audit.json")
         pipeline.run_stage(job_dir, stage("guard"), replay=current.mode == "replay", settings=svc.settings, force=True)
+        if current.status == "done":
+            # The sealed receipt describes the decisions as they were: it's archived (receipts/, the next one
+            # chains from it), never served beside decisions it no longer matches; inside the rollback, so a
+            # receipt that can't be archived undoes the edit too. The previous render stays downloadable until a
+            # new one replaces it (UI-SPEC §8 request 5).
+            receipt.retire(job_dir)
     except BaseException:
         for name, data in saved.items():
             (job_dir / name).write_bytes(data)
         raise
     dump(ReviewLog([*edits, edit]), job_dir / REVIEW)
     if current.status == "done":
-        # The sealed receipt describes the decisions as they were: it's archived (receipts/, the next one chains
-        # from it), never served beside decisions it no longer matches. The previous render stays downloadable
-        # until a new one replaces it (UI-SPEC §8 request 5).
-        receipt.retire(job_dir)
         current.status, current.stage = "review", "review"
 
 

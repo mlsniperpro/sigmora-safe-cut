@@ -18,7 +18,7 @@ Startups track · Build for Your World
 
 Creators who film in public (street interviews, vlogs, events) publish strangers, children, number plates and screens full of personal data every day. The tools they have either blur every face, including their own guest, or leave them hours of masking by hand. So most just publish.
 
-Safe Cut decides from context what shouldn't be published, and proves it:
+Safe Cut decides from context what shouldn't be published in the picture, and proves it (the soundtrack is kept as recorded, and the receipt says so):
 1. **SAM 3.1** tracks every face, person, plate, screen and document through the clip.
 2. **Muse Voice Transcribe** hears who speaks.
 3. **Muse Spark** watches the whole clip, then rules three times, independently, on numbered keyframes, about who is part of the story. Disputes escalate once at maximum effort, and a miss loop asks what the tracker didn't catch.
@@ -47,9 +47,9 @@ SAM 3.1 · Muse Spark (`muse-spark-1.3`, and `muse-spark-1.2` as the speech fall
 
 ## Testing instructions for judges
 
-1. Open https://safecut.sigmora.org. The landing page plays the demo job, labelled as a demo. The Raw / Safe Cut toggle compares the original and the result.
+1. Open https://safecut.sigmora.org. The landing page plays the demo job, labelled as a demo: until the owner records the hero clips, it is a synthetic test clip (drawn shapes, scripted answers), and the page says so. The Raw / Safe Cut toggle compares the original and the result.
 2. Press **Try it** and enter the access code ⟨owner: type the judge code here in the form itself, never in this file: the repo is public⟩. It works from Nov 5 00:00 to Nov 10 23:59 UTC, within a daily spend cap.
-3. Upload a clip of up to 60 seconds and 150 MB (MP4 or MOV), tick the rights box and press Start.
+3. Upload a clip of up to 60 seconds and 150 MB (MP4 or MOV), tick the rights box and press Start. Safe Cut redacts the picture only: the audio is kept as recorded (the receipt says so).
 4. When the review panel appears, open **Why?** on any item to see the numbered keyframe and the three votes. Try:
    - **Hide** or **Keep clear** on an item;
    - **Undo**;
