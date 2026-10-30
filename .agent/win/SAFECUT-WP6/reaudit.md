@@ -1,7 +1,7 @@
-AUDITED_COMMIT: 3807d13
+AUDITED_COMMIT: 9363e91
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
-CLEAN_AUDITS_IN_A_ROW: 0
+CLEAN_AUDITS_IN_A_ROW: 1
 
 # Re-audit log: SAFECUT-WP6
 
@@ -597,3 +597,12 @@ An hourly gate re-run on 1a245fd (code 3807d13), right after the container resum
 A judge's fresh clone on a cold machine is exactly that situation, so I fixed it rather than leaving it as a flake: `vitest.setup.ts` sets Testing Library's `asyncUtilTimeout` to 5 s. No assertion changes; a condition that is wrong still fails, it just gets longer to become true. There is no test that fails on the old code, because the failure couldn't be reproduced on demand. On the fix commit: `checks.sh` exit 0, 893 tests, e2e 145/145.
 
 This is a code change after 3807d13, so CLEAN_AUDITS_IN_A_ROW is back to 0: two more clean audits and a fresh break-it are needed.
+
+## Round 47 (audited 9363e91 by a Sonnet reviewer, starting with the asyncUtilTimeout change): CLEAN
+
+0 critical, 0 high, 0 medium, 0 low.
+- **The 5 s async wait:** on a fresh archive, install, lint, typecheck, build, `pnpm test` (893/893, 36 s) and `pnpm e2e` (145/145) pass; `checks.sh`'s steps after its `git ls-files` check (the archive has no `.git`) pass by hand. No test depends on a wait timing out (no `.rejects`/`toThrow` around `findBy`/`waitFor`; the `waitFor(…not…)` calls wait for a change); explicit per-call timeouts are unchanged; the slowest test is 4.1 s, under vitest's 5 s. The suite stays 893/893 with 8 busy loops on 4 cores and on one pinned core.
+- **The rest of the app:** every mock fixture as `/jobs/<id>` and `/result` at 1280 and 390 px; 17 routes from 280 to 2560 px with no overflow; `pnpm dev` with no hydration warnings on 10 routes; a live-mode build against the spec-shaped fake API (`/try` → review → Why → approve → result), back/forward and bfcache, the CSP in live mode; URL and region-header probes; forced colours, dark and reduced motion; a 200-item job's chip and keyboard timings; external links; the publish `postMessage` origin.
+- **Noted, not counted:** with one core shared with 4 busy loops (about 20% of a core), two TryFlow tests about a delete racing the upload can fail because the 30 ms mock upload finishes while userEvent is still in the confirm dialog. It fails the same way with the old 1 s wait, so it is test timing under extreme starvation, not a product defect. The decorative `aria-hidden` timeline bars lose their colour in forced colours.
+
+CLEAN_AUDITS_IN_A_ROW is 1 (no code change since 9363e91).
