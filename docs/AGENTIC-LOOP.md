@@ -55,7 +55,7 @@ The **miss loop** asks what SAM didn't track. It proposes "an addressed envelope
 
 ## 4. Apply the policy: deny by default (`decisions.json`)
 
-The policy (`safecut/decide/policy.py`, 100 % branch-covered and property-tested) only ever moves a track *out* of hidden. Grouping joins each face and person track into one item:
+The policy (`safecut/decide/policy.py`, property-tested, and fully branch-covered by its own tests, which entry-check E4 requires) only ever moves a track *out* of hidden. Grouping joins each face and person track into one item:
 
 | Item | Decision | Decided by | Why |
 |---|---|---|---|

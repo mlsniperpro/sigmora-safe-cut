@@ -125,3 +125,61 @@ Also found while integrating (not by the audit): E4 ran the **whole** suite unde
 | L4 | low | Committed runs were made at an earlier commit; one per-clip row differed at HEAD | Regenerated at 05f28a3 | E9, `eval/report.py --check` |
 
 Round 7 was not clean (one high), so the clean count stays at 0.
+
+## Round 8 (on 78a8d92, main a3cf274 merged during it): 0 critical, 0 high, 0 medium, 4 low. **Clean.**
+
+It ran E2, E3, E4, E5, E7, E9, E10, E11 and E12 itself: all OK. Its lows were fixed in a4a83ef, before the final rounds:
+
+| # | Sev | Finding | Resolution | Test |
+|---|---|---|---|---|
+| L1 | low | An added line starting with `++` shows as `+++ …` and was taken for a header (skipped, and able to redirect attribution) | Paths from the `diff` header; `---`/`+++` are headers only before the first hunk; combined diffs count `+` in any parent column | `test_history_scan_attributes_lines_to_their_files` (a merge, a `+++`-looking line, a header-looking line) |
+| L2 | low | Binary or large files skipped by the history and tree scans | `git log -p --text`; every tracked file scanned; `sh()` decodes with `errors="replace"` | `test_e11_history_scan_passes_on_this_repo` (30 MB of `--text` history, 0 hits) |
+| L3 | low | The escalation model was missing for a child or unsure ruling | Listed for any escalated track | review |
+| L4 | low | VIDEO-SCRIPT's VO overstated the audit; AGENTIC-LOOP quoted a coverage figure with no committed source | Reworded | E10 |
+
+Also since round 7, found by SENSE's auditor and fixed in 697110f: the Modal image shipped only `.py` files (no prompt templates, no YuNet weights); `test_the_image_ships_every_data_file_the_package_reads`.
+
+## Round 9 (on cda38bc): 0 critical, 0 high, 2 medium, 4 low. Closed in the next commit.
+
+It ran E2, E3, E5, E7, E9, E10, E11 and E12: all OK; 230 targeted tests passed; the demo replay matches AGENTIC-LOOP.
+
+| # | Sev | Finding | Resolution | Test |
+|---|---|---|---|---|
+| M1 | medium | BLOCKED told the owner to run only `full` on the test split (3 runs total, across variants), so the video's "compared with blurring every face" would have no committed source; and a live run refuses an uncommitted freeze | BLOCKED: commit the freeze first, then `full` and `blur_all`, the third run kept for a retry | review |
+| M2 | medium | Labels loaded after the paid pipeline: a bad label cost a paid run and one of the 3 test runs; `LabelError` escaped `main` | Every clip's labels load before anything is counted or called; `main` reports `LabelError` | `test_a_bad_label_refuses_the_run_before_anything_is_counted_or_called` |
+| L3 | low | E11's tree scan split `git ls-files` on whitespace; a crafted `a b/scripts/entry_check.py` path inherited the scanner's exemption | `git ls-files -z`; the path comes from the `+++ b/` header inside the diff header | `test_history_scan_attributes_lines_to_their_files` |
+| L4 | low | No bare `Bearer <token>` shape | `BEARER` pattern; the tests' two bearer stand-ins are named in `STAND_INS`; history and tree: 0 hits | review |
+| L5 | low | `safecut audit` / `safecut receipt` exited 0 on a blocked audit | Exit 6, as `run` and `publish` | `test_the_single_stage_audit_command_exits_6_on_a_blocked_audit` |
+| L6 | low | `stage_reason: "audit_patch"` is never set | **Kept**: the audit's patch re-render happens inside SAFETY's audit stage, which the worker can't observe; the progress shows "audit" throughout, which is true | n/a |
+
+Also noted: a Modal redeploy may briefly overlap two containers on the Volume and ledger; BLOCKED now says not to push to main during the judging window.
+
+Round 9 was not clean (two medium): the clean count goes back to 0.
+
+## Round 10 (on 3a029bd): 0 critical, 0 high, 2 medium, 5 low. Closed in the next commit.
+
+| # | Sev | Finding | Resolution | Test |
+|---|---|---|---|---|
+| M1 | medium | A live test run was counted before `MODEL_API_KEY` was checked; `ConfigError` escaped as a traceback | `refuse_early` checks the key (every live variant but `egoblur`) with the commit, the hook and the labels, before counting; `main` reports `ConfigError`; BLOCKED says to export it | `test_a_live_run_without_the_key_is_refused_before_it_counts` |
+| M2 | medium | BLOCKED's EgoBlur step put a CPU-only EgoBlur in the deployed audit (about 45 min per 30 s clip) and in the test-split run | BLOCKED: EgoBlur only on a GPU; don't set `SAFECUT_DEPLOY_AUDIT` for this CPU-only service; the deployed audit stays on YuNet and says so; the workflow and modal_app comments agree | review |
+| L1 | low | The marker scan still split `git ls-files` on whitespace | `-z` | E11 |
+| L2 | low | `BEARER` was case-sensitive (the API accepts any case) | `re.IGNORECASE` | `test_bearer_tokens_are_secrets_in_any_case` |
+| L3 | low | A direct caller's 95 s clip got `422 job_cap` at start instead of `too_long` | The start estimate is capped at the 60 s limit, so the clip reaches prepare (free) and fails `too_long` with its duration, as UI-SPEC's path says | `test_a_clip_over_60_s_is_never_priced_past_the_limit`, `test_a_clip_over_60_s_fails_in_prepare_with_its_duration` |
+| L4 | low | `safecut run --live` without a key printed a traceback | `_guarded` maps `ConfigError` to exit 1 | review |
+| L5 | low | The report never checked a test run's `split_hash` against `test.sha256` | `load_runs` refuses a test run whose split isn't the frozen one | `test_the_report_refuses_a_test_run_on_a_split_that_isnt_the_frozen_one` |
+
+Round 10 was not clean (two medium): the count stays at 0.
+
+## Round 11 (on 73806ec, SENSE's final merged): 0 critical, 0 high, 2 medium, 3 low. Closed in the next commit.
+
+It ran E2, E3, E5, E7, E9, E10, E11 and E12: all OK; the six dev runs replay byte for byte at 73806ec.
+
+| # | Sev | Finding | Resolution | Test |
+|---|---|---|---|---|
+| M1 | medium | README and SUBMISSION presented EgoBlur as the deployed auditor, but the CPU-only deploy can only run YuNet; BLOCKED said to put the weights on the service's Volume and also not to enable them there | README (table and flowchart), SUBMISSION and BLOCKED: EgoBlur on a GPU machine only; the deployed service audits with YuNet (plates by the red team) and names it in audit.json and the receipt | E10, E12; review |
+| M2 | medium | CI's 20-minute python job was likely too short for about 1,460 tests, and the deploy waits on CI's success | 45 minutes | review |
+| L1 | low | A live eval run in a shell with `SAFECUT_REPLAY=1` passed the early checks, was counted, then crashed | `refuse_early` refuses it | `test_a_live_run_in_a_replay_shell_is_refused_before_it_counts` |
+| L2 | low | `models_recorded` named today's escalate and red-team settings | Reads `raw/escalate/*.json` and `raw/audit/run.json`, as the receipt does | `test_the_model_list_names_the_recorded_models` |
+| L3 | low | A live run is all or nothing at `--max-usd` | BLOCKED says so and to size `--max-usd` to the split | review |
+
+Round 11 was not clean (two medium): the count stays at 0.

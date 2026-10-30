@@ -32,7 +32,7 @@ It is a production service: an API with access codes, service keys for Sigmora, 
 
 ## Meta models used
 
-SAM 3.1 · Muse Spark (`muse-spark-1.3`, and `muse-spark-1.2` as the speech fallback) · Muse Voice Transcribe · Muse Spark Open on Baseten (`meta-models/muse-spark-open-1026`, the optional open-weight audit opinion) · EgoBlur Gen 2 (Meta's open face and plate detector, as the auditor once its gated weights are installed; until then the audit runs the bundled YuNet face detector, and `audit.json` and the receipt name the detector that ran). What each one does: README, "What each Meta model does here".
+SAM 3.1 · Muse Spark (`muse-spark-1.3`, and `muse-spark-1.2` as the speech fallback) · Muse Voice Transcribe · Muse Spark Open on Baseten (`meta-models/muse-spark-open-1026`, the optional open-weight audit opinion) · EgoBlur Gen 2 (Meta's open face and plate detector, as the every-frame auditor on a GPU machine with its gated weights; the deployed service has no GPU, so its audit runs the bundled YuNet face detector with plates left to the red team, and `audit.json` and the receipt name the detector that ran). What each one does: README, "What each Meta model does here".
 
 ## Links
 

@@ -15,7 +15,8 @@ concurrency:
 jobs:
   python:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The suite (about 1,460 tests) runs for 15 to 20 minutes on one core locally; deploy waits on CI's success.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6

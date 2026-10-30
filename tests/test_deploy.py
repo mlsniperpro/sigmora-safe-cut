@@ -225,3 +225,24 @@ def test_deploy_check_accepts_a_live_api_with_its_key() -> None:
     finally:
         server.shutdown()
     assert "ok    API runs live, with MODEL_API_KEY set" in result.stdout
+
+
+def test_the_image_ships_every_data_file_the_package_reads() -> None:
+    """Modal's add_local_python_source keeps only .py files by default; the prompts and YuNet weights must ship."""
+    from modal.file_pattern_matcher import FilePatternMatcher  # noqa: PLC0415 -- the deploy group's own matcher
+
+    tree = ast.parse((ROOT / "deploy" / "modal_app.py").read_text())
+    ignore = next(
+        ast.literal_eval(node.value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == "SOURCE_IGNORE" for t in node.targets)
+    )
+    assert "ignore=SOURCE_IGNORE" in (ROOT / "deploy" / "modal_app.py").read_text()
+    matcher = FilePatternMatcher(*ignore)
+    data = [p for p in (ROOT / "safecut").rglob("*") if p.is_file() and p.suffix not in (".py", ".pyc")]
+    data = [p for p in data if "__pycache__" not in p.parts]
+    assert any(p.suffix == ".txt" and "prompts" in p.parts for p in data)
+    assert any(p.suffix == ".onnx" for p in data)
+    dropped = [str(p.relative_to(ROOT)) for p in data if matcher(p.relative_to(ROOT / "safecut"))]
+    assert dropped == []
+    assert matcher(Path("scout/__pycache__/x.cpython-312.pyc"))
