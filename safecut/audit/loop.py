@@ -43,13 +43,12 @@ from safecut.contracts import (
     dump,
     load,
 )
-from safecut.decide.geometry import contains
 from safecut.guard import region_cache
 from safecut.guard.plan import plan as make_plan
 from safecut.guard.plan import read_through
 from safecut.receipt import retire
 from safecut.render import REDACTED, file_sha256, render, rendered_from_plan, write_atomic
-from safecut.render.draw import Frame
+from safecut.render.draw import Frame, hidden_mask
 from safecut.render.video import read_frames
 
 log = logging.getLogger(__name__)
@@ -304,7 +303,7 @@ def earlier_leaks(job_dir: Path, previous: Audit | None) -> list[Leak]:
     return leaks
 
 
-def reopened(leaks: list[Leak], plan: Plan, decisions: Decisions) -> list[Leak]:
+def reopened(leaks: list[Leak], plan: Plan, decisions: Decisions, *, height: int, width: int) -> list[Leak]:
     """Leaks an earlier run left unresolved (or whose patch never landed) that nothing solid in the current plan
     covers: found again before this
     run's first pass, so a re-run never forgets them (redteam.md "Never default to clean"). A mosaic never counts
@@ -315,9 +314,12 @@ def reopened(leaks: list[Leak], plan: Plan, decisions: Decisions) -> list[Leak]:
         # Unresolved, or patched by an item that never landed (a crash between the pending record and the patch).
         if not leak.unresolved and (leak.patched_item is None or leak.patched_item in hidden):
             continue
-        boxes = [e.box for e in plan.frames.get(leak.frame, []) if e.style != "pixelate"]
-        boxes += [f.box for f in plan.crowd_fills if leak.frame in f.frames]
-        if not any(contains(b, leak.box) for b in boxes):
+        # The pixels the renderer fills solid on that frame (a mask entry hides its mask, not its box).
+        solid = [e for e in plan.frames.get(leak.frame, []) if e.style != "pixelate"]
+        fills = [f for f in plan.crowd_fills if leak.frame in f.frames]
+        hidden = hidden_mask(solid, fills, height, width)
+        x1, y1, x2, y2 = leak.box
+        if not bool(hidden[y1:y2, x1:x2].all()):
             out.append(leak.model_copy(update={"unresolved": False, "patched_item": None}))
     return out
 
@@ -406,6 +408,9 @@ async def audit_job(
     state = State(job=job, tracks=tracks, decisions=decisions, plan=load(job_dir / "plan.json", Plan))
     earlier = earlier_leaks(job_dir, previous)
     state.leaks = carried(earlier, decisions, detector)
+    # Everything earlier runs recorded goes on the pending record before audit.json is replaced by the placeholder,
+    # so a crash from here on still knows what was left unresolved.
+    save_pending(job_dir, state.leaks + [leak for leak in earlier if leak.unresolved])
     # Never default to clean (redteam.md): before this audit changes anything (patches, plan, video), the job's
     # receipt is retired and audit.json says nothing was checked yet, so a crash part-way leaves a blocked audit,
     # never the previous clean verdict beside a changed video.
@@ -415,7 +420,7 @@ async def audit_job(
         state.plan = make_plan(job, tracks, state.decisions, solid=read_through(state.leaks),
                                cache=region_cache(job_dir))  # fmt: skip
         dump(state.plan, job_dir / "plan.json")
-    reopen = reopened(earlier, state.plan, state.decisions)
+    reopen = reopened(earlier, state.plan, state.decisions, height=job.height, width=job.width)
     save_pending(job_dir, state.leaks + [leak.model_copy(update={"unresolved": True}) for leak in reopen])
     if not rendered_from_plan(job_dir):  # no video, or one drawn from another plan (a crash, an edit): draw it now
         render(job_dir)

@@ -24,6 +24,7 @@ from safecut.config import Settings
 from safecut.contracts import Audit, Decisions, Leak, Plan, dump, load
 from safecut.decide import run as decide_run
 from safecut.decide.geometry import contains as g_contains
+from safecut.decide.geometry import encode
 from safecut.guard import run as guard_run
 from safecut.meta.errors import BudgetExceeded, MetaRefusal, MetaUnavailable
 from safecut.receipt import ReceiptError
@@ -596,11 +597,11 @@ def test_a_mosaic_read_through_never_counts_as_cover_for_its_unresolved_leak() -
     })  # fmt: skip
     read = Leak(frame=30, box=(100, 60, 140, 80), kind="text", detector="redteam", patched_item=None,
                 flag="redaction_too_weak", through_item="i_2", unresolved=True)  # fmt: skip
-    (again,) = loop.reopened([read], plan, Decisions(items=[]))
+    (again,) = loop.reopened([read], plan, Decisions(items=[]), height=240, width=320)
     assert (again.unresolved, again.through_item) == (False, "i_2")
     solid = plan.model_copy(update={"frames": {30: [plan.frames[30][0].model_copy(update={"style": "solid",
                                                                                          "grid": None})]}})  # fmt: skip
-    assert loop.reopened([read], solid, Decisions(items=[])) == []
+    assert loop.reopened([read], solid, Decisions(items=[]), height=240, width=320) == []
 
 
 @pytest.mark.parametrize("dies_on", ["plan.json", "decisions.json"])
@@ -632,3 +633,41 @@ def test_a_crash_between_plan_and_decisions_is_re_planned(
     contracts.validate_job_dir(job_dir)  # the plan and the decisions agree again
     plan = load(job_dir / "plan.json", Plan)
     assert any(e.source == "audit_patch" and g_contains(e.box, box) for e in plan.frames[30])
+
+
+def test_a_crash_right_after_the_placeholder_never_forgets_an_unresolved_leak(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    job_dir = prepared(tmp_path)
+    audit_run(job_dir, replay=True, settings=SETTINGS, redteam=Moving({}))
+    (left,) = [x for x in audit_of(job_dir).leaks if x.unresolved]
+
+    def dies(*_: Any) -> bool:
+        raise RuntimeError("killed after the placeholder")
+
+    monkeypatch.setattr(loop, "planned_in_full", dies)
+    with pytest.raises(RuntimeError, match="killed"):
+        audit_run(job_dir, replay=True, settings=SETTINGS, redteam=Scripted({}))
+    assert audit_of(job_dir).blocked_reason == "audit_failed"  # the placeholder
+    monkeypatch.undo()
+    audit_run(job_dir, replay=True, settings=SETTINGS, redteam=Scripted({}))
+    again = [x for x in audit_of(job_dir).leaks if (x.frame, x.box) == (left.frame, left.box)]
+    assert again
+    assert all(x.patched_item is not None for x in again)
+
+
+def test_a_mask_entry_covers_only_its_mask_not_its_box() -> None:
+    mask = np.zeros((240, 320), dtype=np.bool_)
+    mask[50:110, 220:280] = True
+    mask[50:60, 270:280] = False  # the top-right corner is outside the outline
+    entry = {"item_id": "i_2", "shape": "mask", "box": (220, 50, 280, 110), "mask": encode(mask).model_dump(),
+             "style": "solid", "grid": None}  # fmt: skip
+    plan = Plan.model_validate({
+        "padding": {"face": 0.15, "default": 0.08, "px": 8},
+        "temporal": {"extend": 8, "backfill": 15, "gap_hold_s": 2.0}, "frames": {30: [entry]},
+    })  # fmt: skip
+    corner = Leak(frame=30, box=(270, 50, 280, 60), kind="text", detector="redteam", patched_item=None,
+                  unresolved=True)  # fmt: skip
+    inside = corner.model_copy(update={"box": (230, 70, 250, 90)})
+    got = loop.reopened([corner, inside], plan, Decisions(items=[]), height=240, width=320)
+    assert [x.box for x in got] == [(270, 50, 280, 60)]
