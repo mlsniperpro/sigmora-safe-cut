@@ -82,7 +82,7 @@ def models_recorded(job_dir: Path, s: Settings) -> dict[str, str]:
     roles = _optional(job_dir / "roles.json", Roles)
     if roles is not None and roles.model:
         ran["roles"] = roles.model
-        if any(t.suggested_role is not None for t in roles.tracks):
+        if any(t.escalated for t in roles.tracks):  # any ruling, a child or unsure one included
             ran["escalate"] = s.escalate_model
     transcript = _optional(job_dir / "transcript.json", Transcript)
     if transcript is not None and transcript.source:

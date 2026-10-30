@@ -48,6 +48,7 @@ def sh(
         env={**os.environ, **(env or {})},
         capture_output=True,
         text=True,
+        errors="replace",  # `git log -p --text` carries binary blobs: never a decode error instead of a verdict
         timeout=timeout,
         check=False,
     )
@@ -668,36 +669,55 @@ MARKER = re.compile(r"\b(" + "|".join(("TO" + "DO", "FIX" + "ME", "X" + "XX")) +
 SCANNER_FILES = frozenset({"scripts/entry_check.py", "tests/test_entry_check.py"})
 
 
+def _diff_path(line: str) -> str:
+    """The file a ``diff --git a/X b/X`` / ``diff --cc X`` / ``diff --combined X`` header names (the new side)."""
+    rest = line.split(" ", 2)[2] if line.count(" ") >= 2 else ""
+    if line.startswith("diff --git "):
+        rest = rest.rsplit(" b/", 1)[-1] if " b/" in rest else rest.rsplit(" ", 1)[-1]
+    return rest.strip().strip('"').removeprefix("b/")
+
+
 def history_hits(log: str) -> list[str]:
-    """Every added line in ``git log -p --cc`` output that holds a secret, as ``<file>: <line>``, attributed to its
-    file by the ``+++ b/<path>`` header before it (``--cc`` merges print ``+++ b/<path>`` too), so the scanner's own
-    files are skipped by name, the same rule as the tree scan."""
+    """Every added line in ``git log -p --cc --text`` output that holds a secret, as ``<file>: <line>``.
+
+    Lines are attributed to the file the ``diff`` header names, and ``---``/``+++`` count as headers only between
+    that header and the first hunk: an added line whose content starts with ``++`` (shown as ``+++ …``) is still
+    scanned and can't change the attribution. In a merge's combined diff a line is added when any of its parent
+    columns is ``+``. Only the scanner's own files (``SCANNER_FILES``) are exempt, as in the tree scan."""
     hits: list[str] = []
-    current = ""
+    current, in_header, columns = "", False, 1
     for line in log.splitlines():
-        if line.startswith("+++ "):
-            current = line[6:] if line.startswith("+++ b/") else ""
+        if line.startswith(("diff --git ", "diff --cc ", "diff --combined ")):
+            current, in_header = _diff_path(line), True
             continue
-        if line.startswith("+") and current not in SCANNER_FILES and secret_hit(line):
+        if line.startswith("commit "):
+            current, in_header = "", False
+            continue
+        if line.startswith("@@"):
+            columns = len(line) - len(line.lstrip("@")) - 1  # "@@" one parent, "@@@" a two-parent merge
+            in_header = False
+            continue
+        if in_header:
+            continue
+        if "+" in line[:columns] and current not in SCANNER_FILES and secret_hit(line):
             hits.append(f"{current}: {line}")
     return hits
 
 
 def e11() -> None:
     # --cc adds what a merge commit itself introduced (a conflict resolution), which plain -p never shows.
-    history = sh(["git", "log", "-p", "--cc", "--all", "--no-color", "--format=commit %H"], timeout=600)
+    # --text: a binary-looking file (one NUL byte) still shows its added lines instead of "Binary files differ".
+    history = sh(["git", "log", "-p", "--cc", "--text", "--all", "--no-color", "--format=commit %H"], timeout=900)
     hits = history_hits(history.stdout)
     if hits:
         raise CheckFailed(f"secret-shaped text in git history: {hits[0][:100]}…")
     # And the tree as it stands, every tracked text file; only the scanner and its own tests may hold key shapes.
     for name in sh(["git", "ls-files"]).stdout.split():
         path = ROOT / name
-        if name in SCANNER_FILES or not path.is_file() or path.stat().st_size > 5_000_000:
+        if name in SCANNER_FILES or not path.is_file():
             continue
-        data = path.read_bytes()
-        if b"\x00" in data:
-            continue
-        for number, line in enumerate(data.decode("utf-8", errors="replace").splitlines(), 1):
+        # Every tracked file, binary or large included: a key pasted into a fixture is still a key.
+        for number, line in enumerate(path.read_bytes().decode("utf-8", errors="replace").splitlines(), 1):
             if secret_hit(line):
                 raise CheckFailed(f"{name}:{number}: secret-shaped text in the tree")
     tracked = sh(["git", "ls-files", "--", *SHIPPED]).stdout.split()
