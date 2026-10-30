@@ -542,3 +542,34 @@ def test_reasons_are_short_lowercase_first_without_a_full_stop() -> None:
     assert reason.endswith("…")
     assert short_reason("Hidden.") == "hidden"
     assert short_reason("  ") == "hidden by default"
+
+
+def test_a_child_carried_by_an_adult_pairs_with_their_own_body() -> None:
+    """The child's face lies inside the adult's body box and their own: the body it fills most is theirs, so the
+    child's whole item is locked, the adult's face and body stay one item, and one child counts once."""
+    adult_face = track("face:1", 0, 20, (60, 10, 80, 30))
+    adult = track("person:1", 0, 20, (40, 5, 160, 175))
+    child_face = track("face:2", 0, 20, (110, 60, 122, 72))
+    child = track("person:2", 0, 20, (100, 55, 135, 120))
+    rs = [matched("face:1"), matched("person:1"), row("face:2", "child", "participant", "participant"),
+          matched("person:2")]  # fmt: skip
+    got = run(adult_face, adult, child_face, child, rs=rs, scene=scene(children=1))
+    kid = only(got, "face:2")
+    assert (kid["track_ids"], kid["kind"], kid["locked"], kid["decision"]) == (
+        ["face:2", "person:2"], "child", True, "hide"
+    )  # fmt: skip
+    assert only(got, "face:1")["track_ids"] == ["face:1", "person:1"]
+    assert only(got, "face:1")["decision"] == "keep"
+
+
+def test_a_child_face_no_body_can_claim_locks_every_body_holding_it() -> None:
+    """Two identical bodies hold the child's face equally (an exact tie pairs nothing): neither body can be kept."""
+    child_face = track("face:2", 0, 20, (110, 60, 122, 72))
+    a = track("person:1", 0, 20, (100, 55, 135, 120))
+    b = track("person:2", 0, 20, (100, 55, 135, 120))
+    rs = [row("face:2", "child", "child", "child"), matched("person:1"), matched("person:2")]
+    got = run(child_face, a, b, rs=rs, scene=scene(children=1))
+    assert only(got, "face:2")["track_ids"] == ["face:2"]
+    for body in ("person:1", "person:2"):
+        item = only(got, body)
+        assert (item["decision"], item["kind"], item["locked"]) == ("hide", "child", True), body

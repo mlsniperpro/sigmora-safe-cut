@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 225d9c6aacd0d157c4707dabedba42ea9a43d282
+AUDITED_COMMIT: 6e83d9bf9173573cab0a4b30749a7c0495310de3
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -83,4 +83,23 @@ verified here before it is fixed, and fixed with a named test. The counter reset
 - WP3 low: reasons unbounded → ≤ 90 chars, lowercase-first, no full stop (`test_reasons_are_short_lowercase_first_without_a_full_stop`).
 - WP3 low: extra concepts mapped to screen/document → exactly API-NOTES §12's map (`test_kinds`).
 
-## Round 4: running at 225d9c6 (main ede3dc1)
+## Round 4 (at 225d9c6): 0 critical, 0 high; verified and fixed at 6e83d9b (merged 2b5aacf) or filed
+- WP4 medium: a recording's `raw/audit/opinion*` replayed into another job claimed its frames went to Baseten (and
+  made the job dir invalid) → the marker and record name their job
+  (`test_a_replayed_recording_never_brings_its_opinion_into_another_job`, fails without the fix).
+- WP4 medium: `validate_job_dir` gated nothing in production → the receipt stage validates the whole job directory
+  and withdraws the receipt when it doesn't (`test_no_receipt_on_a_job_directory_that_does_not_validate`).
+- WP4 low: a replayed real recording wasn't disclosed → `REPLAY_NOTE` (`test_a_replayed_recording_is_disclosed`).
+- WP4 low (SHIP's): the job-cap pre-check raises before the audit, so a cap stop is `failed`, not `over_budget`
+  (fails closed) → filed with SHIP.
+- WP4 low: `auditor_available` loaded models per request, and weights without torch gave 503 → cached per weights
+  state; falls back to YuNet, recorded (`tests/test_audit_gpu.py`).
+- WP4 low: a box that isn't 4 integers voided the response → a whole-frame leak per finding
+  (`test_a_malformed_box_keeps_its_finding_as_a_whole_frame_leak`).
+- WP4 low: the banner named a red team and an all-purpose detector even for the oracle / YuNet → names what ran
+  (`test_the_banner_names_the_checks_that_actually_ran`). The unkeyed hash is a tamper check, as the page says.
+- WP3 medium: a whole-person item left the body bare on frames its body track didn't reach → body estimate per
+  frame (`test_a_whole_person_item_covers_a_body_where_only_its_face_is_tracked`, fails without the fix).
+- WP3 low: the region-cache registry wasn't thread-safe → locked.
+
+## Round 5: running at 6e83d9b (main 2b5aacf)

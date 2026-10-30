@@ -305,3 +305,29 @@ def test_a_kept_prominent_person_hidden_again_is_covered_whole() -> None:
 def test_a_creator_hide_clears_the_hold() -> None:
     got = by_id(apply_review(base(), edits({"type": "hide", "edit_id": "h", "item_id": "i_4"})).decisions)
     assert (got["i_4"].decision, got["i_4"].hold, got["i_4"].decided_by) == ("hide", None, "creator")
+
+
+def test_a_spot_covered_again_after_an_undo_keeps_its_patch_number() -> None:
+    """API-NOTES §12: an A-number never changes once given, even as the server replays the whole log."""
+    log = edits(
+        {"type": "cover_spot", "edit_id": "c1", "spot_id": "s1"},
+        {"type": "undo", "edit_id": "u1", "reverts": "c1"},
+        {"type": "cover_spot", "edit_id": "c2", "spot_id": "s1"},
+    )
+    raw = audit_with_spot().model_dump(mode="json")
+    raw["leaks"].append({"frame": 40, "box": [100, 40, 120, 60], "kind": "face", "detector": "egoblur",
+                         "patched_item": None, "unresolved": True})  # fmt: skip
+    raw["spots"].append({"spot_id": "s2", "first": 40, "last": 40, "boxes": {"40": [100, 40, 120, 60]}})
+    raw["unresolved"] = 2
+    two = Audit.model_validate(raw)
+    log += edits({"type": "cover_spot", "edit_id": "c3", "spot_id": "s2"})  # takes the next number
+    first = apply_review(base(), log, audit=two, frames=60)
+    assert first.audit is not None
+    covered_by = first.audit.spots[0].covered_by
+    label = by_id(first.decisions)[str(covered_by)].audit_label
+    more = [*log, *edits({"type": "keep", "edit_id": "k1", "item_id": "i_2"})]
+    # The API folds the whole log over the decisions and audit the last edit saved.
+    again = apply_review(first.decisions, more, audit=first.audit, frames=60)
+    assert again.audit is not None
+    assert again.audit.spots[0].covered_by == covered_by
+    assert by_id(again.decisions)[str(covered_by)].audit_label == label

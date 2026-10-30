@@ -41,8 +41,10 @@ from safecut.contracts import (
     dump,
     load,
 )
+from safecut.guard import region_cache
 from safecut.guard.plan import plan as make_plan
 from safecut.guard.plan import read_through
+from safecut.receipt import retire
 from safecut.render import REDACTED, render
 from safecut.render.draw import Frame
 from safecut.render.video import read_frames
@@ -300,7 +302,8 @@ async def settle(
             break
         fixed = patch(state, found)
         state.leaks += fixed
-        state.plan = make_plan(job, tracks, state.decisions, solid=read_through(state.leaks))
+        state.plan = make_plan(job, tracks, state.decisions, solid=read_through(state.leaks),
+                               cache=region_cache(job_dir))  # fmt: skip
         dump(state.decisions, job_dir / "decisions.json")
         dump(state.plan, job_dir / "plan.json")
         render(job_dir)
@@ -335,6 +338,11 @@ async def audit_job(
     previous = load(job_dir / "audit.json", Audit) if (job_dir / "audit.json").exists() else None
     state = State(job=job, tracks=tracks, decisions=decisions, plan=load(job_dir / "plan.json", Plan))
     state.leaks = carried(previous, decisions, detector)
+    # Never default to clean (redteam.md): before this audit changes anything (patches, plan, video), the job's
+    # receipt is retired and audit.json says nothing was checked yet, so a crash part-way leaves a blocked audit,
+    # never the previous clean verdict beside a changed video.
+    retire(job_dir)
+    dump(summary(state, 0, detector, previous), job_dir / "audit.json")
     if not (job_dir / REDACTED).exists():
         render(job_dir)
     words = approved(decisions, roles, scene)
@@ -350,7 +358,7 @@ async def audit_job(
         dump(job, job_dir / "job.json")
     if opinion is not None and not job.open_weight_attempted:
         # At most once in the job's life, marked before the first call (redteam.md "Second opinion").
-        mark_attempted(job_dir, job)
+        mark_attempted(job_dir, job, opinion_model)
         state.job = job = job.model_copy(update={"open_weight_attempted": True})
         dump(job, job_dir / "job.json")
         bar = rules.bar_height(job.height)
