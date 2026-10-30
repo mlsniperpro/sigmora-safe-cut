@@ -61,6 +61,14 @@ def pct(value: float | None) -> str:
     return "n/a" if value is None else f"{value * 100:.1f}%"
 
 
+def row_name(variant: str, run: dict[str, Any]) -> str:
+    """The row's method name; the egoblur baseline is named after the detector that actually ran."""
+    detector = run["config"].get("detail", {}).get("detector")
+    if variant == "egoblur" and detector and detector != "egoblur-gen2":
+        return f"{DETECTOR_NAMES.get(detector, detector)} on every frame (EgoBlur weights not installed)"
+    return NAMES[variant]
+
+
 def latest(runs: list[dict[str, Any]]) -> dict[tuple[str, bool], dict[str, dict[str, Any]]]:
     """(split, synthetic) → variant → the newest run."""
     table: dict[tuple[str, bool], dict[str, dict[str, Any]]] = {}
@@ -105,10 +113,7 @@ def render(runs: list[dict[str, Any]], settings: Settings | None = None) -> str:
                 lines.append(f"| {NAMES[variant]} | not run | | | | | |")
                 continue
             m, link = run["metrics"], f"[{run['dir']}](results/{run['dir']}/metrics.json)"
-            name = NAMES[variant]
-            detector = run["config"].get("detail", {}).get("detector")
-            if variant == "egoblur" and detector and detector != "egoblur-gen2":
-                name = f"{DETECTOR_NAMES.get(detector, detector)} on every frame (EgoBlur weights not installed)"
+            name = row_name(variant, run)
             load = "n/a" if m["review_load_per_min"] is None else f"{m['review_load_per_min']:.2f}"
             lines.append(
                 f"| {name} | {pct(m['entity_recall'])} | {pct(m['exposure_rate'])} | "
@@ -157,6 +162,40 @@ def render(runs: list[dict[str, Any]], settings: Settings | None = None) -> str:
     return "\n".join(lines)
 
 
+README = ROOT / "README.md"
+README_START, README_END = "<!-- results:start -->", "<!-- results:end -->"
+
+
+def readme_table(runs: list[dict[str, Any]]) -> str:
+    """The README's results table: the newest run of each variant on the reported split. That is the test split
+    once it has runs; until then the dev split, labelled synthetic when its recordings are."""
+    table = latest(runs)
+    key = next((k for k in sorted(table) if k[0] == "test"), None) or next(
+        iter(sorted(table, key=lambda k: k[1])), None
+    )
+    if key is None:
+        return "No committed runs yet."
+    split, synthetic = key
+    rows = [
+        f"| Method ({split} split{', synthetic' if synthetic else ''}) | Recall | Exposure | Leak bursts | Over-blur |",
+        "|---|---|---|---|---|",
+    ]
+    for variant in VARIANTS:
+        run = table[key].get(variant)
+        if run is not None:
+            m = run["metrics"]
+            rows.append(
+                f"| {row_name(variant, run)} | {pct(m['entity_recall'])} | {pct(m['exposure_rate'])} | "
+                f"{m['leak_bursts']} | {pct(m['over_blur'])} |"
+            )
+    return "\n".join(rows)
+
+
+def with_readme_table(readme: str, table: str) -> str:
+    start, end = readme.index(README_START) + len(README_START), readme.index(README_END)
+    return readme[:start] + "\n" + table + "\n" + readme[end:]
+
+
 def charts(runs: list[dict[str, Any]], out: Path = RESULTS_DIR / "charts") -> list[Path]:
     import matplotlib  # noqa: PLC0415 -- charts only, and the backend must be set before pyplot loads
 
@@ -200,16 +239,20 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     runs = load_runs(RESULTS_DIR)
     text = render(runs)
+    readme = README.read_text(encoding="utf-8") if README.is_file() else ""
+    readme_new = with_readme_table(readme, readme_table(runs)) if README_START in readme else readme
     if args.check:
         current = OUT.read_text(encoding="utf-8") if OUT.is_file() else ""
-        if current != text:
-            print("eval/RESULTS.md is out of date: run `uv run python eval/report.py`", file=sys.stderr)
+        if current != text or readme_new != readme:
+            stale = "eval/RESULTS.md" if current != text else "README.md's results table"
+            print(f"{stale} is out of date: run `uv run python eval/report.py`", file=sys.stderr)
             return 1
-        print("eval/RESULTS.md matches the committed runs")
+        print("eval/RESULTS.md and the README's results table match the committed runs")
         return 0
     OUT.write_text(text, encoding="utf-8")
+    README.write_text(readme_new, encoding="utf-8")
     charts(runs, RESULTS_DIR / "charts")
-    print(f"wrote {OUT.relative_to(ROOT)} from {len(runs)} run(s)")
+    print(f"wrote {OUT.name} and the README's results table from {len(runs)} run(s)")
     return 0
 
 

@@ -1,0 +1,42 @@
+[
+ {
+  "clip": "SC-A-91-synthetic-20261030.mp4",
+  "entity": "e3",
+  "category": "bystander",
+  "frame": 21,
+  "time_s": 0.7,
+  "coverage": 0.0
+ },
+ {
+  "clip": "SC-A-91-synthetic-20261030.mp4",
+  "entity": "e3",
+  "category": "bystander",
+  "frame": 22,
+  "time_s": 0.733,
+  "coverage": 0.0
+ },
+ {
+  "clip": "SC-A-91-synthetic-20261030.mp4",
+  "entity": "e3",
+  "category": "bystander",
+  "frame": 23,
+  "time_s": 0.767,
+  "coverage": 0.0
+ },
+ {
+  "clip": "SC-A-91-synthetic-20261030.mp4",
+  "entity": "e3",
+  "category": "bystander",
+  "frame": 24,
+  "time_s": 0.8,
+  "coverage": 0.0
+ },
+ {
+  "clip": "SC-A-91-synthetic-20261030.mp4",
+  "entity": "e3",
+  "category": "bystander",
+  "frame": 25,
+  "time_s": 0.833,
+  "coverage": 0.0
+ }
+]

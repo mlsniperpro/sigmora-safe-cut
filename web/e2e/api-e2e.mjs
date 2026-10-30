@@ -245,7 +245,7 @@ try {
       if ((await merge.count()) > 0) {
         await merge.click();
         const dialog = page.getByRole("dialog", { name: /^Who is / });
-        await dialog.getByRole("button", { name: /^Same person as / }).first().click();
+        await dialog.getByRole("button", { name: /Same person as / }).first().click();
         await page.getByText(/merged into .+\. They'll be kept clear like/).waitFor();
         check(`${v}: a new ID merges into a participant`, true);
       } else {

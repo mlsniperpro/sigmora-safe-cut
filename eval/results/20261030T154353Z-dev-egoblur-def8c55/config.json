@@ -1,12 +1,12 @@
 {
- "run_id": "20261030T151031Z-dev-blur_all-c3d9426",
+ "run_id": "20261030T154353Z-dev-egoblur-def8c55",
  "split": "dev",
- "variant": "blur_all",
+ "variant": "egoblur",
  "replay": true,
  "synthetic": true,
- "git_sha": "c3d9426a543028bf905f7f3c2d7b7c489cffb287",
- "split_hash": "1fd76cc3074b5e5f6337d92c3d51a6c7a1448c4b3c5cdfd047d43cb2ffa4ea04",
- "created_at": "2026-10-30T15:10:31.109687Z",
+ "git_sha": "def8c55d99a95a81ed1e1bd0b4cb48886081b1d9",
+ "split_hash": "fbfc2cacaacd15a3e4c52a516fe7cc90dd1bfcfb72792519d5fc5d3417c8129d",
+ "created_at": "2026-10-30T15:43:53.413623Z",
  "clips": [
   "fixtures/clips/SC-A-91-synthetic-20261030.mp4"
  ],
@@ -19,5 +19,7 @@
   "redteam": "muse-spark-1.3",
   "auditor": "egoblur-gen2"
  },
- "detail": {}
+ "detail": {
+  "detector": "yunet-face"
+ }
 }

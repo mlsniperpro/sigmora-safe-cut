@@ -48,14 +48,18 @@ Model IDs come from the environment (`safecut/config.py`), with Standard model I
 
 From [`eval/RESULTS.md`](eval/RESULTS.md), which `eval/report.py` builds from the committed runs in `eval/results/` only. **The only runs so far are on the synthetic demo clip.** They show that the pipeline, the baselines and the metrics work end to end; they say nothing about model quality, because the "model" answers were generated from the clip's ground truth. Reported numbers come from the frozen test split, run on the owner's machine once the key and labels exist.
 
-| Method (synthetic dev clip) | Recall | Exposure | Leak bursts | Over-blur |
+<!-- results:start -->
+| Method (dev split, synthetic) | Recall | Exposure | Leak bursts | Over-blur |
 |---|---|---|---|---|
 | Blur every face (SAM 3.1 `face`, all hidden) | 40.0% | 59.3% | 3 | 100.0% |
-| Detector only (SAM 3.1 classes, no Muse Spark) | 80.0% | 10.1% | 1 | 100.0% |
 | OpenCV YuNet face detector on every frame (EgoBlur weights not installed) | 0.0% | 100.0% | 5 | 0.0% |
-| **Safe Cut (full)** | 100.0% | 0.0% | 0 | 0.0% |
+| Detector only (SAM 3.1 classes, no Muse Spark) | 80.0% | 10.1% | 1 | 100.0% |
+| Muse Spark keyframe boxes, no tracking | 60.0% | 37.5% | 12 | 100.0% |
+| **Safe Cut (full)** | 100.0% | 0.0% | 0 | 50.0% |
+| Safe Cut without the audit pass | 100.0% | 0.0% | 0 | 50.0% |
+<!-- results:end -->
 
-The worst honest failure on this clip: the YuNet baseline finds no drawn face at all (they aren't faces), so it exposes everything, and blur-every-face hides both participants. Recall, exposure, leak bursts and over-blur are defined in `eval/RESULTS.md` and tested in `tests/test_metrics.py`.
+The honest failures on this clip: the YuNet baseline finds no drawn face at all (they aren't faces), so it exposes everything. Blur-every-face hides both participants. Safe Cut's own over-blur comes from deny-by-default: the guest leaves and comes back, the tracker gives the return a new ID, and with the policy auto-approved that span stays hidden until a creator merges it (one tap in review). Recall, exposure, leak bursts and over-blur are defined in `eval/RESULTS.md` and tested in `tests/test_metrics.py`.
 
 ## Production notes
 

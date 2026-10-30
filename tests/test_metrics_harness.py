@@ -247,8 +247,14 @@ def test_report_tables_link_every_number_and_label_synthetic_runs(base: Path) ->
 def test_report_check_compares_with_the_committed_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(report, "RESULTS_DIR", tmp_path / "results")
     monkeypatch.setattr(report, "OUT", tmp_path / "RESULTS.md")
+    readme = tmp_path / "README.md"
+    readme.write_text(f"# x\n{report.README_START}\nstale\n{report.README_END}\n")
+    monkeypatch.setattr(report, "README", readme)
     assert report.main(["--check"]) == 1
     (tmp_path / "RESULTS.md").write_text(report.render([]))
+    assert report.main(["--check"]) == 1  # the README's table is still stale
+    assert report.main([]) == 0
+    assert "No committed runs yet." in readme.read_text()
     assert report.main(["--check"]) == 0
 
 
