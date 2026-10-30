@@ -36,9 +36,10 @@ ASR_STAGE = "asr"
 ASR_KEY = "transcribe"
 FALLBACK_STAGE = "speech"
 FALLBACK_KEY = "fallback"
-_SPEAKER = re.compile(r"^[SU][1-9][0-9]*$")
-#: A fallback answer with fewer input tokens than this per second of clip didn't ingest the media (the dropped
-#: soundtrack of cookbook issue #59 counted only the prompt text); WP0's probe e refines it.
+_SPEAKER = re.compile(r"^[SU][1-9][0-9]{0,5}$")  # bounded: a label is never a number int() can't take
+#: A fallback answer with fewer input tokens than this per second of clip didn't ingest the media at all (cookbook
+#: issue #59 counted only the prompt text). It can't tell a dropped soundtrack under an ingested video (≈ 2,200
+#: tokens/s); WP0's probe e measures that floor once the key exists.
 MIN_TOKENS_PER_SECOND = 10
 
 
@@ -56,9 +57,12 @@ def extract_wav(job_dir: Path, job: Job) -> Path:
 
 
 def clamp_turns(turns: list[Turn], seconds: float) -> list[Turn]:
-    """Clamp to the clip, drop reversed turns, sort by start (``speech-fallback.md`` post-processing)."""
+    """Clamp to the clip, drop reversed turns and turns wholly outside it, sort by start (``speech-fallback.md``
+    post-processing): speech placed after the clip ends never becomes evidence at its last frame."""
     out: list[Turn] = []
     for t in turns:
+        if t.start > seconds or t.end < 0:
+            continue
         start, end = min(max(t.start, 0.0), seconds), min(max(t.end, 0.0), seconds)
         if end >= start:
             out.append(t.model_copy(update={"start": start, "end": end}))
@@ -66,14 +70,20 @@ def clamp_turns(turns: list[Turn], seconds: float) -> list[Turn]:
 
 
 def fallback_turns(answer: SpeechOut, seconds: float) -> list[Turn]:
-    """The fallback's turns on the contract's labels: a label that isn't ``S<n>``/``U<n>`` gets a fresh ``U``."""
+    """The fallback's turns on the contract's labels. ``has_speech: false`` means none. A label that isn't
+    ``S<n>``/``U<n>``, or a ``U`` label used twice (an uncertain voice is never reused), gets a fresh ``U``."""
+    if not answer.has_speech:
+        return []
     used_u = [int(t.speaker[1:]) for t in answer.turns if _SPEAKER.fullmatch(t.speaker) and t.speaker[0] == "U"]
     next_u = max(used_u, default=0) + 1
+    seen_u: set[str] = set()
     turns: list[Turn] = []
     for t in answer.turns:
         speaker = t.speaker
-        if not _SPEAKER.fullmatch(speaker):
+        if not _SPEAKER.fullmatch(speaker) or speaker in seen_u:
             speaker, next_u = f"U{next_u}", next_u + 1
+        if speaker.startswith("U"):
+            seen_u.add(speaker)
         if t.end < t.start:
             continue
         turns.append(Turn(speaker=speaker, start=max(t.start, 0.0), end=max(t.end, 0.0), text=t.text))
@@ -99,7 +109,11 @@ async def primary(ctx: calls.Context) -> tuple[str, Any]:
         call = replay.RawCall(synthetic=False, stage="speech", model=settings.asr_model, request=request, **fields)
         replay.save(ctx.job_dir, ASR_STAGE, ASR_KEY, call)
 
-    wav = await asyncio.to_thread(extract_wav, ctx.job_dir, ctx.job)
+    try:
+        wav = await asyncio.to_thread(extract_wav, ctx.job_dir, ctx.job)
+    except (media.MediaError, OSError) as exc:  # no WAV (ffmpeg or the disk): the fallback reads the video instead
+        record(response={"failed": type(exc).__name__, "reason": str(exc)[:300]})
+        return "failed", type(exc).__name__
     try:
         body = await asr.transcribe_raw(ctx.client, wav, model=settings.asr_model,
                                         language_bias=settings.asr_language_bias)  # fmt: skip

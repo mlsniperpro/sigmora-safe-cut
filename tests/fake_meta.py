@@ -29,10 +29,17 @@ _DISPUTE = re.compile(r"^([^\s:]+(?: [^\s:]+)?:\d+): \[", re.MULTILINE)
 class FakeMeta:
     """Meta's endpoints, answered from the demo scene's ground truth."""
 
-    def __init__(self, job_dir: Path) -> None:
+    def __init__(self, job_dir: Path, *, fail: set[str] | None = None) -> None:
         self.job_dir = job_dir
         self.files: dict[str, bool] = {}
         self.calls: list[str] = []
+        #: Calls answered with an error: ``asr``, ``sam``, or a schema name (``scene_pass``, ``speech_fallback``,
+        #: ``escalation``, ``role_pass``), optionally one vote (``role_pass:3``).
+        self.fail = fail or set()
+
+    @staticmethod
+    def error(status: int = 400) -> httpx.Response:
+        return httpx.Response(status, json={"error": {"message": "injected", "type": "invalid_request_error"}})
 
     def responder(self) -> demo.Responder:
         """The responder for the job: ``job_dir`` itself, or the one job under it (a job named at run time)."""
@@ -42,6 +49,9 @@ class FakeMeta:
         return demo.Responder(job, Settings(sam_fps=8))
 
     def upload(self, request: httpx.Request) -> httpx.Response:
+        if "upload" in self.fail:
+            self.calls.append("files:upload")
+            return self.error(500)
         file_id = f"file-{len(self.files) + 1}"
         self.files[file_id] = True
         self.calls.append("files:upload")
@@ -55,6 +65,8 @@ class FakeMeta:
     def asr(self, request: httpx.Request) -> httpx.Response:
         assert b'"mode": "DIARIZATION"' in request.content
         self.calls.append("asr")
+        if "asr" in self.fail:
+            return self.error(500)
         return httpx.Response(200, json=self.responder().asr("transcribe", {}))
 
     def responses(self, request: httpx.Request) -> httpx.Response:
@@ -63,10 +75,18 @@ class FakeMeta:
         texts = [p["text"] for m in body["input"] for p in m["content"] if p["type"] == "input_text"]
         if body["model"] == "sam-3.1":
             self.calls.append("sam")
+            if "sam" in self.fail:
+                return self.error()
             events = self.responder().sam("live", self._sam_info(texts[0]))
         else:
             name = body["text"]["format"]["name"]
             self.calls.append(name)
+            vote = ""
+            if name == "role_pass":
+                last = texts[-1]
+                vote = ":1" if "Judge every label" in last else ":2" if "simply a bystander" in last else ":3"
+            if name in self.fail or f"{name}{vote}" in self.fail:
+                return self.error()
             events = self._muse(name, texts)
             usage = {"input_tokens": 1200, "output_tokens": 300, "input_tokens_details": {"cached_tokens": 0}}
             events[-1]["response"]["usage"] = usage
@@ -88,6 +108,10 @@ class FakeMeta:
         frames = [f for f, _ in per_frame]
         if name == "scene_pass":
             return responder.scene("scene", {})
+        if name == "speech_fallback":
+            turns = [{"speaker": "S1" if s == "A" else "S2", "start": a, "end": b, "text": t, "self_intro": None,
+                      "addresses": None} for a, b, s, t in demo.TURNS]  # fmt: skip
+            return demo.responses_events({"has_speech": True, "turns": turns}, "resp_fallback")
         if name == "role_pass":
             last = texts[-1]
             k = 1 if "Judge every label" in last else 2 if "simply a bystander" in last else 3

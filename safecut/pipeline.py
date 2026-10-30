@@ -17,7 +17,7 @@ from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from safecut import netguard
 from safecut.config import CodeKind, Settings, load_settings
@@ -25,7 +25,9 @@ from safecut.contracts import (
     JOB_FILES,
     Approval,
     ContractError,
+    Decisions,
     Intake,
+    canonical_json,
     dump,
     load,
     measured_usd,
@@ -146,7 +148,7 @@ def recording_is_synthetic(job_dir: Path) -> bool:
     so nothing unlabelled is ever presented as a real run)."""
     manifest = job_dir / RAW_DIR / RAW_MANIFEST
     if not manifest.is_file():
-        return False
+        return (job_dir / RAW_DIR).is_dir()  # replayed recordings with no manifest: unknown, so labelled synthetic
     try:
         data = json.loads(manifest.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -207,17 +209,24 @@ def _inputs(job_dir: Path, stage: Stage) -> dict[str, str | None]:
 
 
 def is_fresh(job_dir: Path, stage: Stage) -> bool:
-    """The stage's last ``done`` line still describes its output and inputs on disk."""
+    """The stage's last ``done`` line still describes its output and inputs on disk. A later stage that also
+    rewrites the output (``Stage.also_writes``) logs the new digest, which then stands for this stage's."""
     last: dict[str, Any] | None = None
+    expected: str | None = None
     for entry in read_log(job_dir):
         if entry.get("stage") == stage.name and entry.get("event") in ("done", "failed", "start"):
             last = entry
+            expected = entry.get("output_sha256") if entry.get("event") == "done" else None
+        elif expected is not None and entry.get("event") == "done":
+            also = entry.get("also_sha256")
+            if isinstance(also, dict) and stage.output in also:
+                expected = cast(dict[str, Any], also)[stage.output]
     if last is None or last.get("event") != "done":
         return False
     output = job_dir / stage.output
     if not output.is_file():
         return False
-    return last.get("output_sha256") == sha256_file(output) and last.get("inputs") == _inputs(job_dir, stage)
+    return expected == sha256_file(output) and last.get("inputs") == _inputs(job_dir, stage)
 
 
 # ---------------------------------------------------------------------------
@@ -255,7 +264,7 @@ def run_stage(
         _log(job_dir, stage=stage.name, event="skipped", replay=replay)
         return StageResult(stage.name, "skipped", output, 0.0)
     runner = stage.runner()
-    if stage.paid and not replay:
+    if stage.paid and not replay and not stage.caps_itself:
         cap = (settings or load_settings()).job_usd_cap
         spent = job_spend(job_dir)
         if spent >= cap:
@@ -289,6 +298,7 @@ def run_stage(
         elapsed_s=elapsed,
         output_sha256=sha256_file(output),
         inputs=_inputs(job_dir, stage),
+        **({"also_sha256": _digests(job_dir, stage.also_writes)} if stage.also_writes else {}),
     )
     return StageResult(stage.name, "done", output, elapsed)
 
@@ -338,9 +348,18 @@ def approve(job_dir: Path, *, how: Literal["review", "auto_policy"], at: datetim
     decisions = job_dir / "decisions.json"
     if not (job_dir / "plan.json").is_file() or not decisions.is_file():
         raise PipelineError("nothing to approve yet: run the analysis (prepare … guard) first")
-    approval = Approval(approved_at=at or datetime.now(UTC), how=how, decisions_sha256=sha256_file(decisions))
+    approval = Approval(approved_at=at or datetime.now(UTC), how=how, decisions_sha256=approved_digest(job_dir))
     dump(approval, job_dir / APPROVAL)
     return approval
+
+
+def approved_digest(job_dir: Path) -> str:
+    """What an approval pins: ``decisions.json`` without its audit patches. The audit appends ``p_<n>`` items after
+    approval (API-NOTES §12), and a patch is always a locked, solid hide (the contract enforces it), so it never
+    weakens what was approved; every other change to the decisions needs a new approval."""
+    decisions = load(job_dir / "decisions.json", Decisions)
+    approved = [item.model_dump(mode="json") for item in decisions.items if item.origin != "audit_patch"]
+    return hashlib.sha256(canonical_json(approved).encode("utf-8")).hexdigest()
 
 
 def check_approval(job_dir: Path) -> Approval:
@@ -348,7 +367,7 @@ def check_approval(job_dir: Path) -> Approval:
     if not path.is_file():
         raise NotApproved("the plan has not been approved: review it, or pass --auto-approve-policy")
     approval = load(path, Approval)
-    if approval.decisions_sha256 != sha256_file(job_dir / "decisions.json"):
+    if approval.decisions_sha256 != approved_digest(job_dir):
         raise NotApproved("decisions.json changed after approval: approve the current decisions again")
     return approval
 

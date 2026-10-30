@@ -8,6 +8,7 @@ ground truth, never from a model) carry ``synthetic: true`` and are never presen
 
 from __future__ import annotations
 
+import hashlib
 import re
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -55,9 +56,12 @@ class RawCall(BaseModel):
 
 
 def slug(text: str) -> str:
-    """A file-name-safe key for a phrase: lowercase, runs of anything else to ``_``."""
-    out = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
-    return out[:80] or "x"
+    """A file-name-safe key for a phrase: lowercase, runs of anything else to ``_``; when that loses anything
+    (other characters, case, length), a short hash of the text keeps two phrases from sharing a recording."""
+    out = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")[:60] or "x"
+    if out.replace("_", " ") != text:
+        out += "-" + hashlib.sha256(text.encode()).hexdigest()[:8]
+    return out
 
 
 def path(job_dir: Path, stage: str, key: str) -> Path:

@@ -999,8 +999,9 @@ class Intake(Contract):
 
 class Approval(Contract):
     """Written when the creator approves the plan (the review screen, or ``safecut run --auto-approve-policy``),
-    before ``render``. ``receipt`` copies ``approved_by``/``approved_at``; ``decisions_sha256`` pins the exact
-    ``decisions.json`` that was approved, so a later edit needs a new approval."""
+    before ``render``. ``receipt`` copies ``approved_by``/``approved_at``; ``decisions_sha256`` pins the approved
+    decisions (``pipeline.approved_digest``: every item but the audit's locked patches, which it appends after
+    approval), so a later edit needs a new approval."""
 
     approved_by: Literal["creator"] = "creator"
     approved_at: UtcDatetime

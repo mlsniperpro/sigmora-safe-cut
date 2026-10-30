@@ -10,6 +10,7 @@ retry fails too.
 from __future__ import annotations
 
 import logging
+import re
 import threading
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -21,7 +22,7 @@ from safecut import pipeline
 from safecut.api.access import Access, ApiRefusal, next_midnight
 from safecut.api.store import Failure, FailureReason, JobNotFound, JobState, JobStore, StageName
 from safecut.config import Settings
-from safecut.contracts import Audit, load
+from safecut.contracts import Audit, load, validate_job_dir
 from safecut.meta.errors import (
     BudgetExceeded,
     MetaAuthError,
@@ -95,22 +96,40 @@ def failure_for(exc: BaseException, stage: StageName | None) -> tuple[Failure, b
     return Failure(stage=stage, reason=reason, detail=detail, **extra), transient  # pyright: ignore[reportArgumentType] -- extra keys are Failure's own
 
 
+#: ``prepare``'s rejection reasons (``safecut.prepare.PrepareError.reason``) → the UI's (UI-SPEC §8 request 17).
+#: ``no_source`` isn't the creator's clip being bad (the job folder lost its upload), so it stays ``internal``.
+_MEDIA_REASONS: dict[str, Literal["too_long", "too_large", "bad_media"]] = {
+    "too_long": "too_long",
+    "too_large": "too_large",
+    "bad_media": "bad_media",
+    "unreadable": "bad_media",
+    "no_video": "bad_media",
+}
+_DURATION = re.compile(r"^(\d+(?:\.\d+)?) s is over")
+_SIZE = re.compile(r"^(\d+) bytes is over")
+
+
 def _media_rejection(exc: BaseException) -> MediaRejected | None:
-    """A ``prepare`` rejection, whichever module raised it: :class:`MediaRejected`, or any exception carrying a
-    ``reason`` of ``too_long``/``too_large``/``bad_media`` (the stage may define its own)."""
+    """A ``prepare`` rejection, whichever module raised it: :class:`MediaRejected`, or any exception carrying one
+    of ``prepare``'s ``reason`` codes. The clip's length or size comes from the exception's attributes, or from the
+    start of its message (``"61.20 s is over …"``, ``"157286401 bytes is over …"``)."""
     if isinstance(exc, MediaRejected):
         return exc
-    reason = getattr(exc, "reason", None)
-    if reason in ("too_long", "too_large", "bad_media"):
-        duration = getattr(exc, "duration_s", None)
-        size = getattr(exc, "size_bytes", None)
-        return MediaRejected(
-            reason,
-            str(exc),
-            duration_s=duration if isinstance(duration, int | float) else None,
-            size_bytes=size if isinstance(size, int) else None,
-        )
-    return None
+    reason = _MEDIA_REASONS.get(str(getattr(exc, "reason", "")))
+    if reason is None:
+        return None
+    duration = getattr(exc, "duration_s", None)
+    size = getattr(exc, "size_bytes", None)
+    if duration is None and (match := _DURATION.match(str(exc))):
+        duration = float(match.group(1))
+    if size is None and (match := _SIZE.match(str(exc))):
+        size = int(match.group(1))
+    return MediaRejected(
+        reason,
+        str(exc),
+        duration_s=duration if isinstance(duration, int | float) else None,
+        size_bytes=size if isinstance(size, int) else None,
+    )
 
 
 class Worker:
@@ -144,6 +163,14 @@ class Worker:
             self._running[job_id] = future
             return future
 
+    def submit_later(self, job_id: str, action: Action, delay_s: float) -> None:
+        """The one re-queue, ``delay_s`` from now; it re-checks the job's code when it fires (``_requeue``)."""
+        timer = threading.Timer(delay_s, self._requeue, (job_id, action))
+        timer.daemon = True
+        with self._lock:
+            self._timers[job_id] = timer
+        timer.start()
+
     def wait(self, job_id: str, timeout: float = 120) -> None:
         """Block until the job's current action finishes (tests and the CLI's ``serve --once``)."""
         with self._lock:
@@ -175,6 +202,13 @@ class Worker:
             return state.model_copy()
 
     def _run(self, job_id: str, action: Action) -> None:
+        try:
+            self._run_action(job_id, action)
+        finally:
+            # Deleted while a stage ran: whatever that stage wrote afterwards goes now, not at the next sweep.
+            self.store.reap_orphan(job_id)
+
+    def _run_action(self, job_id: str, action: Action) -> None:
         try:
             state = self.store.get(job_id)
         except JobNotFound:
@@ -229,6 +263,8 @@ class Worker:
                 if audit.blocked_reason in ("audit_failed", "over_budget"):
                     self._set(job_dir.name, status="needs_you", stage="audit", stage_reason=None)
                     return
+        # Publishing is gated by the cross-file checks (ARCHITECTURE §3): a job whose files disagree never ends done.
+        validate_job_dir(job_dir)
         self._set(job_dir.name, status="done", stage="done", stage_reason=None)
 
     def _fail(self, job_id: str, action: Action, failure: Failure, *, transient: bool) -> None:
@@ -239,11 +275,7 @@ class Worker:
         if transient and state.requeues == 0:
             retry_at = self._now() + RETRY_DELAY
             self._set(job_id, status="retry_later", retry_at=retry_at, requeues=1, failure=None)
-            timer = threading.Timer(RETRY_DELAY.total_seconds(), self._requeue, (job_id, action))
-            timer.daemon = True
-            with self._lock:
-                self._timers[job_id] = timer
-            timer.start()
+            self.submit_later(job_id, action, RETRY_DELAY.total_seconds())
             return
         retry_at = next_midnight(self._now()) if failure.reason == "daily_cap" else None
         self._set(job_id, status="failed", failure=failure, retry_at=retry_at)

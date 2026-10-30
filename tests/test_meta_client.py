@@ -714,15 +714,18 @@ async def test_cancel_before_send_releases_and_after_send_charges(
     make_harness: Callable[..., Harness], mock_api: respx.MockRouter, ledger: LocalLedger
 ) -> None:
     gate = asyncio.Event()
+    sent = asyncio.Event()
     h = make_harness()
 
     async def hang(_: httpx.Request) -> httpx.Response:
+        sent.set()
         await gate.wait()
         return httpx.Response(200, json={})
 
     mock_api.post("/hang").mock(side_effect=hang)
     task = asyncio.create_task(h.client.request("POST", "hang", _spec(estimate=0.05), meter=_meter))
-    await asyncio.sleep(0.05)
+    # Cancelled once the request is on the wire (a fixed sleep raced it on a loaded machine: cancelled before send).
+    await asyncio.wait_for(sent.wait(), timeout=30)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task

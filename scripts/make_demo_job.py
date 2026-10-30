@@ -43,8 +43,8 @@ from safecut import prepare
 from safecut.config import Settings
 from safecut.contracts import Job, Track, Tracks, load
 from safecut.meta import replay, sam
+from safecut.scout import baselines, grid, roles, scene
 from safecut.scout import boxes as keyframe_boxes
-from safecut.scout import grid, roles, scene
 from safecut.speech import stage as speech
 from safecut.track import stage as track_stage
 from safecut.track.axes import from_proxy_table
@@ -83,8 +83,15 @@ def _host(f: int) -> tuple[int, int]:
     return 140 + round(6 * math.sin(2 * math.pi * f / 90)), 95
 
 
+GUEST_OUT, GUEST_BACK = 280, 330
+
+
 def _guest(f: int) -> tuple[int, int]:
-    return max(500, 680 - 6 * (f - 60)), 105
+    if f < GUEST_OUT:
+        return max(500, 680 - 6 * (f - 60)), 105  # walks in from the right and stands beside the host
+    if f < GUEST_BACK:
+        return 500 + 8 * (f - GUEST_OUT), 105  # walks out to the right
+    return -45 + 6 * (f - GUEST_BACK), 105  # comes back in from the left for the clip's last half second
 
 
 def _passerby(f: int) -> tuple[int, int]:
@@ -99,7 +106,9 @@ def _child(f: int) -> tuple[int, int]:
 
 FIGURES: dict[str, tuple[Figure, Any]] = {
     "e1": (Figure("e1", (40, 120, 235), 32, 110, 200, (range(FRAMES),)), _host),
-    "e2": (Figure("e2", (60, 170, 60), 31, 104, 200, (range(60, 330),)), _guest),
+    # The guest walks out to the right, is gone for over 1 s and comes back in from the left for the last half second
+    # (a participant re-entry, SHIP's E6 review case: a new ID, hidden by policy until the creator merges it).
+    "e2": (Figure("e2", (60, 170, 60), 31, 104, 200, (range(60, 300), range(GUEST_BACK, GUEST_BACK + 15))), _guest),
     "e3": (Figure("e3", (180, 90, 40), 19, 64, 110, (range(20, 140), range(200, 290))), _passerby),
     "e4": (Figure("e4", (160, 40, 150), 15, 42, 70, (range(90, 210),)), _child),
 }
@@ -214,10 +223,10 @@ def write_clip(path: Path) -> None:
 
 CATEGORY = {"e1": "participant", "e2": "participant", "e3": "bystander", "e4": "child", "e5": "screen",
             "e6": "plate", "e7": "document"}  # fmt: skip
-DIFFICULTY = {"e3": ["reentry"], "e4": ["small"]}
+DIFFICULTY = {"e2": ["reentry"], "e3": ["reentry"], "e4": ["small"]}
 REASON = {
     "e1": "the host: introduces herself as Amina and talks to camera",
-    "e2": "the guest: introduced by the host as her friend Kev, answers her",
+    "e2": "the guest: introduced by the host as her friend Kev, answers her, walks out and comes back",
     "e3": "walks past behind them twice, never addressed",
     "e4": "a child crossing the middle of the frame",
     "e5": "a wall screen showing an email inbox with names",
@@ -278,7 +287,7 @@ SCENE_ANSWER: dict[str, Any] = {
 }  # fmt: skip
 
 
-def _responses_events(answer: Mapping[str, Any], response_id: str) -> list[dict[str, Any]]:
+def responses_events(answer: Mapping[str, Any], response_id: str) -> list[dict[str, Any]]:
     text = json.dumps(answer, separators=(",", ":"))
     response = {
         "id": response_id, "status": "completed",
@@ -321,10 +330,10 @@ class Responder:
 
     def __call__(self, stage: str, key: str, info: Mapping[str, Any]) -> replay.RawCall:
         answer = {"sam": self.sam, "asr": self.asr, "scene": self.scene, "roles": self.vote,
-                  "escalate": self.escalate, "boxes": self.boxes}[stage](key, info)  # fmt: skip
+                  "escalate": self.escalate, keyframe_boxes.STAGE: self.boxes}[stage](key, info)  # fmt: skip
         model = {"sam": self.settings.sam_model, "asr": self.settings.asr_model, "scene": self.settings.scene_model,
                  "roles": self.settings.role_model, "escalate": self.settings.escalate_model,
-                 "boxes": self.settings.role_model}[stage]  # fmt: skip
+                 keyframe_boxes.STAGE: self.settings.role_model}[stage]  # fmt: skip
         request = {k: v for k, v in info.items() if k in ("kind", "concept", "text", "sam_frames", "vote", "frames")}
         if stage == "sam":
             request["file_id"] = SYNTHETIC_FILE
@@ -376,7 +385,7 @@ class Responder:
                 "audioDurationMs": round(SECONDS * 1000), "turns": turns}  # fmt: skip
 
     def scene(self, key: str, _info: Mapping[str, Any]) -> Any:
-        return _responses_events(SCENE_ANSWER, f"resp_synthetic_{key}")
+        return responses_events(SCENE_ANSWER, f"resp_synthetic_{key}")
 
     # -- role votes and escalation ---------------------------------------------
 
@@ -408,11 +417,13 @@ class Responder:
             frame = next((f for f in sent if object_box("e7", f) is not None), None)
             if frame is not None:
                 answer["missed"].append(self._missed(frame))
-        return _responses_events(answer, f"resp_synthetic_{key.replace('-', '_')}")
+        return responses_events(answer, f"resp_synthetic_{key.replace('-', '_')}")
 
     def _person(self, entity: str | None, track: Track, k: int) -> tuple[str, str, int | None]:
         if entity == "e1":
             return "participant", "The host: introduces herself as Amina (S1) and talks to camera.", 0
+        if entity == "e2" and track.reentry_of is not None and k == 2:
+            return "unsure", "Back on one frame only, half turned away; can't confirm it is Kev.", None
         if entity == "e2":
             return "participant", "Introduced by the host as her friend Kev; he answers her (S2).", 1
         if entity == "e4":
@@ -453,7 +464,7 @@ class Responder:
                 if (box := object_box(entity, f)) is not None:
                     objects.append({"kind": kind, "box": self.grid_box(box)})
             frames.append({"frame": f, "objects": objects})
-        return _responses_events({"frames": frames}, f"resp_synthetic_boxes_{key}")
+        return responses_events({"frames": frames}, f"resp_synthetic_boxes_{key}")
 
     def escalate(self, key: str, info: Mapping[str, Any]) -> Any:
         tracks = self._tracks()
@@ -461,12 +472,19 @@ class Responder:
         rulings: list[dict[str, Any]] = []
         for track_id in cast(Sequence[str], info["disputed"]):
             frames = [f for f in sent if f in tracks[track_id].boxes][:2]
+            if entity_of(tracks[track_id]) == "e2":
+                rulings.append({
+                    "track_id": track_id, "role": "participant", "frames": frames,
+                    "evidence": "Same green top and build as Kev, back at the host's side where he stood.",
+                    "why_others_wrong": "The unsure judge weighed the turned head over the clothes and position.",
+                })  # fmt: skip
+                continue
             rulings.append({
                 "track_id": track_id, "role": "bystander", "frames": frames,
                 "evidence": "Walks past behind the host and guest; nobody addresses or introduces them.",
                 "why_others_wrong": "The unsure judge relied on the figure's size, not on any exchange.",
             })  # fmt: skip
-        return _responses_events({"rulings": rulings}, f"resp_synthetic_escalate_{key}")
+        return responses_events({"rulings": rulings}, f"resp_synthetic_escalate_{key}")
 
 
 def prepare_proxy_frames(job_dir: Path) -> int:
@@ -488,6 +506,8 @@ async def record(clip: Path, job_dir: Path) -> None:
     await speech.run_async(job_dir, settings=settings, responder=responder)
     await scene.run_async(job_dir, settings=settings, responder=responder)
     await roles.run_async(job_dir, settings=settings, responder=responder)
+    # SHIP's eval harness replays the muse_no_track detector from the main recordings (``raw/baseline_muse/``).
+    await baselines.muse_keyframe_boxes_async(job_dir, replay=False, settings=settings, responder=responder)
 
 
 #: Baselines whose perception differs from the full pipeline, recorded under ``variants/<name>/raw/`` (EVAL §3).

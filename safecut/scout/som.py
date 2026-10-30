@@ -18,6 +18,7 @@ from numpy.typing import NDArray
 
 from safecut.contracts import Job, Track, Tracks
 from safecut.scout.grid import BAR_H
+from safecut.track import media
 
 SOM_DIR = "som"
 KEYFRAMES = "keyframes"
@@ -52,6 +53,28 @@ class Keyframe:
 def keyframe_numbers(job: Job) -> list[int]:
     """The 1 fps keyframes: prepared frames ``0, fps, 2·fps, …`` (the frames ``prepare`` extracted)."""
     return list(range(0, job.frames, job.fps))
+
+
+def extra_keyframes(job: Job, tracks: Sequence[Track]) -> list[int]:
+    """One more keyframe for each judged track that no 1 fps keyframe shows (a child running past in under a
+    second): its middle frame, so it gets votes, and a child vote can lock it, instead of an unseen ``unsure``."""
+    regular = set(keyframe_numbers(job))
+    extra: set[int] = set()
+    for t in tracks:
+        if judged(t) and not regular & t.boxes.keys():
+            frames = sorted(t.boxes)
+            extra.add(frames[len(frames) // 2])
+    return sorted(extra - regular)
+
+
+def ensure_keyframe(job_dir: Path, job: Job, frame: int) -> Path:
+    """``keyframes/<frame>.jpg``, extracted from ``prepared.mp4`` when ``prepare`` didn't (an extra keyframe)."""
+    path = job_dir / KEYFRAMES / f"{frame:06d}.jpg"
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        media.run(["-y", "-i", str(job_dir / job.prepared), "-vf", f"select='eq(n\\,{frame})'", "-fps_mode",
+                   "passthrough", "-frames:v", "1", "-q:v", "2", str(path)])  # fmt: skip
+    return path
 
 
 def judged(track: Track) -> bool:
@@ -135,8 +158,11 @@ def write(job_dir: Path, job: Job, tracks: Tracks, frames: Sequence[int] | None 
     out_dir.mkdir(parents=True, exist_ok=True)
     colours = colour_map(tracks)
     written: list[Keyframe] = []
-    for frame in frames if frames is not None else keyframe_numbers(job):
+    regular = set(keyframe_numbers(job))
+    for frame in frames if frames is not None else sorted(regular):
         source = job_dir / KEYFRAMES / f"{frame:06d}.jpg"
+        if frame not in regular and 0 <= frame < job.frames:
+            source = ensure_keyframe(job_dir, job, frame)
         image = cv2.imread(str(source), cv2.IMREAD_COLOR)
         if image is None:
             raise FileNotFoundError(f"keyframe {source.name} is missing: run prepare first")

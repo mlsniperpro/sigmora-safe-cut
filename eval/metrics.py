@@ -170,16 +170,18 @@ class JobScore:
         return self.frames / self.fps / 60
 
 
-def score_job(job_dir: Path, labels: ClipLabels) -> JobScore:
-    """Score one finished job (``plan.json`` as rendered) against its clip's labels."""
+def score_job(job_dir: Path, labels: ClipLabels, regions: dict[int, list[Region]] | None = None) -> JobScore:
+    """Score one finished job against its clip's labels: what ``plan.json`` renders, or ``regions`` when a
+    baseline drew something else."""
     job = load(job_dir / "job.json", Job)
-    plan = load(job_dir / "plan.json", Plan)
     if labels.frames != job.frames:
         raise ValueError(f"labels have {labels.frames} frames, the prepared clip {job.frames}")
-    regions = frame_regions(plan)
+    if regions is None:
+        regions = frame_regions(load(job_dir / "plan.json", Plan))
     scale = (job.width / labels.width, job.height / labels.height)
     entities = [score_entity(e, regions, width=job.width, height=job.height, scale=scale) for e in labels.entities]
-    decisions = load(job_dir / "decisions.json", Decisions)
+    decisions_path = job_dir / "decisions.json"
+    decisions = load(decisions_path, Decisions) if decisions_path.is_file() else Decisions(items=[])
     needs_you = sum(item.decision == "needs_you" and item.decided_by != "creator" for item in decisions.items)
     cost_path = job_dir / "cost.jsonl"
     lines: list[CostLine] = list(read_cost_lines(cost_path)) if cost_path.is_file() else []

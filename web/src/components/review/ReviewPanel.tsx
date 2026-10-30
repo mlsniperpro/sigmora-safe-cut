@@ -375,11 +375,14 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
   }, [desktop]);
 
   // ------------------------------------------------------------------ toasts and the refusal timer
+  // An edit's toast keeps its Undo until the server has answered (it is disabled till then): its 6 s count from
+  // the ack, since the real API can take longer than that to answer.
+  const toastPending = state.toast?.kind === "edit" && state.toast.edit_id in state.pending;
   useEffect(() => {
-    if (!state.toast || state.toast.kind === "failed") return;
+    if (!state.toast || state.toast.kind === "failed" || toastPending) return;
     const t = setTimeout(() => dispatch({ type: "DISMISS_TOAST" }), TOAST_MS);
     return () => clearTimeout(t);
-  }, [state.toast, dispatch]);
+  }, [state.toast, toastPending, dispatch]);
 
   useEffect(() => {
     const until = state.refusal?.until;

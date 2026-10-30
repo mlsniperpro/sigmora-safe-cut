@@ -15,10 +15,13 @@ The stage always writes ``roles.json`` (``failed``/``skipped`` with every track 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
-from collections.abc import Awaitable, Callable, Sequence
+import shutil
+from collections.abc import Callable, Coroutine, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from safecut import config
 from safecut.config import Settings
@@ -74,6 +77,11 @@ def windows(frames: Sequence[int], fps: int, size: int = WINDOW, overlap_s: int 
         start = next(i for i in range(start + 1, len(frames)) if frames[i] > cut)
 
 
+def participant_count(scene: Scene | None) -> int:
+    """How many participants a vote may index (none when the scene pass didn't succeed)."""
+    return len(scene.participants) if scene is not None and scene.status == "ok" else 0
+
+
 def is_person(track: Track) -> bool:
     return track.concept in PEOPLE
 
@@ -93,20 +101,23 @@ def transcript_by_frames(job: Job, transcript: Transcript | None) -> str:
     for t in transcript.turns:
         a = time_to_frame(t.start - widen, job.fps, job.frames)
         b = time_to_frame(t.end + widen, job.fps, job.frames)
-        lines.append(f'[{t.speaker} frames {a}–{b}] "{t.text}"')
+        lines.append(f'[{t.speaker} frames {a}–{b}] "{prompts.inline(t.text, prompts.TURN_CHARS)}"')
     return "\n".join(lines)
 
 
 def context_text(job: Job, scene: Scene | None, transcript: Transcript | None, swept: Sequence[str]) -> str:
     ok = scene is not None and scene.status == "ok"
-    summary = scene.summary if ok and scene is not None else "No scene context is available."
+    summary = prompts.inline(scene.summary, 600) if ok and scene is not None else "No scene context is available."
     participants = "none"
     children = "none"
     if ok and scene is not None:
         if scene.participants:
-            participants = "; ".join(f"[{i}] {p.description} ({p.evidence})" for i, p in enumerate(scene.participants))
+            participants = "; ".join(
+                f"[{i}] {prompts.inline(p.description)} ({prompts.inline(p.evidence)})"
+                for i, p in enumerate(scene.participants)
+            )
         if scene.children:
-            children = "; ".join(c.description for c in scene.children)
+            children = "; ".join(prompts.inline(c.description) for c in scene.children)
     return prompts.render("role.context", scene_summary=summary, participants_list=participants,
                           children_list=children, transcript_by_frames=transcript_by_frames(job, transcript),
                           swept=", ".join(swept))  # fmt: skip
@@ -133,13 +144,20 @@ class Window:
     frames: list[int]
     #: The labels judged in this window, per keyframe (only frames where one of them is present).
     per_frame: list[tuple[int, list[str]]]
+    #: Frames where SAM hit its object cap: shown, but never evidence (role-pass.md failure handling).
+    crowded: frozenset[int] = frozenset()
 
     @property
     def sent(self) -> frozenset[int]:
         return frozenset(self.frames)
 
+    def shown(self, track_id: str) -> bool:
+        """Whether this window showed the track at all (crowded frames included)."""
+        return any(track_id in labels for _, labels in self.per_frame)
+
     def present(self, track_id: str) -> frozenset[int]:
-        return frozenset(f for f, labels in self.per_frame if track_id in labels)
+        """The keyframes that can count as this track's evidence: sent, showing it, and not crowded."""
+        return frozenset(f for f, labels in self.per_frame if track_id in labels and f not in self.crowded)
 
 
 @dataclass
@@ -156,34 +174,58 @@ class PassResult:
     hallucinated: int = 0
 
 
-def to_vote(answer: RolePassOut, judged: set[str]) -> tuple[votes.Vote, int]:
-    """A parsed answer as a :class:`votes.Vote`; labels it wasn't asked about are dropped and counted (rule 6)."""
+def to_vote(
+    answer: RolePassOut, judged: set[str], participants: int, people: frozenset[str] = frozenset()
+) -> tuple[votes.Vote, int]:
+    """A parsed answer as a :class:`votes.Vote`; labels it wasn't asked about are dropped and counted (rule 6),
+    except a child answer on any person label of the job (``people``): any child vote wins, asked or not.
+
+    A label answered twice is merged fail closed: a child answer wins, two different roles become ``unsure``, and
+    an object is sensitive if either entry says so. A participant index outside the scene's list is dropped."""
     tracks: dict[str, votes.TrackVote] = {}
     objects: dict[str, votes.ObjectVote] = {}
     dropped = 0
     for t in answer.tracks:
-        if t.track_id not in judged:
+        if t.track_id not in judged and not (t.role == "child" and t.track_id in people):
             dropped += 1
             continue
-        tracks.setdefault(t.track_id, votes.TrackVote(t.role, t.evidence, tuple(t.frames), t.matches_participant))
+        index = (
+            t.matches_participant
+            if t.matches_participant is not None and 0 <= t.matches_participant < participants
+            else None
+        )
+        vote = votes.TrackVote(t.role, t.evidence, tuple(t.frames), index)
+        if t.track_id in tracks:
+            vote = votes.merge_track_votes(tracks[t.track_id], vote)
+        tracks[t.track_id] = vote
     for o in answer.objects:
         if o.track_id not in judged:
             dropped += 1
             continue
-        objects.setdefault(o.track_id, votes.ObjectVote(o.sensitive, o.content, tuple(o.frames)))
+        found = votes.ObjectVote(o.sensitive, o.content, tuple(o.frames))
+        if o.track_id in objects:
+            before = objects[o.track_id]
+            found = votes.ObjectVote(before.sensitive or found.sensitive, before.content or found.content,
+                                     tuple(sorted({*before.frames, *found.frames})))  # fmt: skip
+        objects[o.track_id] = found
     return votes.Vote(tracks=tracks, objects=objects), dropped
 
 
 async def three_votes(
-    make: Callable[[int], Awaitable[calls.Outcome[RolePassOut]]], *, stagger: bool
+    make: Callable[[int], Coroutine[Any, Any, calls.Outcome[RolePassOut]]], *, stagger: bool
 ) -> list[calls.Outcome[RolePassOut]]:
     """Vote 1 first; votes 2 and 3 together once vote 1 has answered or ``STAGGER_S`` passed, so they read the
     prefix vote 1 cached (``role-pass.md`` rule 1)."""
-    first = asyncio.ensure_future(make(1))
-    if stagger:
-        await asyncio.wait({first}, timeout=STAGGER_S)
-    rest = await asyncio.gather(make(2), make(3))
-    return [await first, *rest]
+    try:
+        # A TaskGroup: if any vote raises, the others are cancelled (never a paid call left running unwatched).
+        async with asyncio.TaskGroup() as group:
+            first = group.create_task(make(1))
+            if stagger:
+                await asyncio.wait({first}, timeout=STAGGER_S)
+            rest = [group.create_task(make(2)), group.create_task(make(3))]
+    except ExceptionGroup as failed:
+        raise failed.exceptions[0] from None
+    return [first.result(), *(r.result() for r in rest)]
 
 
 async def role_pass(
@@ -194,25 +236,29 @@ async def role_pass(
     frames: Sequence[int],
     context: str,
     tag: str,
+    participants: int,
     every_window: bool = True,
 ) -> PassResult:
     """Three votes per window over ``frames`` (keyframes), judging ``judged``. The first pass asks every window,
     even one with no labels, because the miss loop rides in it; a re-pass only asks windows with new labels."""
     keyframes = som.write(ctx.job_dir, ctx.job, tracks, frames)
     judged_ids = {t.track_id for t in judged}
+    people = frozenset(t.track_id for t in tracks.tracks if is_person(t))
     result = PassResult(windows=[], ballots=[])
     for w, chunk in enumerate(windows([k.frame for k in keyframes], ctx.job.fps)):
         per_frame = [
             (k.frame, [label for label in k.labels if label in judged_ids]) for k in keyframes if k.frame in chunk
         ]
-        result.windows.append(Window(index=w, frames=chunk, per_frame=[(f, ls) for f, ls in per_frame if ls]))
+        crowded = frozenset(chunk) & frozenset(tracks.crowded_frames)
+        labelled = [(f, ls) for f, ls in per_frame if ls]
+        result.windows.append(Window(index=w, frames=chunk, per_frame=labelled, crowded=crowded))
     system = calls.system(prompts.text("role.system"))
 
     async def run_window(window: Window) -> list[calls.Outcome[RolePassOut]]:
         images = [calls.image_part(ctx.job_dir / som.SOM_DIR / f"{f:06d}.jpg") for f in window.frames]
         prefix = [calls.text_part(context), *images]
 
-        def make(k: int) -> Awaitable[calls.Outcome[RolePassOut]]:
+        def make(k: int) -> Coroutine[Any, Any, calls.Outcome[RolePassOut]]:
             final = calls.text_part(vote_text(k, window.per_frame))
             info = {"vote": k, "frames": window.frames, "labels_per_frame": window.per_frame}
             return calls.call_json(ctx, stage=VOTE_STAGE, key=f"{tag}-w{window.index}-v{k}", info=info,
@@ -234,7 +280,7 @@ async def role_pass(
                 result.budget_stops += outcome.status == "skipped"
                 ballots.append(votes.Vote(failed=True))
                 continue
-            vote, dropped = to_vote(outcome.value, judged_ids)
+            vote, dropped = to_vote(outcome.value, judged_ids, participants, people)
             result.hallucinated += dropped
             ballots.append(vote)
             for m in outcome.value.missed:
@@ -254,15 +300,23 @@ class Judged:
     objects: dict[str, votes.ObjectResult] = field(default_factory=dict[str, votes.ObjectResult])
 
 
+def child_voted(ballots: Sequence[votes.Vote], track_id: str) -> bool:
+    return any((vote := b.tracks.get(track_id)) is not None and vote.role == "child" for b in ballots if not b.failed)
+
+
 def aggregate(result: PassResult, judged: Sequence[Track]) -> Judged:
     out = Judged()
     for track in judged:
         per_window: list[votes.TrackResult] = []
         per_object: list[votes.ObjectResult] = []
         for window, ballots in zip(result.windows, result.ballots, strict=True):
-            present = window.present(track.track_id)
-            if not present or len(ballots) != votes.VOTES:
+            # A window that showed the track only on crowded frames is still judged, with no valid evidence: a
+            # child vote there still locks it, anything else there can't count toward a keep. So is a window with a
+            # child vote for a track it didn't show (any child vote wins, fail closed).
+            relevant = window.shown(track.track_id) or (is_person(track) and child_voted(ballots, track.track_id))
+            if not relevant or len(ballots) != votes.VOTES:
                 continue
+            present = window.present(track.track_id)
             if is_person(track):
                 per_window.append(votes.judge_window(track.track_id, ballots, present))
             else:
@@ -302,7 +356,7 @@ def dispute_text(track_id: str, ballots: Sequence[Sequence[votes.Vote]]) -> str:
     for k in range(votes.VOTES):
         answer = next((b[k].tracks[track_id] for b in ballots if len(b) == votes.VOTES and not b[k].failed
                        and track_id in b[k].tracks), None)  # fmt: skip
-        said.append("no answer" if answer is None else f'{answer.role}: "{answer.evidence}"')
+        said.append("no answer" if answer is None else f'{answer.role}: "{prompts.inline(answer.evidence, 200)}"')
     return f"{track_id}: [{', '.join(said)}]"
 
 
@@ -319,15 +373,29 @@ async def escalate(
     if not disputed:
         return {}
     by_id = {t.track_id: t for t in tracks.tracks}
-    frames = [f for f in som.keyframe_numbers(ctx.job) if any(f in by_id[d].boxes for d in disputed)]
+    pool = set(som.keyframe_numbers(ctx.job)) | set(som.extra_keyframes(ctx.job, [by_id[d] for d in disputed]))
+    frames = [f for f in sorted(pool) if any(f in by_id[d].boxes for d in disputed)]
+    chunks = windows(frames, ctx.job.fps)
+    settings = ctx.settings
+    if not await missloop.calls_affordable(ctx, chunks, tracks, model=settings.escalate_model,
+                                           effort=settings.escalate_effort, per_window=1):  # fmt: skip
+        log.warning("escalation skipped: no budget beside the audit reserve", extra={"disputed": len(disputed)})
+        return {}  # advisory only: the disputed tracks stay unsure, with no suggestion
+    crowded = frozenset(tracks.crowded_frames)
     som.write(ctx.job_dir, ctx.job, tracks, frames)
     context = prompts.render("escalate.context", scene_summary=context_summary, transcript_by_frames=transcript_frames)
     system = calls.system(prompts.text("escalate.system"))
-    rulings: dict[str, list[votes.Ruling | None]] = {d: [] for d in disputed}
+    # Per window index, combined in time order (escalation.md: the evidence is the first window's), not in the order
+    # the concurrent calls happen to finish.
+    rulings: dict[str, dict[int, votes.Ruling | None]] = {d: {} for d in disputed}
+    children: dict[str, votes.Ruling] = {}
 
     async def one(index: int, chunk: list[int]) -> None:
-        present = {d: frozenset(f for f in chunk if f in by_id[d].boxes) for d in disputed}
-        here = [d for d in disputed if present[d]]
+        shown = {d: [f for f in chunk if f in by_id[d].boxes] for d in disputed}
+        # Crowded frames are shown but never evidence (as in the role pass): a ruling citing only them is invalid,
+        # except a child ruling, which locks whatever it cites.
+        present = {d: frozenset(f for f in shown[d] if f not in crowded) for d in disputed}
+        here = [d for d in disputed if shown[d]]
         if not here:
             return
         per_frame = [(f, [d for d in here if f in by_id[d].boxes]) for f in chunk]
@@ -341,29 +409,48 @@ async def escalate(
             schema=ESCALATION, schema_name="escalation", out=EscalationOut,
             info={"frames": chunk, "disputed": here},
         )  # fmt: skip
-        answers = {r.track_id: r for r in outcome.value.rulings} if outcome.value is not None else {}
+        answers: dict[str, votes.Ruling] = {}
+        for got in outcome.value.rulings if outcome.value is not None else []:
+            ruling = votes.Ruling(got.role, got.evidence, tuple(got.frames))
+            seen = answers.get(got.track_id)
+            answers[got.track_id] = ruling if seen is None else votes.merge_rulings(seen, ruling)
+            log.info("escalation", extra={"track": got.track_id, "why_others_wrong": got.why_others_wrong[:200]})
         for d in here:
-            got = answers.get(d)
-            ruling = votes.Ruling(got.role, got.evidence, tuple(got.frames)) if got is not None else None
-            if got is not None:
-                log.info("escalation", extra={"track": d, "why_others_wrong": got.why_others_wrong[:200]})
-            rulings[d].append(votes.check_ruling(ruling, present[d]))
+            rulings[d][index] = votes.check_ruling(answers.get(d), present[d])
+        for track_id, ruling in answers.items():
+            # Every tag is drawn on the images: a child ruling on a label it wasn't asked about still locks it.
+            if track_id not in here and ruling.role == "child" and track_id in by_id and is_person(by_id[track_id]):
+                children.setdefault(track_id, ruling)
 
-    await asyncio.gather(*(one(i, chunk) for i, chunk in enumerate(windows(frames, ctx.job.fps))))
-    return {d: votes.apply_rulings(r) for d, r in rulings.items() if r}
+    await asyncio.gather(*(one(i, chunk) for i, chunk in enumerate(chunks)))
+    out = {d: votes.apply_rulings([r[i] for i in sorted(r)]) for d, r in rulings.items() if r}
+    for track_id, ruling in children.items():
+        if out.get(track_id, votes.NO_ESCALATION).role != "child":
+            out[track_id] = votes.Escalation(role="child", escalated=True, suggested_role=None,
+                                             evidence=ruling.evidence, frames=())  # fmt: skip
+    return out
 
 
 # ---------------------------------------------------------------------------- the stage
 
 
 def load_optional[M: Scene | Transcript](path: Path, model: type[M]) -> M | None:
-    return load(path, model) if path.exists() else None
+    """The earlier stage's file, or ``None`` when it is missing or unreadable: the role pass then runs without that
+    context (no scene participants or speech to support a keep, so it leans to unsure, the safe side)."""
+    if not path.exists():
+        return None
+    try:
+        return load(path, model)
+    except ValueError as exc:  # ContractError: a corrupt file is no context, never a crash before roles.json
+        log.warning("context file unreadable; judged without it", extra={"file": path.name, "error": str(exc)[:200]})
+        return None
 
 
 def role_track(track_id: str, result: votes.TrackResult, escalation: votes.Escalation | None) -> RoleTrack:
     role = result.role
+    matches = result.matches_participant
     if escalation is not None and escalation.role == "child":
-        role = "child"
+        role, matches = "child", None  # a child is never matched to a participant (the contract's rule too)
     return RoleTrack(
         track_id=track_id,
         role=role,
@@ -372,7 +459,7 @@ def role_track(track_id: str, result: votes.TrackResult, escalation: votes.Escal
         evidence=result.evidence,
         frames=list(result.frames),
         failed_votes=result.failed_votes,
-        matches_participant=result.matches_participant,
+        matches_participant=matches,
         suggested_role=escalation.suggested_role if escalation is not None else None,
         escalation_evidence=escalation.evidence if escalation is not None and escalation.escalated else None,
         escalation_frames=list(escalation.frames) if escalation is not None and escalation.frames is not None else None,
@@ -405,31 +492,41 @@ async def miss_loops(ctx: calls.Context, state: State, first: PassResult, scene:
                      transcript: Transcript | None) -> None:  # fmt: skip
     """Loop 1 on the first pass's misses, a role re-pass on its new tracks, loop 2 on the re-pass's misses."""
     job = ctx.job
-    keyframes = som.keyframe_numbers(job)
     loop_misses = validated_misses(first, job, state.tracks)
     for loop in range(1, miss.MAX_LOOPS + 1):
         if not loop_misses:
             return
         planned = miss.plan(loop_misses, swept=state.swept)
-        state.swept += [m.phrase for m in planned.sweeps]
         outcome = await missloop.run_loop(
             ctx, state.tracks, prompts_=planned.prompts, sweeps=planned.sweeps, static=planned.static, loop=loop
         )
         state.misses += loop_misses
+        state.swept += outcome.swept  # only what SAM really searched counts as "already searched"
         state.tracks = outcome.tracks
         dump(state.tracks, ctx.job_dir / TRACKS)
+        stamp_output(ctx.job_dir)  # even if this run dies later, a re-run still knows its own appends
         new_judged = [t for t in outcome.new if som.judged(t)]
         if loop == miss.MAX_LOOPS or not new_judged:
             return  # loop 2's tracks get no role pass: they stay hidden for the creator
         reach = REPASS_REACH_S * job.fps
+        keyframes = sorted(set(som.keyframe_numbers(job)) | set(som.extra_keyframes(job, new_judged)))
         near = [f for f in keyframes if any(t.first - reach <= f <= t.last + reach for t in new_judged)]
+        if not await missloop.repass_affordable(ctx, windows(near, job.fps), state.tracks):
+            log.warning("miss loop: no budget for the role re-pass beside the audit reserve; loop 1's tracks stay "
+                        "hidden", extra={"tracks": len(new_judged)})  # fmt: skip
+            return
         added = ", ".join(t.track_id for t in new_judged)
         context = context_text(job, scene, transcript, state.swept) + f"\nThese were added last round: {added}."
         again = await role_pass(
             ctx, tracks=state.tracks, judged=new_judged, frames=near, context=context, tag=f"pass{loop + 1}",
-            every_window=False,
+            participants=participant_count(scene), every_window=False,
         )  # fmt: skip
         later = aggregate(again, new_judged)
+        flagged = [t for t in state.judged if is_person(t) and any(child_voted(b, t.track_id) for b in again.ballots)]
+        earlier = aggregate(again, flagged)
+        for track_id, child in earlier.person.items():
+            prior = state.results.person.get(track_id)
+            state.results.person[track_id] = votes.combine_windows([prior, child]) if prior else child
         state.results.person.update(later.person)
         state.results.objects.update(later.objects)
         state.ballots_of.update({t.track_id: again.ballots for t in new_judged})
@@ -465,16 +562,52 @@ def assemble(state: State, status: calls.Status, escalations: dict[str, votes.Es
     )
 
 
+#: What ``roles`` was given (``tracks.json`` as the track stage wrote it) and the digest of the ``tracks.json`` it
+#: left (with the miss loop's tracks appended). Job-local bookkeeping, never a recording.
+INPUT_COPY = ".roles-input-tracks.json"
+OUTPUT_STAMP = ".roles-output-tracks.sha256"
+
+
+def _digest(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def track_stage_tracks(job_dir: Path) -> Tracks:
+    """``tracks.json`` as the ``track`` stage wrote it. When it is still exactly what an earlier run of this stage
+    left, that run's input is restored (tracks, requests, concepts and crowded frames), so a re-run of ``roles`` on
+    its own output asks the same calls and reuses their recordings (never re-billed); otherwise it is the input."""
+    path, copy, stamp = job_dir / TRACKS, job_dir / INPUT_COPY, job_dir / OUTPUT_STAMP
+    if copy.is_file() and stamp.is_file() and stamp.read_text().strip() == _digest(path):
+        log.info("roles: this stage's earlier output; starting from its input again")
+        _copy_atomic(copy, path)
+    else:
+        stamp.unlink(missing_ok=True)
+        _copy_atomic(path, copy)
+    return load(path, Tracks)
+
+
+def _copy_atomic(source: Path, target: Path) -> None:
+    """A copy a kill can't leave half-written: written beside the target, then renamed over it."""
+    partial = target.with_name(f".{target.name}.partial")
+    shutil.copyfile(source, partial)
+    partial.replace(target)
+
+
+def stamp_output(job_dir: Path) -> None:
+    (job_dir / OUTPUT_STAMP).write_text(_digest(job_dir / TRACKS) + "\n")
+
+
 async def roles(ctx: calls.Context) -> Roles:
     job = ctx.job
-    tracks = load(ctx.job_dir / TRACKS, Tracks)
+    tracks = track_stage_tracks(ctx.job_dir)
     scene = load_optional(ctx.job_dir / SCENE, Scene)
     transcript = load_optional(ctx.job_dir / TRANSCRIPT, Transcript)
-    keyframes = som.keyframe_numbers(job)
     judged = [t for t in tracks.tracks if som.judged(t)]
+    keyframes = sorted(set(som.keyframe_numbers(job)) | set(som.extra_keyframes(job, judged)))
     swept = list(tracks.concepts)
     context = context_text(job, scene, transcript, swept)
-    first = await role_pass(ctx, tracks=tracks, judged=judged, frames=keyframes, context=context, tag="pass1")
+    first = await role_pass(ctx, tracks=tracks, judged=judged, frames=keyframes, context=context, tag="pass1",
+                            participants=participant_count(scene))  # fmt: skip
     state = State(tracks=tracks, judged=judged, swept=swept, results=aggregate(first, judged),
                   ballots_of={t.track_id: first.ballots for t in judged})  # fmt: skip
     status: calls.Status = "ok"
@@ -482,13 +615,20 @@ async def roles(ctx: calls.Context) -> Roles:
         status = "skipped" if first.budget_stops == first.calls else "failed"
     if status == "ok":
         await miss_loops(ctx, state, first, scene, transcript)
-    summary = scene.summary if scene is not None and scene.status == "ok" else "No scene context is available."
-    disputed = [tid for tid, r in state.results.person.items() if votes.disputed(r)] if status == "ok" else []
+    ok = scene is not None and scene.status == "ok"
+    summary = prompts.inline(scene.summary, 600) if ok and scene is not None else "No scene context is available."
+    by_id = {t.track_id: t for t in state.tracks.tracks}
+    # A child_phrase track is locked a child by WP3 rule 0 whatever any vote says: never in the disputed set.
+    disputed = [
+        tid for tid, r in state.results.person.items() if votes.disputed(r) and not by_id[tid].child_phrase
+    ] if status == "ok" else []  # fmt: skip
     escalations = await escalate(
         ctx, tracks=state.tracks, disputed=disputed, ballots_of=state.ballots_of, context_summary=summary,
         transcript_frames=transcript_by_frames(job, transcript),
     )  # fmt: skip
-    return assemble(state, status, escalations, ctx.settings.role_model, keyframes)
+    result = assemble(state, status, escalations, ctx.settings.role_model, keyframes)
+    stamp_output(ctx.job_dir)
+    return result
 
 
 async def run_async(

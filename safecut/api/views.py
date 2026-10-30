@@ -46,8 +46,53 @@ def _json(model: BaseModel) -> Any:
     return model.model_dump(mode="json")
 
 
+def public_audit(audit: Audit) -> dict[str, Any]:
+    """``audit.json`` as clients see it: the red team's ``text`` and ``detail`` stay in the job dir (redteam.md
+    "Private text"); a hit shows its kind, frame and box, and "text read (n characters)" when it read text."""
+    body: dict[str, Any] = _json(audit)
+    for key in ("redteam", "redteam_open"):
+        entries: list[dict[str, Any]] = body.get(key) or []
+        for entry in entries:
+            if entry.get("finding") != "hit":
+                continue
+            text = entry.get("text")
+            entry["text"] = f"text read ({len(text)} characters)" if text else None
+            entry.pop("detail", None)
+    return body
+
+
 def _optional[M: BaseModel](path: Path, model: type[M]) -> M | None:
     return load(path, model) if path.is_file() else None
+
+
+def models_recorded(job_dir: Path, s: Settings) -> dict[str, str]:
+    """Only what the job's files show ran: the trackers named on its tracks, the scene, roles and speech models
+    their files record, the escalation when a ruling exists, the auditor ``audit.json`` names and the red team when
+    it answered. A stage that never ran (yet) is absent: the eval's run configs and the API's job body both use it.
+    """
+    ran: dict[str, str] = {}
+    tracks = _optional(job_dir / "tracks.json", Tracks)
+    if tracks is not None:
+        sources = sorted({t.source for t in tracks.tracks if t.source})
+        if sources:
+            ran["tracks"] = " / ".join(sources)
+    scene = _optional(job_dir / "scene.json", Scene)
+    if scene is not None and scene.model:
+        ran["scene"] = scene.model
+    roles = _optional(job_dir / "roles.json", Roles)
+    if roles is not None and roles.model:
+        ran["roles"] = roles.model
+        if any(t.suggested_role is not None for t in roles.tracks):
+            ran["escalate"] = s.escalate_model
+    transcript = _optional(job_dir / "transcript.json", Transcript)
+    if transcript is not None and transcript.source:
+        ran["asr"] = transcript.source
+    audit = _optional(job_dir / "audit.json", Audit)
+    if audit is not None:
+        ran["auditor"] = audit.egoblur.model
+        if audit.redteam:
+            ran["redteam"] = s.redteam_model
+    return ran
 
 
 class Views:
@@ -178,7 +223,7 @@ class Views:
                 body[key] = _json(loaded)
         audit = _optional(job_dir / "audit.json", Audit)
         if audit is not None:
-            body["audit"] = _json(audit)
+            body["audit"] = public_audit(audit)
             body["audit_budget_cause"] = audit.audit_budget_cause
         if (job_dir / REDACTED).is_file():
             body["result"] = self.result_urls(state.job_id, job_dir)
@@ -204,7 +249,7 @@ class Views:
             "frames": job.frames,
             **self.result_urls(state.job_id, job_dir),
             "captions_url": self.media_url(state.job_id, "captions.vtt") if self.has_captions(job_dir) else None,
-            "audit": _json(audit),
+            "audit": public_audit(audit),
             "code_valid_until": self.code_valid_until(state),
         }
         return body
@@ -228,30 +273,7 @@ class Views:
         }
 
     def models(self, job_dir: Path) -> dict[str, str]:
-        """Which model did which job, from the job's own files where they recorded it, else the config."""
-        s = self.settings
-        models = {
-            "sam": s.sam_model,
-            "scene": s.scene_model,
-            "roles": s.role_model,
-            "escalate": s.escalate_model,
-            "asr": s.asr_model,
-            "redteam": s.redteam_model,
-            "auditor": s.egoblur_model,
-        }
-        scene = _optional(job_dir / "scene.json", Scene)
-        if scene is not None and scene.model:
-            models["scene"] = scene.model
-        roles = _optional(job_dir / "roles.json", Roles)
-        if roles is not None and roles.model:
-            models["roles"] = roles.model
-        transcript = _optional(job_dir / "transcript.json", Transcript)
-        if transcript is not None and transcript.source:
-            models["asr"] = transcript.source
-        audit = _optional(job_dir / "audit.json", Audit)
-        if audit is not None:
-            models["auditor"] = audit.egoblur.model
-        return models
+        return models_recorded(job_dir, self.settings)  # what ran so far; the Why drawer lists them as fact
 
     @staticmethod
     def keyframe_geometry(job_dir: Path, roles: Roles, job: Job | None) -> dict[str, int] | None:

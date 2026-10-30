@@ -34,23 +34,31 @@ MAX_FPS = 30
 MAX_EDGE = 1280
 _HASH_CHUNK = 1 << 20
 
-Reason = Literal["too_long", "too_large", "unreadable", "no_video", "no_source"]
+#: The API's and UI's codes (WP5, UI-SPEC §10.2); ``no_source`` is a job directory without its upload.
+Reason = Literal["too_long", "too_large", "bad_media", "no_source"]
 
 
 class PrepareError(ValueError):
-    """The upload can't be prepared. ``reason`` is the API's and UI's error code (WP5, PR #2 UI-SPEC)."""
+    """The upload can't be prepared. ``reason`` is the API's and UI's error code (WP5, PR #2 UI-SPEC);
+    ``duration_s`` and ``size_bytes`` are set where they are known (the API shows them)."""
 
-    def __init__(self, reason: Reason, message: str) -> None:
+    def __init__(
+        self, reason: Reason, message: str, *, duration_s: float | None = None, size_bytes: int | None = None
+    ) -> None:
         super().__init__(message)
         self.reason: Reason = reason
+        self.duration_s = duration_s
+        self.size_bytes = size_bytes
 
 
 @dataclass(frozen=True)
 class SourceProbe:
-    """What prepare needs to know about an upload before transcoding it."""
+    """What prepare needs to know about an upload before transcoding it. ``audio_start`` is the first decoded
+    audio frame's time (AAC priming excluded), on the same container clock as the video packets."""
 
     video: media.Packets
     audio: media.Packets | None
+    audio_start: Fraction | None
     fps: int
     duration: Fraction
     size_bytes: int
@@ -62,6 +70,12 @@ def sha256_file(path: Path) -> str:
         while chunk := handle.read(_HASH_CHUNK):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+#: The most pixels a source frame may have: 8K (7680×4320, 33 Mpx) passes, a decoding bomb doesn't.
+MAX_SOURCE_PIXELS = 40_000_000
+#: The fewest frames an upload may have.
+MIN_FRAMES = 2
 
 
 def job_fps(video: media.Packets) -> int:
@@ -91,23 +105,43 @@ def probe(source: Path) -> SourceProbe:
     """Limits first (size, then duration), so an over-limit upload is refused before any transcode."""
     size = source.stat().st_size
     if size > config.MAX_UPLOAD_BYTES:
-        raise PrepareError("too_large", f"{size} bytes is over the {config.MAX_UPLOAD_BYTES}-byte upload limit")
+        raise PrepareError("too_large", f"{size} bytes is over the {config.MAX_UPLOAD_BYTES}-byte upload limit",
+                           size_bytes=size)  # fmt: skip
     try:
         facts = media.facts(source)
-        video = media.packets(source, "v:0")
     except media.MediaError as exc:
-        reason: Reason = "no_video" if "no v:0 packets" in str(exc) else "unreadable"
-        raise PrepareError(reason, f"can't read the video stream: {exc}") from exc
+        raise PrepareError("bad_media", f"can't read the video stream: {exc}", size_bytes=size) from exc
+    width, height = facts.size
+    if width * height > MAX_SOURCE_PIXELS:  # before any full decode (8K is 33 Mpx)
+        raise PrepareError("bad_media", f"{width}x{height} is over the {MAX_SOURCE_PIXELS // 1_000_000} Mpx limit",
+                           size_bytes=size)  # fmt: skip
+    # The header's duration first, so an over-long upload is refused as too_long before its packets are read.
+    if facts.duration > config.MAX_CLIP_SECONDS:
+        raise PrepareError("too_long", f"{facts.duration:.2f} s is over the {config.MAX_CLIP_SECONDS} s limit",
+                           duration_s=facts.duration, size_bytes=size)  # fmt: skip
+    try:
+        # The video clock starts at the first *decoded* frame (§5b steps 2–3): hidden edit-list frames are dropped.
+        video = media.packets(source, "v:0").from_time(media.decoded_start(source, "v:0"))
+    except media.MediaError as exc:
+        raise PrepareError("bad_media", f"can't read the video stream: {exc}", size_bytes=size) from exc
+    if video.count < MIN_FRAMES:
+        # A single picture has no motion to track and makes a zero-frame SAM proxy (§5b: at least one frame).
+        raise PrepareError("bad_media", f"{video.count} frame: a video needs at least {MIN_FRAMES}", size_bytes=size)
     audio: media.Packets | None = None
+    audio_start: Fraction | None = None
     if facts.audio:
         try:
             audio = media.packets(source, "a:0")
+            audio_start = media.decoded_start(source, "a:0")
         except media.MediaError:
+            audio = None
             log.warning("audio stream announced but unreadable; prepared without audio", extra={"source": source.name})
     duration = max(video.span, Fraction(facts.duration).limit_denominator(1_000_000))
     if duration > Fraction(str(config.MAX_CLIP_SECONDS)):
-        raise PrepareError("too_long", f"{float(duration):.2f} s is over the {config.MAX_CLIP_SECONDS} s limit")
-    return SourceProbe(video=video, audio=audio, fps=job_fps(video), duration=duration, size_bytes=size)
+        raise PrepareError("too_long", f"{float(duration):.2f} s is over the {config.MAX_CLIP_SECONDS} s limit",
+                           duration_s=float(duration), size_bytes=size)  # fmt: skip
+    return SourceProbe(video=video, audio=audio, audio_start=audio_start, fps=job_fps(video), duration=duration,
+                       size_bytes=size)  # fmt: skip
 
 
 def _video_filter(fps: int) -> str:
@@ -118,9 +152,9 @@ def _video_filter(fps: int) -> str:
     return f"setpts=PTS-STARTPTS,fps={fps},{scale}"
 
 
-def _audio_filter(video: media.Packets, audio: media.Packets) -> str:
+def _audio_filter(video: media.Packets, audio_start: Fraction) -> str:
     """Put the audio on the video's origin: trim what plays before the first video frame, or delay it."""
-    lead = video.start - audio.start  # > 0: audio starts first
+    lead = video.start - audio_start  # > 0: audio starts first
     chain = "asetpts=PTS-STARTPTS"
     if lead > 0:
         return f"{chain},atrim=start={float(lead):.6f},asetpts=PTS-STARTPTS"
@@ -130,15 +164,16 @@ def _audio_filter(video: media.Packets, audio: media.Packets) -> str:
 
 
 def transcode(source: Path, out: Path, probe_result: SourceProbe) -> None:
-    args = ["-y", "-i", str(source), "-map", "0:v:0", "-vf", _video_filter(probe_result.fps)]
-    if probe_result.audio is not None:
-        args += ["-map", "0:a:0", "-af", _audio_filter(probe_result.video, probe_result.audio), "-c:a", "aac",
+    args = ["-y", *media.SAFE_INPUT, *media.TRANSCODE_THREADS, "-i", str(source), "-map", "0:v:0", "-vf",
+            _video_filter(probe_result.fps)]  # fmt: skip
+    if probe_result.audio is not None and probe_result.audio_start is not None:
+        args += ["-map", "0:a:0", "-af", _audio_filter(probe_result.video, probe_result.audio_start), "-c:a", "aac",
                  "-b:a", "128k"]  # fmt: skip
     else:
         args += ["-an"]
-    args += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+    args += ["-c:v", "libx264", *media.ENCODE_THREADS, "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
              "-g", str(2 * probe_result.fps), "-movflags", "+faststart", "-map_metadata", "-1", str(out)]  # fmt: skip
-    media.run(args)
+    media.run(args, memory=media.TRANSCODE_MEMORY_BYTES)
 
 
 def extract_keyframes(prepared: Path, out_dir: Path, *, fps: int, frames: int) -> list[int]:
@@ -180,9 +215,12 @@ def prepare(source: Path, job_dir: Path, intake: Intake | None = None) -> Path:
         out_facts = media.facts(partial)
     except media.MediaError as exc:
         partial.unlink(missing_ok=True)
-        raise PrepareError("unreadable", f"transcode failed: {exc}") from exc
+        raise PrepareError("bad_media", f"transcode failed: {exc}") from exc
     partial.replace(prepared)
-    extract_keyframes(prepared, job_dir / KEYFRAMES, fps=found.fps, frames=frames)
+    try:
+        extract_keyframes(prepared, job_dir / KEYFRAMES, fps=found.fps, frames=frames)
+    except media.MediaError as exc:
+        raise PrepareError("bad_media", f"keyframes failed: {exc}") from exc
     job = Job(
         job_id=job_dir.name,
         source=intake.source if intake is not None else source.name,

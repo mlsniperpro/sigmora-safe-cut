@@ -378,6 +378,9 @@ class Settings(BaseModel):
     cleanup_interval_min: int = Field(default=15, ge=1)
     #: Concurrent pipeline workers in one API process (the Modal worker scales separately).
     workers: int = Field(default=2, ge=1, le=16)
+    #: Jobs processing or rendering at once, service-wide; past it, start and render answer 429 (try again in a
+    #: minute), so a burst can't queue ahead of judges or fill the disk.
+    max_active_jobs: int = Field(default=8, ge=1)
 
     # Auditor.
     egoblur_model: Literal["egoblur-gen2", "egoblur-gen1", "yunet-face"] = "egoblur-gen2"

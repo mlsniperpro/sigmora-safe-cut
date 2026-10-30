@@ -58,6 +58,40 @@ describe("review panel", () => {
     expect(screen.getByText("1 item still needs you. If you render now, it stays hidden.")).toBeInTheDocument();
   });
 
+  it("re-enables Undo when two edits were in flight at once (an undo, then a remove)", async () => {
+    const user = setup("job-review-hero1");
+    backend = new MockBackend({ latencyMs: 400, stepMs: 60_000 });
+    setClientForTests(new SafeCutClient({ transport: backend, sleep: () => Promise.resolve() }));
+    await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
+    await user.click(screen.getByRole("button", { name: "Hide Face 6" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Undo" })).toBeEnabled(), { timeout: 3_000 });
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    await user.click(screen.getByRole("button", { name: "More actions for Face 2" }));
+    await user.click(screen.getByRole("menuitem", { name: "Remove this person from the video" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Remove this person?" })).getByRole("button", { name: "Remove" }));
+    expect(await screen.findByText("Face 2 will be fully covered wherever they appear.")).toBeInTheDocument();
+    await waitFor(() => expect(reviewPosts()).toHaveLength(3), { timeout: 3_000 });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Undo" })).toBeEnabled(), { timeout: 5_000 });
+  });
+
+  it("keeps the toast and its Undo while the edit is still unacknowledged (a slow server), then enables it", async () => {
+    const user = setup("job-review-hero1");
+    await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
+    // The real API can take several seconds per /review call and applies a job's edits one at a time.
+    const request = backend.request.bind(backend);
+    backend.request = async (init) => {
+      if (init.method === "POST" && init.path.endsWith("/review")) await new Promise((resolve) => setTimeout(resolve, 7_000));
+      return request(init);
+    };
+    await user.click(screen.getByRole("button", { name: "Hide Face 6" }));
+    expect(await screen.findByText("Face 6 will be hidden.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+    // The toast's 6 s count from the ack, not from the click.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 6_500)));
+    expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Undo" })).toBeEnabled(), { timeout: 3_000 });
+  }, 20_000);
+
   it("hides with one tap, toasts with Undo, and undoes", async () => {
     const user = setup("job-review-hero1");
     await screen.findByText("2 hidden · 1 kept clear · 1 needs you");

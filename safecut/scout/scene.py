@@ -9,6 +9,7 @@ isn't really in the turn it names (vectors P7, P11b, P11c).
 from __future__ import annotations
 
 import asyncio
+import logging
 import string
 from pathlib import Path
 
@@ -21,6 +22,8 @@ from safecut.meta.files import FileStore
 from safecut.meta.session import job_client
 from safecut.scout import calls, prompts
 from safecut.scout.schemas import SCENE, SceneOut, SceneParticipant
+
+log = logging.getLogger(__name__)
 
 JOB = "job.json"
 TRANSCRIPT = "transcript.json"
@@ -37,8 +40,16 @@ def normalise(text: str) -> str:
 
 
 def load_transcript(job_dir: Path) -> Transcript | None:
+    """``transcript.json``, or ``None`` when it is missing or unreadable (then "speech unavailable": a corrupt file
+    is no context, never a crash before scene.json is written)."""
     path = job_dir / TRANSCRIPT
-    return load(path, Transcript) if path.exists() else None
+    if not path.exists():
+        return None
+    try:
+        return load(path, Transcript)
+    except ValueError as exc:
+        log.warning("transcript unreadable; scene pass without speech", extra={"error": str(exc)[:200]})
+        return None
 
 
 def usable(transcript: Transcript | None) -> bool:
@@ -53,7 +64,10 @@ def transcript_text(job: Job, transcript: Transcript | None) -> str:
         return "speech unavailable"
     if not transcript.turns:
         return "none (no speech was recognised)"
-    return "\n".join(f"[#{i} {t.speaker} {t.start:.1f}–{t.end:.1f} s] {t.text}" for i, t in enumerate(transcript.turns))
+    return "\n".join(
+        f"[#{i} {t.speaker} {t.start:.1f}–{t.end:.1f} s] {prompts.inline(t.text, prompts.TURN_CHARS)}"
+        for i, t in enumerate(transcript.turns)
+    )
 
 
 def check_participant(p: SceneParticipant, transcript: Transcript | None) -> Participant:
@@ -68,7 +82,7 @@ def check_participant(p: SceneParticipant, transcript: Transcript | None) -> Par
         and quote is not None
         and 0 <= turn < len(turns)
         and len(normalise(quote).split()) >= 2
-        and normalise(quote) in normalise(turns[turn].text)
+        and f" {normalise(quote)} " in f" {normalise(turns[turn].text)} "  # whole words: "my mat" isn't "my mate"
     )
     return Participant(
         description=p.description,

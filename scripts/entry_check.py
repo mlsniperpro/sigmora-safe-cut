@@ -199,6 +199,91 @@ def e3() -> None:
         shutil.rmtree(work, ignore_errors=True)
 
 
+#: A pixel is the entity's content (a face's features, a plate's characters, a screen's text) when it differs from
+#: the box's median colour by more than this (0–255, any channel) in the prepared clip.
+CONTENT_DELTA = 25
+#: Hidden means the content can no longer be told from its background in ``redacted.mp4``: the content-vs-background
+#: contrast left over, as a share of the source's. The demo's covers leave 0.00; a tint or a sliver of a cover
+#: leaves almost all of it (a +10 tint: 1.00).
+RESIDUAL_CONTRAST = 0.25
+#: And the render inside the box no longer follows the source: a dimmed or translucent cover keeps the content's
+#: shape (its correlation with the source stays near 1, and a contrast stretch brings it back); the demo's covers
+#: correlate at 0.12 at most.
+RESIDUAL_CORRELATION = 0.5
+#: A kept entity's box changes by less than this mean (0–255) on most of its frames: the codec moves a kept face by
+#: about 2.5; a renderer that tints or blurs the whole frame moves every box.
+KEPT_CHANGE = 8.0
+
+
+def _box(box: Any, sx: float, sy: float, width: int, height: int) -> tuple[int, int, int, int] | None:
+    import math  # noqa: PLC0415
+
+    x1, y1 = max(int(box[0] * sx), 0), max(int(box[1] * sy), 0)
+    x2, y2 = min(math.ceil(box[2] * sx), width), min(math.ceil(box[3] * sy), height)
+    return (x1, y1, x2, y2) if x2 > x1 and y2 > y1 else None
+
+
+def render_hides(job: Path, clip_labels: Any) -> list[str]:
+    """The plan is scored above; this checks the **pixels** of ``redacted.mp4`` against the prepared clip:
+
+    - every should-hide entity's content (pixels that stand out from its box's background) can't be told from that
+      background any more, and the box no longer follows the source, on at least 99 % of its visible frames (a
+      renderer that draws nothing, a tint, a dimmed or translucent cover, or a cover over a sliver of the box
+      fails);
+    - every kept entity's box is left as it was (mean change below :data:`KEPT_CHANGE`) on at least 75 % of its
+      frames (a renderer that alters the whole frame fails; a short legitimate hide, like the guest's re-entry
+      before a creator merges it, is under the plan's own over-blur rule above).
+    """
+    import numpy as np  # noqa: PLC0415 -- the check's own dependencies, loaded only when E3 runs
+
+    video = importlib.import_module("safecut.render.video")
+    contracts = importlib.import_module("safecut.contracts")
+    meta = contracts.load(job / "job.json", contracts.Job)
+    sx, sy = meta.width / clip_labels.width, meta.height / clip_labels.height
+    entities = [e for e in clip_labels.entities if e.dense]
+    good = dict.fromkeys((e.id for e in entities), 0)
+    seen = dict.fromkeys((e.id for e in entities), 0)
+    rendered_frames = video.read_frames(job / "redacted.mp4", meta)
+    frames = zip(video.read_frames(job / meta.prepared, meta), rendered_frames, strict=True)
+    for f, (source, rendered) in enumerate(frames):
+        for entity in entities:
+            box = entity.dense.get(f)
+            region = None if box is None else _box(box, sx, sy, meta.width, meta.height)
+            if region is None:
+                continue
+            x1, y1, x2, y2 = region
+            a = source[y1:y2, x1:x2].astype(np.float32)
+            b = rendered[y1:y2, x1:x2].astype(np.float32)
+            seen[entity.id] += 1
+            if not entity.should_hide:
+                good[entity.id] += float(np.abs(a - b).mean()) < KEPT_CHANGE
+                continue
+            content = np.abs(a - np.median(a.reshape(-1, 3), axis=0)).max(axis=2) > CONTENT_DELTA
+            if not content.any() or content.all():
+                good[entity.id] += float(np.abs(a - b).mean()) >= KEPT_CHANGE  # a flat box: it must at least change
+                continue
+            before = float(np.abs(a[content].mean(axis=0) - a[~content].mean(axis=0)).max())
+            after = float(np.abs(b[content].mean(axis=0) - b[~content].mean(axis=0)).max())
+            ga, gb = a.mean(axis=2).ravel(), b.mean(axis=2).ravel()
+            flat = float(gb.std()) < 1.0 or float(ga.std()) < 1.0
+            follows = 0.0 if flat else abs(float(np.corrcoef(ga, gb)[0, 1]))
+            good[entity.id] += after <= RESIDUAL_CONTRAST * max(before, 1.0) and follows < RESIDUAL_CORRELATION
+    hidden = {e.id for e in entities if e.should_hide}
+    if not any(seen[i] for i in hidden):
+        return ["the rendered video shows none of the should-hide entities' frames"]
+    problems = [
+        f"{eid}: still legible in redacted.mp4 on {n - good[eid]}/{n} visible frames"
+        for eid, n in seen.items()
+        if eid in hidden and n and good[eid] / n < 0.99
+    ]
+    problems += [
+        f"{eid} (keep): altered in redacted.mp4 on {n - good[eid]}/{n} visible frames"
+        for eid, n in seen.items()
+        if eid not in hidden and n and good[eid] / n < 0.75
+    ]
+    return problems
+
+
 def score_against_truth(job: Path, truth: Path) -> None:
     sys.path.insert(0, str(ROOT))
     try:
@@ -221,6 +306,13 @@ def score_against_truth(job: Path, truth: Path) -> None:
         elif entity.visible_frames and entity.frames_hidden / entity.visible_frames > 0.10:
             problems.append(f"{entity.id} (keep): hidden on {entity.frames_hidden}/{entity.visible_frames} frames")
     print(f"  scored {len(score.entities)} entities against {truth.name}")
+    # Never a vacuous pass: the truth must hold something to hide that is actually on screen, and someone to keep.
+    if not any(e.should_hide and e.visible_frames for e in score.entities):
+        problems.insert(0, "the truth file has no visible entity that should be hidden")
+    else:
+        problems += render_hides(job, clip_labels)
+    if not any(not e.should_hide and e.visible_frames for e in score.entities):
+        problems.append("the truth file has no visible entity that should be kept clear")
     if problems:
         raise CheckFailed(
             f"ground truth: {problems[0]}" + (f" (+{len(problems) - 1} more)" if len(problems) > 1 else "")
@@ -283,6 +375,21 @@ def run_entry_tests(
         report.unlink(missing_ok=True)
 
 
+def require_passed(lines: list[dict[str, Any]], line: str) -> None:
+    """Every collected keyed test ran and passed: a skipped, xfailed or erroring one is a failure, whatever pytest's
+    exit code says."""
+    collected = {e["nodeid"] for e in lines if e.get("event") == "collected"}
+    passed = {
+        e["nodeid"]
+        for e in lines
+        if e.get("event") == "result" and e.get("when") == "call" and e.get("outcome") == "passed"
+    }
+    other = sorted({e["nodeid"] for e in lines if e.get("event") == "result" and e.get("outcome") != "passed"})
+    if other or collected - passed:
+        bad = other or sorted(collected - passed)
+        raise CheckFailed(f"{line} test(s) didn't pass: {', '.join(bad[:3])}")
+
+
 def keys_present(lines: list[dict[str, Any]], line: str, required: Iterable[str]) -> dict[str, list[str]]:
     by_key: dict[str, list[str]] = {}
     for entry in lines:
@@ -299,12 +406,18 @@ def keys_present(lines: list[dict[str, Any]], line: str, required: Iterable[str]
 def e4() -> None:
     lines = run_entry_tests("E4", extra=["--hypothesis-show-statistics"], env={"HYPOTHESIS_PROFILE": "entry"})
     by_key = keys_present(lines, "E4", E4_KEYS)
+    require_passed(lines, "E4")
     examples = {e["nodeid"]: e.get("examples") for e in lines if e.get("event") == "teardown"}
     for key in E4_PROPERTIES:
         for nodeid in by_key[f"E4:{key}"]:
             count = examples.get(nodeid)
             if count is None or count < 2000:
                 raise CheckFailed(f"{nodeid} ({key}) ran {count or 0} hypothesis examples; needs ≥ 2000")
+    # The policy's own tests must cover every branch of it (not the whole suite reaching it by accident): stricter,
+    # and minutes instead of the whole suite under coverage.
+    policy_tests = sorted(str(p) for p in (ROOT / "tests").glob("test_policy*.py"))
+    if not policy_tests:
+        raise CheckFailed("no policy tests (tests/test_policy*.py)")
     cov = sh(
         [
             str(BIN / "pytest"),
@@ -315,6 +428,7 @@ def e4() -> None:
             "--cov-branch",
             "--cov-report=term-missing",
             "--cov-fail-under=100",
+            *policy_tests,
         ],
         timeout=1800,
     )
@@ -324,7 +438,9 @@ def e4() -> None:
 
 
 def e5() -> None:
-    keys_present(run_entry_tests("E5"), "E5", E5_KEYS)
+    lines = run_entry_tests("E5")
+    keys_present(lines, "E5", E5_KEYS)
+    require_passed(lines, "E5")
 
 
 def e8() -> None:
@@ -390,9 +506,14 @@ def e7() -> None:
         "the ASGI app": r"@[\w.]*asgi_app",
         "a Volume": r"Volume\.from_name",
         "the 24 h deletion cron": r"schedule\s*=\s*modal\.(Cron|Period)",
-        "a worker function": r"def \w*work\w*\(",
+        # The pipeline's workers are threads in the API container (one container, one ledger writer): the ASGI
+        # function must build the real app, whose Service starts them, and a worker smoke must run the pipeline.
+        "the API app that runs the pipeline workers": r"return create_app\(",
+        "a pipeline worker smoke run": r"def pipeline_worker_smoke\(",
     }
     missing = [what for what, pattern in needs.items() if not re.search(pattern, text)]
+    if not re.search(r"self\.worker = worker or Worker\(", (ROOT / "safecut" / "api" / "app.py").read_text("utf-8")):
+        missing.append("the Service's pipeline Worker (safecut/api/app.py)")
     if missing:
         raise CheckFailed(f"deploy/modal_app.py lacks {', '.join(missing)}")
     imp = sh([str(BIN / "python"), "-c", "import deploy.modal_app"], timeout=120)
@@ -412,7 +533,10 @@ def e7() -> None:
         raise CheckFailed("scripts/deploy-check.sh is missing or not valid bash")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     blocked = (ROOT / "BLOCKED.md").read_text(encoding="utf-8") if (ROOT / "BLOCKED.md").is_file() else ""
-    deployed = re.search(r"https://[\w.-]+\.modal\.run", readme) and "safecut.sigmora.org" in readme
+    urls = re.findall(r"https://([\w.-]+)\.modal\.run", readme)
+    # A placeholder (`your-app.modal.run`, `example`) never counts as deployed.
+    real = [u for u in urls if not re.search(r"your|example|placeholder|xxx|<|changeme", u, re.IGNORECASE)]
+    deployed = bool(real) and "safecut.sigmora.org" in readme
     if not deployed and not re.search(r"^- \[ \].*Modal", blocked, re.MULTILINE):
         raise CheckFailed("no deployed URLs in README.md and no open Modal line in BLOCKED.md")
 
@@ -460,11 +584,22 @@ SUBMISSION_DOCS = ("README.md", "docs/SUBMISSION.md", "docs/VIDEO-SCRIPT.md", "d
 FIGURE = re.compile(r"(?<![\w.\-/])(\$?\d+(?:\.\d+)?%|\$\d+(?:\.\d+)?|\d+\.\d+)(?![\w\-/%]|\.\d)")
 
 
+#: A count reported as a result ("47 leaks", "20 clips"): checked like a figure, whatever its size.
+COUNT = re.compile(
+    r"(?<![\w.\-/])(\d+)(?=\s+(?:leaks?|leak bursts?|bursts?|clips|entities|labelled clips|missed|over-blurred)\b)"
+)
+#: Fences that hold commands or data a reader runs, not results; any other fence is read like prose.
+CODE_FENCE = re.compile(
+    r"```(?:bash|sh|shell|console|json|jsonc|python|py|ts|tsx|js|yaml|yml|toml|text|diff)\b.*?```", re.DOTALL
+)
+
+
 def prose(text: str) -> str:
-    """The text with fenced code, inline code, link targets and HTML comments removed."""
-    text = re.sub(r"```.*?```", " ", text, flags=re.DOTALL)
+    """The text a reader sees: command and data fences, link targets and HTML comments removed. Inline code and
+    untagged fences are kept, so a figure can't hide in backticks or a bare fence (model IDs like ``sam-3.1``
+    never match :data:`FIGURE`)."""
+    text = CODE_FENCE.sub(" ", text)
     text = re.sub(r"<!--.*?-->", " ", text, flags=re.DOTALL)
-    text = re.sub(r"`[^`\n]*`", " ", text)
     return re.sub(r"\]\([^)]*\)", "]", text)
 
 
@@ -487,8 +622,9 @@ def e10() -> None:
         raise CheckFailed("eval/RESULTS.md is missing")
     results = results_path.read_text(encoding="utf-8")
     for doc in SUBMISSION_DOCS:
-        for figure in FIGURE.findall(prose((ROOT / doc).read_text(encoding="utf-8"))):
-            if figure not in results:
+        seen = prose((ROOT / doc).read_text(encoding="utf-8"))
+        for figure in [*FIGURE.findall(seen), *COUNT.findall(seen)]:
+            if not re.search(rf"(?<![\w.]){re.escape(figure)}(?![\w%]|\.\d)", results):
                 raise CheckFailed(f"{doc}: the figure {figure} is not in eval/RESULTS.md")
 
 
@@ -500,26 +636,70 @@ SECRET = re.compile(
     r"sk-ant-[A-Za-z0-9_-]{20,}|sk_live_[A-Za-z0-9]{16,}|rk_live_[A-Za-z0-9]{16,}|AKIA[0-9A-Z]{16}"
     r"|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|xox[abpr]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{35}"
     r"|-----BEGIN ([A-Z]+ )?PRIVATE KEY-----|\"private_key\":\s*\"-----BEGIN"
-    r"|(MODEL_API_KEY|BASETEN_API_KEY|MODAL_TOKEN_SECRET|MODAL_TOKEN_ID)\s*[=:]\s*['\"]?[A-Za-z0-9_\-]{20,}"
+    r"|[\"']?(MODEL_API_KEY|BASETEN_API_KEY|MODAL_TOKEN_SECRET|MODAL_TOKEN_ID)[\"']?\s*[=:]\s*['\"]?[A-Za-z0-9_\-]{20,}"
+    # This project's own secrets: Hugging Face tokens, the URL key and the clips token by value, and any access
+    # code or service key long enough to be a real one (the tests' stand-ins are shorter, or named so).
+    r"|\bhf_[A-Za-z0-9]{30,}"
+    r"|[\"']?(SAFECUT_URL_SECRET|SAFECUT_CLIPS_TOKEN|HF_TOKEN)[\"']?\s*[=:]\s*['\"]?[A-Za-z0-9_\-+/]{24,}"
+    # Any access code or service key value of BLOCKED's 12+ characters, except an error code (a snake_case
+    # identifier like "code_not_active") and the named stand-ins (STAND_INS, checked by `secret_hit`).
+    r"|[\"'](code|key)[\"']\s*:\s*[\"'](?![a-z]+(_[a-z]+)+[\"'])(?P<credential>[A-Za-z0-9_\-+/=.]{12,})[\"']"
 )
+#: The exact access codes and service keys the tests and docs use as stand-ins; any other 12+ character value in a
+#: "code" or "key" field is treated as a real one.
+STAND_INS = frozenset(
+    {"deploy-check-not-a-code", "judge-secret-7", "local-judge-code", "sigmora-service-key-0123456789"}
+    # The API's one error code without an underscore (every other error code is a snake_case identifier).
+    | {"unauthorized"}
+)
+
+
+def secret_hit(line: str) -> bool:
+    """A key-shaped value on ``line`` that isn't one of the tests' named stand-ins."""
+    return any(m.group("credential") not in STAND_INS for m in SECRET.finditer(line))
+
+
 SHIPPED = ("safecut", "eval", "deploy", "scripts", "web/src", "web/e2e", "web/scripts", ".github")
 #: The three unfinished-work markers, spelt in pieces so this file doesn't match its own check.
 MARKER = re.compile(r"\b(" + "|".join(("TO" + "DO", "FIX" + "ME", "X" + "XX")) + r")\b")
 
 
+#: The scanner and its own tests are the only files allowed to hold key shapes (its patterns, its test data).
+SCANNER_FILES = frozenset({"scripts/entry_check.py", "tests/test_entry_check.py"})
+
+
+def history_hits(log: str) -> list[str]:
+    """Every added line in ``git log -p --cc`` output that holds a secret, as ``<file>: <line>``, attributed to its
+    file by the ``+++ b/<path>`` header before it (``--cc`` merges print ``+++ b/<path>`` too), so the scanner's own
+    files are skipped by name, the same rule as the tree scan."""
+    hits: list[str] = []
+    current = ""
+    for line in log.splitlines():
+        if line.startswith("+++ "):
+            current = line[6:] if line.startswith("+++ b/") else ""
+            continue
+        if line.startswith("+") and current not in SCANNER_FILES and secret_hit(line):
+            hits.append(f"{current}: {line}")
+    return hits
+
+
 def e11() -> None:
-    history = sh(["git", "log", "-p", "--all", "--no-color", "--format=commit %H"], timeout=600)
-    hits = [
-        line
-        for line in history.stdout.splitlines()
-        if line.startswith("+")
-        and SECRET.search(line)
-        and "gate-allow" not in line
-        and "SECRET_RE" not in line
-        and "SECRET = re.compile" not in line
-    ]
+    # --cc adds what a merge commit itself introduced (a conflict resolution), which plain -p never shows.
+    history = sh(["git", "log", "-p", "--cc", "--all", "--no-color", "--format=commit %H"], timeout=600)
+    hits = history_hits(history.stdout)
     if hits:
-        raise CheckFailed(f"secret-shaped text in git history: {hits[0][:80]}…")
+        raise CheckFailed(f"secret-shaped text in git history: {hits[0][:100]}…")
+    # And the tree as it stands, every tracked text file; only the scanner and its own tests may hold key shapes.
+    for name in sh(["git", "ls-files"]).stdout.split():
+        path = ROOT / name
+        if name in SCANNER_FILES or not path.is_file() or path.stat().st_size > 5_000_000:
+            continue
+        data = path.read_bytes()
+        if b"\x00" in data:
+            continue
+        for number, line in enumerate(data.decode("utf-8", errors="replace").splitlines(), 1):
+            if secret_hit(line):
+                raise CheckFailed(f"{name}:{number}: secret-shaped text in the tree")
     tracked = sh(["git", "ls-files", "--", *SHIPPED]).stdout.split()
     for name in tracked:
         path = ROOT / name
@@ -530,7 +710,10 @@ def e11() -> None:
             or path.suffix in {".png", ".jpg", ".mp4", ".gif"}
         ):
             continue
-        for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+        data = path.read_bytes()
+        if b"\x00" in data:
+            continue  # binary (an icon, model weights): no source lines to mark
+        for number, line in enumerate(data.decode("utf-8", errors="replace").splitlines(), 1):
             if MARKER.search(line):
                 raise CheckFailed(f"{name}:{number}: unfinished marker in shipped code")
     skips = sh(
@@ -538,17 +721,24 @@ def e11() -> None:
             "git",
             "grep",
             "-nE",
-            r"@pytest\.mark\.(skip|xfail)|pytest\.skip\(|\b(it|test|describe)\.(skip|only)\(",
+            r"pytest\.mark\.(skip|skipif|xfail)\b|pytest\.(skip|xfail|importorskip)\(|\b(it|test|describe)\.(skip|skipIf|runIf|only|fixme|todo|fails)\b"
+            r"|\bx(it|test|describe)\(",
             "--",
             "tests",
             "web/src",
             "web/e2e",
         ]
     ).stdout.splitlines()
-    skips = [s for s in skips if "MODEL_API_KEY" not in s and "live" not in s]
+    skips = [s for s in skips if not LIVE_SKIP.match(s)]
     if skips:
         raise CheckFailed(f"skipped test outside the live suite: {skips[0][:120]}")
     fresh_clone_readme()
+
+
+#: The one allowed skip: a live test (tests/test_live*.py) skipping because its owner key isn't set.
+LIVE_SKIP = re.compile(
+    r"^tests/test_live[\w]*\.py:\d+:.*pytest\.mark\.skipif\(not os\.environ\.get\(\"(MODEL_API_KEY|BASETEN_API_KEY)\"\)"
+)
 
 
 def fresh_clone_readme() -> None:
@@ -586,8 +776,8 @@ OWNER_INPUTS = {
     "hero footage": r"hero (footage|clips?)",
     "Modal tokens": r"MODAL_TOKEN_ID",
     "the domain and Vercel project": r"Vercel",
-    "making the repo public": r"public",
-    "EgoBlur weights": r"EgoBlur",
+    "making the repo public": r"[Mm]ak(e|ing) `?[\w/-]*`? ?(the )?(repo|repository)?\s*`?[\w/-]*`?\s*public",
+    "EgoBlur weights": r"EgoBlur Gen ?2 weights",
     "BASETEN_API_KEY": r"BASETEN_API_KEY",
     "the voice-over and the submit click": r"voice-?over",
 }

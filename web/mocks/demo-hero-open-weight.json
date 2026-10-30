@@ -1,6 +1,7 @@
 {
   "hero_id": "hero1",
   "mode": "replay",
+  "synthetic": false,
   "job": {
     "prepared_url": "https://example.invalid/hero1/prepared.mp4",
     "fps": 30,

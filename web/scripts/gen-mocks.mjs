@@ -305,7 +305,8 @@ mocks["job-review-no-audio"] = withJob(hero, { job: { ...hero.job, audio: false 
   mocks["job-review-speech-limited"] = m;
 }
 mocks["job-review-keyframe-mismatch"] = withJob(hero, { keyframe_geometry: { ...hero.keyframe_geometry, image_height: 720 } });
-mocks["job-replay"] = withJob(hero, { mode: "replay" });
+// A replay of a real consented run says so (`synthetic: false`); a replay that doesn't say is labelled synthetic.
+mocks["job-replay"] = withJob(hero, { mode: "replay", synthetic: false });
 mocks["job-rendering-audit"] = withJob(hero, { status: "rendering", stage: "audit", progress: 0.8 });
 mocks["job-audit-rerun-patch"] = withJob(hero, { status: "rendering", stage: "render", stage_reason: "audit_patch", has_render: true, result: { video_url: RESULT_URLS("j_hero1").video_url } });
 mocks["job-audit-rerun-receipt"] = withJob(hero, { status: "rendering", stage: "receipt", has_render: true, result: { video_url: RESULT_URLS("j_hero1").video_url } });
@@ -432,7 +433,7 @@ mocks["create-job-ok"] = { status: 201, body: { job_id: "j_new", mode: "live", u
 
 // ---------------------------------------------------------------- landing
 const demo = (model, plates) => ({
-  hero_id: "hero1", mode: "replay",
+  hero_id: "hero1", mode: "replay", synthetic: false,
   job: { prepared_url: "https://example.invalid/hero1/prepared.mp4", fps: 30, frames: 12, times: clone(hero.job.times) },
   video_url: "https://example.invalid/hero1/redacted.mp4",
   poster_url: "https://example.invalid/hero1/poster.jpg",
