@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -41,3 +43,37 @@ def test_auditor_available_says_whether_any_detector_can_run(monkeypatch: pytest
     assert auditor_available(Settings(egoblur_weights_dir="/nonexistent"))  # EgoBlur missing: YuNet stands in
     monkeypatch.setattr(detectors, "YUNET_SHA256", "0" * 64)  # altered weights are refused
     assert not auditor_available(Settings(egoblur_model="yunet-face"))
+
+
+def test_egoblur_weights_without_torch_fall_back_to_yunet(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The docstring's promise: EgoBlur when it can run, else YuNet (recorded as ``yunet-face``), never a 503."""
+    for name in ("ego_blur_face_gen2.jit", "ego_blur_lp_gen2.jit"):
+        (tmp_path / name).write_bytes(b"weights")
+
+    def no_torch(*_: object, **__: object) -> None:
+        raise detectors.AuditorUnavailable("EgoBlur needs the audit dependency group")
+
+    monkeypatch.setattr(detectors, "EgoBlur", no_torch)
+    settings = Settings(egoblur_model="egoblur-gen2", egoblur_weights_dir=str(tmp_path))
+    assert detectors.load_detector(settings).model == "yunet-face"
+    assert auditor_available(settings)
+
+
+def test_auditor_availability_is_cached_until_the_weights_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[str] = []
+    real = detectors.load_detector
+
+    def counting(settings: Settings) -> detectors.Detector:
+        calls.append(settings.egoblur_weights_dir)
+        return real(settings)
+
+    monkeypatch.setattr("safecut.audit.load_detector", counting)
+    settings = Settings(egoblur_weights_dir=str(tmp_path))
+    assert auditor_available(settings)
+    assert auditor_available(settings)
+    assert len(calls) == 1  # not a model load per POST /start
+    (tmp_path / "gen2").mkdir()  # the folder changed (weights arriving): asked again
+    assert auditor_available(settings)
+    assert len(calls) == 2

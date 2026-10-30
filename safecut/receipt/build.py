@@ -22,6 +22,7 @@ from safecut.contracts import (
     DataHandling,
     Decisions,
     FilesIndex,
+    Intake,
     Job,
     Receipt,
     ReceiptAudit,
@@ -40,6 +41,7 @@ from safecut.contracts import (
 
 RUN = Path("raw/audit/run.json")
 APPROVAL = "approval.json"
+INTAKE = "intake.json"
 #: A synthetic job says so: a ``synthetic.json`` marker (SENSE's synthetic demo job) or the red-team oracle's truth.
 SYNTHETIC_MARKER = "synthetic.json"
 SYNTHETIC_TRUTH = Path("raw/redteam/synthetic_truth.json")
@@ -49,6 +51,10 @@ BASETEN_NOTE = (
     " consented, and Baseten's terms, not Meta's store setting, govern that copy."
 )
 YUNET_NOTE = "Audited with YuNet (faces only): EgoBlur weights weren't installed; the red team checked plates."
+REPLAY_NOTE = (
+    "Replay: every model answer was read back from a recording of an earlier run of this clip; no model was called"
+    " for this receipt, and the models named are the ones that answered then."
+)
 AUTO_APPROVE_NOTE = "Approved without review: the policy's decisions were accepted as they stood (auto-approve)."
 AUDIO_NOTE = "The audio is kept as recorded: Safe Cut redacts the picture only, so anything said aloud stays audible."
 
@@ -60,6 +66,12 @@ def is_synthetic(job_dir: Path) -> bool:
     if manifest.exists() and json.loads(manifest.read_text(encoding="utf-8")).get("synthetic") is True:
         return True
     return (job_dir / SYNTHETIC_MARKER).exists() or (job_dir / SYNTHETIC_TRUTH).exists()
+
+
+def is_replay(job_dir: Path) -> bool:
+    """A job created in replay mode (``intake.json``): its model answers were read back from a recording."""
+    intake = job_dir / INTAKE
+    return intake.exists() and load(intake, Intake).mode == "replay"
 
 
 class ReceiptError(ValueError):
@@ -119,6 +131,8 @@ def data_handling(job_dir: Path, models: dict[str, str], audit: Audit) -> DataHa
     )
     if is_synthetic(job_dir) and not billed:  # a job any model was paid for isn't "no model was called"
         notes.append(SYNTHETIC_NOTE)
+    elif is_replay(job_dir) and not billed:
+        notes.append(REPLAY_NOTE)
     if opinion is not None:
         notes.append(BASETEN_NOTE)
     if audit.egoblur.model == "yunet-face":

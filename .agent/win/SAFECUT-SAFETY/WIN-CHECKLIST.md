@@ -67,3 +67,15 @@ Evidence is a test name, a command run in this session, or a commit. Owner input
 - [x] WP4 opinion failures recorded, saved, reused; read-through flagged (`test_a_failed_opinion_is_recorded_once_and_never_blocks`, `test_text_the_opinion_reads_through_a_mosaic_is_flagged_and_patched`).
 - [x] WP4 receipt honesty: wording, synthetic note on billed jobs, Baseten disclosure (`test_a_second_opinion_on_baseten_is_disclosed`).
 - [-] WP4 approval hash bound to decisions: SHIP's `pipeline.approve`, filed with SHIP.
+
+## Audit findings (round 3, fixed with tests at 225d9c6, merged ede3dc1; details in reaudit.md)
+- [x] Re-render retires the old receipt (`test_a_re_render_retires_the_old_receipt_until_a_new_one_is_sealed`).
+- [x] Visible-mask exclusion, every flagged frame red-teamed, IoU ≥ 0.3 grouping, 40 px bar (`tests/test_audit_rules.py`, `test_an_injected_3_frame_leak_is_found_and_patched`).
+- [x] Sealed auto-approve and audio notes; seal wording (`test_a_human_review_is_not_noted_as_auto_approved`).
+- [x] Second opinion can't run twice after a rebuilt job.json (`test_a_rebuilt_job_json_never_makes_the_opinion_eligible_again`).
+- [x] Crowd fills over every tracked object; face-only remove_person covers a body; region cache and faster encoding (`tests/test_guard.py`, `tests/test_binding.py`).
+- [x] Re-hide style, hide clears hold, reason format, kind map (`tests/test_policy_review.py`, `tests/test_policy.py`).
+- [x] E9 `no_audit` baseline (`test_no_audit_is_the_policy_and_guard_without_any_audit_patch`).
+- [-] Mid-clip IDs without `reentry_of`: ARCHITECTURE §3.2 and the contract define "new ID" as `reentry_of` (see reaudit.md).
+- [-] Approval hash vs audit patches; private red-team text in API views: SHIP's paths, filed with SHIP.
+- [-] Mosaic noise is deterministic by design (DESIGN §2.7 fixed per-block noise; the ≤ 6-block grid protects).

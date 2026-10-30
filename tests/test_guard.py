@@ -408,3 +408,18 @@ def test_the_guard_stage_reuses_regions_until_the_tracks_change(tmp_path: Path) 
     contracts.validate_job_dir(job_dir)
     (job_dir / "tracks.json").write_text((job_dir / "tracks.json").read_text() + "\n")  # a new tracks.json
     assert guard_run(job_dir).read_text() == first
+
+
+def test_a_whole_person_item_covers_a_body_where_only_its_face_is_tracked() -> None:
+    """DESIGN §2.7b: a prominent person is hidden whole. The body track (frames 10-30) is shorter than the face's
+    (0-50): outside the body's span the face entry still carries an estimated body, never just the face."""
+    face = track("face:1", 0, 50, (130, 25, 160, 55))
+    body = track("person:1", 10, 30, (100, 20, 200, 170))
+    ts = tracks(face, body)
+    by = ("bystander",) * 3
+    decided = decide(Inputs(job=JOB, tracks=ts, roles=roles(row("face:1", *by), row("person:1", *by))))
+    (item,) = decided.items
+    assert (item.style, item.track_ids) == ("person_solid", ["face:1", "person:1"])
+    p = plan(JOB, ts, decided)
+    for frame in (0, 5, 20, 45, 50):
+        assert covered(p, frame, "i_1", (120, 55, 170, H)), frame  # below the face, to the frame's bottom

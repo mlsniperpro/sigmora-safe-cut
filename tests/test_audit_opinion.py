@@ -4,6 +4,7 @@ job, advisory until the grid is confirmed, never blocking, copied into re-runs; 
 from __future__ import annotations
 
 import asyncio
+import shutil
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -62,7 +63,7 @@ class Opinion:
                                          errors=[])  # fmt: skip
 
 
-def audit(job_dir: Path, opinion: Opinion, *, grid_ok: bool = False) -> Audit:
+def audit(job_dir: Path, opinion: Opinion | None, *, grid_ok: bool = False) -> Audit:
     redteam = SyntheticRedTeam.load(job_dir / "raw/redteam/synthetic_truth.json",
                                     lambda: load(job_dir / "plan.json", Plan), 320, 240)  # fmt: skip
     got, _ = asyncio.run(audit_job(job_dir, detector=YuNet(), redteam=redteam, opinion=opinion,
@@ -156,3 +157,20 @@ def test_a_rebuilt_job_json_never_makes_the_opinion_eligible_again(tmp_path: Pat
     assert load(job_dir / "job.json", Job).open_weight_attempted  # restored: the attempt happened
     assert again.open_weight == first.open_weight
     contracts.validate_job_dir(job_dir)
+
+
+def test_a_replayed_recording_never_brings_its_opinion_into_another_job(tmp_path: Path) -> None:
+    """A recording's raw/ (copied into a replay job) holds the recorded job's opinion and attempt marker: they describe
+    that job's frames going to Baseten, never this one's, so the replay audits with the opinion off."""
+    recorded_dir = consented_job(tmp_path / "rec")
+    audit(recorded_dir, Opinion(hit_on=30))
+    replay_dir = make_job(tmp_path / "replay", job_id="j_replay")  # not consented
+    shutil.copytree(recorded_dir / "raw", replay_dir / "raw", dirs_exist_ok=True)
+    decide_run(replay_dir)
+    guard_run(replay_dir)
+    render(replay_dir)
+    got = audit(replay_dir, None)  # replay: no live second opinion
+    assert got.open_weight.status == "off"
+    assert got.redteam_open == []
+    assert not load(replay_dir / "job.json", Job).open_weight_attempted
+    contracts.validate_job_dir(replay_dir)

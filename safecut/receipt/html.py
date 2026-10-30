@@ -77,10 +77,13 @@ def render_html(receipt: Receipt, job_dir: Path) -> str:
         else "approved by the creator"
     )
     publishable = a.unresolved == 0
+    synthetic_job = any(n.startswith("Synthetic job") for n in d.notes)
+    detector = "The face detector (faces only)" if a.auditor == "yunet-face" else "The detector"
+    checker = "a synthetic ground-truth oracle" if synthetic_job and "redteam" not in receipt.models else "the red team"
     verdict = (
         '<span class="badge ok">Audit passed</span>'
-        "<span>The detector scanned every output frame and the red team checked sampled frames: no leak is left"
-        " that they found.</span>"
+        f"<span>{detector} scanned every output frame and {checker} checked sampled frames: no leak is left that"
+        " they found.</span>"
         if publishable
         else f'<span class="badge bad">Publishing blocked</span><span>{a.unresolved} unresolved'
         f" ({escape(a.blocked_reason or 'unresolved')}).</span>"
@@ -101,7 +104,7 @@ def render_html(receipt: Receipt, job_dir: Path) -> str:
     stores += "".join(f"<tr><td><code>{escape(m)}</code></td><td>takes no store parameter</td></tr>"
                       for m in d.no_store_param)  # fmt: skip
     notes = "".join(f"<li>{escape(n)}</li>" for n in d.notes)
-    synthetic = any(n.startswith("Synthetic job") for n in d.notes)
+    synthetic = synthetic_job
     if "redteam" in receipt.models:
         redteam = f"a red team (<code>{escape(receipt.models['redteam'])}</code>)"
     elif synthetic:

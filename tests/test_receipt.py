@@ -5,6 +5,7 @@ red-team text."""
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -12,7 +13,7 @@ import pytest
 from safecut import contracts, pipeline
 from safecut.audit import run as audit_run
 from safecut.config import Settings
-from safecut.contracts import Audit, ContractError, CostLine, Receipt, append_cost_line, load
+from safecut.contracts import Audit, ContractError, CostLine, Intake, Receipt, append_cost_line, load
 from safecut.decide import run as decide_run
 from safecut.guard import run as guard_run
 from safecut.receipt import RECEIPT, RECEIPT_HTML, ReceiptError, history, verify_chain
@@ -22,6 +23,7 @@ from safecut.receipt.build import (
     AUDIO_NOTE,
     AUTO_APPROVE_NOTE,
     BASETEN_NOTE,
+    REPLAY_NOTE,
     SYNTHETIC_NOTE,
     YUNET_NOTE,
     build,
@@ -179,3 +181,35 @@ def test_a_human_review_is_not_noted_as_auto_approved(job_dir: Path) -> None:
     receipt = load(job_dir / RECEIPT, Receipt)
     assert AUTO_APPROVE_NOTE not in receipt.data_handling.notes
     assert "approved by the creator" in (job_dir / RECEIPT_HTML).read_text()
+
+
+def test_no_receipt_on_a_job_directory_that_does_not_validate(job_dir: Path) -> None:
+    """The executable contract gates publishing: a receipt is withdrawn when the job directory doesn't validate."""
+    audit = json.loads((job_dir / "audit.json").read_text())
+    audit["redteam"] = []  # no red-team entry in any second of the clip: not publishable
+    (job_dir / "audit.json").write_text(json.dumps(audit))
+    with pytest.raises(ReceiptError, match="validate"):
+        receipt_run(job_dir, settings=SETTINGS)
+    assert not (job_dir / RECEIPT).exists()
+    assert pipeline.status(job_dir) != "done"
+
+
+def test_a_replayed_recording_is_disclosed(job_dir: Path) -> None:
+    intake = Intake(source="clip.mp4", created_at=datetime(2026, 10, 30, tzinfo=UTC), mode="replay")
+    contracts.dump(intake, job_dir / "intake.json")
+    (job_dir / "raw" / "redteam" / "synthetic_truth.json").rename(job_dir / "truth.json")  # not synthetic now
+    notes = load_notes(job_dir)
+    assert REPLAY_NOTE in notes
+    assert SYNTHETIC_NOTE not in notes
+
+
+def load_notes(job_dir: Path) -> list[str]:
+    audit = load(job_dir / "audit.json", Audit)
+    return data_handling(job_dir, {"auditor": audit.egoblur.model}, audit).notes
+
+
+def test_the_banner_names_the_checks_that_actually_ran(job_dir: Path) -> None:
+    receipt_run(job_dir, settings=SETTINGS)
+    page = (job_dir / RECEIPT_HTML).read_text()
+    assert "The face detector (faces only) scanned every output frame" in page
+    assert "a synthetic ground-truth oracle checked sampled frames" in page

@@ -450,3 +450,17 @@ def test_a_re_run_keeps_the_earlier_fixes_on_record(tmp_path: Path) -> None:
                                                                          for leak in second.leaks}  # fmt: skip
     assert second.unresolved == 0
     contracts.validate_job_dir(job_dir)
+
+
+def test_a_malformed_box_keeps_its_finding_as_a_whole_frame_leak() -> None:
+    """redteam.md: a finding whose box isn't 4 integers stays a leak with a whole-frame box; the frame's other
+    findings, and the response, still stand."""
+    raw = {"frames": [{"frame": 0, "findings": [
+        {"kind": "face", "detail": "d", "text": None, "box": [1.5, 2, 3, 4], "confidence": "low"},
+        {"kind": "face", "detail": "d", "text": None, "box": [10, None, 30, 40], "confidence": "low"},
+        {"kind": "plate", "detail": "d", "text": "KDA", "box": [10, 20, 30, 40], "confidence": "high"},
+    ]}]}  # fmt: skip
+    got = RedteamOutput.model_validate_json(json.dumps(raw))
+    boxes = [f.box for f in got.frames[0].findings]
+    assert boxes == [[], [], [10, 20, 30, 40]]
+    assert rules.grid_box(boxes[0], width=320, height=240, bar=40) is None  # → the whole frame

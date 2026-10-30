@@ -7,6 +7,7 @@ changes nothing.
 
 from __future__ import annotations
 
+import threading
 from collections import OrderedDict
 from pathlib import Path
 
@@ -19,9 +20,15 @@ PLAN = "plan.json"
 #: it was built from (path, size and modification time), so a review edit re-plans only from cached regions.
 _CACHES: OrderedDict[tuple[object, ...], RegionCache] = OrderedDict()
 _KEEP = 4
+_LOCK = threading.Lock()
 
 
 def _cache_for(job_dir: Path) -> RegionCache:
+    with _LOCK:  # the API's worker pool plans several jobs at once
+        return _cache_locked(job_dir)
+
+
+def _cache_locked(job_dir: Path) -> RegionCache:
     stats = [(job_dir / name).stat() for name in ("job.json", "tracks.json")]
     key = (str(job_dir.resolve()), *((s.st_size, s.st_mtime_ns, s.st_ino) for s in stats))
     found = _CACHES.pop(key, None)

@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from safecut.config import Settings, load_settings
-from safecut.contracts import Receipt, dump, load
+from safecut.contracts import ContractError, Receipt, dump, load, validate_job_dir
 from safecut.receipt.build import ReceiptError, build, verify_chain
 from safecut.receipt.html import render_html
 
@@ -30,6 +30,13 @@ def run(job_dir: Path, *, replay: bool = False, settings: Settings | None = None
     previous = retire(job_dir) or _retired(job_dir)
     receipt = build(job_dir, settings, prev_hash=previous.hash if previous is not None else None)
     path = dump(receipt, job_dir / RECEIPT)
+    try:
+        # The executable contract gates publishing (ARCHITECTURE §3): a receipt only stands on a job directory that
+        # validates as a whole; otherwise it is withdrawn and the stage fails (the old one stays in the history).
+        validate_job_dir(job_dir)
+    except ContractError as exc:
+        path.unlink()
+        raise ReceiptError(f"the job directory doesn't validate, so no receipt: {exc}") from exc
     (job_dir / RECEIPT_HTML).write_text(render_html(receipt, job_dir), encoding="utf-8")
     return path
 
