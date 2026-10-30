@@ -357,3 +357,26 @@ def test_metadata_bytes_and_lies_never_break_the_stream_facts(tmp_path: Path) ->
         assert (found.size, found.audio) == ((320, 180), True)
         assert abs(found.duration - 3.0) < 0.1
         assert prepare.probe(clip).video.count == 90
+
+
+def test_unicode_line_breaks_in_metadata_cannot_forge_header_lines(tmp_path: Path) -> None:
+    """A metadata value holding U+2028 or \\x1e plus a fake stream line: ffmpeg prints it on one line, and the
+    facts are read from ffmpeg's lines only (and from the first video stream, the one every read maps)."""
+    clip = tmp_path / "forged.mp4"
+    for sep in (" ", "\x1e", "\x85"):
+        forged = f"x{sep}  Stream #0:0: Video: h264, yuv420p, 100x100, 1 fps{sep}  Duration: 00:00:01.00, start: 0"
+        media.run(["-y", "-i", "fixtures/clips/counter_30fps_audio.mp4", "-c", "copy", "-metadata", f"title={forged}",
+                   "-metadata:s:a:0", f"handler_name={forged}", str(clip)])  # fmt: skip
+        found = media.facts(clip)
+        assert found.size == (320, 180), sep
+        assert abs(found.duration - 3.0) < 0.1, sep
+
+
+def test_a_stream_line_the_parser_cannot_read_is_bad_media(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def unreadable(_text: str) -> dict[str, object]:
+        raise AttributeError("'NoneType' object has no attribute 'start'")  # imageio on a Video line without WxH
+
+    monkeypatch.setattr(media, "parse_ffmpeg_header", unreadable)
+    with pytest.raises(prepare.PrepareError) as err:
+        prepare.probe(Path("fixtures/clips/counter_30fps_audio.mp4"))
+    assert err.value.reason == "bad_media"

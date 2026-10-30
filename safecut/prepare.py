@@ -171,7 +171,7 @@ def transcode(source: Path, out: Path, probe_result: SourceProbe) -> None:
                  "-b:a", "128k"]  # fmt: skip
     else:
         args += ["-an"]
-    args += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+    args += ["-c:v", "libx264", *media.ENCODE_THREADS, "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
              "-g", str(2 * probe_result.fps), "-movflags", "+faststart", "-map_metadata", "-1", str(out)]  # fmt: skip
     media.run(args, memory=media.TRANSCODE_MEMORY_BYTES)
 

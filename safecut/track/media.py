@@ -88,6 +88,8 @@ PROBE_MEMORY_BYTES = 2 << 30
 #: its thread counts fixed so a many-core host doesn't multiply it.
 TRANSCODE_MEMORY_BYTES = 6 << 30
 TRANSCODE_THREADS = ("-threads", "4", "-filter_threads", "2")
+#: The encoder's own thread count (an output option: the input-side -threads only bounds the decoder).
+ENCODE_THREADS = ("-threads", "4")
 #: Probe decodes (one frame) on one thread: ffmpeg's default is about two filter threads per core.
 PROBE_THREADS = ("-threads", "1", "-filter_threads", "1")
 
@@ -199,16 +201,21 @@ def facts(path: Path) -> StreamFacts:
                               check=False)  # fmt: skip
     except subprocess.TimeoutExpired as exc:
         raise MediaError(f"ffmpeg timed out after {FFMPEG_TIMEOUT_S:.0f} s reading {path.name}") from exc
-    lines = [line for line in done.stderr.splitlines() if line.strip()]
+    # split("\n"), not splitlines(): ffmpeg ends lines with \n only, and a metadata value may hold U+2028 or \x1e,
+    # which splitlines() would turn into forged "  Stream #…" lines.
+    lines = [line.rstrip("\r") for line in done.stderr.split("\n") if line.strip()]
     if not any("Video:" in line for line in lines):  # ffmpeg exits 1 without an output; the header is the answer
         last = lines[-1].strip() if lines else f"ffmpeg exited {done.returncode}"
         raise MediaError(f"can't read {path.name}: {last[:300]}")
     # Only ffmpeg's own header lines (metadata is printed indented below them): a title saying "Duration: 00:00:01"
     # or " Video: " must never be read as the clip's.
     header = [line for line in lines if line.startswith(("Input #", "  Duration:", "  Stream #"))]
+    # The first video stream only: it is the one every read maps (0:v:0); imageio would take the last one.
+    videos = [line for line in header if " Video: " in line]
+    header = [line for line in header if " Video: " not in line or line is videos[0]] if videos else header
     try:
         meta = cast(dict[str, Any], parse_ffmpeg_header("\n".join(header)))
-    except (ValueError, IndexError, KeyError) as exc:
+    except (ValueError, IndexError, KeyError, AttributeError, TypeError) as exc:  # a stream line it can't read
         raise MediaError(f"can't read {path.name}: {exc}") from exc
     size = cast(tuple[int, int], tuple(meta.get("size") or (0, 0)))
     return StreamFacts(

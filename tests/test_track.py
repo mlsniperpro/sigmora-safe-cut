@@ -255,3 +255,10 @@ def test_a_huge_mask_size_fails_closed() -> None:
     assert "data=12345678901," in text
     with pytest.raises(MetaIncomplete, match="10 or more digits"):
         asyncio.run(sam.parse_video_events(events(text, response_id="r", frames_billed=4), size=(64, 48)))
+
+
+def test_a_huge_negative_number_fails_closed() -> None:
+    text = stream_text({"1": {3: (10, 10, 20, 20)}}, (64, 48)).replace("x1=10;", "x1=-12345678901;", 1)
+    assert "x1=-12345678901;" in text
+    with pytest.raises(MetaIncomplete, match="10 or more digits"):
+        asyncio.run(sam.parse_video_events(events(text, response_id="r", frames_billed=4), size=(64, 48)))

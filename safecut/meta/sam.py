@@ -410,7 +410,7 @@ PARALLEL_MIN_PIXELS = 1_500_000
 MAX_OBJECT_ID_DIGITS = 9
 #: A number of 10+ digits where the grammar puts one (a frame index, an object id, a token field, a mask size),
 #: delimited by characters the base85 payload alphabet doesn't use, so a digit run inside a payload never matches.
-_HUGE_NUMBER = re.compile(r"<[0-9]{10,}f|[>,][0-9]{10,}<\||[;=,][0-9]{10,}[;|,]")
+_HUGE_NUMBER = re.compile(r"<-?[0-9]{10,}f|[>,]-?[0-9]{10,}<\||[;=,]-?[0-9]{10,}[;|,]")
 _MASK_SIZE = re.compile(r"data=([0-9]+),([0-9]+),")
 #: A box token's fields: its ``w``/``h`` name the pixel space every coordinate is in (the parser drops them).
 _BOX_TOKEN = re.compile(r"<\|box;([^|]*)\|>")
