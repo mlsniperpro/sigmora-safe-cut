@@ -107,6 +107,13 @@ def probe(source: Path) -> SourceProbe:
                            size_bytes=size)  # fmt: skip
     try:
         facts = media.facts(source)
+    except media.MediaError as exc:
+        raise PrepareError("bad_media", f"can't read the video stream: {exc}", size_bytes=size) from exc
+    # The header's duration first, so an over-long upload is refused as too_long before its packets are read.
+    if facts.duration > config.MAX_CLIP_SECONDS:
+        raise PrepareError("too_long", f"{facts.duration:.2f} s is over the {config.MAX_CLIP_SECONDS} s limit",
+                           duration_s=facts.duration, size_bytes=size)  # fmt: skip
+    try:
         # The video clock starts at the first *decoded* frame (§5b steps 2–3): hidden edit-list frames are dropped.
         video = media.packets(source, "v:0").from_time(media.decoded_start(source, "v:0"))
     except media.MediaError as exc:

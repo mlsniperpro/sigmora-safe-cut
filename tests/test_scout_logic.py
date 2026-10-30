@@ -461,3 +461,31 @@ def test_a_long_phrase_makes_a_bounded_concept() -> None:
     assert phrase.startswith(got)
     assert got == got.strip()
     assert miss.concept_for("x" * 90).concept == "x" * miss.CONCEPT_CHARS
+
+
+def test_a_child_vote_locks_even_where_the_track_was_not_shown_or_asked() -> None:
+    from safecut.scout import roles  # noqa: PLC0415 -- the aggregation needs the stage's window type
+    from safecut.scout.schemas import RolePassOut  # noqa: PLC0415
+
+    face = Track(track_id="face:7", concept="face", first=90, last=120, boxes=dict.fromkeys(range(90, 121),
+                 (10, 10, 50, 50)), source="sam-3.1", prompt="face")  # fmt: skip
+    shown = roles.Window(index=0, frames=[90, 120], per_frame=[(90, ["face:7"]), (120, ["face:7"])])
+    elsewhere = roles.Window(index=1, frames=[300, 330], per_frame=[])
+    keep = Vote(tracks={"face:7": TrackVote("participant", "host", (90, 120))})
+    child = Vote(tracks={"face:7": TrackVote("child", "a child", ())})
+    result = roles.PassResult(windows=[shown, elsewhere], ballots=[[keep] * 3, [child, EMPTY, EMPTY]])
+    assert roles.aggregate(result, [face]).person["face:7"].role == "child"
+    # A re-pass answer naming an earlier (unasked) person label a child keeps that answer; other roles are dropped.
+    answer = RolePassOut.model_validate({"tracks": [
+        {"track_id": "face:3", "role": "child", "evidence": "small", "frames": [90], "matches_participant": None},
+        {"track_id": "face:4", "role": "participant", "evidence": "x", "frames": [90], "matches_participant": None},
+    ], "objects": [], "missed": []})  # fmt: skip
+    vote, dropped = roles.to_vote(answer, {"face:9"}, 2, frozenset({"face:3", "face:4"}))
+    assert set(vote.tracks) == {"face:3"}
+    assert dropped == 1
+
+
+@pytest.mark.parametrize("phrase", ["schoolgirls", "a newborn", "two youngsters", "tween"])
+def test_more_child_words_lock(phrase: str) -> None:
+    got = miss.concept_for(miss.normalise(phrase))
+    assert (got.concept, got.child_phrase) == ("person", True)

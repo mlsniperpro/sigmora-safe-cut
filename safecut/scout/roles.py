@@ -172,8 +172,11 @@ class PassResult:
     hallucinated: int = 0
 
 
-def to_vote(answer: RolePassOut, judged: set[str], participants: int) -> tuple[votes.Vote, int]:
-    """A parsed answer as a :class:`votes.Vote`; labels it wasn't asked about are dropped and counted (rule 6).
+def to_vote(
+    answer: RolePassOut, judged: set[str], participants: int, people: frozenset[str] = frozenset()
+) -> tuple[votes.Vote, int]:
+    """A parsed answer as a :class:`votes.Vote`; labels it wasn't asked about are dropped and counted (rule 6),
+    except a child answer on any person label of the job (``people``): any child vote wins, asked or not.
 
     A label answered twice is merged fail closed: a child answer wins, two different roles become ``unsure``, and
     an object is sensitive if either entry says so. A participant index outside the scene's list is dropped."""
@@ -181,7 +184,7 @@ def to_vote(answer: RolePassOut, judged: set[str], participants: int) -> tuple[v
     objects: dict[str, votes.ObjectVote] = {}
     dropped = 0
     for t in answer.tracks:
-        if t.track_id not in judged:
+        if t.track_id not in judged and not (t.role == "child" and t.track_id in people):
             dropped += 1
             continue
         index = (
@@ -238,6 +241,7 @@ async def role_pass(
     even one with no labels, because the miss loop rides in it; a re-pass only asks windows with new labels."""
     keyframes = som.write(ctx.job_dir, ctx.job, tracks, frames)
     judged_ids = {t.track_id for t in judged}
+    people = frozenset(t.track_id for t in tracks.tracks if is_person(t))
     result = PassResult(windows=[], ballots=[])
     for w, chunk in enumerate(windows([k.frame for k in keyframes], ctx.job.fps)):
         per_frame = [
@@ -274,7 +278,7 @@ async def role_pass(
                 result.budget_stops += outcome.status == "skipped"
                 ballots.append(votes.Vote(failed=True))
                 continue
-            vote, dropped = to_vote(outcome.value, judged_ids, participants)
+            vote, dropped = to_vote(outcome.value, judged_ids, participants, people)
             result.hallucinated += dropped
             ballots.append(vote)
             for m in outcome.value.missed:
@@ -294,6 +298,10 @@ class Judged:
     objects: dict[str, votes.ObjectResult] = field(default_factory=dict[str, votes.ObjectResult])
 
 
+def child_voted(ballots: Sequence[votes.Vote], track_id: str) -> bool:
+    return any((vote := b.tracks.get(track_id)) is not None and vote.role == "child" for b in ballots if not b.failed)
+
+
 def aggregate(result: PassResult, judged: Sequence[Track]) -> Judged:
     out = Judged()
     for track in judged:
@@ -301,8 +309,10 @@ def aggregate(result: PassResult, judged: Sequence[Track]) -> Judged:
         per_object: list[votes.ObjectResult] = []
         for window, ballots in zip(result.windows, result.ballots, strict=True):
             # A window that showed the track only on crowded frames is still judged, with no valid evidence: a
-            # child vote there still locks it, anything else there can't count toward a keep.
-            if not window.shown(track.track_id) or len(ballots) != votes.VOTES:
+            # child vote there still locks it, anything else there can't count toward a keep. So is a window with a
+            # child vote for a track it didn't show (any child vote wins, fail closed).
+            relevant = window.shown(track.track_id) or (is_person(track) and child_voted(ballots, track.track_id))
+            if not relevant or len(ballots) != votes.VOTES:
                 continue
             present = window.present(track.track_id)
             if is_person(track):
@@ -373,7 +383,9 @@ async def escalate(
     som.write(ctx.job_dir, ctx.job, tracks, frames)
     context = prompts.render("escalate.context", scene_summary=context_summary, transcript_by_frames=transcript_frames)
     system = calls.system(prompts.text("escalate.system"))
-    rulings: dict[str, list[votes.Ruling | None]] = {d: [] for d in disputed}
+    # Per window index, combined in time order (escalation.md: the evidence is the first window's), not in the order
+    # the concurrent calls happen to finish.
+    rulings: dict[str, dict[int, votes.Ruling | None]] = {d: {} for d in disputed}
 
     async def one(index: int, chunk: list[int]) -> None:
         shown = {d: [f for f in chunk if f in by_id[d].boxes] for d in disputed}
@@ -401,10 +413,10 @@ async def escalate(
             answers[got.track_id] = ruling if seen is None else votes.merge_rulings(seen, ruling)
             log.info("escalation", extra={"track": got.track_id, "why_others_wrong": got.why_others_wrong[:200]})
         for d in here:
-            rulings[d].append(votes.check_ruling(answers.get(d), present[d]))
+            rulings[d][index] = votes.check_ruling(answers.get(d), present[d])
 
     await asyncio.gather(*(one(i, chunk) for i, chunk in enumerate(chunks)))
-    return {d: votes.apply_rulings(r) for d, r in rulings.items() if r}
+    return {d: votes.apply_rulings([r[i] for i in sorted(r)]) for d, r in rulings.items() if r}
 
 
 # ---------------------------------------------------------------------------- the stage
@@ -488,6 +500,11 @@ async def miss_loops(ctx: calls.Context, state: State, first: PassResult, scene:
             participants=participant_count(scene), every_window=False,
         )  # fmt: skip
         later = aggregate(again, new_judged)
+        flagged = [t for t in state.judged if is_person(t) and any(child_voted(b, t.track_id) for b in again.ballots)]
+        earlier = aggregate(again, flagged)
+        for track_id, child in earlier.person.items():
+            prior = state.results.person.get(track_id)
+            state.results.person[track_id] = votes.combine_windows([prior, child]) if prior else child
         state.results.person.update(later.person)
         state.results.objects.update(later.objects)
         state.ballots_of.update({t.track_id: again.ballots for t in new_judged})
@@ -523,9 +540,24 @@ def assemble(state: State, status: calls.Status, escalations: dict[str, votes.Es
     )
 
 
+def track_stage_tracks(tracks: Tracks) -> Tracks:
+    """``tracks.json`` as the ``track`` stage wrote it: without what an earlier run of this stage appended (the miss
+    loop's static boxes, and SAM tracks from requests after the track stage's one sweep per concept). A re-run of
+    ``roles`` on its own output then sees the same input, so its calls match their recordings (never re-billed)."""
+    base = 0
+    while (base < len(tracks.requests) and base < len(tracks.concepts) and tracks.requests[base].kind == "phrase"
+           and tracks.requests[base].concept == tracks.concepts[base]):  # fmt: skip
+        base += 1
+    kept = [t for t in tracks.tracks if t.origin != "static" and not (t.sam_object and t.sam_object.request >= base)]
+    if len(kept) == len(tracks.tracks) and len(tracks.requests) == base:
+        return tracks
+    log.info("roles: earlier miss-loop tracks set aside", extra={"tracks": len(tracks.tracks) - len(kept)})
+    return tracks.model_copy(update={"tracks": kept, "requests": tracks.requests[:base]})
+
+
 async def roles(ctx: calls.Context) -> Roles:
     job = ctx.job
-    tracks = load(ctx.job_dir / TRACKS, Tracks)
+    tracks = track_stage_tracks(load(ctx.job_dir / TRACKS, Tracks))
     scene = load_optional(ctx.job_dir / SCENE, Scene)
     transcript = load_optional(ctx.job_dir / TRANSCRIPT, Transcript)
     judged = [t for t in tracks.tracks if som.judged(t)]

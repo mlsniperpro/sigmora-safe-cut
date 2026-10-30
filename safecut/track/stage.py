@@ -24,7 +24,7 @@ from safecut.meta.errors import MetaError
 from safecut.meta.files import FileStore
 from safecut.meta.session import job_client
 from safecut.track import media
-from safecut.track.axes import from_proxy_table, sam_fps_eff
+from safecut.track.axes import SAM_HOTSTART_FRAMES, from_proxy_table, sam_fps_eff
 from safecut.track.link import Frame, ObjectLabel, crowded, link_request, next_ids
 from safecut.track.masks import mask_table
 
@@ -213,7 +213,10 @@ def checkpoint(job_dir: Path, call: SamCall, proxy: Proxy, *, model: str) -> Sam
     synthetic one)."""
     if not replay.exists(job_dir, RAW_STAGE, call.key):
         return None
-    raw = replay.load_call(job_dir, RAW_STAGE, call.key)
+    try:
+        raw = replay.load_call(job_dir, RAW_STAGE, call.key)
+    except ValueError:  # a corrupt or old-format recording is no checkpoint: ask again (it is overwritten)
+        return None
     if raw.synthetic or raw.failure() is not None or raw.events is None:
         return None
     same = (raw.request.get("text"), raw.request.get("sam_frames"), raw.model, raw.request.get("source_sha256"))
@@ -340,6 +343,12 @@ async def run_async(
     replay_mode = replay_mode or settings.replay
     job = load(job_dir / JOB, Job)
     proxy = make_proxy(job_dir, job, settings)
+    if proxy.frames < SAM_HOTSTART_FRAMES:
+        # SAM confirms an object only after 15 of its input frames (API-NOTES §5b): a shorter proxy would come back
+        # with no tracks at all and hide nothing. Fail the stage (the job publishes nothing) before any call.
+        raise TrackError(
+            f"the SAM proxy has {proxy.frames} frames; SAM needs {SAM_HOTSTART_FRAMES} to confirm anything"
+        )
     calls = phrase_calls(concepts)
     parsed = await run_calls(
         job_dir, job, proxy, calls, settings=settings, replay_mode=replay_mode, client=client, responder=responder

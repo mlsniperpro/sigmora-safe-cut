@@ -406,6 +406,8 @@ _Record = tuple[Any, ...]
 _Diagnostic = tuple[str, str, int]
 #: Below this many mask pixels a stream is parsed in-process (a pool costs more than it saves).
 PARALLEL_MIN_PIXELS = 1_500_000
+#: Object ids are small decimal integers (§1.4); a longer one is a broken answer, not an id to sort or link.
+MAX_OBJECT_ID_DIGITS = 9
 _MASK_SIZE = re.compile(r"data=([0-9]+),([0-9]+),")
 #: A box token's fields: its ``w``/``h`` name the pixel space every coordinate is in (the parser drops them).
 _BOX_TOKEN = re.compile(r"<\|box;([^|]*)\|>")
@@ -499,6 +501,9 @@ def _detections(
     masks, boxes, repeated = _collect([r for records, _ in results for r in records if r[0] != "space"])
     if repeated:
         log.warning("SAM repeated an object on a frame; boxes joined", extra={"count": len(repeated)})
+    long_ids = sorted({oid for _, oid in boxes if len(oid) > MAX_OBJECT_ID_DIGITS})
+    if long_ids:
+        raise MetaIncomplete(f"SAM object id of {len(long_ids[0])} digits", eof=False)
     detections: list[Detection] = []
     for (f, oid), r in boxes.items():
         mask = masks[(f, oid)][1] if (f, oid) in masks and (f, oid) not in repeated else None

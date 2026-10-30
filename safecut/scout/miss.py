@@ -44,7 +44,29 @@ SINGULAR = {
     "peoples": "person",
 }
 CHILD_SET = frozenset(
-    {"child", "kid", "baby", "infant", "toddler", "boy", "girl", "teen", "teenager", "student", "schoolchild", "minor"}
+    {
+        "child",
+        "kid",
+        "baby",
+        "infant",
+        "toddler",
+        "boy",
+        "girl",
+        "teen",
+        "teenager",
+        "student",
+        "schoolchild",
+        "minor",
+        # Beyond miss-loop.md's list (stricter only: any of these locks the track hidden as a child).
+        "schoolgirl",
+        "schoolboy",
+        "newborn",
+        "pupil",
+        "youngster",
+        "preteen",
+        "tween",
+        "kiddo",
+    }
 )
 PERSON_SET = (
     frozenset(

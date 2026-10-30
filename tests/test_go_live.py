@@ -116,3 +116,18 @@ def test_a_swap_killed_halfway_restores_the_earlier_recording(tmp_path: Path) ->
     assert not (out / "raw" / "a.json").exists()
     assert not (tmp_path / "fixtures" / ".go-live").exists()
     assert [p.name for p in (tmp_path / "fixtures" / "jobs").iterdir()] == ["x"]  # no stray manifest to match
+
+
+def test_a_set_aside_recording_still_needs_replace(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (tmp_path / "fixtures" / ".go-live" / "taken.old" / "raw").mkdir(parents=True)
+    assert go_live.main([str(CLIP), "--id", "taken", "--out-root", str(tmp_path)]) == 2
+    assert "--replace" in capsys.readouterr().err
+
+
+def test_another_ids_leftover_does_not_fail_a_good_swap(tmp_path: Path) -> None:
+    (tmp_path / "fixtures" / ".go-live" / "other.staging").mkdir(parents=True)
+    job = tmp_path / "job"
+    (job / "raw" / "track").mkdir(parents=True)
+    (job / "raw" / "track" / "b.json").write_text("{}")
+    out = go_live.keep(job, tmp_path / "fixtures" / "jobs" / "x", CLIP)
+    assert (out / "raw" / "manifest.json").is_file()

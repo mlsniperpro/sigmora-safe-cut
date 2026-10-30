@@ -298,3 +298,30 @@ def test_millions_of_tiny_frames_are_refused_without_reading_them_all(tmp_path: 
         prepare.prepare(swarm, tmp_path / "j")
     assert err.value.reason == "bad_media"
     assert media.packets(swarm, limit=30_000).count == 22_000
+
+
+def test_an_over_long_upload_is_too_long_even_past_the_packet_cap(tmp_path: Path) -> None:
+    """A long, tiny clip passes the packet cap's count before its duration would be read: the header's duration is
+    checked first, so it is refused as too_long with its duration (re-audit 5, M1)."""
+    long = tmp_path / "long.mp4"
+    media.run(["-y", "-f", "lavfi", "-i", "color=c=gray:size=16x16:rate=30:duration=700", "-c:v", "libx264",
+               "-preset", "ultrafast", "-pix_fmt", "yuv420p", str(long)])  # fmt: skip
+    with pytest.raises(prepare.PrepareError) as err:
+        prepare.probe(long)
+    assert err.value.reason == "too_long"
+    assert err.value.duration_s is not None
+    assert err.value.duration_s > 600
+
+
+def test_every_read_of_an_upload_runs_under_the_probe_memory_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ffmpeg indexes every sample a crafted MP4 declares before printing anything: the reads of an upload run
+    under an address-space limit (here set absurdly low to show it is enforced), refused as bad media."""
+    clip = Path("fixtures/clips/counter_30fps_audio.mp4")
+    assert media.facts(clip).size == (320, 180)
+    monkeypatch.setattr(media, "PROBE_MEMORY_BYTES", 8 << 20)
+    for read in (media.facts, media.packets, lambda c: media.decoded_start(c, "v:0")):
+        with pytest.raises(media.MediaError):
+            read(clip)
+    with pytest.raises(prepare.PrepareError) as err:
+        prepare.probe(clip)
+    assert err.value.reason == "bad_media"

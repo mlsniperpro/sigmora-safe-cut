@@ -224,3 +224,23 @@ def test_a_recording_for_another_proxy_is_refused(tracked: Path, tmp_path: Path)
     job = load(copy / "job.json", prepare.Job)
     with pytest.raises(stage.TrackError, match=r"tracks\.json was made from"):
         stage.proxy_for(copy, job, Settings(sam_fps=4), load(tracked / "tracks.json", Tracks))
+
+
+def test_a_clip_too_short_for_sam_fails_before_any_call(tmp_path: Path) -> None:
+    """A proxy under SAM's 15-frame hot start would come back with no tracks and hide nothing: refused first."""
+    from safecut.track import media  # noqa: PLC0415 -- only this test makes a clip
+
+    clip = tmp_path / "short.mp4"
+    media.run(["-y", "-f", "lavfi", "-i", "testsrc=size=160x120:rate=30:duration=1", "-c:v", "libx264", "-preset",
+               "ultrafast", "-pix_fmt", "yuv420p", str(clip)])  # fmt: skip
+    job = tmp_path / "short"
+    prepare.prepare(clip, job)
+    with pytest.raises(stage.TrackError, match="needs 15"):
+        asyncio.run(stage.run_async(job, settings=Settings(sam_fps=8, replay=True)))
+    assert not (job / "tracks.json").exists()
+
+
+def test_a_huge_object_id_fails_closed() -> None:
+    text = stream_text({"1234567890": {3: (10, 10, 20, 20)}}, (64, 48))
+    with pytest.raises(MetaIncomplete, match="object id of 10 digits"):
+        asyncio.run(sam.parse_video_events(events(text, response_id="r", frames_billed=4), size=(64, 48)))

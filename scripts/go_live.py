@@ -9,6 +9,7 @@ lets ``safecut run <clip> --replay`` find it by the clip's sha256. Every recordi
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -84,7 +85,8 @@ def keep(job_dir: Path, out: Path, clip: Path) -> Path:
     staging.replace(out)
     if old.exists():
         shutil.rmtree(old)
-    work.rmdir()
+    with contextlib.suppress(OSError):  # another id's run may still have files there
+        work.rmdir()
     return out
 
 
@@ -118,7 +120,9 @@ def main(argv: list[str] | None = None) -> int:
     from safecut.stages import StageUnavailable  # noqa: PLC0415
 
     name = clip_id(Path(args.id)) if args.id else clip_id(clip)  # never a path: only [a-z0-9_-]
-    if (root / "fixtures" / "jobs" / name).exists() and not args.replace:
+    # A run killed mid-swap leaves the earlier recording aside in fixtures/.go-live/: it still counts as one.
+    aside = root / "fixtures" / ".go-live" / f"{name}.old"
+    if ((root / "fixtures" / "jobs" / name).exists() or aside.exists()) and not args.replace:
         print(f"go-live: fixtures/jobs/{name} already holds a recording; pass --replace or another --id",
               file=sys.stderr)  # fmt: skip
         return 2
@@ -139,7 +143,7 @@ def main(argv: list[str] | None = None) -> int:
         status = 1
     out = root / "fixtures" / "jobs" / name
     recorded = (job_dir / "raw").is_dir() and any((job_dir / "raw").rglob("*.json"))
-    if not recorded or (out.exists() and (status or stopped)):
+    if not recorded or ((out.exists() or aside.exists()) and (status or stopped)):
         # A run that recorded nothing, or an unfinished one, never replaces an earlier (paid-for) recording.
         print(f"go-live: kept {out if out.exists() else 'nothing'}; this run's responses stay in {job_dir}",
               file=sys.stderr)  # fmt: skip
