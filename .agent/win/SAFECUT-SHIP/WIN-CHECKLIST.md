@@ -63,6 +63,18 @@ Every E-line SHIP owns, every brief requirement, and the judging criteria, each 
 - [-] SAFETY: trim the plan from the review ack: kept, UI-SPEC §8's ack includes it and the overlay draws from it.
 - [x] E1 flake: `test_cancel_before_send_releases_and_after_send_charges` waits for the send instead of a 50 ms sleep.
 
+## Audit round 3 (`reaudit.md`)
+
+- [P] R3#1 (high) judges' daily capacity at $3/day: default kept per API-NOTES §9.2; the owner decides in BLOCKED ("Decide the judges' daily budget").
+- [x] R3#2 E3 checks the rendered pixels: `test_e3_checks_the_rendered_pixels_not_only_the_plan`.
+- [x] R3#3 README over-blur prose matches the table.
+- [x] R3#4 the ledger on the Modal Volume is proven by `ledger_smoke` in the deploy run.
+- [x] R3#5 the always-on container is 2 CPU / 4 GB.
+- [x] R3#6 writes after DELETE are reaped when the stage returns: `test_what_a_stage_writes_after_delete_is_removed_when_it_returns`.
+- [x] R3#7 the deploy fails red without its live URL check; BLOCKED lists the variables.
+- [x] R3 lows: ASCII digits, one upload per job, no /docs, demuxer whitelist, sweep by created_at, E11 tightened (and its own failure fixed), eval dirty detection, report defaults, LAUNCH, README wording; tests named in `reaudit.md`.
+- [-] R3 lows kept: the e2e's toast-based proof of edits; E10's row-level matching (reasons in `reaudit.md`).
+
 ## Judging criteria
 
 - [P] Impact (30): real numbers need `MODEL_API_KEY`, the consented hero clips and the test split (BLOCKED.md); until then every run is synthetic and labelled so, and the docs quote no numbers.
