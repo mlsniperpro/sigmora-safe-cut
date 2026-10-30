@@ -450,3 +450,16 @@ def test_a_merged_face_away_from_the_items_body_still_gets_a_body() -> None:
     p = plan(JOB, ts, merged)
     for frame in (25, 30):  # face:2's back-fill, person:1's extend/hold region elsewhere
         assert covered(p, frame, "i_1", (245, 40, 275, H)), frame
+
+
+def test_back_fill_follows_a_fast_moving_face() -> None:
+    """A small face crossing the frame at half its width a frame (a fast head turn on glasses footage): every
+    back-filled frame before SAM confirmed it is covered where the face really was."""
+    t = track("face:1", 20, 28, (200, 80, 220, 100), step=(10, 0), anchors=[20, 24, 28])
+    ts = tracks(t)
+    p = plan(job(fps=30), ts, hide_all(ts))
+    for frame in range(20):
+        x1 = 200 + 10 * (frame - 20)
+        truth = g.clamp((x1, 80, x1 + 20, 100), W, H)
+        if truth is not None:
+            assert covered(p, frame, "i_1", truth), frame

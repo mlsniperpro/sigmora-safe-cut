@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 5c4415f6022d81f5cdfa66d1c73c3fe27b2a0b4c
+AUDITED_COMMIT: 7066fb206db8e2cdc370737e43a5a701dd9fd921
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -220,4 +220,4 @@ mask coverage at 640/1280 px); WP4 no critical/high/medium, 2 low reproduced, fi
   into a kept one clears the flag (the creator's own two actions); `retire()` unlinks JSON then HTML separately; the run
   record follows audit.json; `redteam_model` is the configured ID.
 
-## Round 13: running at 5c4415f
+## Round 13: running at 7066fb2 (main merged in: SENSE final)
