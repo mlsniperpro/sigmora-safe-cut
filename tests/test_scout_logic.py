@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import cast, get_args
 
 import pytest
-from hypothesis import given
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
 from safecut.contracts import Track
@@ -465,7 +465,7 @@ def test_a_long_phrase_makes_a_bounded_concept() -> None:
 
 def test_a_child_vote_locks_even_where_the_track_was_not_shown_or_asked() -> None:
     from safecut.scout import roles  # noqa: PLC0415 -- the aggregation needs the stage's window type
-    from safecut.scout.schemas import RolePassOut  # noqa: PLC0415
+    from safecut.scout.schemas import RolePassOut  # noqa: PLC0415 -- the answer schema, imported where used
 
     face = Track(track_id="face:7", concept="face", first=90, last=120, boxes=dict.fromkeys(range(90, 121),
                  (10, 10, 50, 50)), source="sam-3.1", prompt="face")  # fmt: skip
@@ -495,3 +495,99 @@ def test_more_child_words_lock(phrase: str) -> None:
 def test_possessives_and_more_child_words_lock(phrase: str) -> None:
     got = miss.concept_for(miss.normalise(phrase))
     assert (got.concept, got.child_phrase) == ("person", True)
+
+
+ROLES_LABELS = ["face:1", "face:2", "person:1", "screen:1", "face:9"]
+answer_track = st.fixed_dictionaries({
+    "track_id": st.sampled_from(ROLES_LABELS),
+    "role": st.sampled_from(["participant", "bystander", "child", "unsure"]),
+    "evidence": st.text(max_size=5),
+    "frames": st.lists(st.sampled_from([0, 30, 45, 60, 90, 200]), max_size=3),
+    "matches_participant": st.one_of(st.none(), st.integers(-1, 3)),
+})  # fmt: skip
+answer_object = st.fixed_dictionaries({
+    "track_id": st.sampled_from(ROLES_LABELS),
+    "sensitive": st.booleans(),
+    "content": st.text(max_size=5),
+    "frames": st.lists(st.sampled_from([0, 30, 60, 200]), max_size=2),
+})  # fmt: skip
+ROLE_ANSWER = st.fixed_dictionaries({"tracks": st.lists(answer_track, max_size=6),
+                                    "objects": st.lists(answer_object, max_size=2)})  # fmt: skip
+ruling = st.fixed_dictionaries({
+    "track_id": st.sampled_from(ROLES_LABELS),
+    "role": st.sampled_from(["participant", "bystander", "child", "unsure"]),
+    "frames": st.lists(st.sampled_from([0, 30, 60, 90, 200]), max_size=3),
+})  # fmt: skip
+
+
+@example(  # re-audit 7's medium: a child ruling on a matched, unanimous participant
+    answers=[{"tracks": [{"track_id": "face:1", "role": "participant", "evidence": "host", "frames": [0, 30],
+                          "matches_participant": 1}], "objects": []}] * 3,
+    failed=[False, False, False], crowded=[], rulings=[{"track_id": "face:1", "role": "child", "frames": []}],
+    status="ok",
+)  # fmt: skip
+@settings(max_examples=600, deadline=None)
+@given(
+    answers=st.one_of(
+        st.lists(ROLE_ANSWER, min_size=3, max_size=3),
+        ROLE_ANSWER.map(lambda a: [a, a, a]),  # unanimous votes: the path to a keep (and a matched participant)
+    ),
+    failed=st.lists(st.booleans(), min_size=3, max_size=3),
+    crowded=st.lists(st.sampled_from([0, 30, 60, 90]), max_size=2, unique=True),
+    rulings=st.lists(ruling, max_size=4),
+    status=st.sampled_from(["ok", "failed", "skipped"]),
+)  # fmt: skip
+def test_any_schema_valid_answers_assemble_into_a_valid_roles_file(
+    answers: list[dict[str, list[dict[str, object]]]], failed: list[bool], crowded: list[int],
+    rulings: list[dict[str, object]], status: str,
+) -> None:  # fmt: skip
+    """Whatever schema-valid votes and rulings the models give, ``roles.json`` passes its contract and cross-file
+    checks (re-audit 7's medium was a contract rejection on a valid answer)."""
+    from datetime import UTC, datetime  # noqa: PLC0415 -- only this test builds a job
+
+    from safecut import contracts  # noqa: PLC0415 -- only this property needs the contract checks
+    from safecut.contracts import Job, Tracks  # noqa: PLC0415 -- only this property builds a job
+    from safecut.scout import calls, roles  # noqa: PLC0415 -- the stage under test, imported where used
+    from safecut.scout.schemas import RolePassOut  # noqa: PLC0415 -- the answer schema, imported where used
+
+    job = Job(job_id="j", source="c.mp4", source_sha256="a" * 64, prepared="prepared.mp4", fps=30, width=1280,
+              height=720, frames=120, times=[i / 30 for i in range(120)], audio=False,
+              created_at=datetime(2026, 10, 30, tzinfo=UTC))  # fmt: skip
+    box = (100, 100, 200, 200)
+    made = [Track(track_id=t, concept=t.split(":")[0], first=0, last=119, boxes=dict.fromkeys(range(120), box),
+                  source="sam-3.1", prompt=t.split(":")[0]) for t in ROLES_LABELS[:4]]  # fmt: skip
+    tracks = Tracks(concepts=["face", "person", "screen"], sam_fps=8, sam_frames=32, tracks=made,
+                    crowded_frames=sorted(crowded))  # fmt: skip
+    judged = list(made)
+    keyframes = [0, 30, 60, 90]
+    window = roles.Window(index=0, frames=keyframes, per_frame=[(f, ROLES_LABELS[:4]) for f in keyframes],
+                          crowded=frozenset(crowded))  # fmt: skip
+    people = frozenset(t.track_id for t in made if roles.is_person(t))
+    ballots = []
+    for answer, down in zip(answers, failed, strict=True):
+        if down:
+            ballots.append(Vote(failed=True))
+            continue
+        parsed = RolePassOut.model_validate({**answer, "missed": []})
+        ballots.append(roles.to_vote(parsed, {t.track_id for t in judged}, 2, people)[0])
+    result = roles.PassResult(windows=[window], ballots=[ballots])
+    state = roles.State(tracks=tracks, judged=judged, swept=[], results=roles.aggregate(result, judged),
+                        ballots_of={t.track_id: [ballots] for t in judged})  # fmt: skip
+    escalations: dict[str, votes.Escalation] = {}
+    for r in rulings if status == "ok" else []:  # escalation runs only after a role pass that worked
+        track_id = str(r["track_id"])
+        if track_id not in people:
+            continue
+        frames = tuple(int(f) for f in r["frames"])  # pyright: ignore[reportGeneralTypeIssues, reportUnknownVariableType, reportUnknownArgumentType] -- strategy data
+        checked = votes.check_ruling(
+            Ruling(cast(votes.Role, r["role"]), "e", frames), frozenset(keyframes) - set(crowded)
+        )
+        escalations[track_id] = votes.apply_rulings([checked])
+    built = roles.assemble(state, cast(calls.Status, status), escalations, "muse-spark-1.3", keyframes)
+    again = contracts.Roles.model_validate_json(built.model_dump_json())
+    contracts._check_roles(again, job, tracks)  # pyright: ignore[reportPrivateUsage] -- the cross-file check is the unit
+    for t in again.tracks:
+        if t.role == "participant":  # the keep rule itself (role-pass.md rules 2–7), not just the contract
+            assert t.votes == ["participant"] * 3
+            assert len(set(t.frames)) >= 2
+            assert set(t.frames) <= set(keyframes) - set(crowded)

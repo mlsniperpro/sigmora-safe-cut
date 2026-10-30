@@ -36,6 +36,8 @@ ASR_STAGE = "asr"
 ASR_KEY = "transcribe"
 FALLBACK_STAGE = "speech"
 FALLBACK_KEY = "fallback"
+#: The most turns kept from the speech fallback (a turn every 0.2 s of a 60 s clip).
+MAX_TURNS = 300
 _SPEAKER = re.compile(r"^[SU][1-9][0-9]{0,5}$")  # bounded: a label is never a number int() can't take
 #: A fallback answer with fewer input tokens than this per second of clip didn't ingest the media at all (cookbook
 #: issue #59 counted only the prompt text). It can't tell a dropped soundtrack under an ingested video (≈ 2,200
@@ -51,8 +53,12 @@ def no_speech(status: str, reason: str) -> Transcript:
 
 def extract_wav(job_dir: Path, job: Job) -> Path:
     out = job_dir / WAV
-    media.run(["-y", "-i", str(job_dir / job.prepared), "-vn", "-ac", "1", "-ar", "24000", "-sample_fmt", "s16",
-               "-c:a", "pcm_s16le", str(out)])  # fmt: skip
+    try:
+        media.run(["-y", "-i", str(job_dir / job.prepared), "-vn", "-ac", "1", "-ar", "24000", "-sample_fmt", "s16",
+                   "-c:a", "pcm_s16le", str(out)])  # fmt: skip
+    except BaseException:
+        out.unlink(missing_ok=True)  # never a half-written WAV left in the job
+        raise
     return out
 
 
@@ -87,7 +93,8 @@ def fallback_turns(answer: SpeechOut, seconds: float) -> list[Turn]:
         if t.end < t.start:
             continue
         turns.append(Turn(speaker=speaker, start=max(t.start, 0.0), end=max(t.end, 0.0), text=t.text))
-    return clamp_turns(turns, seconds)
+    # A 60 s clip has a few dozen turns: a schema-valid answer with thousands would only bloat every later prompt.
+    return clamp_turns(turns, seconds)[:MAX_TURNS]
 
 
 async def primary(ctx: calls.Context) -> tuple[str, Any]:
