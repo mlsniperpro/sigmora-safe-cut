@@ -58,7 +58,7 @@ if wanted E1; then
   fi
   if [ -z "$reason" ]; then
     ( cd web && step "$log" pnpm install --frozen-lockfile ) || reason="pnpm install --frozen-lockfile failed"
-    for script in lint typecheck test; do
+    for script in lint typecheck test build; do
       [ -n "$reason" ] && break
       ( cd web && step "$log" pnpm "$script" ) || reason="web: pnpm $script failed"
     done

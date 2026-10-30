@@ -993,6 +993,8 @@ class Intake(Contract):
     #: ``replay`` jobs read saved responses from ``raw/`` and never call the network.
     mode: Literal["live", "replay"] = "live"
     code_kind: CodeKind | None = None
+    #: The access code's non-secret ID (``c_`` + 16 hex of its sha256), for the code's own cap; never the code.
+    code_id: str | None = Field(default=None, pattern=r"^c_[0-9a-f]{16}$")
 
 
 class Approval(Contract):
