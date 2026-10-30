@@ -98,7 +98,7 @@ Needs the Python version `pyproject.toml` pins, with [uv](https://docs.astral.sh
 ```bash
 uv sync --locked
 uv run safecut run fixtures/clips/SC-A-91-synthetic-20261030.mp4 --out "$(mktemp -d)/demo" --replay --auto-approve-policy
-uv run python eval/run.py --split dev --variant full --replay
+uv run python eval/run.py --split dev --variant full --replay --results-dir "$(mktemp -d)"
 ```
 <!-- fresh-clone:end -->
 

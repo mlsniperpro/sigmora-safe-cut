@@ -1186,3 +1186,18 @@ def test_an_upload_to_a_job_deleted_after_its_signature_check_is_a_404(
     monkeypatch.setattr(svc.signer, "verify", verify_then_delete)
     put = client.put(created["upload_url"], content=CLIP.read_bytes(), headers={"Content-Type": "video/mp4"})
     assert put.status_code == 404
+
+
+def test_ipv4_clients_behind_a_dual_stack_hop_keep_their_own_limit(
+    make_client: Callable[..., tuple[TestClient, Service]],
+) -> None:
+    _, svc = make_client(trust_proxy=True)
+
+    def ip(forwarded: str) -> str:
+        scope = {"type": "http", "headers": [(b"x-forwarded-for", forwarded.encode())], "client": ("127.0.0.1", 1)}
+        return svc.client_ip(Request(scope))
+
+    assert ip("::ffff:198.51.100.7") == "198.51.100.7"
+    assert ip("::ffff:198.51.100.8") != ip("::ffff:198.51.100.7")
+    assert ip("198.51.100.7:5000") == ip("198.51.100.7:6000") == "198.51.100.7"
+    assert ip("[2001:db8:1:2::1]:443") == "2001:db8:1:2::/64"

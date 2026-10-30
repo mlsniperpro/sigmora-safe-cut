@@ -405,3 +405,32 @@ def test_a_live_run_in_a_replay_shell_is_refused_before_it_counts(base: Path, mo
     with pytest.raises(runner.EvalError, match="SAFECUT_REPLAY"):
         runner.run("test", "full", replay=False, out=base / "results", splits=splits, base=base)
     assert runner.runs_made(splits) == []
+
+
+def test_labels_made_on_other_frames_are_refused_before_anything_counts(base: Path) -> None:
+    """A 60 fps phone clip is prepared at 30 fps: labels made on the source's frames never cost a test run."""
+    labels = base / "labels" / "a.json"
+    data = json.loads(labels.read_text())
+    data["frames"] += 1
+    labels.write_text(json.dumps(data))
+    splits = base / "splits"
+    runner.freeze("test", splits, base)
+    with pytest.raises(runner.EvalError, match="label the prepared clip"):
+        runner.run("test", "full", replay=False, out=base / "results", splits=splits, base=base)
+    assert runner.runs_made(splits) == []
+
+
+def test_a_try_out_run_can_go_to_a_scratch_results_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """README's replay command writes to a scratch dir, so the committed report and E9 stay as they are."""
+    seen: dict[str, object] = {}
+
+    def fake_run(split: str, variant: str, **kwargs: object) -> Path:
+        seen.update(kwargs)
+        return tmp_path / "scratch" / "r"
+
+    monkeypatch.setattr(runner, "run", fake_run)
+    assert (
+        runner.main(["--split", "dev", "--variant", "full", "--replay", "--results-dir", str(tmp_path / "scratch")])
+        == 0
+    )
+    assert seen["out"] == tmp_path / "scratch"

@@ -593,3 +593,13 @@ def test_publish_without_a_flag_keeps_the_jobs_own_mode(tmp_path: Path, monkeypa
     assert runner.invoke(app, ["publish", "--job", str(job)]).exit_code == 0
     assert runner.invoke(app, ["publish", "--job", str(job), "--live"]).exit_code == 0
     assert seen == [True, False]
+
+
+def test_a_replay_shell_never_publishes_a_live_job(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    job = tmp_path / "j_live"
+    pipeline.create_job(CLIP, job, mode="live")
+    monkeypatch.setenv("SAFECUT_REPLAY", "1")
+    monkeypatch.setattr(pipeline, "publish", lambda job_dir, replay: pytest.fail("published"))
+    result = runner.invoke(app, ["publish", "--job", str(job)])
+    assert result.exit_code == 1
+    assert "SAFECUT_REPLAY is set, but this job is live" in result.output

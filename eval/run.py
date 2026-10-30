@@ -38,7 +38,9 @@ from eval.metrics import JobScore, score_job, summarize  # noqa: E402 -- after t
 from eval.variants import VARIANTS, Variant, VariantUnavailable, preflight, run_variant  # noqa: E402 -- as above
 from safecut import netguard, pipeline  # noqa: E402 -- after the sys.path line above, on purpose
 from safecut.api.views import models_recorded  # noqa: E402 -- after the sys.path line above, on purpose
-from safecut.config import ConfigError, load_settings  # noqa: E402 -- after the sys.path line above, on purpose
+from safecut.config import ConfigError, load_settings  # noqa: E402
+from safecut.contracts import Job, load  # noqa: E402 -- after the sys.path line above, on purpose
+from safecut.stages import stage  # noqa: E402 -- after the sys.path line above, on purpose -- after the sys.path line above, on purpose
 
 SPLITS = ("hero", "dev", "public", "test")
 Split = Literal["hero", "dev", "public", "test"]
@@ -163,6 +165,35 @@ def refuse_early(split: SplitFile, variant: Variant, *, replay: bool, base: Path
     return sha, {entry.labels: load_labels(base / entry.labels) for entry in split.clips}
 
 
+def prepare_jobs(
+    split: SplitFile, labels: dict[str, ClipLabels], work: Path, *, base: Path, replay: bool, consented: bool
+) -> tuple[list[Path], bool]:
+    """Create and prepare every clip's job (local and free) and check each prepared clip has the frame count and
+    rate its labels were made on, before anything is counted or paid (a 60 fps phone clip is prepared at 30 fps).
+    Returns the job dirs, in split order, and whether any replayed recording is synthetic."""
+    jobs: list[Path] = []
+    synthetic = False
+    for n, entry in enumerate(split.clips):
+        clip = base / entry.clip
+        job_dir = work / f"j_{n:03d}_{re.sub(r'[^A-Za-z0-9_-]', '_', clip.stem)[:40]}"
+        pipeline.create_job(clip, job_dir, mode="replay" if replay else "live", consented=consented, code_kind="eval")
+        if replay:
+            if entry.recording is None:
+                raise EvalError(f"{entry.clip} has no recording to replay")
+            pipeline.attach_recording(job_dir, base / entry.recording)
+            synthetic = synthetic or pipeline.recording_is_synthetic(job_dir)
+        pipeline.run_stage(job_dir, stage("prepare"), replay=replay)
+        prepared = load(job_dir / "job.json", Job)
+        want = labels[entry.labels]
+        if prepared.frames != want.frames or abs(prepared.fps - want.fps) > 0.01:
+            raise EvalError(
+                f"{entry.labels} labels {want.frames} frames at {want.fps:g} fps, but the prepared clip has "
+                f"{prepared.frames} at {prepared.fps:g}: label the prepared clip (docs/EVAL.md §1)"
+            )
+        jobs.append(job_dir)
+    return jobs, synthetic
+
+
 def run(
     split_name: Split,
     variant: Variant,
@@ -179,38 +210,28 @@ def run(
     split = load_split(split_name, splits)
     now = now or datetime.now(UTC)
     sha, labels = refuse_early(split, variant, replay=replay, base=base)
-    if split_name == "test":
-        if replay:
-            raise EvalError("the test split is reported from live runs only")
-        check_test_split(split, splits, base)
-        counter = RunCounter(runs=[*runs_made(splits), f"{now_id(now)}-test-{variant}"])
-        (splits / "test.runs.json").write_text(counter.model_dump_json(indent=1) + "\n", encoding="utf-8")
+    if max_usd <= 0:
+        raise EvalError("--max-usd must be above zero")
+    if split_name == "test" and replay:
+        raise EvalError("the test split is reported from live runs only")
     run_id = f"{now_id(now)}-{split_name}-{variant}-{sha[:7]}"
     scores: list[JobScore] = []
     detail: dict[str, str] = {}
-    synthetic = False
     settings = load_settings()
     ran: dict[str, set[str]] = {}
     work = Path(tempfile.mkdtemp(prefix=f"eval-{run_id}-"))
     try:
+        jobs, synthetic = prepare_jobs(
+            split, labels, work, base=base, replay=replay, consented=split_name in ("hero", "dev")
+        )
+        if split_name == "test":
+            check_test_split(split, splits, base)
+            counter = RunCounter(runs=[*runs_made(splits), f"{now_id(now)}-test-{variant}"])
+            (splits / "test.runs.json").write_text(counter.model_dump_json(indent=1) + "\n", encoding="utf-8")
         spent = 0.0
-        for n, entry in enumerate(split.clips):
+        for n, (entry, job_dir) in enumerate(zip(split.clips, jobs, strict=True)):
             if not replay and spent >= max_usd:
                 raise EvalError(f"the run's Meta spend ${spent:.2f} reached --max-usd ${max_usd:.2f} after {n} clip(s)")
-            clip = base / entry.clip
-            job_dir = work / f"j_{n:03d}_{re.sub(r'[^A-Za-z0-9_-]', '_', clip.stem)[:40]}"
-            pipeline.create_job(
-                clip,
-                job_dir,
-                mode="replay" if replay else "live",
-                consented=split_name in ("hero", "dev"),
-                code_kind="eval",
-            )
-            if replay:
-                if entry.recording is None:
-                    raise EvalError(f"{entry.clip} has no recording to replay")
-                pipeline.attach_recording(job_dir, base / entry.recording)
-                synthetic = synthetic or pipeline.recording_is_synthetic(job_dir)
             result = run_variant(variant, job_dir, replay=replay)
             detail.update(result.detail)
             recorded = models_recorded(job_dir, settings)
@@ -330,6 +351,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--variant", choices=VARIANTS, help="which pipeline variant (run only)")
     parser.add_argument("--replay", action="store_true", help="replay recorded responses; nothing is sent to Meta")
     parser.add_argument(
+        "--results-dir",
+        type=Path,
+        default=RESULTS,
+        help="where the run is written (default eval/results; a scratch dir keeps a try-out out of the report)",
+    )
+    parser.add_argument(
         "--max-usd", type=float, default=DEFAULT_MAX_USD, help="a live run stops once its Meta spend reaches this"
     )
     args = parser.parse_args(argv)
@@ -341,8 +368,8 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--variant is required")
         if args.replay:
             netguard.block()  # a replay run never reaches the network, in any thread
-        run_dir = run(args.split, args.variant, replay=args.replay, max_usd=args.max_usd)
-    except (EvalError, VariantUnavailable, pipeline.PipelineError, LabelError, ConfigError) as exc:
+        run_dir = run(args.split, args.variant, replay=args.replay, max_usd=args.max_usd, out=args.results_dir)
+    except (EvalError, VariantUnavailable, pipeline.PipelineError, LabelError, ConfigError, ValueError) as exc:
         print(f"eval: {exc}", file=sys.stderr)
         return 1
     print(f"wrote {run_dir.relative_to(ROOT) if run_dir.is_relative_to(ROOT) else run_dir}")

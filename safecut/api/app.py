@@ -304,10 +304,11 @@ class Service:
             hops = [h.strip() for h in forwarded.split(",") if h.strip()]
             if hops:
                 host = hops[-1]
-        try:
-            address = ipaddress.ip_address(host)
-        except ValueError:
+        address = _parse_ip(host)
+        if address is None:
             return host
+        if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+            return str(address.ipv4_mapped)  # an IPv4 client on a dual-stack socket or proxy hop
         return str(ipaddress.ip_network(f"{address}/64", strict=False)) if address.version == 6 else str(address)
 
     def job(self, job_id: str) -> JobState:
@@ -464,6 +465,9 @@ async def upload(svc: Svc, job_id: str, request: Request, exp: str | None = None
     with svc.uploads_lock:
         if job_id in svc.uploading:  # two PUTs on one link would interleave in the same .part file
             raise ApiRefusal(409, "already_uploading", "This clip is already being uploaded.")
+        current = svc.job(job_id).upload
+        if current is not None and current.received:  # a PUT that finished while this one waited for the lock
+            raise ApiRefusal(409, "already_uploaded", "This clip was already uploaded.")
         svc.uploading.add(job_id)
     try:
         return await _receive(svc, job_id, spec, request)
@@ -499,6 +503,21 @@ async def _receive(svc: Service, job_id: str, spec: UploadSpec, request: Request
         if current.upload is not None:
             current.upload.received = True
     return Response(status_code=200)
+
+
+def _parse_ip(host: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    """An address from a peer or proxy hop, with any port dropped (``1.2.3.4:5000``, ``[::1]:80``)."""
+    candidates = [host]
+    if host.startswith("[") and "]" in host:
+        candidates.append(host[1 : host.index("]")])
+    elif host.count(":") == 1:
+        candidates.append(host.split(":", 1)[0])
+    for candidate in candidates:
+        try:
+            return ipaddress.ip_address(candidate)
+        except ValueError:
+            continue
+    return None
 
 
 def refuse_pinned(state: JobState) -> None:
@@ -650,8 +669,10 @@ def _apply_edit(svc: Service, job_dir: Path, current: JobState, edits: list[Revi
             # new one replaces it (UI-SPEC §8 request 5).
             receipt.retire(job_dir)
     except BaseException:
-        for name, data in saved.items():
-            (job_dir / name).write_bytes(data)
+        for name, data in saved.items():  # atomically, so a poll never reads a half-restored file
+            restoring = job_dir / f".{name}.restore"
+            restoring.write_bytes(data)
+            restoring.replace(job_dir / name)
         raise
     dump(ReviewLog([*edits, edit]), job_dir / REVIEW)
     if current.status == "done":
