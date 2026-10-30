@@ -1,13 +1,17 @@
-"""Replay mode never touches the network: a process-wide guard that refuses every outbound connection.
+"""Replay mode never touches the network: a guard that refuses every outbound connection.
 
-Loopback stays open (a local API under test, a storage emulator); everything else raises :class:`NetworkBlocked`
-at ``connect``/``getaddrinfo`` time, so a stage that forgot its replay branch fails loudly instead of spending.
+Two scopes: :func:`block` refuses for the whole process (the CLI and an API started with ``SAFECUT_REPLAY=1``),
+and :func:`blocked` refuses only in the calling thread while its ``with`` lasts (``pipeline.run_stage`` in replay),
+so a replay job can't silence a live job running in another thread. Loopback stays open (a local API under test);
+everything else raises :class:`NetworkBlocked` at ``connect``/``getaddrinfo`` time, so a stage that forgot its
+replay branch fails loudly instead of spending.
 """
 
 from __future__ import annotations
 
 import ipaddress
 import socket
+import threading
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
@@ -36,58 +40,69 @@ def _is_local(host: object) -> bool:
     return address.is_loopback or address.is_unspecified
 
 
-_saved: dict[str, Any] = {}
+_original: dict[str, Any] = {}
+_install_lock = threading.Lock()
+_global = threading.Event()
+_local = threading.local()
+
+
+def _refusing() -> bool:
+    return _global.is_set() or getattr(_local, "depth", 0) > 0
 
 
 def _guarded_connect(self: socket.socket, address: Any, /) -> None:
-    if self.family in (socket.AF_INET, socket.AF_INET6) and not _is_local(address[0]):
+    if _refusing() and self.family in (socket.AF_INET, socket.AF_INET6) and not _is_local(address[0]):
         raise NetworkBlocked(f"replay mode: refused a connection to {address[0]!r}")
-    _saved["connect"](self, address)
+    _original["connect"](self, address)
 
 
 def _guarded_connect_ex(self: socket.socket, address: Any, /) -> int:
-    if self.family in (socket.AF_INET, socket.AF_INET6) and not _is_local(address[0]):
+    if _refusing() and self.family in (socket.AF_INET, socket.AF_INET6) and not _is_local(address[0]):
         raise NetworkBlocked(f"replay mode: refused a connection to {address[0]!r}")
-    return _saved["connect_ex"](self, address)
+    return _original["connect_ex"](self, address)
 
 
 def _guarded_getaddrinfo(host: Any, *args: Any, **kwargs: Any) -> Any:
-    if not _is_local(host):
+    if _refusing() and not _is_local(host):
         raise NetworkBlocked(f"replay mode: refused to resolve {host!r}")
-    return _saved["getaddrinfo"](host, *args, **kwargs)
+    return _original["getaddrinfo"](host, *args, **kwargs)
+
+
+def _install() -> None:
+    """Wrap the socket functions once; the wrappers pass through unless a guard is on."""
+    with _install_lock:
+        if _original:
+            return
+        _original["connect"] = socket.socket.connect
+        _original["connect_ex"] = socket.socket.connect_ex
+        _original["getaddrinfo"] = socket.getaddrinfo
+        socket.socket.connect = _guarded_connect  # type: ignore[method-assign] -- the guard is this wrapper
+        socket.socket.connect_ex = _guarded_connect_ex  # type: ignore[method-assign] -- the guard is this wrapper
+        socket.getaddrinfo = _guarded_getaddrinfo
 
 
 def active() -> bool:
-    return bool(_saved)
+    """Whether outbound connections are refused in the calling thread."""
+    return _refusing()
 
 
 def block() -> None:
-    """Refuse outbound connections for the rest of the process (idempotent)."""
-    if _saved:
-        return
-    _saved["connect"] = socket.socket.connect
-    _saved["connect_ex"] = socket.socket.connect_ex
-    _saved["getaddrinfo"] = socket.getaddrinfo
-    socket.socket.connect = _guarded_connect  # type: ignore[method-assign] -- the guard is this monkeypatch
-    socket.socket.connect_ex = _guarded_connect_ex  # type: ignore[method-assign] -- the guard is this monkeypatch
-    socket.getaddrinfo = _guarded_getaddrinfo
+    """Refuse outbound connections in every thread for the rest of the process (idempotent)."""
+    _install()
+    _global.set()
 
 
 def unblock() -> None:
-    if not _saved:
-        return
-    socket.socket.connect = _saved.pop("connect")  # type: ignore[method-assign] -- restoring the original
-    socket.socket.connect_ex = _saved.pop("connect_ex")  # type: ignore[method-assign] -- restoring the original
-    socket.getaddrinfo = _saved.pop("getaddrinfo")
+    """Undo :func:`block` (tests only; the CLI never unblocks)."""
+    _global.clear()
 
 
 @contextmanager
 def blocked() -> Generator[None]:
-    """Block outbound connections inside the ``with`` (restoring the previous state after)."""
-    was_active = active()
-    block()
+    """Refuse outbound connections in this thread inside the ``with`` (nesting is fine)."""
+    _install()
+    _local.depth = getattr(_local, "depth", 0) + 1
     try:
         yield
     finally:
-        if not was_active:
-            unblock()
+        _local.depth -= 1

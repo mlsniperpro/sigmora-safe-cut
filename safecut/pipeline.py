@@ -13,7 +13,7 @@ import hashlib
 import json
 import shutil
 import time
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -31,6 +31,7 @@ from safecut.contracts import (
     measured_usd,
     read_cost_lines,
 )
+from safecut.meta.budget import Caller, CapLimit, LocalLedger
 from safecut.stages import (
     APPROVAL,
     INTAKE,
@@ -279,14 +280,25 @@ def run_stage(
     return StageResult(stage.name, "done", output, elapsed)
 
 
+OnStage = Callable[[Stage], None]
+
+
 def _run_phase(
-    job_dir: Path, name: Phase, *, replay: bool, settings: Settings | None, until: str | None = None
+    job_dir: Path,
+    name: Phase,
+    *,
+    replay: bool,
+    settings: Settings | None,
+    until: str | None = None,
+    on_stage: OnStage | None = None,
 ) -> list[StageResult]:
     stages = phase(name)
     if until is not None and until not in {s.name for s in stages}:
         raise StageError(f"stage {until!r} is not in the {name} phase")
     results: list[StageResult] = []
     for stage in stages:
+        if on_stage is not None and not is_fresh(job_dir, stage):
+            on_stage(stage)
         results.append(run_stage(job_dir, stage, replay=replay, settings=settings))
         if stage.name == until:
             break
@@ -294,12 +306,18 @@ def _run_phase(
 
 
 def analyse(
-    job_dir: Path, *, replay: bool, settings: Settings | None = None, until: str | None = None
+    job_dir: Path,
+    *,
+    replay: bool,
+    settings: Settings | None = None,
+    until: str | None = None,
+    on_stage: OnStage | None = None,
 ) -> list[StageResult]:
-    """prepare … guard (or up to ``until``); then the job waits for review."""
+    """prepare … guard (or up to ``until``); then the job waits for review. ``on_stage`` hears each stage that
+    is about to run (not the fresh ones it skips)."""
     if not (job_dir / INTAKE).is_file():
         raise PipelineError(f"{job_dir}: no {INTAKE}; create the job first")
-    return _run_phase(job_dir, "analyse", replay=replay, settings=settings, until=until)
+    return _run_phase(job_dir, "analyse", replay=replay, settings=settings, until=until, on_stage=on_stage)
 
 
 def approve(job_dir: Path, *, how: Literal["review", "auto_policy"], at: datetime | None = None) -> Approval:
@@ -322,10 +340,43 @@ def check_approval(job_dir: Path) -> Approval:
     return approval
 
 
-def publish(job_dir: Path, *, replay: bool, settings: Settings | None = None) -> list[StageResult]:
+def publish(
+    job_dir: Path, *, replay: bool, settings: Settings | None = None, on_stage: OnStage | None = None
+) -> list[StageResult]:
     """render → audit → receipt, only on an approved plan."""
     check_approval(job_dir)
-    return _run_phase(job_dir, "publish", replay=replay, settings=settings)
+    return _run_phase(job_dir, "publish", replay=replay, settings=settings, on_stage=on_stage)
+
+
+def job_ledger(settings: Settings) -> LocalLedger:
+    """The service's one spend ledger (``<SAFECUT_JOBS_DIR>/ledger.sqlite``), shared by every job's stages."""
+    root = Path(settings.jobs_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    return LocalLedger(root / "ledger.sqlite")
+
+
+def job_caller(job_dir: Path, settings: Settings) -> Caller:
+    """Whose caps a job's Meta calls count against, from ``intake.json`` (UI-SPEC §8 request 20): judge,
+    public and service callers share the daily cap; pilot codes have their own cap plus the pilot pool;
+    recording and owner codes their own cap; a local run with no code only the job cap."""
+    intake = load(job_dir / INTAKE, Intake)
+    kind, cid = intake.code_kind, intake.code_id
+    if kind is None:
+        return Caller.local("owner")
+    if kind in ("judge", "public", "service", "system"):
+        return Caller.daily(settings, kind, cid)
+    if kind == "eval":
+        return Caller.local("eval")
+    cap = next((c.cap_usd for c in settings.access_codes if code_id(c.code.get_secret_value()) == cid), None)
+    limits: list[CapLimit] = [CapLimit("code", f"code:{cid}", cap or 0.0)]
+    if kind == "pilot":
+        limits.append(CapLimit("pilot_pool", "pool:pilot", settings.pilot_pool_usd))
+    return Caller(code_kind=kind, code_id=cid, limits=tuple(limits))
+
+
+def code_id(code: str) -> str:
+    """A stable, non-secret ID for an access code: job state, intake and cap keys never hold the code itself."""
+    return "c_" + hashlib.sha256(code.encode("utf-8")).hexdigest()[:16]
 
 
 def status(job_dir: Path) -> Literal["new", "analysing", "review", "publishing", "done"]:
@@ -352,8 +403,11 @@ __all__ = [
     "analyse",
     "approve",
     "attach_recording",
+    "code_id",
     "create_job",
     "find_recording",
+    "job_caller",
+    "job_ledger",
     "publish",
     "run_stage",
     "status",

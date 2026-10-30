@@ -13,7 +13,7 @@ import re
 from collections.abc import Mapping
 from datetime import datetime
 from typing import Annotated, Any, Literal
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import (
     AfterValidator,
@@ -285,9 +285,17 @@ ALLOWED_HOSTS: Mapping[str, frozenset[str]] = {
 #: Secrets keep the names their providers document, without the SAFECUT_ prefix.
 _SECRET_ENV: Mapping[str, str] = {"model_api_key": "MODEL_API_KEY", "baseten_api_key": "BASETEN_API_KEY"}
 _JSON_FIELDS = frozenset(
-    {"access_codes", "code_windows", "asr_language_bias", "service_keys", "open_weight_price", "open_weight_code_kinds"}
+    {
+        "access_codes",
+        "code_windows",
+        "asr_language_bias",
+        "service_keys",
+        "open_weight_price",
+        "open_weight_code_kinds",
+        "cors_origins",
+    }
 )
-_BOOL_FIELDS = frozenset({"replay", "sam_send_store", "sam_delete_responses", "open_weight_grid_ok"})
+_BOOL_FIELDS = frozenset({"replay", "sam_send_store", "sam_delete_responses", "open_weight_grid_ok", "trust_proxy"})
 _TRUE = frozenset({"1", "true", "yes", "on"})
 _FALSE = frozenset({"0", "false", "no", "off"})
 
@@ -352,6 +360,25 @@ class Settings(BaseModel):
     service_keys: tuple[ServiceKey, ...] = ()
     code_windows: Mapping[WindowKind, CodeWindow] = Field(default_factory=lambda: dict(DEFAULT_CODE_WINDOWS))
 
+    # Service (WP5): where jobs live, how the API signs its URLs, who may call it.
+    jobs_dir: str = "jobs"
+    #: The API's public base URL (https) for signed upload and media URLs; unset = same-origin paths.
+    public_url: str | None = None
+    #: HMAC key for signed upload and media URLs. Unset: a random per-process key (URLs die on restart).
+    url_secret: SecretStr | None = None
+    cors_origins: tuple[str, ...] = ("https://safecut.sigmora.org",)
+    #: Requests per IP per minute on the API (UI-SPEC §10.3 ``rate_limited``); /healthz and media are exempt.
+    rate_limit_per_min: int = Field(default=60, ge=1)
+    #: Paid actions (create, start, render, audit) per IP per hour.
+    paid_actions_per_hour: int = Field(default=12, ge=1)
+    #: Take the client IP from the last ``X-Forwarded-For`` hop (only behind a proxy that sets it).
+    trust_proxy: bool = False
+    job_ttl_hours: float = Field(default=24.0, gt=0)
+    #: How often the deletion job runs; ``deletes_at`` = created + TTL + this interval.
+    cleanup_interval_min: int = Field(default=15, ge=1)
+    #: Concurrent pipeline workers in one API process (the Modal worker scales separately).
+    workers: int = Field(default=2, ge=1, le=16)
+
     # Auditor.
     egoblur_model: Literal["egoblur-gen2", "egoblur-gen1", "yunet-face"] = "egoblur-gen2"
     egoblur_weights_dir: str = "/models/egoblur"
@@ -393,6 +420,27 @@ class Settings(BaseModel):
     @classmethod
     def _trusted_base(cls, value: str, info: ValidationInfo) -> str:
         return trusted_base_url(value, ALLOWED_HOSTS[info.field_name or ""])
+
+    @field_validator("public_url")
+    @classmethod
+    def _public_url(cls, value: str | None) -> str | None:
+        """Signed URLs go to browsers: https, or plain http only on loopback for local runs."""
+        if value is None:
+            return None
+        parsed = urlsplit(value.strip().rstrip("/"))
+        local = parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1"}
+        if (parsed.scheme != "https" and not local) or not parsed.hostname or parsed.query or parsed.fragment:
+            raise ValueError("SAFECUT_PUBLIC_URL must be an https origin (http only for localhost)")
+        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+
+    @field_validator("cors_origins")
+    @classmethod
+    def _origins(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        for origin in value:
+            parsed = urlsplit(origin)
+            if parsed.scheme not in {"https", "http"} or not parsed.hostname or parsed.path not in {"", "/"}:
+                raise ValueError(f"SAFECUT_CORS_ORIGINS entries are origins like https://example.org, not {origin!r}")
+        return tuple(o.rstrip("/") for o in value)
 
     @field_validator("asr_language_bias")
     @classmethod
