@@ -51,3 +51,20 @@ before it was fixed, and each fix has a test that fails without it.
 Peer-lane findings in SHIP's paths, closed in the same commit: approval vs audit patches, private red-team text, the audit's cap path (SAFETY); `track` freshness after `roles` (SENSE); `apply_review` gets `tracks`/`job`. Kept by decision: the review ack still returns the plan (UI-SPEC §8; the overlay draws from it).
 
 Also fixed: `tests/test_meta_client.py::test_cancel_before_send_releases_and_after_send_charges` raced a 50 ms sleep and failed E1 on a loaded fresh clone; it now waits for the request to be sent.
+
+## Round 3 (on 0b1b364): 1 high, 6 medium, lows. All closed or decided in 17e2e9a.
+
+| # | Sev | Finding | Resolution | Test |
+|---|---|---|---|---|
+| 1 | high | `SAFECUT_DAILY_USD_CAP=3` with a $2.24 worst case lets judges run about one 60 s clip a day | **Decided, kept as the default** (API-NOTES §9.2 budgets 6 × $3 of the $150; raising it spends credits, the owner's call). BLOCKED now has the decision with its capacity math and the two options (raise it within the credits, or ask judges for ≤ 30 s clips); the landing demo never spends | n/a (owner input) |
+| 2 | medium | E3 scored only `plan.json`: a renderer that drew nothing passed | `render_hides`: in `redacted.mp4` every should-hide truth box changes by ≥ 8 levels on ≥ 99 % of its visible frames (the demo's covers change 15–190, codec noise about 2.5) | `test_e3_checks_the_rendered_pixels_not_only_the_plan`; checked on the real demo and on a copy whose render is the source (all five should-hide entities 0/N) |
+| 3 | medium | README prose claimed over-blur the table shows as zero | Reworded to the metric (zero; the guest's hidden frames are under the threshold, in `per_clip.csv`) | review |
+| 4 | medium | SQLite (WAL) ledger on a Modal Volume unproven | `ledger_smoke` reserves, settles, releases and re-reads from a fresh connection on the Volume; the deploy's `modal run` fails without it | runs in the deploy workflow (owner input: Modal tokens) |
+| 5 | medium | Always-on 4 CPU / 8 GB container | 2 CPU / 4 GB (remote models; ffmpeg, render and YuNet locally, two workers) | review |
+| 6 | medium | A stage finishing after DELETE re-created data for up to 16 min | The worker reaps a stateless job dir as soon as its action returns | `test_what_a_stage_writes_after_delete_is_removed_when_it_returns` |
+| 7 | medium | The deploy went green without a live check when the URL variables were unset | It now fails red ("Deploy not checked"); BLOCKED lists the two variables | review |
+| L | low | `exp`/Content-Length accepted non-ASCII digits (500); concurrent PUTs interleaved; public `/docs`; the probe lacked the demuxer whitelist; README revocation wording; unreadable state reaped after a minute; E11 `gate-allow` and skip forms; `git_sha` ignored untracked files and a missing git; report defaults read the env; LAUNCH tense | Each fixed (see 17e2e9a); E11 had in fact been failing on its own test strings, now spelt in pieces | `test_a_non_ascii_digit_in_a_signed_url_is_a_refusal_not_a_500`, `test_the_api_publishes_no_docs_or_schema`, `test_a_second_upload_on_the_same_job_waits_its_turn`, `test_the_sweep_trusts_a_valid_created_at_in_an_unreadable_state` |
+| L | low | e2e proves hide/undo/merge by the toast, not by reading the API back | **Kept**: the toast appears only on the server's ack (`ReviewPanel`), and `tests/test_api.py` reads the state back for every edit type | n/a |
+| L | low | E10 checks that a figure appears in RESULTS, not that it's the right row | **Kept**: every doc figure today is a whole-token match, and the README table is generated (`--check`); row-level matching would need the docs to cite rows | n/a |
+
+Round 3 was not clean (one high, decided; six medium, fixed), so the clean count stays at 0.
