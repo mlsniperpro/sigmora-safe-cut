@@ -130,7 +130,10 @@ def _checkpoint[M: BaseModel](
     §10.4 checkpoints): a resumed ``roles`` re-asks nothing it already paid for, so it writes the same files."""
     if not replay.exists(ctx.job_dir, stage, key):
         return None
-    raw = replay.load_call(ctx.job_dir, stage, key)
+    try:
+        raw = replay.load_call(ctx.job_dir, stage, key)
+    except ValueError:  # a corrupt or old-format recording is no checkpoint: ask again (it is overwritten)
+        return None
     if raw.synthetic or raw.failure() is not None or raw.events is None or raw.model != model:
         return None
     if raw.request.get("body_sha256") != request["body_sha256"]:

@@ -9,6 +9,7 @@ isn't really in the turn it names (vectors P7, P11b, P11c).
 from __future__ import annotations
 
 import asyncio
+import logging
 import string
 from pathlib import Path
 
@@ -21,6 +22,8 @@ from safecut.meta.files import FileStore
 from safecut.meta.session import job_client
 from safecut.scout import calls, prompts
 from safecut.scout.schemas import SCENE, SceneOut, SceneParticipant
+
+log = logging.getLogger(__name__)
 
 JOB = "job.json"
 TRANSCRIPT = "transcript.json"
@@ -37,8 +40,16 @@ def normalise(text: str) -> str:
 
 
 def load_transcript(job_dir: Path) -> Transcript | None:
+    """``transcript.json``, or ``None`` when it is missing or unreadable (then "speech unavailable": a corrupt file
+    is no context, never a crash before scene.json is written)."""
     path = job_dir / TRANSCRIPT
-    return load(path, Transcript) if path.exists() else None
+    if not path.exists():
+        return None
+    try:
+        return load(path, Transcript)
+    except ValueError as exc:
+        log.warning("transcript unreadable; scene pass without speech", extra={"error": str(exc)[:200]})
+        return None
 
 
 def usable(transcript: Transcript | None) -> bool:

@@ -274,3 +274,145 @@ def test_only_sweeps_that_ran_count_as_searched(tracked: Path) -> None:
     out = asyncio.run(missloop.run_loop(ctx, tracks, prompts_=planned.prompts, sweeps=planned.sweeps,
                                         static=planned.static, loop=1))  # fmt: skip
     assert out.swept == []  # stubbed: nothing was searched, so loop 2 may still sweep "laptop"
+
+
+def test_roles_run_again_on_its_own_output_re_bills_nothing(tracked: Path) -> None:
+    """``safecut roles`` re-run without ``track`` sees tracks.json with its own miss-loop tracks appended: it sets
+    them aside, so every call matches its recording and the files come out the same (re-audit 5, L1)."""
+    fake = FakeMeta(tracked)
+    settings = live()
+    with serving(fake):
+        asyncio.run(track_stage.run_async(tracked, settings=settings))
+    run(tracked, fake, "transcribe", "scene", "roles")
+    first = {name: (tracked / name).read_bytes() for name in ("tracks.json", "roles.json")}
+    paid = list(fake.calls)
+    run(tracked, fake, "roles")
+    assert fake.calls[len(paid) :] == []
+    assert {name: (tracked / name).read_bytes() for name in first} == first
+
+
+def test_a_corrupt_recording_is_no_checkpoint(tracked: Path) -> None:
+    from safecut.contracts import Job  # noqa: PLC0415 -- only this test builds a context by hand
+    from safecut.scout import calls  # noqa: PLC0415
+    from safecut.scout.schemas import RolePassOut  # noqa: PLC0415
+
+    target = replay.path(tracked, "roles", "pass1-w0-v1")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text('{"not": "a recording"')
+    ctx = calls.Context(job_dir=tracked, job=load(tracked / "job.json", Job), settings=live(), replay=False)
+    got = calls._checkpoint(ctx, "roles", "pass1-w0-v1", model="m", request={"body_sha256": "x"}, out=RolePassOut)  # pyright: ignore[reportPrivateUsage] -- the checkpoint is the unit
+    assert got is None  # asked again (and overwritten), never a crash
+
+
+def test_escalation_evidence_follows_time_order_not_completion(tracked: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two escalation windows whose calls finish in reverse order: the evidence is still the first window's."""
+    from safecut.contracts import Job, Tracks  # noqa: PLC0415 -- only this test drives escalation by hand
+    from safecut.scout import calls, votes  # noqa: PLC0415
+    from safecut.scout.schemas import EscalationOut  # noqa: PLC0415
+
+    job = load(tracked / "job.json", Job)
+    tracks = load(tracked / "tracks.json", Tracks)
+    person = next(t for t in tracks.tracks if t.track_id == "person:1")
+    frames = sorted(f for f in range(0, job.frames, job.fps) if f in person.boxes)
+    halves = [frames[: len(frames) // 2], frames[len(frames) // 2 :]]
+    monkeypatch.setattr(roles, "windows", lambda _frames, _fps: halves)
+
+    async def answer(_ctx: object, **kw: object) -> calls.Outcome[EscalationOut]:
+        index = int(str(kw["key"])[1:])
+        await asyncio.sleep(0.2 if index == 0 else 0)  # window 0 finishes last
+        cited = [f for f in halves[index] if f in person.boxes][:2]
+        out = EscalationOut.model_validate({"rulings": [{"track_id": "person:1", "role": "bystander",
+                                                         "evidence": f"window {index}", "frames": cited,
+                                                         "why_others_wrong": "-"}]})  # fmt: skip
+        return calls.Outcome(status="ok", value=out)
+
+    monkeypatch.setattr(roles.calls, "call_json", answer)
+    ctx = calls.Context(job_dir=tracked, job=job, settings=Settings(replay=True), replay=True)
+    ballots = [[votes.Vote()] * 3]
+    got = asyncio.run(roles.escalate(ctx, tracks=tracks, disputed=["person:1"], ballots_of={"person:1": ballots},
+                                     context_summary="-", transcript_frames="-"))  # fmt: skip
+    assert got["person:1"].evidence == "window 0"
+
+
+def test_a_re_run_after_a_phrase_sweep_re_bills_nothing(tracked: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A recurring miss makes the loop sweep its phrase, which adds a concept (and maybe crowded frames) to
+    tracks.json: a re-run of ``roles`` restores its exact input, so nothing is asked again (re-audit 6)."""
+    original = demo.Responder._missed  # pyright: ignore[reportPrivateUsage] -- the demo answer under test
+
+    def recurring(self: demo.Responder, frame: int) -> dict[str, object]:
+        return {**original(self, frame), "recurs": True}
+
+    monkeypatch.setattr(demo.Responder, "_missed", recurring)
+    fake = FakeMeta(tracked)
+    settings = live()
+    with serving(fake):
+        asyncio.run(track_stage.run_async(tracked, settings=settings))
+    run(tracked, fake, "transcribe", "scene", "roles")
+    tracks = load(tracked / "tracks.json", demo.Tracks)
+    assert "envelope" in tracks.concepts  # the sweep ran and added its concept
+    first = {name: (tracked / name).read_bytes() for name in ("tracks.json", "roles.json")}
+    paid = list(fake.calls)
+    run(tracked, fake, "roles")
+    assert fake.calls[len(paid) :] == []
+    assert {name: (tracked / name).read_bytes() for name in first} == first
+
+
+def test_a_child_ruling_on_an_unasked_label_locks_it(tracked: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from safecut.contracts import Job, Tracks  # noqa: PLC0415 -- only this test drives escalation by hand
+    from safecut.scout import calls, votes  # noqa: PLC0415
+    from safecut.scout.schemas import EscalationOut  # noqa: PLC0415
+
+    job = load(tracked / "job.json", Job)
+    tracks = load(tracked / "tracks.json", Tracks)
+
+    async def answer(_ctx: object, **_kw: object) -> calls.Outcome[EscalationOut]:
+        out = EscalationOut.model_validate({"rulings": [{"track_id": "person:2", "role": "child", "evidence": "small",
+                                                         "frames": [], "why_others_wrong": "-"}]})  # fmt: skip
+        return calls.Outcome(status="ok", value=out)
+
+    monkeypatch.setattr(roles.calls, "call_json", answer)
+    ctx = calls.Context(job_dir=tracked, job=job, settings=Settings(replay=True), replay=True)
+    got = asyncio.run(roles.escalate(ctx, tracks=tracks, disputed=["person:1"],
+                                     ballots_of={"person:1": [[votes.Vote()] * 3]}, context_summary="-",
+                                     transcript_frames="-"))  # fmt: skip
+    assert got["person:2"].role == "child"  # asked about person:1 only; the child ruling on person:2 still locks
+    assert roles.role_track("person:2", roles.UNSEEN, got["person:2"]).role == "child"
+
+
+def test_a_corrupt_scene_file_still_writes_roles(tracked: Path) -> None:
+    run(tracked, FakeMeta(tracked), "transcribe", "scene")
+    (tracked / "scene.json").write_text('{"broken": ')
+    run(tracked, FakeMeta(tracked), "roles")
+    result = load(tracked / "roles.json", Roles)
+    assert result.status == "ok"
+    assert all(t.role != "participant" or t.matches_participant is None for t in result.tracks)
+
+
+def test_a_child_ruling_on_the_host_still_writes_roles(tracked: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Escalation rules 'child' on the host (3/3 participant, matched to a scene participant), a label it wasn't
+    asked about: the host locks as a child, unmatched, and roles.json is written (re-audit 7, M1)."""
+    from safecut.scout import calls  # noqa: PLC0415 -- the escalation answer is rewritten here
+    from safecut.scout.schemas import EscalationOut  # noqa: PLC0415
+
+    real = calls.call_json
+
+    async def answer(ctx: object, **kw: object) -> object:
+        outcome = await real(ctx, **kw)  # pyright: ignore[reportArgumentType, reportUnknownVariableType] -- forwarded as is
+        if kw.get("stage") == roles.ESCALATE_STAGE and isinstance(outcome.value, EscalationOut):  # pyright: ignore[reportUnknownMemberType] -- forwarded outcome
+            extra = {"track_id": "face:1", "role": "child", "evidence": "small", "frames": [], "why_others_wrong": "-"}
+            value = EscalationOut.model_validate({"rulings": [*outcome.value.model_dump()["rulings"], extra]})  # pyright: ignore[reportUnknownMemberType] -- forwarded outcome
+            return calls.Outcome(status="ok", value=value)
+        return outcome  # pyright: ignore[reportUnknownVariableType] -- forwarded outcome
+
+    monkeypatch.setattr(roles.calls, "call_json", answer)
+    run(tracked, FakeMeta(tracked), "transcribe", "scene", "roles")
+    host = next(t for t in load(tracked / "roles.json", Roles).tracks if t.track_id == "face:1")
+    assert (host.role, host.matches_participant) == ("child", None)
+    valid(tracked)
+
+
+def test_a_corrupt_transcript_still_writes_scene(tracked: Path) -> None:
+    run(tracked, FakeMeta(tracked), "transcribe")
+    (tracked / "transcript.json").write_text('{"broken": ')
+    run(tracked, FakeMeta(tracked), "scene")
+    assert load(tracked / "scene.json", Scene).status in ("ok", "failed", "skipped")

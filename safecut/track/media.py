@@ -1,7 +1,7 @@
 """The bundled ffmpeg (``imageio-ffmpeg``): packet timestamps, frame counts and stream facts (PRE-A §5b).
 
 ``imageio-ffmpeg`` ships no ffprobe, so timestamps come from ``-c copy -f framemd5`` (exact integer ``pts`` in the
-stream's own time base) and stream facts from ``imageio_ffmpeg.read_frames``' first (meta) item.
+stream's own time base) and stream facts from the header ffmpeg prints for ``-i`` (imageio-ffmpeg's parser).
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import imageio_ffmpeg
+from imageio_ffmpeg._parsing import parse_ffmpeg_header  # pyright: ignore[reportPrivateUsage, reportMissingTypeStubs, reportUnknownVariableType] -- the parser read_frames uses, run here under limits
 
 #: Uploads are MP4 or MOV (the API and the web app take nothing else), read only by the mov demuxer: never a
 #: playlist (an ``.m3u8`` makes ffmpeg's HLS demuxer open the local files it names) or any other demuxer.
@@ -79,11 +80,35 @@ def ffmpeg() -> str:
     return imageio_ffmpeg.get_ffmpeg_exe()
 
 
-def run(args: list[str], *, timeout: float = FFMPEG_TIMEOUT_S) -> str:
-    """Run the bundled ffmpeg; its stdout, or ``MediaError`` with the tail of stderr."""
+#: The address space an ffmpeg child that reads an upload's index may use. A crafted MP4 under the size limit can
+#: declare tens of millions of samples, and ffmpeg indexes them all before printing anything (2 GB for 80M); a
+#: real 60 s clip needs a few MB. Over it, ffmpeg fails and the upload is refused as bad media.
+PROBE_MEMORY_BYTES = 2 << 30
+#: The address space for the transcode of an upload (decode up to the pixel cap, scale, encode ≤ 1280 px), with
+#: its thread counts fixed so a many-core host doesn't multiply it.
+TRANSCODE_MEMORY_BYTES = 6 << 30
+TRANSCODE_THREADS = ("-threads", "4", "-filter_threads", "2")
+#: The encoder's own thread count (an output option: the input-side -threads only bounds the decoder).
+ENCODE_THREADS = ("-threads", "4")
+#: Probe decodes (one frame) on one thread: ffmpeg's default is about two filter threads per core.
+PROBE_THREADS = ("-threads", "1", "-filter_threads", "1")
+
+
+def limited(cmd: list[str], memory: int | None = None) -> list[str]:
+    """``cmd`` under a memory limit (default: the probe's), through ``sh``'s ``ulimit`` (no ``preexec_fn``: the
+    API runs this in worker threads). Where the limit can't be set (macOS), the command still runs."""
+    kib = (memory or PROBE_MEMORY_BYTES) // 1024
+    return ["/bin/sh", "-c", 'ulimit -v "$0" 2>/dev/null; exec "$@"', str(kib), *cmd]
+
+
+def run(args: list[str], *, timeout: float = FFMPEG_TIMEOUT_S, probe: bool = False, memory: int | None = None) -> str:
+    """Run the bundled ffmpeg; its stdout, or ``MediaError`` with the tail of stderr. ``probe``: it reads an upload,
+    so it runs under the probe memory limit (or ``memory``)."""
     cmd = [ffmpeg(), "-nostdin", "-hide_banner", "-loglevel", "error", *args]
+    cmd = limited(cmd, memory) if probe or memory else cmd
     try:
-        done = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)  # noqa: S603 -- bundled ffmpeg, list argv
+        # errors="replace": an upload's metadata can hold any bytes; a message must never be a UnicodeDecodeError.
+        done = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout, check=False)  # noqa: S603 -- bundled ffmpeg, list argv
     except subprocess.TimeoutExpired as exc:
         raise MediaError(f"ffmpeg timed out after {timeout:.0f} s") from exc
     if done.returncode != 0:
@@ -118,9 +143,12 @@ def _read_packets(proc: subprocess.Popen[str], limit: int) -> tuple[Fraction | N
 def packets(path: Path, stream: str = "v:0", *, limit: int = MAX_PACKETS) -> Packets:
     """``-map 0:<stream> -c copy -f framemd5``: one line per packet (decode order), sorted here by ``pts``.
     More than ``limit`` packets is a ``MediaError`` (ffmpeg is stopped as soon as the count passes it)."""
-    cmd = [ffmpeg(), "-nostdin", "-hide_banner", "-loglevel", "error", *SAFE_INPUT, "-i", str(path), "-map",
-           f"0:{stream}", "-c", "copy", "-f", "framemd5", "-"]  # fmt: skip
-    with tempfile.TemporaryFile() as err, subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=err, text=True) as proc:  # noqa: S603 -- bundled ffmpeg, list argv
+    cmd = limited([ffmpeg(), "-nostdin", "-hide_banner", "-loglevel", "error", *SAFE_INPUT, "-i", str(path), "-map",
+                   f"0:{stream}", "-c", "copy", "-f", "framemd5", "-"])  # fmt: skip
+    with (
+        tempfile.TemporaryFile() as err,
+        subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=err, text=True, errors="replace") as proc,  # noqa: S603 -- bundled ffmpeg, list argv
+    ):
         watchdog = threading.Timer(FFMPEG_TIMEOUT_S, proc.kill)  # ffmpeg may stall without printing a line
         watchdog.start()
         try:
@@ -145,8 +173,8 @@ def decoded_start(path: Path, stream: str = "a:0") -> Fraction:
     """The first *decoded* frame's time, in seconds. It can differ from the first packet's: AAC's priming samples
     and an MP4 edit list's hidden video frames (packets at a negative pts) are discarded by the decoder."""
     # ``demux``: the stream's own time base, so the time is exact (a decoder's default, 1/fps, would round it).
-    out = run([*SAFE_INPUT, "-i", str(path), "-map", f"0:{stream}", "-frames:" + stream[0], "1",
-               "-enc_time_base:" + stream[0], "demux", "-f", "framemd5", "-"])  # fmt: skip
+    out = run([*SAFE_INPUT, *PROBE_THREADS, "-i", str(path), "-map", f"0:{stream}", "-frames:" + stream[0], "1",
+               "-enc_time_base:" + stream[0], "demux", "-f", "framemd5", "-"], probe=True)  # fmt: skip
     time_base: Fraction | None = None
     for line in out.splitlines():
         if line.startswith("#"):
@@ -166,13 +194,29 @@ def frame_count(path: Path) -> int:
 
 
 def facts(path: Path) -> StreamFacts:
-    gen = imageio_ffmpeg.read_frames(str(path), input_params=list(SAFE_INPUT))
+    """The stream header ffmpeg prints for ``-i`` (read under the probe memory limit), parsed by ``imageio-ffmpeg``."""
+    cmd = limited([ffmpeg(), "-nostdin", "-hide_banner", *SAFE_INPUT, "-i", str(path)])
     try:
-        meta = cast(dict[str, Any], next(gen))
-    except (RuntimeError, OSError, StopIteration) as exc:
+        done = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=FFMPEG_TIMEOUT_S,  # noqa: S603 -- bundled ffmpeg, list argv
+                              check=False)  # fmt: skip
+    except subprocess.TimeoutExpired as exc:
+        raise MediaError(f"ffmpeg timed out after {FFMPEG_TIMEOUT_S:.0f} s reading {path.name}") from exc
+    # split("\n"), not splitlines(): ffmpeg ends lines with \n only, and a metadata value may hold U+2028 or \x1e,
+    # which splitlines() would turn into forged "  Stream #…" lines.
+    lines = [line.rstrip("\r") for line in done.stderr.split("\n") if line.strip()]
+    if not any("Video:" in line for line in lines):  # ffmpeg exits 1 without an output; the header is the answer
+        last = lines[-1].strip() if lines else f"ffmpeg exited {done.returncode}"
+        raise MediaError(f"can't read {path.name}: {last[:300]}")
+    # Only ffmpeg's own header lines (metadata is printed indented below them): a title saying "Duration: 00:00:01"
+    # or " Video: " must never be read as the clip's.
+    header = [line for line in lines if line.startswith(("Input #", "  Duration:", "  Stream #"))]
+    # The first video stream only: it is the one every read maps (0:v:0); imageio would take the last one.
+    videos = [line for line in header if " Video: " in line]
+    header = [line for line in header if " Video: " not in line or line is videos[0]] if videos else header
+    try:
+        meta = cast(dict[str, Any], parse_ffmpeg_header("\n".join(header)))
+    except (ValueError, IndexError, KeyError, AttributeError, TypeError) as exc:  # a stream line it can't read
         raise MediaError(f"can't read {path.name}: {exc}") from exc
-    finally:
-        gen.close()
     size = cast(tuple[int, int], tuple(meta.get("size") or (0, 0)))
     return StreamFacts(
         fps=float(meta.get("fps") or 0.0),
