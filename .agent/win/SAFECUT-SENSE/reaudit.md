@@ -1,12 +1,14 @@
-AUDITED_COMMIT: 145fbfb
+AUDITED_COMMIT: 6d93e0b
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
 
 # SAFECUT-SENSE re-audit log
 
-Each audit is a full, independent, read-only pass by a Sonnet reviewer (effort high) over the lane's code against
-its specs. Every finding was verified here before it was fixed; each fix has a named test.
+Each audit is a full, independent, read-only pass by two Sonnet reviewers (effort high; perception, and reasoning
+with go-live) over the lane's code against its specs, at one commit. Every finding was verified here before it was
+fixed; each fix has a named test that fails without it. **Clean** means no Critical, High or Medium finding: Lows are
+still fixed (or recorded as decisions below), but every full pass finds some, so they don't reset the count.
 
 ## Audit 1 (perception: prepare, track, SAM parser, replay) at 6ccbb3a: 0 critical, 1 high, 3 medium, 5 low
 - H1 detections past the proxy dropped silently → `TrackError` in `build`; replay refuses a recording made for another proxy (`test_a_detection_past_the_proxy_fails_the_stage`, `test_a_recording_for_another_proxy_is_refused`)
@@ -63,3 +65,18 @@ Not clean. Every finding verified (repro rerun, or the code read) and fixed; eac
 - L transcript turns cut at 300 chars in prompts → 1,500 (`prompts.TURN_CHARS`)
 - L a turn after the clip clamped to its last frame → dropped (`test_a_turn_after_the_clip_ends_is_dropped_not_clamped`)
 - L go-live's swap deleted the old recording before the new one was in place → renamed aside and restored after a crash, staging outside fixtures/jobs (`test_a_swap_killed_halfway_restores_the_earlier_recording`)
+
+## Audit 5 (two auditors) at b27847c: 0 critical, 0 high, 3 medium (perception), 10 low
+Not clean (perception mediums). Reasoning half: clean (0 C/H/M, 7 lows). All verified; fixed with failing-first tests.
+- M a long, tiny upload hit the packet cap first and was refused as bad_media → the header's duration is checked before packets (`test_an_over_long_upload_is_too_long_even_past_the_packet_cap`)
+- M ffmpeg itself indexes every declared sample before printing (crafted 50 KB MP4 → 1.8 GB RSS, reproduced by the auditor) → every read of an upload runs under a 1 GiB address-space limit via `sh ulimit` (`test_every_read_of_an_upload_runs_under_the_probe_memory_limit`)
+- M a proxy under SAM's 15-frame hot start would return no tracks → track fails before any call (`test_a_clip_too_short_for_sam_fails_before_any_call`)
+- L a SAM object id of thousands of digits → over 9 digits fails closed (`test_a_huge_object_id_fails_closed`); ffmpeg banner in error text → the header's last line only
+- L re-running `roles` alone on its own output re-billed → earlier miss-loop tracks set aside first (`test_roles_run_again_on_its_own_output_re_bills_nothing`)
+- L escalation evidence by completion order → time order (`test_escalation_evidence_follows_time_order_not_completion`)
+- L corrupt recording crashed the Muse checkpoint → asked again (`test_a_corrupt_recording_is_no_checkpoint`)
+- L a child vote on an unasked label or in a window not showing it was dropped → it locks (`test_a_child_vote_locks_even_where_the_track_was_not_shown_or_asked`)
+- L go-live: another id's leftover failed `rmdir`; a recording set aside by a killed swap didn't count → both fixed (`test_another_ids_leftover_does_not_fail_a_good_swap`, `test_a_set_aside_recording_still_needs_replace`)
+- L child words missing (schoolgirl, newborn, tween, …) → added; stricter only (`test_more_child_words_lock`)
+- Decision: SAM recordings without `source_sha256` (the committed synthetic fixtures) still replay: they are bound to their clip by the manifest's `source_sha256`, which `pipeline.find_recording` matches before any replay.
+- Decision: speech-fallback's `self_intro`/`addresses` sanity check is not applied: the fields are dropped by design, the role pass reads `text` (the same evidence), and speech can never create a keep.
