@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -37,6 +37,15 @@ class RawCall(BaseModel):
     response: Any = None
     #: What the live call cost when it was recorded (0 for synthetic recordings); replay spends nothing.
     usd: float = Field(default=0.0, ge=0)
+
+    def failure(self) -> tuple[str, str] | None:
+        """``(kind, reason)`` for a recorded failure (``kind`` is ``budget`` for a budget stop), else ``None``."""
+        response: object = self.response
+        if not isinstance(response, dict):
+            return None
+        body = cast(dict[str, Any], response)
+        kind = body.get("failed")
+        return None if kind is None else (str(kind), str(body.get("reason") or kind))
 
 
 def slug(text: str) -> str:

@@ -1,0 +1,27 @@
+Context from a first look at the whole video:
+{scene_summary}
+Participants (described, not yet matched to labels), each with its number in brackets: {participants_list}
+Children noted: {children_list}
+Speech, with the frames it covers: {transcript_by_frames}
+
+For every label listed after the images, decide:
+- participant: deliberately part of the video: the creator or host, someone introduced, interviewed or addressed by the creator, or a performer. You must be able to point to evidence in these frames or in the speech (an introduction, speaking to the creator, posing with them). Looking at the camera is not enough. Being near the creator is not enough.
+- bystander: anyone else (passers-by, staff, audience, people in the background), including people who look at the camera or wave.
+- child: appears under 18, whatever their role.
+- unsure: you can't tell from these frames. Use it freely.
+
+A face: label and a person: label can belong to the same human; judge each label on its own. Put every face: and person: label in "tracks", with matches_participant set to the bracketed participant number it is, or null.
+For objects (every label that isn't face: or person:, e.g. screen:, document:, phone:, license plate:, name badge:, envelope:), put them in "objects": sensitive true if the content could identify someone or reveals private information (messages, email, names, numbers, addresses, faces in photos), or if you can't read it well enough to be sure it's harmless. sensitive false only for clearly impersonal content (a restaurant menu, a map with no personal pins, a presentation slide, a blank screen).
+
+Cite the frame numbers you relied on (at least one, only from the images shown, only frames where that label appears) and give a one-sentence reason a creator would understand.
+
+Missed items. Look for anything in these frames that could identify a person or reveal private information and has no labelled box on it: e.g. a letter or envelope, a parcel label, a house or flat number, a whiteboard with names, a photo of a person, a tattoo, a name written on clothing, an ID card, a face in a poster or on a screen, a reflection of a face in a window or mirror, or a licence plate that's partly hidden.
+For each one give:
+- what: a short description;
+- sam_phrase: a 1–3 word lowercase noun phrase a segmentation model could search for (envelope, house number, tattoo, face). No adjectives about privacy and no verbs. It's fine to use a phrase that's already in the swept list if the thing simply has no box (e.g. an unboxed face on a TV);
+- frame: the burned-in frame number of an image where it's clearest;
+- point: one point on the object in that image, as {"x", "y"} on a 0–1000 grid where (0,0) is the top-left and (1000,1000) the bottom-right of that image;
+- box: its box on the same grid as [x1, y1, x2, y2], or null if you can't bound it;
+- recurs: true if more of this kind probably appear elsewhere in the video.
+Report at most 8. If nothing is missed, return an empty list. Don't report things that already have a label.
+Already searched for: {swept}.
