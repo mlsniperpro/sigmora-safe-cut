@@ -79,3 +79,12 @@ Evidence is a test name, a command run in this session, or a commit. Owner input
 - [-] Mid-clip IDs without `reentry_of`: ARCHITECTURE §3.2 and the contract define "new ID" as `reentry_of` (see reaudit.md).
 - [-] Approval hash vs audit patches; private red-team text in API views: SHIP's paths, filed with SHIP.
 - [-] Mosaic noise is deterministic by design (DESIGN §2.7 fixed per-block noise; the ≤ 6-block grid protects).
+
+## Audit findings (round 4, fixed with tests at 6e83d9b, merged 2b5aacf; details in reaudit.md)
+- [x] Replay never inherits a recorded opinion (`test_a_replayed_recording_never_brings_its_opinion_into_another_job`).
+- [x] Receipt gated on `validate_job_dir` (`test_no_receipt_on_a_job_directory_that_does_not_validate`).
+- [x] Replay disclosure, banner wording (`test_a_replayed_recording_is_disclosed`, `test_the_banner_names_the_checks_that_actually_ran`).
+- [x] Malformed red-team boxes per finding (`test_a_malformed_box_keeps_its_finding_as_a_whole_frame_leak`).
+- [x] YuNet fallback without torch; cached availability (`tests/test_audit_gpu.py`).
+- [x] Whole-person body cover per frame (`test_a_whole_person_item_covers_a_body_where_only_its_face_is_tracked`); cache lock.
+- [-] Job-cap pre-check before the audit: SHIP's `pipeline.run_stage` (fails closed), filed with SHIP.
