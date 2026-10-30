@@ -423,3 +423,14 @@ def test_a_whole_person_item_covers_a_body_where_only_its_face_is_tracked() -> N
     p = plan(JOB, ts, decided)
     for frame in (0, 5, 20, 45, 50):
         assert covered(p, frame, "i_1", (120, 55, 170, H)), frame  # below the face, to the frame's bottom
+
+
+def test_a_read_through_whole_person_stays_whole_when_it_goes_solid() -> None:
+    """redteam.md re-renders a read-through item solid; that never shrinks a whole-person cover to the face."""
+    ts = tracks(track("face:1", 0, 20, (150, 20, 170, 40)))
+    removed = apply_review(hide_all(ts), [EDIT.validate_python({"type": "remove_person", "edit_id": "r",
+                                                                 "item_id": "i_1"})]).decisions  # fmt: skip
+    p = plan(JOB, ts, removed, solid={"i_1"})
+    (e,) = entries(p, 10, "i_1")
+    assert e.style == "solid"
+    assert covered(p, 10, "i_1", (140, 40, 180, H))

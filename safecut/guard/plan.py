@@ -163,7 +163,7 @@ def plan(
         # A whole-person item covers an estimated body under its face on every frame no body track of the item covers
         # (a face-only item, or a face seen longer than its body track): DESIGN §2.7b's whole person, never a face.
         bodied: set[int] = set()
-        if style == "person_solid":
+        if item.style == "person_solid":  # the item's own style: a read-through re-render solid never shrinks it
             for t in (by_id[t] for t in item.track_ids if by_id[t].concept == "person"):
                 bodied.update(range(max(0, t.first - backfill), min(job.frames, hold_until(t, by_id, job) + 1)))
         for track_id in item.track_ids:
@@ -183,7 +183,7 @@ def plan(
                 found = [regions.at(frame) for frame in range(start, end)]
                 if cache is not None:
                     cache[key] = found
-            body = style == "person_solid" and track.concept == "face"
+            body = item.style == "person_solid" and track.concept == "face"
             for frame, held in zip(range(start, end), found, strict=True):
                 bare = body and frame not in bodied
                 region = Region(body_below(held.box, job.width, job.height)) if bare else held
