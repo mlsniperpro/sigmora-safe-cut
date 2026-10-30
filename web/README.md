@@ -6,42 +6,26 @@ Next.js 16 (App Router; Cache Components is deliberately off, see `next.config.t
 
 ## Run it
 
-Needs Node 22–24 (`engines`: `>=22 <25`) and pnpm 10.28 (`corepack enable` picks it up from `packageManager`).
+Needs Node 22–24 (`engines`: `>=22 <25`) and pnpm 10.28 (`corepack enable` picks it up from `packageManager`). The app always talks to the Safe Cut API (`safecut/api/`); run one locally in replay mode, which serves the synthetic demo job and never calls Meta:
 
 ```bash
-cd web
-pnpm install
-pnpm dev            # http://localhost:3000, mock mode (no API needed)
+# terminal 1, repo root: the API on http://127.0.0.1:8000, replaying recorded (synthetic) responses
+SAFECUT_REPLAY=1 SAFECUT_JOBS_DIR=/tmp/safecut-jobs SAFECUT_CORS_ORIGINS='["http://localhost:3000"]' \
+  SAFECUT_ACCESS_CODES='[{"code": "local-judge-code", "kind": "judge"}]' \
+  SAFECUT_CODE_WINDOWS='{"judge": [null, null]}' \
+  uv run uvicorn --factory safecut.api.app:create_app --port 8000
 ```
 
-With `NEXT_PUBLIC_SAFECUT_API` unset, every request goes to an **in-browser mock backend** (`src/lib/mock-backend.ts`) built on the fixtures in `mocks/`. Nothing leaves the browser, and a note under the header says so. Things to try:
+```bash
+# terminal 2: the web app on http://localhost:3000
+cd web
+pnpm install
+NEXT_PUBLIC_SAFECUT_API=http://127.0.0.1:8000 NEXT_PUBLIC_SAFECUT_HERO_ID=demo pnpm dev
+```
 
-| URL | What it shows |
-|---|---|
-| `/` | Landing: the sample hero with the Raw / Safe Cut toggle |
-| `/try` | The whole flow: any access code, then pick any MP4/MOV (`public/sample/prepared.mp4` works) |
-| `/jobs/job-review-sample` | Review panel on the synthetic sample scene (playable video, keyframes) |
-| `/jobs/<fixture>` | Any job fixture in `mocks/`, e.g. `job-review-reentry`, `job-review-cafe`, `result-audit-failed`, `job-replay` (demo-mode banner), `job-failed-roles`, `error-404-expired`. These are state viewers: only the sample scene has a real clip, so their player says the video didn't load, and their dates move with today's date by whole days, so caps and code windows read as written |
-| `/jobs/result-fixed/result` | Result page states: also `result-clean`, `result-unresolved`, `result-clean-yunet` |
+Then `/` plays the demo job (labelled synthetic), and `/try` takes the code `local-judge-code` and the demo clip `fixtures/clips/SC-A-91-synthetic-20261030.mp4` (in replay the API can only replay clips it has recordings for). Without `NEXT_PUBLIC_SAFECUT_API` every request fails as a network error, so the pages show their "service isn't responding" state; the app never makes data up.
 
-Access codes with scripted answers in mock mode (`MOCK_CODES`):
-
-| Code | Answer |
-|---|---|
-| `wrong` | 401 on Continue |
-| `open-weight` | accepted, as a code whose clips also get the open-weight second opinion (the Baseten data bullet shows) |
-| `not-yet` | 401 `code_not_active` on Continue |
-| `rate-limited` | 429 on Continue |
-| `expired` | 401 `code_not_active` on `POST /v1/jobs` |
-| `no-budget` | 429 `code_cap` on `POST /v1/jobs` |
-| `revoked` | 401 on `POST /start` (the job is deleted once) |
-| `too-big` | 422 `job_cap` on `POST /start` |
-| `pilot-done` | 429 `pilot_pool_cap` on `POST /start` |
-| `no-auditor`, `no-credits` | 503 on `POST /start` (Start stays enabled) |
-| `upload-lost` | 409 `upload_incomplete` on `POST /start` |
-| anything else | accepted |
-
-The sample scene is drawn shapes, not people, so it needs no release (AGENTS.md rules 4–5). Its motion data (`scripts/sample-scene.mjs`) drives both the rendered media and the job JSON, so boxes, plan and pixels agree.
+The unit tests run on an in-memory mock backend instead (`src/test/mock-backend.ts`, built on the fixtures in `mocks/`); it exists only for tests. Its scripted access codes (`MOCK_CODES`) drive the refusal paths: `wrong` (401), `not-yet` (401 `code_not_active`), `rate-limited` (429), `expired`, `no-budget` (429 `code_cap`), `revoked`, `too-big` (422 `job_cap`), `pilot-done` (429 `pilot_pool_cap`), `no-auditor`, `no-credits` (503) and `upload-lost` (409 `upload_incomplete`). The sample scene in `public/sample/` is drawn shapes, not people (AGENTS.md rules 4–5).
 
 ## Checks
 
@@ -50,12 +34,10 @@ pnpm lint        # ESLint, zero warnings allowed
 pnpm typecheck   # tsc --noEmit
 pnpm test        # vitest: unit, property, component and integration tests
 pnpm build       # production build
-pnpm e2e         # Playwright on the production build in mock mode, with axe (run after build)
+pnpm e2e:api     # Playwright + axe on the production build against a local API in replay (starts both)
 ```
 
-`pnpm e2e` needs a Chromium for Playwright: run `pnpm exec playwright install chromium` once if you don't have one.
-
-`.agent/win/SAFECUT-WP6/checks.sh` runs all of them.
+`pnpm e2e:api` builds the app against `http://127.0.0.1:<port>`, starts the API with `uv run`, and drives the judge's path in Chromium; it needs the repo's Python environment (`uv sync`) and a Chromium for Playwright (`pnpm exec playwright install chromium` if you don't have one).
 
 ## Environment variables
 
@@ -63,8 +45,8 @@ The `NEXT_PUBLIC_*` values are public and fixed at build time; no secret ever re
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `NEXT_PUBLIC_SAFECUT_API` | unset (mock mode) | WP5's API base URL, e.g. `https://api.safecut.sigmora.org` |
-| `NEXT_PUBLIC_SAFECUT_HERO_ID` | `hero1` | The pinned hero job served by `GET /v1/demo/{hero_id}` |
+| `NEXT_PUBLIC_SAFECUT_API` | unset (every call fails) | The API's base URL: the Modal URL `https://<workspace>--safecut-api.modal.run`, or a custom domain pointed at it. Plain http is accepted only for a loopback API (local runs and the e2e check) |
+| `NEXT_PUBLIC_SAFECUT_HERO_ID` | `hero1` | The pinned hero job served by `GET /v1/demo/{hero_id}`: `demo` (the synthetic demo job) until hero clip 1 is recorded |
 | `NEXT_PUBLIC_SITE_URL` | `https://safecut.sigmora.org` | Canonical URL for Open Graph / X cards |
 | `NEXT_PUBLIC_SIGMORA_URL` | `https://sigmora.org` | "Back to Sigmora", the publish target, and `frame-ancestors` |
 | `NEXT_PUBLIC_REPO_URL` | this repo on GitHub | "Source on GitHub" |
@@ -73,33 +55,20 @@ The `NEXT_PUBLIC_*` values are public and fixed at build time; no secret ever re
 | `NEXT_PUBLIC_HERO_HAS_CHILD` | `true` | Set `false` if the filmed hero clip has no child, so the landing copy doesn't promise one (UI-SPEC §1.3) |
 | `SAFECUT_BLOCKED_TERRITORIES` | PRE-A §7's list | JSON `{"countries":[…],"regions":{"UA":[…]}}` replacing the territories that `/try` and the job pages refuse (`src/proxy.ts`, which reads Vercel's `x-vercel-ip-country` headers). A malformed value makes the proxy throw when it loads, rather than silently opening uploads |
 
-## Deploy
+## Deploy (Vercel)
 
-Vercel builds `web/` on push (root directory `web`, framework Next.js, install `pnpm install --frozen-lockfile`). Don't deploy from a sandbox. The owner sets the custom domain and the variables above. Security headers (CSP, HSTS, nosniff, Permissions-Policy, `noindex` on job pages) are in `next.config.ts`.
+Vercel builds `web/` on every push to `main`; nothing deploys from a sandbox. Project settings:
 
-Captions on the hero and result videos are fetched from the storage host and attached as blob URLs (`src/hooks/useRemoteCaptions.ts`), so the media bucket needs CORS `GET` for the site's origin (WP5). Without it the videos still play, just without captions.
+| Setting | Value |
+|---|---|
+| Root directory | `web` |
+| Framework preset | Next.js |
+| Install command | `pnpm install --frozen-lockfile` |
+| Build command | `pnpm build` |
+| Node.js version | 24.x |
+| Domain | `safecut.sigmora.org` (CNAME to `cname.vercel-dns.com`); the owner's Vercel team blocks public `*.vercel.app` aliases |
+| Environment (Production) | `NEXT_PUBLIC_SAFECUT_API`, `NEXT_PUBLIC_SAFECUT_HERO_ID`, `NEXT_PUBLIC_SIGMORA_URL`, `NEXT_PUBLIC_REPO_URL`, `NEXT_PUBLIC_PRIVACY_CONTACT` (table above) |
 
-## Regenerating fixtures and sample media
+The API must list the site's origin in `SAFECUT_CORS_ORIGINS` (it does by default: `https://safecut.sigmora.org`). Security headers (CSP, HSTS, nosniff, Permissions-Policy, `noindex` on job pages) are in `next.config.ts`; the CSP allows media and API calls to any https origin, plus the exact loopback origin a local build was made for. After a deploy, `bash scripts/deploy-check.sh <api-url> https://safecut.sigmora.org` checks both (from the repo root).
 
-```bash
-node scripts/gen-mocks.mjs     # mocks/*.json and mocks/index.ts (a test fails if they drift)
-node scripts/gen-sample.mjs    # public/sample/* (needs ffmpeg on PATH)
-```
-
-The fixtures follow UI-SPEC §10.1; `mocks/mocks.test.ts` checks every §10.1 invariant on every job fixture. When WP5's API lands, its field names win and the mocks follow.
-
-## Layout
-
-```
-src/app/                 routes: /, /try, /jobs/[id], /jobs/[id]/result, /privacy, /unavailable, not-found, error
-src/proxy.ts             region check on /try and /jobs/* (src/lib/region.ts)
-src/components/          landing/, try/, job/, review/ (Chip, VideoPane, WhyDrawer, ReviewPanel), shared ui
-src/lib/contracts.ts     zod schemas for every API response
-src/lib/api.ts           typed client: timeouts, GET retries, typed errors
-src/lib/mock-backend.ts  the in-browser API used in mock mode and in tests
-src/lib/review/          the review reducer (UI-SPEC §10.5), bottom bar, chip view model
-src/lib/why/             Why-drawer copy and Muse Spark frame-reference rewriting
-src/lib/overlay.ts       what the review canvas draws on each frame
-mocks/                   UI-SPEC §10.1 fixtures (generated)
-e2e/replay-e2e.mjs       real-browser end-to-end run with axe
-```
+Captions on the hero and result videos come from the API's signed `captions.vtt` URL and are attached as blob URLs (`src/hooks/useRemoteCaptions.ts`); the API's CORS covers them.

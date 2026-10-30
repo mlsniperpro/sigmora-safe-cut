@@ -52,7 +52,7 @@ jobs:
           node-version: 24
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
-      - name: Lint, typecheck and test
+      - name: Lint, typecheck, test and build
         if: steps.web.outputs.present == 'true'
         working-directory: web
         run: |
@@ -60,3 +60,4 @@ jobs:
           pnpm lint
           pnpm typecheck
           pnpm test
+          pnpm build
