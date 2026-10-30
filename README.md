@@ -25,7 +25,7 @@ flowchart LR
   D --> G[guard: padding, back-fill, gap hold, crowd fill]
   G --> RV{creator review}
   RV --> RE[render]
-  RE --> A[audit: EgoBlur on every frame + Muse Spark red team, auto-patch]
+  RE --> A[audit: a detector on every frame + Muse Spark red team, auto-patch]
   A --> RC[receipt: hash-chained JSON + HTML]
 ```
 
@@ -40,7 +40,7 @@ Each stage reads and writes one JSON contract in the job directory (`docs/ARCHIT
 | **Muse Voice Transcribe** (`muse-voice-transcribe-1.0`) | A diarized transcript with turn times on the prepared clip's clock | Speech is the strongest evidence that someone is a participant ("Hi, I'm Amina"); Meta's docs call Spark's audio understanding degraded |
 | **Muse Spark** (`muse-spark-1.2`) | The fallback speech path through the video soundtrack, used only when Voice Transcribe is unavailable | Keeps the speech evidence without a second vendor |
 | **Muse Spark Open** (`meta-models/muse-spark-open-1026`, on Baseten) | An optional open-weight second opinion in the audit, for consented jobs only | The Best Build on Meta Open-Weight Models path. It is advisory, never a reason to publish, and its spend is reported apart |
-| **EgoBlur Gen 2** (Meta's open face and plate detector) | The every-frame auditor of the rendered video | A detector that knows nothing of our decisions, checking the output we would publish. Without its gated weights, the audit runs OpenCV's YuNet face detector and says so in the receipt |
+| **EgoBlur Gen 2** (Meta's open face and plate detector) | The every-frame auditor of the rendered video, on a machine with a GPU and its gated weights | A detector that knows nothing of our decisions, checking the output we would publish. It needs a GPU (on a CPU it would take most of an hour per clip), so the deployed service, which has none, audits with OpenCV's YuNet face detector (plates by the red team), and `audit.json` and the receipt name the detector that ran |
 
 Model IDs come from the environment (`safecut/config.py`), with Standard model IDs only, `store: false`, and every uploaded file deleted after use. Every API attempt writes a line to the job's `cost.jsonl`, and the receipt's cost is checked against it.
 

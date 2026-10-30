@@ -33,12 +33,12 @@ if str(ROOT) not in sys.path:  # run as a script (`python eval/run.py`): make th
 
 from pydantic import BaseModel, ConfigDict, Field  # noqa: E402 -- after the sys.path line above, on purpose
 
-from eval.labels import load_labels  # noqa: E402 -- after the sys.path line above, on purpose
+from eval.labels import ClipLabels, LabelError, load_labels  # noqa: E402 -- after the sys.path line above, on purpose
 from eval.metrics import JobScore, score_job, summarize  # noqa: E402 -- after the sys.path line above, on purpose
 from eval.variants import VARIANTS, Variant, VariantUnavailable, preflight, run_variant  # noqa: E402 -- as above
 from safecut import netguard, pipeline  # noqa: E402 -- after the sys.path line above, on purpose
 from safecut.api.views import models_recorded  # noqa: E402 -- after the sys.path line above, on purpose
-from safecut.config import load_settings  # noqa: E402 -- after the sys.path line above, on purpose
+from safecut.config import ConfigError, load_settings  # noqa: E402 -- after the sys.path line above, on purpose
 
 SPLITS = ("hero", "dev", "public", "test")
 Split = Literal["hero", "dev", "public", "test"]
@@ -146,6 +146,23 @@ def now_id(now: datetime) -> str:
     return f"{now:%Y%m%dT%H%M%SZ}"
 
 
+def refuse_early(split: SplitFile, variant: Variant, *, replay: bool, base: Path) -> tuple[str, dict[str, ClipLabels]]:
+    """Everything that can refuse a run, checked before a test run is counted or anything is called: a refusal
+    never costs one of the test split's 3 runs, while a run that crashes halfway (after paid calls) still does.
+    Returns the commit and every clip's loaded labels."""
+    sha = git_sha()
+    if not replay and sha.endswith("-dirty"):
+        # A live run costs credits (and a test run one of its 3): only committed code can back a reported number.
+        raise EvalError("the working tree has uncommitted changes; commit them before a live run")
+    preflight(variant)
+    if not replay and load_settings().replay:
+        raise EvalError("SAFECUT_REPLAY is set in this shell: unset it for a live run (or pass --replay)")
+    if not replay and variant != "egoblur" and load_settings().model_api_key is None:
+        # The key is read by the first paid stage; checked here, a forgotten export never costs a test run.
+        raise EvalError("MODEL_API_KEY isn't set: a live run needs it (export it in this shell first)")
+    return sha, {entry.labels: load_labels(base / entry.labels) for entry in split.clips}
+
+
 def run(
     split_name: Split,
     variant: Variant,
@@ -161,13 +178,7 @@ def run(
     clip once its Meta spend reaches ``max_usd`` (each job also keeps its own ``SAFECUT_JOB_USD_CAP``)."""
     split = load_split(split_name, splits)
     now = now or datetime.now(UTC)
-    # Everything that can refuse the run is checked before a test run is counted: a refusal never costs one of
-    # the 3, while a run that crashes halfway (after paid calls) still does.
-    sha = git_sha()
-    if not replay and sha.endswith("-dirty"):
-        # A live run costs credits (and a test run one of its 3): only committed code can back a reported number.
-        raise EvalError("the working tree has uncommitted changes; commit them before a live run")
-    preflight(variant)
+    sha, labels = refuse_early(split, variant, replay=replay, base=base)
     if split_name == "test":
         if replay:
             raise EvalError("the test split is reported from live runs only")
@@ -209,7 +220,7 @@ def run(
                 recorded["keyframe_boxes"] = result.detail["keyframe_boxes"]
             for role, model in recorded.items():
                 ran.setdefault(role, set()).add(model)
-            scores.append(score_job(job_dir, load_labels(base / entry.labels), result.regions))
+            scores.append(score_job(job_dir, labels[entry.labels], result.regions))
             spent += pipeline.job_spend(job_dir)
     finally:
         shutil.rmtree(work, ignore_errors=True)
@@ -331,7 +342,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.replay:
             netguard.block()  # a replay run never reaches the network, in any thread
         run_dir = run(args.split, args.variant, replay=args.replay, max_usd=args.max_usd)
-    except (EvalError, VariantUnavailable, pipeline.PipelineError) as exc:
+    except (EvalError, VariantUnavailable, pipeline.PipelineError, LabelError, ConfigError) as exc:
         print(f"eval: {exc}", file=sys.stderr)
         return 1
     print(f"wrote {run_dir.relative_to(ROOT) if run_dir.is_relative_to(ROOT) else run_dir}")

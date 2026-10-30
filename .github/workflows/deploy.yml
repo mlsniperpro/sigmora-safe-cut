@@ -35,7 +35,7 @@ jobs:
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
       SAFECUT_API_URL: ${{ vars.SAFECUT_API_URL }}
       SAFECUT_WEB_URL: ${{ vars.SAFECUT_WEB_URL }}
-      # "1" once the EgoBlur weights are on the safecut-models Volume: the image then installs the audit group.
+      # Leave unset: "1" installs EgoBlur's audit group, which needs a GPU this CPU-only API doesn't have (BLOCKED.md).
       SAFECUT_DEPLOY_AUDIT: ${{ vars.SAFECUT_DEPLOY_AUDIT }}
     steps:
       - name: Check for the Modal secrets

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import shutil
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -21,12 +22,12 @@ from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
 from safecut import pipeline
-from safecut.api.access import RateLimiter
+from safecut.api.access import MAX_DURATION_S, RateLimiter, estimate_usd
 from safecut.api.app import Service, create_app, hero_job_id, production_problems, safe_name
 from safecut.api.store import JobNotFound, JobStore
 from safecut.api.views import public_audit
 from safecut.config import AccessCode, CodeWindow, ServiceKey, Settings
-from safecut.contracts import Audit, CostLine, Job, RedteamHit, append_cost_line, load
+from safecut.contracts import Audit, CostLine, Job, RedteamHit, Roles, append_cost_line, load
 from safecut.meta.budget import CapLimit
 from safecut.stages import REDACTED, Stage
 from tests.fake_stages import CLIP
@@ -1116,3 +1117,27 @@ def test_a_busy_service_asks_new_work_to_wait(make_client: Callable[..., tuple[T
     with svc.store.update(running) as state:
         state.status, state.stage = "review", "review"
     assert client.post(f"/v1/jobs/{waiting}/start").status_code == 202
+
+
+def test_a_clip_over_60_s_is_never_priced_past_the_limit(tmp_path: Path) -> None:
+    """A direct API caller's 95 s clip is priced as 60 s at start, so it reaches prepare and fails there as
+    too_long with its duration, instead of a misleading per-clip cost refusal."""
+    assert estimate_usd(min(95.0, MAX_DURATION_S)) <= Settings().job_usd_cap
+    assert estimate_usd(95.0) > Settings().job_usd_cap
+
+
+def test_the_model_list_names_the_recorded_models(tmp_path: Path) -> None:
+    """The escalation and red-team models come from what the job recorded, not from today's settings."""
+    from safecut.api.views import models_recorded  # noqa: PLC0415 -- the function under test
+
+    job = tmp_path / "job"
+    shutil.copytree(ROOT / "fixtures" / "contracts" / "j_example", job)
+    (job / "raw" / "escalate").mkdir(parents=True, exist_ok=True)
+    (job / "raw" / "escalate" / "t1.json").write_text(json.dumps({"model": "muse-spark-recorded"}))
+    (job / "raw" / "audit").mkdir(parents=True, exist_ok=True)
+    (job / "raw" / "audit" / "run.json").write_text(json.dumps({"redteam_model": "muse-spark-redteam-recorded"}))
+    models = models_recorded(job, Settings())
+    assert any(t.escalated for t in load(job / "roles.json", Roles).tracks)  # the example has both
+    assert load(job / "audit.json", Audit).redteam
+    assert models["escalate"] == "muse-spark-recorded"
+    assert models["redteam"] == "muse-spark-redteam-recorded"

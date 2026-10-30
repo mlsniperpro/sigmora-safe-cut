@@ -296,26 +296,45 @@ def test_history_scan_attributes_lines_to_their_files() -> None:
     log = "\n".join(
         [
             "commit 1",
+            "diff --git a/tests/test_entry_check.py b/tests/test_entry_check.py",
+            "--- a/tests/test_entry_check.py",
             "+++ b/tests/test_entry_check.py",
+            "@@ -1,0 +1,1 @@",
             f'+    assert entry_check.secret_hit(\'"code": "{key}"\')',
             "commit 2",
             "diff --cc web/e2e/api-e2e.mjs",
+            "--- a/web/e2e/api-e2e.mjs",
             "+++ b/web/e2e/api-e2e.mjs",
-            f'++  const codes = [{{"code": "{key}"}}];',
+            "@@@ -1,1 -1,1 +1,2 @@@",
+            f' +  const codes = [{{"code": "{key}"}}];',
+            "commit 3",
+            "diff --git a/notes.txt b/notes.txt",
+            "--- /dev/null",
+            "+++ b/notes.txt",
+            "@@ -0,0 +1,3 @@",
+            "+++ b/tests/test_entry_check.py",  # content that looks like a header can't redirect the attribution
+            f'+{{"key": "{key}"}}',
+            f"+++ MODEL_API_{'KEY'}={key}{key}",  # an added line starting with "++" shows as "+++ …": still scanned
         ]
     )
     hits = entry_check.history_hits(log)
-    assert len(hits) == 1
-    assert hits[0].startswith("web/e2e/api-e2e.mjs: ")
+    assert [h.split(": ", 1)[0] for h in hits] == ["web/e2e/api-e2e.mjs", "notes.txt", "notes.txt"]
 
 
 def test_e11_history_scan_passes_on_this_repo() -> None:
     """The real history, as E11 reads it: the scanner's own test data must never make ENTRY: PASS impossible."""
     log = subprocess.run(
-        ["git", "log", "-p", "--cc", "--all", "--no-color", "--format=commit %H"],  # noqa: S607 -- git from PATH
+        ["git", "log", "-p", "--cc", "--text", "--all", "--no-color", "--format=commit %H"],  # noqa: S607 -- git from PATH
         cwd=entry_check.ROOT,
         capture_output=True,
         text=True,
+        errors="replace",
         check=True,
     ).stdout
     assert entry_check.history_hits(log) == []
+
+
+def test_bearer_tokens_are_secrets_in_any_case() -> None:
+    token = "Zx81kdJq0LmnB7Yt5" + "ExP2rVw9sAc"
+    assert entry_check.secret_hit(f"Authorization: Bearer {token}")
+    assert entry_check.secret_hit(f"authorization: bearer {token}")

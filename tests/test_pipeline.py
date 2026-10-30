@@ -559,3 +559,20 @@ def test_netguard_refuses_a_local_proxy(monkeypatch: pytest.MonkeyPatch) -> None
             socket.create_connection(("127.0.0.1", port), timeout=2)
     finally:
         server.close()
+
+
+def test_the_single_stage_audit_command_exits_6_on_a_blocked_audit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(pipeline, "check_approval", lambda job: None)
+    monkeypatch.setattr(
+        pipeline,
+        "run_stage",
+        lambda job, stage, replay, force: pipeline.StageResult(stage.name, "done", job / stage.output, 0.1),
+    )
+    monkeypatch.setattr(
+        "safecut.cli.load", lambda path, model: types.SimpleNamespace(blocked_reason="audit_failed", unresolved=2)
+    )
+    for command in ("audit", "receipt"):
+        result = runner.invoke(app, [command, "--job", str(tmp_path), "--replay"])
+        assert result.exit_code == 6, (command, result.output)
