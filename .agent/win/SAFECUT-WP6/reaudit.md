@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 234db94
+AUDITED_COMMIT: 89e6512
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -423,3 +423,12 @@ Noted, not counted: at 320 px with 200% text the landing figure scrolls 31 px si
 | 1 | medium | At 125%+ default text on a 1024–1535 px screen, the JS layout query (px) picked the three columns while Tailwind's `lg:` (rem) kept their headings hidden and no tabs showed: three unnamed columns | fixed: one `DESKTOP_QUERY = "(min-width: 64em)"` (em, like `lg:`) for the review panel and the Why sheet, so JS and CSS switch together. e2e at 125% text and 1100 px requires named columns (fails on 234db94: no tabs, no visible headings) |
 | 2 | low | The Why sheet's Expand/Collapse handle was invisible in forced colours | fixed: `forced-colors:bg-[CanvasText]` on the handle. e2e in forced colours (fails on 234db94) |
 | 3 | low | A ⋯ menu left open while the screen turned kept its old width cap and ran off screen | fixed: the cap is recomputed on resize while open, and the listener is removed when the menu closes. e2e at 200% text turns the screen with a menu open (fails on 234db94 at x=−179) |
+
+## Round 33 (audited 89e6512 by a Sonnet reviewer: JS vs `lg:` agreement at 5 text sizes × 18 widths including every 64em boundary ±1 (0 mismatches), live resizes across the breakpoint, 76 routes × 6 configs with axe, text-spacing with the drawer, region proxy over 16 path variants, a live build; fixes in the next commit)
+
+0 critical, 0 high, 0 medium, 2 low. Round 32's three changes held.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | low | Crossing the desktop breakpoint (a tablet turning, a window resized) swapped tabs and columns and remounted every chip, dropping keyboard focus to the page | fixed: the panel remembers the last focused chip and, after the layout flips, gives it focus back in its tab (unless focus moved elsewhere). e2e focuses a chip at 800 px and resizes to 1280 and back (fails on 89e6512: focus to null) |
+| 2 | low | At 175–200% text on a ≤360 px phone, a failed keyframe's message was cut off by its aspect-ratio box, and the Why sheet's title was squeezed to ~65–98 px beside Close ("Scr/een") | fixed: a failed keyframe drops the aspect ratio so the message sizes the box, and the sheet header wraps so Close goes below a long title. e2e at 200% text and 320 px (both fail on 89e6512: cut off; title 69 px) |

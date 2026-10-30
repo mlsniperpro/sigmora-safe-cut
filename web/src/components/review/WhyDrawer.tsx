@@ -57,7 +57,8 @@ function Keyframe({
   const ring = ok && box && g && displayWidth > 0 ? ringOnScreen(box, g, displayWidth) : null;
   return (
     <div>
-      <div className="relative overflow-hidden rounded-lg bg-surface-2" style={g ? { aspectRatio: `${g.image_width} / ${g.image_height}` } : undefined}>
+      {/* The image's ratio holds its place while it loads; a failure message sizes the box itself (large text, narrow phones). */}
+      <div className="relative overflow-hidden rounded-lg bg-surface-2" style={g && !(state && "failed" in state) ? { aspectRatio: `${g.image_width} / ${g.image_height}` } : undefined}>
         {!state && <p className="absolute inset-0 flex items-center justify-center text-sm text-muted">Loading the keyframe…</p>}
         {state && "failed" in state ? (
           <p className="p-4 text-sm">The keyframe didn&apos;t load.</p>
@@ -179,7 +180,8 @@ export function WhyDrawer({
           <button type="button" className="mx-auto mt-1 flex min-h-11 w-24 items-center justify-center lg:hidden" aria-label={expanded ? "Collapse" : "Expand"} onClick={() => setExpanded((v) => !v)}>
             <span aria-hidden="true" className="h-1.5 w-12 rounded-full bg-border forced-colors:bg-[CanvasText]" />
           </button>
-          <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-3">
+          {/* Wraps: at large text on a narrow phone, Close goes below a long title instead of squeezing it to a few letters a line. */}
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-3">
             <div>
               <h2 id="why-title" ref={heading} tabIndex={-1} className="text-lg font-semibold">
                 {model.label} · {model.kindWord}

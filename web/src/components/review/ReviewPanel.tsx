@@ -290,6 +290,24 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
     onKeyframeError: refreshKeyframes,
   };
 
+  // Crossing the desktop breakpoint (a tablet turning) swaps columns for tabs and remounts every chip:
+  // the chip that had focus gets it back, in its tab, unless the viewer has moved on.
+  const focusedChip = useRef<string | null>(null);
+  useEffect(() => {
+    const onFocusIn = (e: FocusEvent) => {
+      focusedChip.current = (e.target instanceof Element && e.target.closest("[data-chip-id]")?.getAttribute("data-chip-id")) || null;
+    };
+    document.addEventListener("focusin", onFocusIn);
+    return () => document.removeEventListener("focusin", onFocusIn);
+  }, []);
+  const layoutWas = useRef(desktop);
+  useEffect(() => {
+    if (layoutWas.current === desktop) return;
+    layoutWas.current = desktop;
+    const id = focusedChip.current;
+    if (id && (!document.activeElement || document.activeElement === document.body)) follow(id);
+  });
+
   // Keep focus on the chip an edit moved, in its new column (§3.8).
   const lastToast = state.toast;
   useEffect(() => {

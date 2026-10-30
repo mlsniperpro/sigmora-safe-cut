@@ -531,6 +531,18 @@ try {
     await landscape.waitForTimeout(200);
     const turned = await landscape.getByRole("menu").boundingBox();
     check("200% text: an open ⋯ menu stays on screen when the phone turns", !!turned && turned.x >= 0 && turned.x + turned.width <= 390, turned ? `x=${Math.round(turned.x)} w=${Math.round(turned.width)}` : "no menu");
+    // 320 px at 200% text: a failed keyframe's message shows whole, and the sheet's title keeps a readable width.
+    const narrow = await (await big.newContext({ viewport: { width: 320, height: 640 } })).newPage();
+    await narrow.goto(`${BASE}/jobs/job-review-cafe`, { waitUntil: "networkidle" });
+    await narrow.getByText(/hidden · /).waitFor();
+    await narrow.getByRole("tab", { name: /Needs you/ }).click();
+    await narrow.getByRole("button", { name: /^Why\? Screen 3,/ }).click();
+    const failed = narrow.getByRole("dialog").getByText("The keyframe didn't load.");
+    await failed.waitFor();
+    const fit = await failed.evaluate((p) => p.parentElement.clientHeight >= p.offsetHeight);
+    check("200% text, 320 px: a failed keyframe's message isn't cut off", fit);
+    const title = await narrow.locator("#why-title").evaluate((h) => Math.round(h.getBoundingClientRect().width));
+    check("200% text, 320 px: the Why sheet's title has room", title >= 150, `${title}px`);
     await big.close();
     // 125% text on a 1100 px screen: the layout JS and CSS agree, so the columns keep their names (headings or tabs).
     const mid = await chromium.launch({ args: ["--blink-settings=defaultFontSize=20,minimumFontSize=0"] });
@@ -550,6 +562,24 @@ try {
     const position = await normal.locator("video").first().evaluate((el) => getComputedStyle(el.closest("[class*='bg-bg']")).position);
     check("100% text: the phone's player stays sticky", position === "sticky", position);
     await normal.context().close();
+  }
+
+  // Turning a tablet across the desktop breakpoint swaps tabs and columns: the focused chip keeps focus.
+  {
+    const context = await browser.newContext({ viewport: { width: 800, height: 900 } });
+    const page = await context.newPage();
+    await page.goto(`${BASE}/jobs/job-review-sample`, { waitUntil: "networkidle" });
+    await page.getByText(/hidden · /).waitFor();
+    const first = await page.locator("[data-chip-id]").first().getAttribute("data-chip-id");
+    await page.locator(`[data-chip-id="${first}"]`).focus();
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.waitForTimeout(300);
+    const wide = await page.evaluate(() => document.activeElement?.getAttribute("data-chip-id"));
+    await page.setViewportSize({ width: 800, height: 900 });
+    await page.waitForTimeout(300);
+    const narrow = await page.evaluate(() => document.activeElement?.getAttribute("data-chip-id"));
+    check("crossing the desktop breakpoint keeps focus on the chip", wide === first && narrow === first, `${first} → ${wide} → ${narrow}`);
+    await context.close();
   }
 
   // A short landscape screen (or 200% zoom): the player isn't sticky, so the chips can scroll into view.
