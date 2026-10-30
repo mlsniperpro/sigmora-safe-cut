@@ -639,3 +639,20 @@ def test_one_child_split_across_items_counts_once_for_the_scene() -> None:
 def test_a_face_only_child_is_covered_whole() -> None:
     got = only(run(track("face:4", 0, 20, (100, 20, 120, 40)), rs=[row("face:4", "child", "child", "child")]), "face:4")
     assert (got["kind"], got["style"]) == ("child", "person_solid")
+
+
+def test_a_close_up_face_whose_body_track_ends_early_is_hidden_whole() -> None:
+    """The body track is lost after 10 frames while the face grows past a quarter of the frame height."""
+    boxes = {f: (130, 40, 150 + f // 2, 60 + f // 2 * 2) for f in range(60)}  # up to 59 px tall
+    face = Track.model_validate({**track("face:1", 0, 59).model_dump(), "boxes": boxes})
+    body = track("person:1", 0, 10, (110, 30, 190, 75))
+    by = ("bystander",) * 3
+    got = only(run(face, body, rs=[row("face:1", *by), row("person:1", *by)]), "face:1")
+    assert (got["track_ids"], got["style"]) == (["face:1", "person:1"], "person_solid")
+
+
+def test_a_duplicate_object_ruling_fails_closed() -> None:
+    sensitive = {"track_id": "screen:1", "frames": [2], "sensitive": True, "content": "a bank app"}
+    harmless = {"track_id": "screen:1", "frames": [2], "sensitive": False, "content": "a menu"}
+    got = only(run(track("screen:1", 0, 5), objects=[sensitive, harmless]), "screen:1")
+    assert got["decision"] == "hide"
