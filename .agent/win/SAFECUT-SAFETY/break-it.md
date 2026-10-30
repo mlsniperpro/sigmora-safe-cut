@@ -1,4 +1,4 @@
-TESTED_COMMIT: a6702a7
+TESTED_COMMIT: 3f409cffc64db82c3ac57237fea0e228e1f60d82
 
 # SAFECUT-SAFETY: what I did to break it
 
@@ -9,7 +9,7 @@ guards. The soak and the fresh-clone run are repeated at the final commit; `TEST
 - `HYPOTHESIS_PROFILE=soak uv run pytest --entry-only=E4` (20,000 examples per property, 7 E4 properties: non-
   participants never kept, children never kept after any creator edits, padded boxes covered, back-fill and gap
   hold, locked grids, an injected 3-frame leak patched, ≤ 6 blocks): **7 passed** at 90b9f71 (12 min), 225d9c6
-  (14 min), 6e83d9b (12 min), dd1312d (12.5 min), a9e3b34 (12 min), a6702a7 (12.5 min), c437aa3 (12.5 min), b29ce28 (12.3 min), 3229c21 with main merged in (12.3 min), 7066fb2 (13.8 min); log in the session
+  (14 min), 6e83d9b (12 min), dd1312d (12.5 min), a9e3b34 (12 min), a6702a7 (12.5 min), c437aa3 (12.5 min), b29ce28 (12.3 min), 3229c21 with main merged in (12.3 min), 7066fb2 (13.8 min), 3f409cf (12.5 min, the final code); log in the session
   scratchpad.
 - The E4 coverage property caught a real gap during round 6 (an estimated body grown from a mask outline's box
   sat inside the padded box on one frame): fixed at a9e3b34, now in the soak.
@@ -42,7 +42,8 @@ guards. The soak and the fresh-clone run are repeated at the final commit; `TEST
 - `checks.sh` runs the same path on every gate run, plus `entry-check --only E2,E3,E4` (all OK).
 
 ## Fresh clone
-- Full test suite on a fresh clone of main at ede3dc1: **1278 passed**.
+- Full test suite on a fresh clone of main at ede3dc1: **1278 passed**; on this lane's final head (3f409cf, main merged
+  in): **1465 passed**.
 - Full `bash scripts/entry-check.sh` on a fresh clone of main at d126234: E1–E10 and E12 OK; E11 failed only on
   a skip-shaped string inside SHIP's own `tests/test_entry_check.py` (reported to SHIP, fixed by SHIP).
 - Full `bash scripts/entry-check.sh` on a fresh clone of main at e8fee36 (2026-10-30T20:49Z): E1–E12 all OK,
