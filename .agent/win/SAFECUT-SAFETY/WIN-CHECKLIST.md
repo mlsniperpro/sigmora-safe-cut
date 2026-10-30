@@ -134,3 +134,6 @@ Evidence is a test name, a command run in this session, or a commit. Owner input
 
 ## Round 14: clean (both audits, no findings); E4 coverage checker fixed (87a495b, test only)
 - [x] The E4 property checks SAM's outline against everything the plan hides on the frame (`test_property_every_visible_frame_of_a_hidden_track_is_covered_by_its_padded_box`).
+
+## Round 15: clean (both audits, no findings). Two consecutive clean full audits (14, 15) on the code at 87a495b.
+- [x] Re-audit closed: 0 critical, 0 high open; every finding of rounds 1–13 fixed with a test or accepted with a reason (`reaudit.md`).
