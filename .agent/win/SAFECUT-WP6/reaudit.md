@@ -1,7 +1,7 @@
-AUDITED_COMMIT: 3c6ce0c
+AUDITED_COMMIT: 3807d13
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
-CLEAN_AUDITS_IN_A_ROW: 0
+CLEAN_AUDITS_IN_A_ROW: 1
 
 # Re-audit log: SAFECUT-WP6
 
@@ -572,3 +572,12 @@ On the fix commit: `checks.sh` exit 0, 885 tests, e2e 145/145.
 | 1 | low | Mock mode: `/jobs/__proto__` (and `__defineGetter__`, `__lookupSetter__`, …) stayed on "Loading your clip…": `id in MOCK_LOADERS` also matched inherited `Object.prototype` names, and calling one threw. A typed access code `toString` was kept in localStorage, against "a real code typed into the preview never lands in storage" | fixed: fixture IDs and scripted codes are looked up by own key (`Object.hasOwn`, one `scriptFor` helper). I swept `src` for the same pattern and fixed two more lookups keyed by API strings: a track concept or model ID named like a prototype member (`constructor`) would have printed a function's source in a label. mock-backend and labels tests (fail on 3c6ce0c) |
 
 On the fix commit: `checks.sh` exit 0, 893 tests, e2e 145/145.
+
+## Round 45 (audited 3807d13 by a Sonnet reviewer): CLEAN
+
+0 critical, 0 high, 0 medium, 0 low.
+- **Round 44's changes:** prototype names as job IDs (`/jobs/…` and `/result`) show "We couldn't find that clip"; prototype-named access codes work as ordinary codes and none is stored; the own-key label lookups read.
+- **The rest of the app:** a mock build and a live-mode build against a spec-shaped fake API (`/try` → upload → progress → review → edit → render → result with the receipt, no console errors); axe WCAG 2.2 AA on 12 routes at 2 widths in light and dark (0 violations); no horizontal scroll at 1280 and 390 px; an empty job, a portrait 240×320 clip, the Hide/Keep/Undo/Ctrl+Z/⋯/merge paths, reload and Back to review; `/try` file picks (61 s refused, 60 s accepted, `.MOV`, empty and truncated files left to the server); `contracts.ts` field by field against WP0 `contracts.py` (no over-strict schema); the sample media at 0.5–6.5 s; 24 randomized click runs with state matching after reload.
+- **Noted, not counted:** two file picks in quick succession could resolve their duration reads out of order (needs a pathologically slow metadata read; not reproduced); acks applied in arrival order, already noted in round 43.
+
+CLEAN_AUDITS_IN_A_ROW is 1 (no code change since 3807d13).
