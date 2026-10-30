@@ -93,6 +93,7 @@ def test_a_replay_run_writes_every_result_file(base: Path) -> None:
     assert config["synthetic"] is True
     assert config["variant"] == "full"
     assert config["models"]["sam"] == "sam-3.1"
+    assert config["detail"] == {}
     assert len(config["split_hash"]) == 64
     metrics = json.loads((run_dir / "metrics.json").read_text())
     assert metrics["entity_recall"] == 1.0
@@ -248,3 +249,18 @@ def test_report_check_compares_with_the_committed_file(tmp_path: Path, monkeypat
     assert report.main(["--check"]) == 1
     (tmp_path / "RESULTS.md").write_text(report.render([]))
     assert report.main(["--check"]) == 0
+
+
+def test_an_egoblur_run_records_the_detector_that_ran_and_the_report_names_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.undo()  # the real prepare stage and the real audit detector, on the committed dev split
+    root = Path(__file__).resolve().parent.parent
+    run_dir = runner.run("dev", "egoblur", replay=True, out=tmp_path / "results")
+    config = json.loads((run_dir / "config.json").read_text())
+    assert config["detail"]["detector"] in ("egoblur-gen2", "yunet-face")
+    text = report.render(report.load_runs(tmp_path / "results"))
+    if config["detail"]["detector"] == "yunet-face":
+        assert "OpenCV YuNet face detector on every frame (EgoBlur weights not installed)" in text
+        assert "| EgoBlur Gen 2 on every frame |" not in text
+    assert (root / "eval" / "splits" / "dev.json").is_file()

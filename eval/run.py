@@ -120,8 +120,19 @@ def check_test_split(split: SplitFile, root: Path = SPLIT_DIR, base: Path = ROOT
 
 
 def git_sha() -> str:
+    """HEAD's sha, with ``-dirty`` when tracked code differs from it (results and the report don't count), so a
+    run says whether the committed code produced it."""
     proc = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=False)  # noqa: S607 -- git from PATH
-    return proc.stdout.strip() or "unknown"
+    sha = proc.stdout.strip() or "unknown"
+    paths = [".", ":(exclude)eval/results", ":(exclude)eval/RESULTS.md", ":(exclude)eval/splits/test.runs.json"]
+    status = subprocess.run(  # noqa: S603 -- a fixed argv of constants
+        ["git", "status", "--porcelain", "--untracked-files=no", "--", *paths],  # noqa: S607 -- git from PATH
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return f"{sha}-dirty" if status.stdout.strip() else sha
 
 
 def run(
@@ -184,6 +195,7 @@ def run(
             "created_at": now.isoformat().replace("+00:00", "Z"),
             "clips": [e.clip for e in split.clips],
             "models": models(),
+            "detail": detail,
         },
     )
     if split_name == "test":

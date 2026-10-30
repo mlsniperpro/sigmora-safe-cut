@@ -111,7 +111,7 @@ def render(runs: list[dict[str, Any]], settings: Settings | None = None) -> str:
                 name = f"{DETECTOR_NAMES.get(detector, detector)} on every frame (EgoBlur weights not installed)"
             load = "n/a" if m["review_load_per_min"] is None else f"{m['review_load_per_min']:.2f}"
             lines.append(
-                f"| {NAMES[variant]} | {pct(m['entity_recall'])} | {pct(m['exposure_rate'])} | "
+                f"| {name} | {pct(m['entity_recall'])} | {pct(m['exposure_rate'])} | "
                 f"{m['leak_bursts']} | {pct(m['over_blur'])} | {load} | {link} |"
             )
         any_run = next(iter(by_variant.values()))["metrics"]
@@ -190,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="eval/report.py", description="Build eval/RESULTS.md from committed runs.")
     parser.add_argument("--check", action="store_true", help="fail if eval/RESULTS.md is out of date")
     args = parser.parse_args(argv)
-    runs = load_runs()
+    runs = load_runs(RESULTS_DIR)
     text = render(runs)
     if args.check:
         current = OUT.read_text(encoding="utf-8") if OUT.is_file() else ""
@@ -200,7 +200,7 @@ def main(argv: list[str] | None = None) -> int:
         print("eval/RESULTS.md matches the committed runs")
         return 0
     OUT.write_text(text, encoding="utf-8")
-    charts(runs)
+    charts(runs, RESULTS_DIR / "charts")
     print(f"wrote {OUT.relative_to(ROOT)} from {len(runs)} run(s)")
     return 0
 
