@@ -124,3 +124,6 @@ Evidence is a test name, a command run in this session, or a commit. Owner input
 
 ## Audit findings (round 11, fixed with a test at fc79f54, merged bcccc49)
 - [x] Escalation model from its recorded calls (`test_the_escalation_model_is_the_one_its_calls_recorded`).
+
+## Audit findings (round 12, fixed with tests at 5c4415f)
+- [x] Refused receipt reported as a contract failure; audio copied bit for bit (`tests/test_receipt.py`, `tests/test_render.py`).

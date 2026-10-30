@@ -9,7 +9,7 @@ guards. The soak and the fresh-clone run are repeated at the final commit; `TEST
 - `HYPOTHESIS_PROFILE=soak uv run pytest --entry-only=E4` (20,000 examples per property, 7 E4 properties: non-
   participants never kept, children never kept after any creator edits, padded boxes covered, back-fill and gap
   hold, locked grids, an injected 3-frame leak patched, ≤ 6 blocks): **7 passed** at 90b9f71 (12 min), 225d9c6
-  (14 min), 6e83d9b (12 min), dd1312d (12.5 min), a9e3b34 (12 min), a6702a7 (12.5 min), c437aa3 (12.5 min), b29ce28 (12.3 min); log in the session
+  (14 min), 6e83d9b (12 min), dd1312d (12.5 min), a9e3b34 (12 min), a6702a7 (12.5 min), c437aa3 (12.5 min), b29ce28 (12.3 min), 3229c21 with main merged in (12.3 min); log in the session
   scratchpad.
 - The E4 coverage property caught a real gap during round 6 (an estimated body grown from a mask outline's box
   sat inside the padded box on one frame): fixed at a9e3b34, now in the soak.
