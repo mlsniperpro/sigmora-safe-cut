@@ -4,6 +4,15 @@ Wave A (WP0 foundation, WP6 web on mocks) and the PRE-A/PRE-B docs are merged. *
 
 Deadline: submissions close **2026-11-05 02:00 UTC** (Nov 4, 9 PM ET). We submit a day early.
 
+**Owner priority (2026-10-30 12:30Z): complete the code first.** Spend the time on code that is finished, tested, lint and type clean, and builds every time: E1–E6, E9 and E11 on replay and synthetic data. Real-key testing comes after the code is complete.
+
+Until then:
+- Don't spend effort on live API runs, deploys or submission prose.
+- Write the `-m live` tests and `scripts/go-live.sh` (E8) and the deploy files (E7) so they are ready, but they only run once the owner adds the keys.
+- E10 waits until the code E-lines are green.
+
+Cloud sessions run the web production build (`pnpm build`) as part of E1. Only the owner's Mac never builds.
+
 ## Lanes
 
 | Tag | Scope (work packages) | Owns |
@@ -30,7 +39,7 @@ Each stage package exposes `run(job_dir: Path, *, replay: bool = False) -> Path`
 
 SHIP writes `scripts/entry-check.sh` first. It prints one `E<n>: OK` or `E<n>: FAIL <reason>` line per check, then `ENTRY: PASS` or `ENTRY: FAIL (<n>)`. **Checks may be added or made stricter, never removed or weakened.** The owner reviews every diff to this script.
 
-- **E1 Full suite, fresh clone.** `uv sync --all-groups`, `uv run pytest -q` (everything except `-m live`), `uv run ruff check`, `uv run ruff format --check` and the repo's pyright config all pass. In `web/`: `pnpm install --frozen-lockfile && pnpm lint && pnpm typecheck && pnpm test`.
+- **E1 Full suite, fresh clone.** `uv sync --all-groups`, `uv run pytest -q` (everything except `-m live`), `uv run ruff check`, `uv run ruff format --check` and the repo's pyright config all pass. In `web/`: `pnpm install --frozen-lockfile && pnpm lint && pnpm typecheck && pnpm test && pnpm build`.
 - **E2 Every stage, replay.** `safecut prepare|track|transcribe|scene|roles|decide|guard|render|audit|receipt --job <dir> --replay` each writes its §3 contract file, and that file validates against `safecut.contracts`.
 - **E3 End to end, offline.** `uv run safecut run <demo clip> --out <tmp> --replay --auto-approve-policy` runs with the network blocked. It produces:
   - `redacted.mp4`: H.264, with an audio stream when the source has one;
