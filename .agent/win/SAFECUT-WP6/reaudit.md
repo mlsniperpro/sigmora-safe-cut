@@ -1,7 +1,7 @@
 AUDITED_COMMIT: 3807d13
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
-CLEAN_AUDITS_IN_A_ROW: 2
+CLEAN_AUDITS_IN_A_ROW: 0
 
 # Re-audit log: SAFECUT-WP6
 
@@ -589,3 +589,11 @@ CLEAN_AUDITS_IN_A_ROW is 1 (no code change since 3807d13).
 - `pnpm test` 893/893 and `pnpm lint` clean on the audited copy.
 
 Two consecutive clean full audits (rounds 45 and 46) on the last code commit, 3807d13. CLEAN_AUDITS_IN_A_ROW is 2.
+
+## Self-found after round 46: a vitest timeout on a just-resumed container
+
+An hourly gate re-run on 1a245fd (code 3807d13), right after the container resumed, failed `checks.sh`: two vitest tests (`landing.test.tsx` "Play demo shows only while the clip is paused", `TryFlow.test.tsx` "selects a wrong code's text") gave up waiting after Testing Library's default 1 s, before the first mock fixture of their file had loaded. Both passed on a re-run, and the gate passed again. I could not reproduce the failure on demand: two full runs after dropping the OS page cache and one under full CPU load were all 893/893.
+
+A judge's fresh clone on a cold machine is exactly that situation, so I fixed it rather than leaving it as a flake: `vitest.setup.ts` sets Testing Library's `asyncUtilTimeout` to 5 s. No assertion changes; a condition that is wrong still fails, it just gets longer to become true. There is no test that fails on the old code, because the failure couldn't be reproduced on demand. On the fix commit: `checks.sh` exit 0, 893 tests, e2e 145/145.
+
+This is a code change after 3807d13, so CLEAN_AUDITS_IN_A_ROW is back to 0: two more clean audits and a fresh break-it are needed.

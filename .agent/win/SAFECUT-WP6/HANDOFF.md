@@ -89,11 +89,12 @@
 - Audit round 43 (on c83e97a): 1 low (paused redraws mapped currentTime, so a scrub late in a frame drew the next frame; partly a round-42 regression), fixed in the round-43 commit. Break-it passed on c83e97a (884 tests, e2e 144/144; 300,000 fuzz sequences, 382 s) but is void now. On the round-43 commit: 885 tests, e2e 145/145.
 - Audit round 44 (on 3c6ce0c): 1 low (prototype names as mock job IDs and codes), fixed in the round-44 commit with two more own-key lookups. Break-it passed on 3c6ce0c (885 tests, e2e 145/145; 300,000 fuzz sequences, 400 s) but is void now. On the round-44 commit: 893 tests, e2e 145/145.
 - Audit round 45 (on 3807d13): CLEAN. Break-it passed on 3807d13 (fresh clone 893 tests, e2e 145/145; FUZZ_RUNS=100000, 300,000 sequences, 403 s); its record is written once round 46 is clean.
-- Audit round 46 (on c34caca, code = 3807d13): CLEAN. CLEAN_AUDITS_IN_A_ROW is 2, AUDITED_COMMIT 3807d13 (the last code commit), and break-it.md records the fresh-clone run and the FUZZ_RUNS=100000 soak on 3807d13.
+- Audit round 46 (on c34caca, code = 3807d13): CLEAN. The gate passed on 1a245fd and the final status was posted on PR #4.
+- After that, an hourly gate re-run on a just-resumed container failed once on two vitest 1 s timeouts (passed on re-run; not reproducible). I raised Testing Library's asyncUtilTimeout to 5 s. CLEAN_AUDITS_IN_A_ROW is 0 until two more clean audits.
 
 ## Next steps, in order
-1. Done: rounds 45 and 46 were clean on 3807d13; reaudit.md has AUDITED_COMMIT 3807d13 and CLEAN_AUDITS_IN_A_ROW 2.
-2. Done: break-it.md has TESTED_COMMIT 3807d13 (fresh clone `checks.sh` exit 0, 893 tests, e2e 145/145; FUZZ_RUNS=100000 pass). Any later code change voids both: re-audit twice and redo break-it.
+1. Run the next full audit round on HEAD (round 47 is next). Rounds 45 and 46 were clean on 3807d13, but a later hardening of the test setup (vitest asyncUtilTimeout 5 s, see reaudit.md) is a code change, so CLEAN_AUDITS_IN_A_ROW is 0 again. Repeat until two consecutive audits find nothing, then set AUDITED_COMMIT to the last code commit and CLEAN_AUDITS_IN_A_ROW to 2.
+2. After the last code change, run the fresh-clone `checks.sh` and the FUZZ_RUNS=100000 soak, and rewrite break-it.md with that TESTED_COMMIT.
 3. Run the gate until it prints `GATE: PASS` on the pushed HEAD. Then post the final status on PR #4, including the gate's last line.
 4. If time remains: live deployment (owner sets up Vercel), Safari/Firefox runs.
 

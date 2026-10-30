@@ -1,6 +1,11 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
+
+// findBy*/waitFor give up after 1 s by default. A fresh clone on a cold machine compiles each file's
+// first mock fixture import on demand, which once took longer than that (two tests timed out right
+// after a container resume). Waiting longer only matters when a condition is slow, never when it's wrong.
+configure({ asyncUtilTimeout: 5_000 });
 
 afterEach(() => {
   cleanup();
