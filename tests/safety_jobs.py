@@ -156,5 +156,20 @@ def make_job(root: Path, scenario: Scenario | None = None, job_id: str = "j_synt
         else Transcript(status="ok", source=None, source_kind=None, turns=[])
     )
     dump(transcript, job_dir / "transcript.json")
-    (job_dir / "synthetic.json").write_text(json.dumps({"synthetic": True, "scenario": "tests/safety_jobs.py"}))
+    truth: dict[str, list[dict[str, object]]] = {}
+    for actor in scenario.actors:
+        for f in range(actor.first, actor.last + 1):
+            box = actor.box(f)
+            if box is not None:
+                truth.setdefault(str(f), []).append(
+                    {
+                        "box": list(box),
+                        "kind": "face",
+                        "should_hide": actor.role != "participant",
+                        "label": actor.track_id,
+                    }
+                )
+    raw = job_dir / "raw" / "redteam"
+    raw.mkdir(parents=True)
+    (raw / "synthetic_truth.json").write_text(json.dumps({"synthetic": True, "frames": truth}))
     return job_dir

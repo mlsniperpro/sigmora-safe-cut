@@ -15,11 +15,11 @@ import math
 from collections.abc import Iterable
 
 from safecut.contracts import (
-    Audit,
     CrowdFill,
     DecisionItem,
     Decisions,
     Job,
+    Leak,
     Padding,
     Plan,
     PlanEntry,
@@ -62,11 +62,9 @@ def locked_grid(item: DecisionItem, by_id: dict[str, Track], job: Job) -> Grid |
     return (x0, y0, max(2, math.ceil(widest / MAX_BLOCKS)))
 
 
-def read_through(audit: Audit | None) -> set[str]:
+def read_through(leaks: Iterable[Leak]) -> set[str]:
     """Items a model read through (redteam.md L7): a flagged leak that the audit didn't leave unresolved."""
-    if audit is None:
-        return set()
-    return {leak.through_item for leak in audit.leaks if leak.through_item is not None and not leak.unresolved}
+    return {leak.through_item for leak in leaks if leak.through_item is not None and not leak.unresolved}
 
 
 def _crowd_fills(tracks: Tracks, hidden: set[str], job: Job) -> list[CrowdFill]:
@@ -105,11 +103,12 @@ def _patch_entries(item: DecisionItem, job: Job) -> Iterable[tuple[int, PlanEntr
         yield frame, entry
 
 
-def plan(job: Job, tracks: Tracks, decisions: Decisions, audit: Audit | None = None) -> Plan:
+def plan(job: Job, tracks: Tracks, decisions: Decisions, *, solid: Iterable[str] = ()) -> Plan:
+    """The plan for every hidden item; the items in ``solid`` (read through, :func:`read_through`) render solid."""
     backfill = backfill_frames(job, tracks)
     # Within SAM's own sampling step a missing box is interpolation, not a gap the object vanished in.
     interp_gap = math.ceil(job.fps / min(tracks.sam_fps, job.fps))
-    solid = read_through(audit)
+    solid = set(solid)
     by_id = {t.track_id: t for t in tracks.tracks}
     frames: dict[int, list[PlanEntry]] = {}
     hidden: set[str] = set()

@@ -159,9 +159,9 @@ def test_an_item_read_through_renders_solid_from_then_on() -> None:
                      "box": [100, 60, 120, 80], "confidence": "high"}],
         "unresolved": 0, "passes": 1, "sample_step": FPS, "blocked_reason": None,
     })  # fmt: skip
-    assert read_through(audit) == {"i_1"}
-    assert read_through(None) == set()
-    p = plan(JOB, ts, d, audit)
+    assert read_through(audit.leaks) == {"i_1"}
+    assert read_through([]) == set()
+    p = plan(JOB, ts, d, solid=read_through(audit.leaks))
     assert {e.style for es in p.frames.values() for e in es} == {"solid"}
     assert {e.grid for es in p.frames.values() for e in es} == {None}
 
