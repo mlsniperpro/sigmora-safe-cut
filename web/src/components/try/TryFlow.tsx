@@ -11,6 +11,7 @@ import type { JobResponse } from "@/lib/contracts";
 import { getClient } from "@/lib/client";
 import { COPY, codeWindowMessage, formatLocal } from "@/lib/copy";
 import { CODE_MAX_LENGTH, checkFiles, durationProblem, normaliseCode, sizeMb } from "@/lib/upload";
+import { useCooldown } from "@/hooks/useCooldown";
 import { useJob } from "@/hooks/useJob";
 import { SITE } from "@/lib/site";
 import { ProgressView, fmtDuration } from "../job/ProgressView";
@@ -63,6 +64,8 @@ export function TryFlow() {
   const [openWeight, setOpenWeight] = useState(false);
   const [codeError, setCodeError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
+  /** A 429 on Continue holds it until Retry-After (or 60 s), like every other POST (§10.3). */
+  const { coolingDown: continueCooling, coolDown: coolContinue } = useCooldown();
   const codeInput = useRef<HTMLInputElement>(null);
 
   const [file, setFile] = useState<File | null>(null);
@@ -128,7 +131,7 @@ export function TryFlow() {
 
   // ------------------------------------------------------------------ step A
   const onContinue = async () => {
-    if (checking) return;
+    if (checking || continueCooling) return;
     const value = normaliseCode(code);
     if (!value) {
       setCodeError(COPY.emptyCode);
@@ -154,6 +157,7 @@ export function TryFlow() {
         codeInput.current?.select();
       } else if (e?.status === 429) {
         setCodeError(COPY.rateLimited);
+        coolContinue(e.retryAfterS ?? null);
       } else if (e?.kind === "network" || e?.kind === "timeout") {
         setCodeError(COPY.unreachable);
       } else {
@@ -378,7 +382,7 @@ export function TryFlow() {
             <button type="button" className={btn.secondary} aria-pressed={showCode} onClick={() => setShowCode((v) => !v)}>
               {showCode ? "Hide" : "Show"}
             </button>
-            <button type="submit" className={btn.primary} aria-disabled={checking || undefined}>
+            <button type="submit" className={btn.primary} aria-disabled={checking || continueCooling || undefined}>
               {checking ? "Checking…" : "Continue"}
             </button>
           </div>
@@ -624,6 +628,13 @@ function Progress({
 }) {
   const [job, setJob] = useState<JobResponse | null>(null);
   const uploading = uploadPercent !== null && uploadPercent < 100;
+  // The upload lives in this page: the browser asks before a reload or close would stop it.
+  useEffect(() => {
+    if (!uploading) return;
+    const hold = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", hold);
+    return () => window.removeEventListener("beforeunload", hold);
+  }, [uploading]);
   const onJob = useCallback(
     (j: JobResponse) => {
       setJob(j);

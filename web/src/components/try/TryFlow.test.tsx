@@ -274,7 +274,7 @@ describe("/try", () => {
     expect(backend.log.some((l) => l.path.endsWith("/start"))).toBe(false);
   });
 
-  it("a refusal that keeps the step leaves focus on the button that was pressed (§10.2)", async () => {
+  it("a refusal that keeps the step leaves focus on the button that was pressed (§10.2); a 429 holds Continue (§10.3)", async () => {
     const user = setup();
     backend.inject(/codes\/check$/, "error-429-rate");
     await user.type(screen.getByLabelText("Access code"), "judge");
@@ -283,7 +283,18 @@ describe("/try", () => {
     await user.keyboard("{Enter}");
     expect(await screen.findByText(COPY.rateLimited)).toBeInTheDocument();
     expect(cont).toHaveFocus();
+    // Held until Retry-After (or 60 s): pressing it again sends nothing.
+    expect(cont).toHaveAttribute("aria-disabled", "true");
+    const checks = () => backend.log.filter((l) => l.path.endsWith("/codes/check")).length;
+    const before = checks();
     await user.keyboard("{Enter}");
+    expect(checks()).toBe(before);
+    expect(screen.queryByRole("button", { name: "Choose a file" })).toBeNull();
+  });
+
+  it("a refused Start keeps focus on Start (§10.2)", async () => {
+    const user = setup();
+    await enterCode(user, "judge");
     await screen.findByRole("button", { name: "Choose a file" });
     await user.upload(fileInput(), clip());
     await screen.findByText(/street\.mp4/);

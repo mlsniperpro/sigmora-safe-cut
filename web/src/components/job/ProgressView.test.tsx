@@ -56,3 +56,19 @@ describe("clip duration (§0: whole seconds round down)", () => {
     expect(fmtDuration(0.4)).toBe("0:00");
   });
 });
+
+describe("while the clip uploads (UI-SPEC §2.3, §2.7)", () => {
+  it("shows a progress bar with the percent, and asks to keep the page open instead of offering the link", () => {
+    render(<ProgressView fileName="clip.mp4" duration={12} active="uploading" uploadPercent={45} jobId="job-1" onDeleted={() => undefined} />);
+    expect(screen.getByRole("progressbar", { name: "Upload progress" })).toHaveAttribute("value", "45");
+    expect(screen.getByText("45%")).toBeInTheDocument();
+    expect(screen.getByText("Keep this page open until the upload finishes. Leaving now stops it.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Copy link" })).toBeNull();
+  });
+
+  it("offers the review link once the upload is done", () => {
+    render(<ProgressView fileName="clip.mp4" duration={12} active="prepare" jobId="job-1" onDeleted={() => undefined} />);
+    expect(screen.getByRole("button", { name: "Copy link" })).toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).toBeNull();
+  });
+});

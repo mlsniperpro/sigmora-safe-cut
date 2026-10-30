@@ -660,7 +660,11 @@ try {
     await page.getByText("Too many tries in a short time. Wait a minute and try again.").first().waitFor();
     const focused = await cont.evaluate((el) => document.activeElement === el);
     check("/try: a refused Continue keeps focus on the button", focused);
+    // A 429 holds Continue until Retry-After (§10.3); it stays focusable.
+    check("/try: a rate-limited Continue is held", (await cont.getAttribute("aria-disabled")) === "true");
     // A refusal that disables Start (401 on POST /v1/jobs: the `expired` mock code) takes focus itself.
+    // A fresh page, so the held Continue doesn't wait out its minute.
+    await page.goto(`${BASE}/try`, { waitUntil: "networkidle" });
     await page.getByLabel("Access code").fill("expired");
     await cont.click();
     await page.getByRole("button", { name: "Choose a file" }).waitFor();

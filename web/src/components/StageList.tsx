@@ -47,6 +47,10 @@ export function StageList({
                   {isActive && etaS ? <span className="text-sm text-muted">~{Math.max(1, Math.round(etaS))} s left</span> : null}
                 </span>
                 {detail && <span className="text-sm font-normal text-muted">{detail}</span>}
+                {/* §2.7: a progress bar with the percent while uploading. */}
+                {isActive && row.stage === "uploading" && (
+                  <progress className="mt-1 h-2 w-full max-w-xs accent-[var(--accent)]" value={uploadPercent ?? 0} max={100} aria-label="Upload progress" />
+                )}
               </span>
             </li>
           );

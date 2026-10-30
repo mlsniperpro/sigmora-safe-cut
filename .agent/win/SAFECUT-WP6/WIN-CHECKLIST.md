@@ -168,6 +168,9 @@ Round 14 (fixes in the round-14 commit; details in `reaudit.md`):
 - [x] R15-1 (low) a late fresh URL brings the review player back: JobPage test
 - [x] R15-2 (low) an action's GET isn't made quiet by a cut-short refresh: useJob test
 - [x] Self-found: fixture dates shift with the clock, so the mock and the tests hold on any date: mock-backend tests, suite run at clock shifts up to +400 days
+- [x] R36-1 (low) keep-open note while uploading, link after; beforeunload guard: ProgressView test
+- [x] R36-2 (low) a 429 holds Continue until Retry-After: TryFlow test, e2e
+- [x] R36-3 (low) upload progress bar (§2.7): ProgressView test
 - [x] Self-found: header and landing hero reflow at 200% text on 320 px (were "noted, not counted"); a probe of every page and Why sheet at 200%/320–360 px is clean: e2e
 - [x] R34-1 (low) a click away forgets the chip for the breakpoint refocus: e2e
 - [x] R34-2 (low) evidence-frame row wraps at 200% on 320 px: e2e

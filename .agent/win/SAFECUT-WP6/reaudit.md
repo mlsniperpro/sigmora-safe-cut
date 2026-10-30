@@ -1,7 +1,7 @@
 AUDITED_COMMIT: b2c083d
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
-CLEAN_AUDITS_IN_A_ROW: 1
+CLEAN_AUDITS_IN_A_ROW: 0
 
 # Re-audit log: SAFECUT-WP6
 
@@ -457,3 +457,13 @@ Noted, not counted:
 - With `?from=sigmora` at 320–326 px, "Back to Sigmora" wraps to a second header row (clean, better than squeezing).
 - At 300% text (beyond 1.4.4's 200%) on 320 px, `/` and `/try` scroll 13–35 px sideways.
 - The radiogroup has no Home/End (the arrow keys work).
+
+## Round 36 (audited b2c083d by a Sonnet reviewer, with emphasis on what recent rounds covered least: copy against UI-SPEC §2.5–§10.4 line by line, the /try upload flow against a fake https API with slow, killed, stalled and 403 uploads, cancel and delete, the result page, keyboard, regions, 85 routes with axe, text-spacing, forced colours and 150/200% text; fixes in the next commit)
+
+0 critical, 0 high, 0 medium, 3 low. This resets the clean count to 0 after round 35's clean.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | low | "You can leave this page" and the review link showed while the upload was still running; opening the link (or reloading) killed the upload and the job stayed `created` (§2.3 shows the note only after "✓ Uploading") | fixed: while uploading, the page says "Keep this page open until the upload finishes. Leaving now stops it.", the link comes once the upload is done, and the browser asks before a reload or close. ProgressView test (fails on b2c083d) |
+| 2 | low | A 429 on Continue (code check) left Continue enabled; §10.3 holds the button until Retry-After (60 s without) for any POST but /review | fixed: Continue is aria-disabled for the cooldown (useCooldown) and ignores presses. The TryFlow test that expected an immediate retry encoded the bug; it now asserts the hold. The e2e checks the hold too |
+| 3 | low | §2.7 calls for a "progress bar with percent" while uploading; only the percent text was shown | fixed: a `<progress>` (labelled "Upload progress") under the uploading row, with the percent kept. ProgressView test (fails on b2c083d) |

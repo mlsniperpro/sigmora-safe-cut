@@ -113,6 +113,10 @@ export function ProgressView({
       <div className="mt-4">
         <StageList active={active} kind="pipeline" showMissLoop={seenMissLoop} {...(uploadPercent !== undefined && { uploadPercent })} etaS={etaS ?? null} />
       </div>
+      {/* The upload runs in this page: leaving or reloading stops it (§2.3 shows the leave note once it's done). */}
+      {uploadPercent !== undefined ? (
+        <p className="mt-8 text-sm">Keep this page open until the upload finishes. Leaving now stops it.</p>
+      ) : (
       <div className="mt-8 flex flex-wrap items-center gap-3 text-sm">
         <span>You can leave this page. Your review link{isMockMode() ? " (in this preview it only works in this browser)" : ""}:</span>
         <code ref={linkRef} className="rounded bg-surface-2 px-2 py-1 break-all">
@@ -140,6 +144,7 @@ export function ProgressView({
           {copied === "failed" ? "Couldn't copy. The link is selected: copy it from there." : copied === "copied" ? "Link copied." : ""}
         </span>
       </div>
+      )}
       <div className="mt-4 flex flex-wrap items-center justify-end gap-3">
         {deleteError && <ActionError message={deleteError} />}
         <button type="button" className={btn.danger} disabled={coolingDown}
