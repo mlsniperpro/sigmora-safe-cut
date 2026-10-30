@@ -1,4 +1,4 @@
-AUDITED_COMMIT: b29ce28a2732244edd4c5ca0d8d90c476ba45305
+AUDITED_COMMIT: 3229c21adda346df3c5d40e636e55d8a94d1b568
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -185,4 +185,18 @@ ground-truth frames, all clean); WP4 2 medium reproduced, fixed at b29ce28 (merg
   RemoteDetector wiring is WP5's deploy; synthetic-only label timing; the checker's zero-width interpolation on
   1-px sparse anchors (unreachable: tracks are densified); one-frame tracks' zero edge velocity (accepted fallback).
 
-## Round 10: running at b29ce28 (main aa5773c)
+## Round 10 (at b29ce28): 1 medium (WP3) and lows reproduced; fixed at df29407 / e6d4071 (merged e8fee36)
+- WP3 medium: two duplicate tracks of one child (SAM masklets a pixel apart) weren't linked, so the duplicate could be
+  kept and the pair counted as two children → same-concept tracks overlapping at IoU ≥ 0.5 on half their frames are
+  linked (`test_a_duplicate_track_of_a_child_is_locked_and_counted_once`, fails without the fix).
+- WP4 medium (SHIP's): a patching audit broke `check_approval` → SHIP's approval digest ignores audit patches, now on
+  main (ff997a6, with the private red-team text fix in API views).
+- WP4 low: faces counted only on pass 1 → on the pass that first scans a frame
+  (`test_faces_are_counted_on_the_pass_that_first_scans_a_frame`, fails without the fix); reopened leaks de-duplicated
+  against the rescan; a shadowed variable in `reopened` renamed.
+- Notes kept as notes: re-runs of a stubborn unresolved leak add records (each pass's finding is real); the server
+  doesn't enforce the UI's merge preconditions (no privacy delta: any unlocked item can be kept directly); a mask
+  entry follows the dilated SAM outline (by design); an undo of a cover whose spot a re-audit dropped keeps the patch
+  (fail-closed); flagged-frame sampling cost on a clip SAM missed entirely (spec-mandated; the cap blocks it).
+
+## Round 11: running at 3229c21 (main merged in: SHIP's fixes)
