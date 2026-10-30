@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 
 from safecut import pipeline
-from safecut.api.app import hero_job_id
+from safecut.api.app import demo_stamp, hero_job_id
 from safecut.api.store import JobStore
 from safecut.stages import Stage
 from tests.fake_stages import CLIP, fake_runner
@@ -50,8 +50,12 @@ def api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
     pipeline.analyse(job_dir, replay=True)
     pipeline.approve(job_dir, how="auto_policy")
     pipeline.publish(job_dir, replay=True)
+    recording = ROOT / "fixtures" / "jobs" / "demo"
+    source = json.loads((recording / "raw" / "manifest.json").read_text())["source"]
     with store.update(job_id) as state:
         state.status, state.synthetic = "done", True
+        # Built from the current recording and code, so the API serves it instead of rebuilding it at startup.
+        state.demo_stamp = demo_stamp(recording, ROOT / source)
     port = free_port()
     env = {
         **os.environ,
