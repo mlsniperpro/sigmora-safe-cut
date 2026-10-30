@@ -587,5 +587,7 @@ def test_any_schema_valid_answers_assemble_into_a_valid_roles_file(
     again = contracts.Roles.model_validate_json(built.model_dump_json())
     contracts._check_roles(again, job, tracks)  # pyright: ignore[reportPrivateUsage] -- the cross-file check is the unit
     for t in again.tracks:
-        if t.role == "participant":
+        if t.role == "participant":  # the keep rule itself (role-pass.md rules 2–7), not just the contract
             assert t.votes == ["participant"] * 3
+            assert len(set(t.frames)) >= 2
+            assert set(t.frames) <= set(keyframes) - set(crowded)

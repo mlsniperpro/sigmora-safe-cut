@@ -53,8 +53,12 @@ def no_speech(status: str, reason: str) -> Transcript:
 
 def extract_wav(job_dir: Path, job: Job) -> Path:
     out = job_dir / WAV
-    media.run(["-y", "-i", str(job_dir / job.prepared), "-vn", "-ac", "1", "-ar", "24000", "-sample_fmt", "s16",
-               "-c:a", "pcm_s16le", str(out)])  # fmt: skip
+    try:
+        media.run(["-y", "-i", str(job_dir / job.prepared), "-vn", "-ac", "1", "-ar", "24000", "-sample_fmt", "s16",
+                   "-c:a", "pcm_s16le", str(out)])  # fmt: skip
+    except BaseException:
+        out.unlink(missing_ok=True)  # never a half-written WAV left in the job
+        raise
     return out
 
 
