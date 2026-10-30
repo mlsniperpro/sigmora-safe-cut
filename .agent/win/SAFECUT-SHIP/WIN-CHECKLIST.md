@@ -75,6 +75,14 @@ Every E-line SHIP owns, every brief requirement, and the judging criteria, each 
 - [x] R3 lows: ASCII digits, one upload per job, no /docs, demuxer whitelist, sweep by created_at, E11 tightened (and its own failure fixed), eval dirty detection, report defaults, LAUNCH, README wording; tests named in `reaudit.md`.
 - [-] R3 lows kept: the e2e's toast-based proof of edits; E10's row-level matching (reasons in `reaudit.md`).
 
+## Audit round 4 and SAFETY round 6 (`reaudit.md`)
+
+- [x] R4#1 non-ASCII signature 500: `test_a_non_ascii_signature_is_a_refusal_not_a_500`.
+- [x] R4#2 a refused test run was counted: `test_a_refused_test_run_is_never_counted`.
+- [x] R4#3 E3 measures legibility and kept entities: `test_e3_checks_the_rendered_pixels_not_only_the_plan`.
+- [x] R4 lows: E11 merges and tree, E7 worker, service-key minimum, max active jobs (`test_a_busy_service_asks_new_work_to_wait`).
+- [x] SAFETY R6: blocked audit exits 6; an edit retires the receipt.
+
 ## Judging criteria
 
 - [P] Impact (30): real numbers need `MODEL_API_KEY`, the consented hero clips and the test split (BLOCKED.md); until then every run is synthetic and labelled so, and the docs quote no numbers.

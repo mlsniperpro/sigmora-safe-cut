@@ -68,3 +68,19 @@ Also fixed: `tests/test_meta_client.py::test_cancel_before_send_releases_and_aft
 | L | low | E10 checks that a figure appears in RESULTS, not that it's the right row | **Kept**: every doc figure today is a whole-token match, and the README table is generated (`--check`); row-level matching would need the docs to cite rows | n/a |
 
 Round 3 was not clean (one high, decided; six medium, fixed), so the clean count stays at 0.
+
+## Round 4 (on 17e2e9a): 0 critical, 0 high, 3 medium, 4 low. All closed in 7f066ea.
+
+| # | Sev | Finding | Resolution | Test |
+|---|---|---|---|---|
+| 1 | medium | A non-ASCII `sig` made `hmac.compare_digest` raise: unauthenticated 500 on `/media`, `/uploads` | `verify` refuses a non-ASCII signature | `test_a_non_ascii_signature_is_a_refusal_not_a_500` |
+| 2 | medium | A dirty-tree refusal on the test split still counted one of its 3 runs | Dirty check and variant pre-flight run before the counter is written | `test_a_refused_test_run_is_never_counted` |
+| 3 | medium | E3's pixel check measured change, not hiding (a +10 tint or a cover over 5 % of the box passed; kept entities unchecked) | Hidden = the content's contrast with its background in the render is ≤ 25 % of the source's on 99 % of frames (the demo's covers: 0.00; a tint: 1.00); kept entities change < 8 on 75 % of frames | `test_e3_checks_the_rendered_pixels_not_only_the_plan` (cover, nothing, sliver, tint) |
+| 4 | low | E11 never saw merge-commit diffs, nor the tree | `git log -p --cc`, plus every tracked text file scanned; only the scanner and its tests may hold key shapes | E11 run |
+| 5 | low | E7's "worker" matched any `*work*` function | Requires the ASGI function to return `create_app(` and the Service to build its `Worker(`, plus the worker smoke | E7 run |
+| 6 | low | Service keys had no production minimum | `production_problems` requires 32 characters | `test_production_refuses_weak_secrets` |
+| 7 | low | No global ceiling on jobs at work | `SAFECUT_MAX_ACTIVE_JOBS` (8): start and render answer 429, Retry-After 60 | `test_a_busy_service_asks_new_work_to_wait` |
+
+Also from SAFETY's round 6, in SHIP's files (d52980b): `safecut run`/`publish` exit 6 on a blocked audit (`test_cli_never_reports_a_blocked_audit_as_done`); an edit to a done job retires its receipt (`test_edits_after_done_move_back_to_review_and_needs_a_new_render`).
+
+Round 4 was not clean (three medium), so the clean count stays at 0.
