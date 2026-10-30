@@ -113,3 +113,6 @@ Evidence is a test name, a command run in this session, or a commit. Owner input
 - [x] Mosaic never covers its own read-through; crash-safe plan/decisions order (`tests/test_audit_loop.py`).
 - [x] Close-ups with an early-ending body; duplicate object rulings fail closed (`tests/test_policy.py`).
 - [-] Private red-team text in API views; approval vs patches: SHIP's files, fixed on SHIP's branch.
+
+## Audit findings (round 9, fixed with tests at b29ce28, merged aa5773c; details in reaudit.md)
+- [x] Unresolved leaks on the pending record before the placeholder; mask entries cover only their mask (`tests/test_audit_loop.py`).
