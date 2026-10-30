@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -16,6 +17,7 @@ from safecut.meta import replay, sam
 from safecut.scout import roles, scene
 from safecut.speech import stage as speech
 from safecut.track import stage as track_stage
+from safecut.track.axes import backfill_frames
 from scripts import make_demo_job as demo
 
 DEMO = Path("fixtures/jobs/demo")
@@ -126,3 +128,30 @@ def test_rebuild_is_byte_identical(tmp_path: Path) -> None:
         rebuilt = tmp_path / path
         assert rebuilt.is_file(), path
         assert rebuilt.read_bytes() == path.read_bytes(), path
+
+
+def test_every_hidden_entity_is_covered_on_every_visible_frame(replayed: Path) -> None:
+    """E3, perception side: a track box covers ≥ 95% of each should-hide entity's labelled box on each visible
+    frame, or the frame is inside the back-fill before the track or the extension after it (which the guard holds)."""
+    tracks = load(replayed / "tracks.json", Tracks).tracks
+    backfill = backfill_frames(30, 8)
+    by_entity: dict[str, list[Any]] = {}
+    for track in tracks:
+        entity = demo.entity_of(track)
+        assert entity is not None
+        by_entity.setdefault(entity, []).append(track)
+    for entity in ("e3", "e4", "e5", "e6", "e7"):
+        for frame in range(demo.FRAMES):
+            truth = demo.truth_box(entity, frame)
+            if truth is None:
+                continue
+            area = (truth[2] - truth[0]) * (truth[3] - truth[1])
+            held = any(t.first - backfill <= frame < t.first or t.last < frame <= t.last + 8 for t in by_entity[entity])
+            covered = any(
+                (b := t.boxes.get(frame)) is not None and overlap(b, truth) >= 0.95 * area for t in by_entity[entity]
+            )
+            assert covered or held, (entity, frame)
+
+
+def overlap(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> int:
+    return max(0, min(a[2], b[2]) - max(a[0], b[0])) * max(0, min(a[3], b[3]) - max(a[1], b[1]))
