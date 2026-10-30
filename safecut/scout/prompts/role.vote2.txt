@@ -1,0 +1,2 @@
+Labels per frame: {labels_per_frame}
+Go through every label listed above. First ask whether it is simply a bystander; then whether it may be a child; then whether the evidence shows it is a participant; if none of these is clear, it is unsure. Then list any missed items.

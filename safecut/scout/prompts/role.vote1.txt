@@ -1,0 +1,2 @@
+Labels per frame: {labels_per_frame}
+Judge every label listed above: is each one a participant, a bystander, a child, or unsure? Then list any missed items.

@@ -1,0 +1,3 @@
+Transcript:
+{transcript_text}
+Creator's note: {creator_note}

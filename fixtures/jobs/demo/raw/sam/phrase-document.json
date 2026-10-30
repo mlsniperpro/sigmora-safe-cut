@@ -1,0 +1,43 @@
+{
+ "synthetic": true,
+ "stage": "track",
+ "model": "sam-3.1",
+ "request": {
+  "kind": "phrase",
+  "concept": "document",
+  "text": "document",
+  "sam_frames": 96,
+  "file_id": "file-synthetic"
+ },
+ "events": [
+  {
+   "type": "response.created",
+   "response": {
+    "id": "resp_synthetic_phrase_document",
+    "status": "in_progress"
+   }
+  },
+  {
+   "type": "response.content_part.done",
+   "item_id": "msg_synthetic",
+   "output_index": 0,
+   "content_index": 0,
+   "part": {
+    "type": "output_text",
+    "text": ""
+   }
+  },
+  {
+   "type": "response.completed",
+   "response": {
+    "id": "resp_synthetic_phrase_document",
+    "status": "completed",
+    "usage": {
+     "video_frames_processed": 96
+    }
+   }
+  }
+ ],
+ "response": null,
+ "usd": 0.0
+}
