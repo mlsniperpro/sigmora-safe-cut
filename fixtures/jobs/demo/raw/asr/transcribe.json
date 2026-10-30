@@ -1,0 +1,43 @@
+{
+ "synthetic": true,
+ "stage": "speech",
+ "model": "muse-voice-transcribe-1.0",
+ "request": {},
+ "events": null,
+ "response": {
+  "sessionId": "synthetic",
+  "transcript": "Hi, I'm Amina, welcome back to the channel. Today I'm at the market with my friend Kev. Hey everyone, great to be here! Let's see what they have today.",
+  "audioDurationMs": 12000,
+  "turns": [
+   {
+    "turnId": 0,
+    "speaker": "A",
+    "startMs": 400,
+    "endMs": 2800,
+    "transcript": "Hi, I'm Amina, welcome back to the channel."
+   },
+   {
+    "turnId": 1,
+    "speaker": "A",
+    "startMs": 2900,
+    "endMs": 4600,
+    "transcript": "Today I'm at the market with my friend Kev."
+   },
+   {
+    "turnId": 2,
+    "speaker": "B",
+    "startMs": 4800,
+    "endMs": 6400,
+    "transcript": "Hey everyone, great to be here!"
+   },
+   {
+    "turnId": 3,
+    "speaker": "A",
+    "startMs": 6800,
+    "endMs": 9200,
+    "transcript": "Let's see what they have today."
+   }
+  ]
+ },
+ "usd": 0.0
+}

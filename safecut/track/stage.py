@@ -26,7 +26,7 @@ from safecut.meta.session import job_client
 from safecut.track import media
 from safecut.track.axes import from_proxy_table, sam_fps_eff
 from safecut.track.link import Frame, ObjectLabel, crowded, link_request, next_ids
-from safecut.track.masks import frame_rle
+from safecut.track.masks import mask_table
 
 log = logging.getLogger(__name__)
 
@@ -178,11 +178,9 @@ def build(
     crowd: set[int] = set(existing.crowded_frames) if existing else set()
     numbering = next_ids(t.track_id for t in tracks)
 
-    def masks(d: sam.Detection) -> Any:
-        return frame_rle(d.mask, d.box, job.height, job.width) if d.mask is not None else None
-
     for call, seg in zip(calls, parsed, strict=True):
         index = len(requests)
+        table_of_masks = mask_table(seg.detections, job.height, job.width) if with_masks else {}
         requests.append(
             SamRequest(
                 kind=call.kind,
@@ -196,8 +194,15 @@ def build(
         )
         if call.kind == "phrase" and call.text not in concepts:
             concepts.append(call.text)
-        tracks += link_request(seg.detections, request=index, labels=call.label, geometry=geometry, source=model,
-                               numbering=numbering, masks=masks if with_masks else None)  # fmt: skip
+        tracks += link_request(
+            seg.detections,
+            request=index,
+            labels=call.label,
+            geometry=geometry,
+            source=model,
+            numbering=numbering,
+            masks=lambda d, t=table_of_masks: t.get((d.frame, d.object_id)),
+        )
         crowd |= crowded(seg.detections, geometry)
     return Tracks(concepts=concepts, sam_fps=proxy.fps, sam_frames=proxy.frames, tracks=tracks,
                   crowded_frames=sorted(crowd), requests=requests)  # fmt: skip

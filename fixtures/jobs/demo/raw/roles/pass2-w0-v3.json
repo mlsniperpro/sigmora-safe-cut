@@ -1,0 +1,52 @@
+{
+ "synthetic": true,
+ "stage": "roles",
+ "model": "muse-spark-1.3",
+ "request": {
+  "vote": 3,
+  "frames": [
+   210,
+   240,
+   270,
+   300,
+   330
+  ]
+ },
+ "events": [
+  {
+   "type": "response.created",
+   "response": {
+    "id": "resp_synthetic_pass2_w0_v3",
+    "status": "in_progress"
+   }
+  },
+  {
+   "type": "response.completed",
+   "response": {
+    "id": "resp_synthetic_pass2_w0_v3",
+    "status": "completed",
+    "output": [
+     {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+       {
+        "type": "output_text",
+        "text": "{\"tracks\":[],\"objects\":[{\"track_id\":\"envelope:1\",\"sensitive\":true,\"content\":\"an addressed envelope on the table\",\"frames\":[270,300]}],\"missed\":[]}"
+       }
+      ]
+     }
+    ],
+    "usage": {
+     "input_tokens": 0,
+     "output_tokens": 0,
+     "input_tokens_details": {
+      "cached_tokens": 0
+     }
+    }
+   }
+  }
+ ],
+ "response": null,
+ "usd": 0.0
+}

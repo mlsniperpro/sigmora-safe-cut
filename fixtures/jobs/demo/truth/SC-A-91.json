@@ -1,0 +1,99 @@
+{
+ "clip": "SC-A-91-synthetic-20261030.mp4",
+ "fps": 30,
+ "frames": 360,
+ "width": 640,
+ "height": 360,
+ "split": "dev",
+ "entities": [
+  {
+   "id": "e1",
+   "category": "participant",
+   "should_hide": false,
+   "reason": "the host: introduces herself as Amina and talks to camera",
+   "difficulty": [],
+   "frames": {
+    "first": 0,
+    "last": 359
+   },
+   "boxes": "tracks/SC-A-91/e1.mot.txt"
+  },
+  {
+   "id": "e2",
+   "category": "participant",
+   "should_hide": false,
+   "reason": "the guest: introduced by the host as her friend Kev, answers her",
+   "difficulty": [],
+   "frames": {
+    "first": 62,
+    "last": 329
+   },
+   "boxes": "tracks/SC-A-91/e2.mot.txt"
+  },
+  {
+   "id": "e3",
+   "category": "bystander",
+   "should_hide": true,
+   "reason": "walks past behind them twice, never addressed",
+   "difficulty": [
+    "reentry"
+   ],
+   "frames": {
+    "first": 21,
+    "last": 289
+   },
+   "boxes": "tracks/SC-A-91/e3.mot.txt"
+  },
+  {
+   "id": "e4",
+   "category": "child",
+   "should_hide": true,
+   "reason": "a child crossing the middle of the frame",
+   "difficulty": [
+    "small"
+   ],
+   "frames": {
+    "first": 90,
+    "last": 209
+   },
+   "boxes": "tracks/SC-A-91/e4.mot.txt"
+  },
+  {
+   "id": "e5",
+   "category": "screen",
+   "should_hide": true,
+   "reason": "a wall screen showing an email inbox with names",
+   "difficulty": [],
+   "frames": {
+    "first": 0,
+    "last": 359
+   },
+   "boxes": "tracks/SC-A-91/e5.mot.txt"
+  },
+  {
+   "id": "e6",
+   "category": "plate",
+   "should_hide": true,
+   "reason": "a parked car's licence plate",
+   "difficulty": [],
+   "frames": {
+    "first": 150,
+    "last": 259
+   },
+   "boxes": "tracks/SC-A-91/e6.mot.txt"
+  },
+  {
+   "id": "e7",
+   "category": "document",
+   "should_hide": true,
+   "reason": "an addressed envelope on the table",
+   "difficulty": [],
+   "frames": {
+    "first": 240,
+    "last": 335
+   },
+   "boxes": "tracks/SC-A-91/e7.mot.txt"
+  }
+ ],
+ "notes": "Synthetic clip drawn by scripts/make_demo_job.py; boxes are exact by construction."
+}
