@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 90b9f714dfdb7d132c1a7eee8df5650676d21d25
+AUDITED_COMMIT: 225d9c6aacd0d157c4707dabedba42ea9a43d282
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -51,4 +51,36 @@ verified here before it is fixed, and fixed with a named test. The counter reset
 - WP4 low: detector timing divided by frames scanned, not calls → per call.
 - WP4 (approval hash bound to decisions) is SHIP's `pipeline.approve`: filed with SHIP.
 
-## Round 3: running at 90b9f71 (main dd92749)
+## Round 3 (at 90b9f71): 0 critical, 0 high; mediums and lows verified; fixed at 225d9c6 (merged ede3dc1) or accepted
+- WP4 medium (SHIP's): a patching audit breaks `check_approval` (decisions hash) → reproduced; filed with SHIP with
+  the fix (hash without `audit_patch` items).
+- WP4 medium (SHIP's): the API returns private red-team text in `audit` → filed with SHIP.
+- WP4 medium: a re-render left the old receipt beside the new video → the render stage retires it, chained via
+  `receipts/HEAD` (`test_a_re_render_retires_the_old_receipt_until_a_new_one_is_sealed`).
+- WP4 low: exclusion by the whole box, not the visible region → the kept track's mask where it has one
+  (`test_exclusion_uses_the_kept_tracks_visible_mask_where_it_has_one`); the IoU > 0.3 threshold itself is redteam.md's.
+- WP4 low: only the first frame of a detector run went to the red team → every flagged frame (redteam.md Inputs).
+- WP4 low: leaks grouped on any overlap → IoU ≥ 0.3 (`test_leaks_merge_only_at_iou_0_3_or_more`).
+- WP4 low: bar scaled with the clip → 40 px like the role pass (`test_bar_height_and_frame_label`).
+- WP4 low: receipt JSON couldn't say auto-approve (`approved_by` is fixed by the contract) → a sealed note; audio kept
+  is disclosed; the page says only receipt.json is sealed (`test_the_receipt_matches_every_job_file`,
+  `test_a_human_review_is_not_noted_as_auto_approved`).
+- WP4 low: a rebuilt job.json could re-allow the second opinion → attempt also recorded in `raw/audit/`
+  (`test_a_rebuilt_job_json_never_makes_the_opinion_eligible_again`).
+- WP4 low accepted: per-cell mosaic noise is deterministic (DESIGN §2.7 asks for fixed per-block noise so frame
+  averaging can't cancel it; the ≤ 6-block grid is the protection, not the noise); `truth.py` maps synthetic labels only.
+- WP3 medium accepted: a track SAM re-acquires under a fresh object id is judged on its own votes. ARCHITECTURE §3.2
+  and the contract operationalise DESIGN §2.5's "new ID" as `reentry_of` (always held); holding every mid-clip ID
+  would also hide a participant who walks in (the demo's guest), failing E3, against the contract's own keep rule.
+- WP3 medium: crowd fill covered hidden tracks only → every tracked object on the crowded frames
+  (`test_a_crowd_fill_covers_every_tracked_object_kept_ones_too`).
+- WP3 medium: review re-plans slow on busy clips → vectorised RLE (pycocotools-checked), crop decode, unvalidated
+  entries (15 s → 8.8 s measured) and a per-job region cache across re-plans
+  (`test_cached_regions_plan_exactly_as_fresh_ones`, `test_the_guard_stage_reuses_regions_until_the_tracks_change`).
+- WP3 low: a re-hidden prominent person got the mosaic → the policy's style (`test_a_kept_prominent_person_hidden_again_is_covered_whole`).
+- WP3 low: remove_person on a face-only item covered the face → an estimated body (`test_removing_a_face_only_person_covers_a_body_under_the_face`).
+- WP3 low: a creator hide kept a stale hold → cleared (`test_a_creator_hide_clears_the_hold`).
+- WP3 low: reasons unbounded → ≤ 90 chars, lowercase-first, no full stop (`test_reasons_are_short_lowercase_first_without_a_full_stop`).
+- WP3 low: extra concepts mapped to screen/document → exactly API-NOTES §12's map (`test_kinds`).
+
+## Round 4: running at 225d9c6 (main ede3dc1)
