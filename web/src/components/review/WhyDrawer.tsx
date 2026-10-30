@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { DESKTOP_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
 import type { Box, JobResponse, KeyframeGeometry } from "@/lib/contracts";
 import { geometryMatches, regionWords, ringOnScreen } from "@/lib/keyframe";
+import { asSentence } from "@/lib/labels";
 import { formatFrame, formatFrameTenths } from "@/lib/time";
 import type { WhyModel } from "@/lib/why/model";
 import { CheckIcon, CloseIcon, CrossIcon, HiddenIcon, KeptIcon, LockIcon, NeedsIcon } from "../icons";
@@ -262,7 +263,7 @@ export function WhyDrawer({
               <h3 id="why-reason" className="font-semibold">
                 {model.heading}
               </h3>
-              {model.reason && <p className="mt-1">{model.reason}.</p>}
+              {model.reason && <p className="mt-1">{asSentence(model.reason)}</p>}
               <p className="mt-1 text-muted">{model.fixed}</p>
             </section>
 

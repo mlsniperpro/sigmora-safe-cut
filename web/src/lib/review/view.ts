@@ -3,7 +3,7 @@
  * header counts and the item index the overlay and drawer share.
  */
 import type { Box, Item, JobResponse, Spot, Track } from "../contracts";
-import { KIND_WORD, capitalise, isObjectKind, itemSpan, primaryTrackId } from "../labels";
+import { KIND_WORD, asSentence, capitalise, isObjectKind, itemSpan, primaryTrackId } from "../labels";
 import { formatFrameRange, spokenFrameRange } from "../time";
 import { rewriteFrameRefs } from "../why/rewrite";
 import { effectiveDecision, spotLabels, tracksShown, visibleItems, type ReviewState } from "./reducer";
@@ -121,7 +121,7 @@ export function buildChips(state: ReviewState, job: JobResponse): Chip[] {
       seekFrame,
       thumb,
       pending: pendingItems.has(id),
-      accessibleName: `${item.label}, ${kindWord}, ${DECISION_STATE[column]}${lockedText}. ${reason}. ${span ? spokenFrameRange(span.first, span.last, fps) : ""}`.trim(),
+      accessibleName: `${item.label}, ${kindWord}, ${DECISION_STATE[column]}${lockedText}. ${asSentence(reason)} ${span ? spokenFrameRange(span.first, span.last, fps) : ""}`.trim(),
     };
     chips.push(chip);
   }
@@ -155,7 +155,7 @@ export function buildChips(state: ReviewState, job: JobResponse): Chip[] {
       seekFrame: spot.first,
       thumb: box && keyframes.has(String(spot.first)) ? { frame: spot.first, box } : null,
       pending: false,
-      accessibleName: `Unfixed spot ${label}, ${KIND_WORD[kind]}, needs you. ${reason}. ${spokenFrameRange(spot.first, spot.last, fps)}`,
+      accessibleName: `Unfixed spot ${label}, ${KIND_WORD[kind]}, needs you. ${asSentence(reason)} ${spokenFrameRange(spot.first, spot.last, fps)}`,
     });
   }
   return chips;

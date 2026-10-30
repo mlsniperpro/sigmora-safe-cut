@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 867bece
+AUDITED_COMMIT: 9c46081
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -510,3 +510,17 @@ On the fix commit: `checks.sh` exit 0, 875 tests, e2e 143/143.
 | 2 | low | A failed job's Try again stayed on screen, disabled for good, when a retry got `429 daily_cap` under the §2.6.1 expiry rule ("hidden with the job-page cap line expiry string") | fixed: hidden in that case, with the expiry line (which takes focus). JobPage test (fails on 867bece) |
 
 On the fix commit: `checks.sh` exit 0, 878 tests, e2e 143/143.
+
+## Round 40 (audited 9c46081 by a Sonnet reviewer: cover-spot, merge and remove-person end to end in live mode with spec-correct acks, every timer and time gate, keyboard-only and screen-reader passes, and every mock access code; fixes in the next commit)
+
+0 critical, 0 high, 0 medium, 1 low. CLEAN_AUDITS_IN_A_ROW stays 0. No regressions from round 39.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | low | A failed job's Try again after `429` with `Retry-After: 0` (or a past HTTP-date) stayed disabled until the next 15 s tick: `useNow` dropped deadlines already due instead of waking (§10.3) | fixed: a due deadline wakes at once. useNow test (fails on 9c46081) |
+
+Also fixed, from the "noted, not counted" list: the audit-added chip's accessible name read "…covered it.." (the reason already ends a sentence); chip names and the Why drawer's reason now add a full stop only when the text has none. view test (fails on 9c46081).
+
+Noted, not counted: ←/→ on the Why drawer's keyframe change the frame without an announcement (the time buttons and ◀/▶ announce through `aria-current`; §4.5 asks only for the stepping); WP5 must send `Access-Control-Expose-Headers: Retry-After` for the UI to read it cross-origin (without it the UI holds the 60 s default, which §10.3 allows).
+
+On the fix commit: `checks.sh` exit 0, 880 tests, e2e 143/143.

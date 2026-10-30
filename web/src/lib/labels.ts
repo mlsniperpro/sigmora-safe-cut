@@ -116,3 +116,9 @@ export function itemSpan(
   if (item.first != null && item.last != null) return { first: item.first, last: item.last };
   return null;
 }
+
+/** Ends text as a sentence, without doubling a full stop the API text already has. */
+export function asSentence(text: string): string {
+  const trimmed = text.trimEnd();
+  return /[.!?…]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}

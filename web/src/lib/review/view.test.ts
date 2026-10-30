@@ -5,6 +5,7 @@ import reentryMock from "../../../mocks/job-review-reentry.json";
 import sampleMock from "../../../mocks/job-review-sample.json";
 import unresolvedMock from "../../../mocks/result-unresolved-review.json";
 import auditFailedLeak from "../../../mocks/result-audit-failed-with-leak.json";
+import coverAck from "../../../mocks/review-ack-cover-spot.json";
 import { jobResponseSchema, type JobResponse } from "../contracts";
 import { initialState, step } from "./reducer";
 import { buildChips, columnsOf, headerCounts, mergeTargets, spotKind } from "./view";
@@ -98,5 +99,15 @@ describe("an unfixed spot's kind follows its own leak rows (§0)", () => {
   });
   it("a spot no leak row overlaps is other", () => {
     expect(spotKind({ first: 15, last: 20, boxes: { "15": [700, 10, 760, 60] } }, leaks)).toBe("other");
+  });
+});
+
+describe("chip names read as sentences (§9)", () => {
+  it("an audit-added chip's name has no doubled full stop", () => {
+    const patch = coverAck.body.items.find((i) => i.origin === "audit_patch")!;
+    const u = load({ ...unresolvedMock, items: [...unresolvedMock.items, patch] });
+    const chip = buildChips(u.state, u.job).find((c) => c.id === patch.item_id)!;
+    expect(chip.accessibleName).toContain("after rendering and covered it. ");
+    expect(chip.accessibleName).not.toMatch(/\.\./);
   });
 });

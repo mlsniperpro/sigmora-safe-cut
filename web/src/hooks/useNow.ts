@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 
 /**
- * The current time, refreshed every `ms` and also right at each future time in `wakeAt`, so a
+ * The current time, refreshed every `ms` and also right at each time in `wakeAt`, so a
  * button gated on `retry_at` or `Retry-After` re-enables when it says it will, not up to `ms` late.
  */
 export function useNow(ms: number, wakeAt: readonly (number | null)[] = []): number {
@@ -19,12 +19,12 @@ export function useNow(ms: number, wakeAt: readonly (number | null)[] = []): num
   const deadlines = wakeAt.filter((at): at is number => at !== null && Number.isFinite(at)).join(",");
   useEffect(() => {
     if (!deadlines) return;
+    // A deadline already due (`Retry-After: 0`, a past date) wakes at once. Timers can fire a few
+    // ms early: wake just after the deadline so `now >= at` holds.
     const timers = deadlines
       .split(",")
       .map(Number)
-      .filter((at) => at > Date.now())
-      // Timers can fire a few ms early: wake just after the deadline so `now >= at` holds.
-      .map((at) => setTimeout(() => setNow(Math.max(Date.now(), at)), at - Date.now() + 1));
+      .map((at) => setTimeout(() => setNow(Math.max(Date.now(), at)), Math.max(0, at - Date.now()) + 1));
     return () => timers.forEach(clearTimeout);
   }, [deadlines]);
   return now;
