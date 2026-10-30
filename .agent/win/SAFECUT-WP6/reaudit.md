@@ -1,7 +1,7 @@
 AUDITED_COMMIT: 3807d13
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
-CLEAN_AUDITS_IN_A_ROW: 1
+CLEAN_AUDITS_IN_A_ROW: 2
 
 # Re-audit log: SAFECUT-WP6
 
@@ -581,3 +581,11 @@ On the fix commit: `checks.sh` exit 0, 893 tests, e2e 145/145.
 - **Noted, not counted:** two file picks in quick succession could resolve their duration reads out of order (needs a pathologically slow metadata read; not reproduced); acks applied in arrival order, already noted in round 43.
 
 CLEAN_AUDITS_IN_A_ROW is 1 (no code change since 3807d13).
+
+## Round 46 (audited c34caca, code identical to 3807d13, by a Sonnet reviewer told to take a fresh look rather than repeat round 45): CLEAN
+
+0 critical, 0 high, 0 medium, 0 low.
+- The landing page at 1280, 768 and 390 px; `/try` end to end in mock mode (data bullets, file checks including an exactly-60 s clip, progress, the leave note, the move to review); the §3.8 keyboard paths; the §10.5 R-rows driven in the browser and `bar.ts` against the §3.5 rows 0–8; Approve & render → result → Back to review → edit → the after-render bar → the `/result` redirect; the result page and receipt at 1280 and 390 px with `?from=sigmora` in two time zones and locales; the Why drawer on a re-entry, a needs-you and a locked child; six state fixtures at 390 px; code reads of the §10.3 polling, timeout, retry and 429 paths and of the §3.6 overlay; the region list against PRE-A §7; URL probes.
+- `pnpm test` 893/893 and `pnpm lint` clean on the audited copy.
+
+Two consecutive clean full audits (rounds 45 and 46) on the last code commit, 3807d13. CLEAN_AUDITS_IN_A_ROW is 2.
