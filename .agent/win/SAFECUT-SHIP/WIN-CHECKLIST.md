@@ -98,6 +98,12 @@ Every E-line SHIP owns, every brief requirement, and the judging criteria, each 
 - [x] R6 lows: deploy-check cold-start wait and live-branch test, HANDOFF moved, wording, synthetic default.
 - [x] E4 measures the policy's coverage with the policy's own tests (it timed out on the whole suite).
 
+## Audit round 7 (`reaudit.md`)
+
+- [x] R7 H1 E11's history scan attributes lines to files: two tests, one on the real history.
+- [x] R7 L1, L3, L4: lowercase codes, honest model list, runs regenerated.
+- [-] R7 L2 kept: a too-short clip fails closed with the generic media copy (WP6's wording).
+
 ## Judging criteria
 
 - [P] Impact (30): real numbers need `MODEL_API_KEY`, the consented hero clips and the test split (BLOCKED.md); until then every run is synthetic and labelled so, and the docs quote no numbers.

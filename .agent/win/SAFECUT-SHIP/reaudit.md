@@ -113,3 +113,15 @@ Round 4 was not clean (three medium), so the clean count stays at 0.
 | L6 | low | A replay with `raw/` but no manifest was labelled real | Labelled synthetic | covered by `test_a_replay_is_synthetic_unless_its_manifest_says_otherwise` |
 
 Also found while integrating (not by the audit): E4 ran the **whole** suite under coverage to measure `policy.py`; at about 1,370 tests it exceeded its 30-minute bound on a fresh clone (E4: FAIL TimeoutExpired, every other line OK). E4 now requires 100 % branch coverage of `policy.py` from the policy's own tests (`tests/test_policy*.py`, 100 % in under 3 minutes), which is the stricter reading.
+
+## Round 7 (on c3fee0c): 0 critical, 1 high, 0 medium, 4 low. Closed in 05f28a3 / 05776a8.
+
+| # | Sev | Finding | Resolution | Test |
+|---|---|---|---|---|
+| H1 | high | E11 failed on HEAD: round 6's tests call `entry_check.secret_hit(…)` on key-shaped strings, which the text-based history exemptions didn't cover, so ENTRY: PASS was impossible (my round-6 "0 hits in history" was measured before those lines were committed) | `history_hits` attributes each added line to its file by the diff's `+++ b/` header (merges too) and exempts only `SCANNER_FILES`, as the tree scan does | `test_history_scan_attributes_lines_to_their_files`, `test_e11_history_scan_passes_on_this_repo` (the real history) |
+| L1 | low | An all-lowercase 12+ character code was exempt | Only snake_case error codes and `unauthorized` are | `test_secret_pattern_knows_this_projects_own_secrets` |
+| L2 | low | A clip too short for SAM shows the generic "couldn't read this video" copy | **Kept**: the job fails closed as `bad_media` before any paid call and the copy asks for another clip; the wording is WP6's `copy.ts` | n/a |
+| L3 | low | The Why drawer's model list named planned models as if they ran | The API's job body uses `models_recorded` too | `test_full_flow_in_replay` (no auditor or red team before the render) |
+| L4 | low | Committed runs were made at an earlier commit; one per-clip row differed at HEAD | Regenerated at 05f28a3 | E9, `eval/report.py --check` |
+
+Round 7 was not clean (one high), so the clean count stays at 0.
