@@ -1,0 +1,32 @@
+{
+  "job_id": "j_hero1",
+  "mode": "live",
+  "status": "done",
+  "deletes_at": "2026-10-28T11:00:00Z",
+  "frames": 12,
+  "video_url": "https://example.invalid/j_hero1/redacted.mp4",
+  "captions_url": "https://example.invalid/j_hero1/captions.vtt",
+  "receipt_html_url": "https://example.invalid/j_hero1/receipt.html",
+  "receipt_json_url": "https://example.invalid/j_hero1/receipt.json",
+  "audit": {
+    "frames_scanned": 12,
+    "egoblur": {
+      "model": "yunet-face",
+      "faces": 0,
+      "plates": null
+    },
+    "leaks": [],
+    "redteam": [
+      {
+        "frame": 0,
+        "finding": "none"
+      }
+    ],
+    "unresolved": 0,
+    "passes": 1,
+    "blocked_reason": null,
+    "sample_step": 30,
+    "spots": []
+  },
+  "code_valid_until": null
+}

@@ -1,0 +1,9 @@
+{
+  "status": 404,
+  "body": {
+    "error": {
+      "code": "expired",
+      "message": "expired (for logs only)"
+    }
+  }
+}

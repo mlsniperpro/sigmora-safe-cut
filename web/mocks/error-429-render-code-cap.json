@@ -1,0 +1,9 @@
+{
+  "status": 429,
+  "body": {
+    "error": {
+      "code": "code_cap",
+      "message": "code_cap (for logs only)"
+    }
+  }
+}

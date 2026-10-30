@@ -1,0 +1,125 @@
+{
+  "items": {
+    "i_1": {
+      "label": "Face 2",
+      "track_ids": [
+        "face:2",
+        "person:1"
+      ],
+      "decision": "keep",
+      "decided_by": "policy",
+      "locked": false,
+      "kind": "person",
+      "role": "participant",
+      "reentry_target": null,
+      "merged_into": null,
+      "removed": false
+    },
+    "i_2": {
+      "label": "Face 4",
+      "track_ids": [
+        "face:4"
+      ],
+      "decision": "hide",
+      "decided_by": "policy",
+      "locked": true,
+      "kind": "child",
+      "role": "child",
+      "reentry_target": null,
+      "merged_into": null,
+      "removed": false
+    },
+    "i_3": {
+      "label": "Plate 1",
+      "track_ids": [
+        "license plate:1"
+      ],
+      "decision": "hide",
+      "decided_by": "policy",
+      "locked": false,
+      "kind": "plate",
+      "role": null,
+      "reentry_target": null,
+      "merged_into": null,
+      "removed": false
+    },
+    "i_4": {
+      "label": "Face 6",
+      "track_ids": [
+        "face:6"
+      ],
+      "decision": "needs_you",
+      "decided_by": "model",
+      "locked": false,
+      "kind": "person",
+      "role": "unsure",
+      "reentry_target": null,
+      "merged_into": null,
+      "removed": false
+    },
+    "i_5": {
+      "label": "Face 5",
+      "track_ids": [
+        "face:5"
+      ],
+      "decision": "hide",
+      "decided_by": "policy",
+      "locked": false,
+      "kind": "person",
+      "role": "bystander",
+      "reentry_target": null,
+      "merged_into": null,
+      "removed": false
+    },
+    "i_7": {
+      "label": "Face 7",
+      "track_ids": [
+        "face:7"
+      ],
+      "decision": "keep",
+      "decided_by": "creator",
+      "locked": false,
+      "kind": "person",
+      "role": "bystander",
+      "reentry_target": null,
+      "merged_into": null,
+      "removed": false
+    },
+    "i_8": {
+      "label": "Face 8",
+      "track_ids": [
+        "face:8"
+      ],
+      "decision": "hide",
+      "decided_by": "policy",
+      "locked": false,
+      "kind": "person",
+      "role": "bystander",
+      "reentry_target": "i_5",
+      "merged_into": null,
+      "removed": false
+    },
+    "i_9": {
+      "label": "Face 9",
+      "track_ids": [
+        "face:9"
+      ],
+      "decision": "hide",
+      "decided_by": "policy",
+      "locked": false,
+      "kind": "person",
+      "role": "unsure",
+      "reentry_target": "i_1",
+      "merged_into": null,
+      "removed": false
+    }
+  },
+  "confirm": null,
+  "pending": {},
+  "undo": [],
+  "status": "review",
+  "has_render": false,
+  "spots": {},
+  "refusal": null,
+  "capNote": null
+}

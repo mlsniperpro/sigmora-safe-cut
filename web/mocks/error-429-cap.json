@@ -1,0 +1,10 @@
+{
+  "status": 429,
+  "body": {
+    "error": {
+      "code": "daily_cap",
+      "message": "daily_cap (for logs only)",
+      "retry_at": "2026-10-28T00:00:00Z"
+    }
+  }
+}

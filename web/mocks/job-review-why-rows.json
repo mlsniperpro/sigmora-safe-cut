@@ -1,0 +1,1281 @@
+{
+  "job_id": "j_why",
+  "mode": "live",
+  "status": "review",
+  "stage": "review",
+  "progress": 1,
+  "deletes_at": "2026-10-28T11:00:00Z",
+  "job": {
+    "fps": 30,
+    "width": 1280,
+    "height": 720,
+    "frames": 12,
+    "audio": true,
+    "times": [
+      0,
+      0.03333333333333333,
+      0.06666666666666667,
+      0.1,
+      0.13333333333333333,
+      0.16666666666666666,
+      0.2,
+      0.23333333333333334,
+      0.26666666666666666,
+      0.3,
+      0.3333333333333333,
+      0.36666666666666664
+    ],
+    "created_at": "2026-10-27T10:00:00Z",
+    "prepared_url": "https://example.invalid/j_hero1/prepared.mp4"
+  },
+  "items": [
+    {
+      "item_id": "i_1",
+      "track_ids": [
+        "face:2",
+        "person:1"
+      ],
+      "kind": "person",
+      "decision": "keep",
+      "reason": "the guest: introduced at the start, speaks to camera",
+      "evidence_frames": [
+        3,
+        9
+      ],
+      "style": null,
+      "decided_by": "policy",
+      "locked": false,
+      "removed_by_creator": false
+    },
+    {
+      "item_id": "i_2",
+      "track_ids": [
+        "face:4"
+      ],
+      "kind": "child",
+      "decision": "hide",
+      "reason": "child in the background, not addressed",
+      "evidence_frames": [
+        6
+      ],
+      "style": "solid",
+      "decided_by": "policy",
+      "locked": true,
+      "removed_by_creator": false
+    },
+    {
+      "item_id": "i_3",
+      "track_ids": [
+        "license plate:1"
+      ],
+      "kind": "plate",
+      "decision": "hide",
+      "reason": "number plate on a parked car",
+      "evidence_frames": [
+        1
+      ],
+      "style": "solid",
+      "decided_by": "policy",
+      "locked": false,
+      "removed_by_creator": false
+    },
+    {
+      "item_id": "i_4",
+      "track_ids": [
+        "face:6"
+      ],
+      "kind": "person",
+      "decision": "needs_you",
+      "reason": "looks at the camera; checks disagreed",
+      "evidence_frames": [
+        9
+      ],
+      "style": "pixelate",
+      "decided_by": "model",
+      "locked": false,
+      "removed_by_creator": false
+    },
+    {
+      "item_id": "i_10",
+      "track_ids": [
+        "face:10"
+      ],
+      "kind": "person",
+      "evidence_frames": [
+        5
+      ],
+      "style": "pixelate",
+      "decided_by": "policy",
+      "locked": false,
+      "removed_by_creator": false,
+      "decision": "needs_you",
+      "hold": "no_roles",
+      "reason": "checks couldn't run"
+    },
+    {
+      "item_id": "i_11",
+      "track_ids": [
+        "face:11"
+      ],
+      "kind": "person",
+      "evidence_frames": [
+        5
+      ],
+      "style": "pixelate",
+      "decided_by": "policy",
+      "locked": false,
+      "removed_by_creator": false,
+      "decision": "needs_you",
+      "hold": "no_scene",
+      "reason": "scene check didn't run"
+    },
+    {
+      "item_id": "i_12",
+      "track_ids": [
+        "face:12"
+      ],
+      "kind": "person",
+      "evidence_frames": [
+        5
+      ],
+      "style": "pixelate",
+      "decided_by": "policy",
+      "locked": false,
+      "removed_by_creator": false,
+      "decision": "needs_you",
+      "hold": "no_speech",
+      "reason": "speech check didn't work"
+    },
+    {
+      "item_id": "i_13",
+      "track_ids": [
+        "face:13"
+      ],
+      "kind": "person",
+      "evidence_frames": [
+        5
+      ],
+      "style": "pixelate",
+      "decided_by": "policy",
+      "locked": false,
+      "removed_by_creator": false,
+      "decision": "needs_you",
+      "hold": "unmatched_child",
+      "reason": "a child may be in this video"
+    },
+    {
+      "item_id": "i_14",
+      "track_ids": [
+        "face:14"
+      ],
+      "kind": "person",
+      "evidence_frames": [
+        5
+      ],
+      "style": "pixelate",
+      "decided_by": "policy",
+      "locked": false,
+      "removed_by_creator": false,
+      "decision": "needs_you",
+      "hold": "no_speech_link",
+      "reason": "not linked to anyone speaking"
+    },
+    {
+      "item_id": "i_17",
+      "track_ids": [
+        "face:17"
+      ],
+      "kind": "child",
+      "evidence_frames": [
+        5
+      ],
+      "style": "solid",
+      "decided_by": "policy",
+      "locked": true,
+      "removed_by_creator": false,
+      "decision": "hide",
+      "reason": "may be under 18"
+    },
+    {
+      "item_id": "i_18",
+      "track_ids": [
+        "face:18"
+      ],
+      "kind": "person",
+      "evidence_frames": [
+        5
+      ],
+      "style": "pixelate",
+      "decided_by": "policy",
+      "locked": false,
+      "removed_by_creator": false,
+      "decision": "needs_you",
+      "reason": "checks disagreed"
+    },
+    {
+      "item_id": "i_19",
+      "track_ids": [
+        "face:19"
+      ],
+      "kind": "person",
+      "evidence_frames": [
+        5
+      ],
+      "style": "pixelate",
+      "decided_by": "policy",
+      "locked": false,
+      "removed_by_creator": false,
+      "decision": "needs_you",
+      "reason": "part of the story on one keyframe only"
+    },
+    {
+      "item_id": "i_20",
+      "track_ids": [
+        "face:20"
+      ],
+      "kind": "person",
+      "evidence_frames": [
+        5
+      ],
+      "style": "person_solid",
+      "decided_by": "creator",
+      "locked": false,
+      "removed_by_creator": true,
+      "decision": "hide",
+      "reason": "removed at your request"
+    },
+    {
+      "item_id": "i_21",
+      "track_ids": [
+        "face:21"
+      ],
+      "kind": "person",
+      "evidence_frames": [
+        5
+      ],
+      "style": null,
+      "decided_by": "creator",
+      "locked": false,
+      "removed_by_creator": false,
+      "decision": "keep",
+      "reason": "passer-by in the background"
+    },
+    {
+      "item_id": "i_22",
+      "track_ids": [
+        "face:22"
+      ],
+      "kind": "person",
+      "evidence_frames": [
+        5
+      ],
+      "style": "pixelate",
+      "decided_by": "creator",
+      "locked": false,
+      "removed_by_creator": false,
+      "decision": "hide",
+      "reason": "the guest's friend"
+    },
+    {
+      "item_id": "i_23",
+      "track_ids": [
+        "face:23"
+      ],
+      "kind": "person",
+      "evidence_frames": [
+        5
+      ],
+      "style": "pixelate",
+      "decided_by": "policy",
+      "locked": false,
+      "removed_by_creator": false,
+      "decision": "hide",
+      "reason": "passer-by, never addressed"
+    },
+    {
+      "item_id": "i_15",
+      "track_ids": [
+        "envelope:1"
+      ],
+      "kind": "other",
+      "origin": "static",
+      "decision": "hide",
+      "reason": "possible missed object at F5",
+      "evidence_frames": [],
+      "style": "solid",
+      "decided_by": "policy",
+      "locked": false,
+      "removed_by_creator": false
+    },
+    {
+      "item_id": "i_16",
+      "track_ids": [
+        "envelope:2"
+      ],
+      "kind": "other",
+      "decision": "hide",
+      "reason": "addressed envelope on the table",
+      "evidence_frames": [
+        7
+      ],
+      "style": "solid",
+      "decided_by": "policy",
+      "locked": false,
+      "removed_by_creator": false
+    }
+  ],
+  "tracks": [
+    {
+      "track_id": "face:2",
+      "concept": "face",
+      "first": 0,
+      "last": 11,
+      "reentry_of": null,
+      "boxes": {
+        "3": [
+          400,
+          120,
+          470,
+          210
+        ],
+        "9": [
+          410,
+          122,
+          480,
+          212
+        ]
+      }
+    },
+    {
+      "track_id": "person:1",
+      "concept": "person",
+      "first": 0,
+      "last": 11,
+      "reentry_of": null,
+      "boxes": {
+        "3": [
+          360,
+          100,
+          560,
+          700
+        ],
+        "9": [
+          370,
+          102,
+          570,
+          700
+        ]
+      }
+    },
+    {
+      "track_id": "face:4",
+      "concept": "face",
+      "first": 4,
+      "last": 10,
+      "reentry_of": null,
+      "boxes": {
+        "6": [
+          900,
+          200,
+          940,
+          250
+        ]
+      }
+    },
+    {
+      "track_id": "license plate:1",
+      "concept": "license plate",
+      "first": 0,
+      "last": 11,
+      "reentry_of": null,
+      "boxes": {
+        "1": [
+          1050,
+          560,
+          1150,
+          590
+        ]
+      }
+    },
+    {
+      "track_id": "face:6",
+      "concept": "face",
+      "first": 8,
+      "last": 11,
+      "reentry_of": null,
+      "boxes": {
+        "9": [
+          700,
+          150,
+          750,
+          215
+        ]
+      }
+    },
+    {
+      "track_id": "face:10",
+      "concept": "face",
+      "first": 2,
+      "last": 9,
+      "reentry_of": null,
+      "boxes": {
+        "5": [
+          40,
+          300,
+          110,
+          390
+        ]
+      }
+    },
+    {
+      "track_id": "face:11",
+      "concept": "face",
+      "first": 2,
+      "last": 9,
+      "reentry_of": null,
+      "boxes": {
+        "5": [
+          210,
+          300,
+          280,
+          390
+        ]
+      }
+    },
+    {
+      "track_id": "face:12",
+      "concept": "face",
+      "first": 2,
+      "last": 9,
+      "reentry_of": null,
+      "boxes": {
+        "5": [
+          380,
+          300,
+          450,
+          390
+        ]
+      }
+    },
+    {
+      "track_id": "face:13",
+      "concept": "face",
+      "first": 2,
+      "last": 9,
+      "reentry_of": null,
+      "boxes": {
+        "5": [
+          550,
+          300,
+          620,
+          390
+        ]
+      }
+    },
+    {
+      "track_id": "face:14",
+      "concept": "face",
+      "first": 2,
+      "last": 9,
+      "reentry_of": null,
+      "boxes": {
+        "5": [
+          720,
+          300,
+          790,
+          390
+        ]
+      }
+    },
+    {
+      "track_id": "face:17",
+      "concept": "face",
+      "first": 2,
+      "last": 9,
+      "reentry_of": null,
+      "boxes": {
+        "5": [
+          40,
+          430,
+          110,
+          520
+        ]
+      }
+    },
+    {
+      "track_id": "face:18",
+      "concept": "face",
+      "first": 2,
+      "last": 9,
+      "reentry_of": null,
+      "boxes": {
+        "5": [
+          210,
+          430,
+          280,
+          520
+        ]
+      }
+    },
+    {
+      "track_id": "face:19",
+      "concept": "face",
+      "first": 2,
+      "last": 9,
+      "reentry_of": null,
+      "boxes": {
+        "5": [
+          380,
+          430,
+          450,
+          520
+        ]
+      }
+    },
+    {
+      "track_id": "face:20",
+      "concept": "face",
+      "first": 2,
+      "last": 9,
+      "reentry_of": null,
+      "boxes": {
+        "5": [
+          550,
+          430,
+          620,
+          520
+        ]
+      }
+    },
+    {
+      "track_id": "face:21",
+      "concept": "face",
+      "first": 2,
+      "last": 9,
+      "reentry_of": null,
+      "boxes": {
+        "5": [
+          720,
+          430,
+          790,
+          520
+        ]
+      }
+    },
+    {
+      "track_id": "face:22",
+      "concept": "face",
+      "first": 2,
+      "last": 9,
+      "reentry_of": null,
+      "boxes": {
+        "5": [
+          890,
+          430,
+          960,
+          520
+        ]
+      }
+    },
+    {
+      "track_id": "face:23",
+      "concept": "face",
+      "first": 2,
+      "last": 9,
+      "reentry_of": null,
+      "boxes": {
+        "5": [
+          1060,
+          430,
+          1130,
+          520
+        ]
+      }
+    },
+    {
+      "track_id": "envelope:1",
+      "concept": "envelope",
+      "first": 4,
+      "last": 7,
+      "reentry_of": null,
+      "boxes": {
+        "5": [
+          200,
+          600,
+          300,
+          680
+        ]
+      }
+    },
+    {
+      "track_id": "envelope:2",
+      "concept": "envelope",
+      "first": 6,
+      "last": 11,
+      "reentry_of": null,
+      "boxes": {
+        "7": [
+          520,
+          600,
+          640,
+          690
+        ]
+      }
+    }
+  ],
+  "roles": {
+    "status": "ok",
+    "tracks": [
+      {
+        "track_id": "face:2",
+        "role": "participant",
+        "votes": [
+          "participant",
+          "participant",
+          "participant"
+        ],
+        "escalated": false,
+        "suggested_role": null,
+        "escalation_evidence": null,
+        "escalation_frames": null,
+        "matches_participant": 0,
+        "evidence": "introduced at F 000003, speaks to camera at F 000003 and F 000009",
+        "frames": [
+          3,
+          9
+        ]
+      },
+      {
+        "track_id": "face:4",
+        "role": "child",
+        "votes": [
+          "child",
+          "child",
+          "child"
+        ],
+        "escalated": false,
+        "suggested_role": null,
+        "escalation_evidence": null,
+        "escalation_frames": null,
+        "matches_participant": null,
+        "evidence": "small person walking with an adult behind the guest at F 000006",
+        "frames": [
+          6
+        ]
+      },
+      {
+        "track_id": "face:6",
+        "role": "unsure",
+        "votes": [
+          "bystander",
+          "participant",
+          "bystander"
+        ],
+        "escalated": true,
+        "suggested_role": "bystander",
+        "escalation_evidence": "faces the lens at F 000009 but is never addressed and never speaks",
+        "escalation_frames": [
+          9
+        ],
+        "matches_participant": null,
+        "evidence": "Judges disagreed: looks at the camera at frame 9, never speaks",
+        "frames": [
+          9
+        ]
+      },
+      {
+        "track_id": "face:10",
+        "role": "unsure",
+        "votes": [
+          "unsure",
+          "unsure",
+          "unsure"
+        ],
+        "escalated": false,
+        "suggested_role": null,
+        "escalation_evidence": null,
+        "escalation_frames": null,
+        "matches_participant": null,
+        "evidence": "seen at F 000005",
+        "frames": [
+          5
+        ],
+        "failed_votes": 3
+      },
+      {
+        "track_id": "face:11",
+        "role": "participant",
+        "votes": [
+          "participant",
+          "participant",
+          "participant"
+        ],
+        "escalated": false,
+        "suggested_role": null,
+        "escalation_evidence": null,
+        "escalation_frames": null,
+        "matches_participant": null,
+        "evidence": "seen at F 000005",
+        "frames": [
+          5
+        ]
+      },
+      {
+        "track_id": "face:12",
+        "role": "participant",
+        "votes": [
+          "participant",
+          "participant",
+          "participant"
+        ],
+        "escalated": false,
+        "suggested_role": null,
+        "escalation_evidence": null,
+        "escalation_frames": null,
+        "matches_participant": null,
+        "evidence": "seen at F 000005",
+        "frames": [
+          5
+        ]
+      },
+      {
+        "track_id": "face:13",
+        "role": "participant",
+        "votes": [
+          "participant",
+          "participant",
+          "participant"
+        ],
+        "escalated": false,
+        "suggested_role": null,
+        "escalation_evidence": null,
+        "escalation_frames": null,
+        "matches_participant": null,
+        "evidence": "seen at F 000005",
+        "frames": [
+          5
+        ]
+      },
+      {
+        "track_id": "face:14",
+        "role": "participant",
+        "votes": [
+          "participant",
+          "participant",
+          "participant"
+        ],
+        "escalated": false,
+        "suggested_role": null,
+        "escalation_evidence": null,
+        "escalation_frames": null,
+        "matches_participant": null,
+        "evidence": "seen at F 000005",
+        "frames": [
+          5
+        ]
+      },
+      {
+        "track_id": "face:17",
+        "role": "child",
+        "votes": [
+          "bystander",
+          "child",
+          "unsure"
+        ],
+        "escalated": true,
+        "suggested_role": "child",
+        "escalation_evidence": "school uniform and height at F 000005",
+        "escalation_frames": [
+          5
+        ],
+        "matches_participant": null,
+        "evidence": "seen at F 000005",
+        "frames": [
+          5
+        ]
+      },
+      {
+        "track_id": "face:18",
+        "role": "unsure",
+        "votes": [
+          "participant",
+          "bystander",
+          "unsure"
+        ],
+        "escalated": true,
+        "suggested_role": null,
+        "escalation_evidence": null,
+        "escalation_frames": null,
+        "matches_participant": null,
+        "evidence": "seen at F 000005",
+        "frames": [
+          5
+        ]
+      },
+      {
+        "track_id": "face:19",
+        "role": "unsure",
+        "votes": [
+          "participant",
+          "participant",
+          "participant"
+        ],
+        "escalated": false,
+        "suggested_role": null,
+        "escalation_evidence": null,
+        "escalation_frames": null,
+        "matches_participant": null,
+        "evidence": "seen at F 000005",
+        "frames": [
+          5
+        ]
+      },
+      {
+        "track_id": "face:20",
+        "role": "participant",
+        "votes": [
+          "participant",
+          "participant",
+          "participant"
+        ],
+        "escalated": false,
+        "suggested_role": null,
+        "escalation_evidence": null,
+        "escalation_frames": null,
+        "matches_participant": null,
+        "evidence": "seen at F 000005",
+        "frames": [
+          5
+        ]
+      },
+      {
+        "track_id": "face:21",
+        "role": "bystander",
+        "votes": [
+          "bystander",
+          "bystander",
+          "bystander"
+        ],
+        "escalated": false,
+        "suggested_role": null,
+        "escalation_evidence": null,
+        "escalation_frames": null,
+        "matches_participant": null,
+        "evidence": "seen at F 000005",
+        "frames": [
+          5
+        ]
+      },
+      {
+        "track_id": "face:22",
+        "role": "participant",
+        "votes": [
+          "participant",
+          "participant",
+          "participant"
+        ],
+        "escalated": false,
+        "suggested_role": null,
+        "escalation_evidence": null,
+        "escalation_frames": null,
+        "matches_participant": null,
+        "evidence": "seen at F 000005",
+        "frames": [
+          5
+        ]
+      },
+      {
+        "track_id": "face:23",
+        "role": "bystander",
+        "votes": [
+          "bystander",
+          "bystander",
+          "unsure"
+        ],
+        "escalated": false,
+        "suggested_role": null,
+        "escalation_evidence": null,
+        "escalation_frames": null,
+        "matches_participant": null,
+        "evidence": "seen at F 000005",
+        "frames": [
+          5
+        ],
+        "failed_votes": 1
+      }
+    ],
+    "objects": [
+      {
+        "track_id": "license plate:1",
+        "sensitive": true,
+        "content": "number plate, characters legible",
+        "frames": [
+          1
+        ]
+      },
+      {
+        "track_id": "envelope:2",
+        "sensitive": true,
+        "content": "envelope with a handwritten address",
+        "frames": [
+          7
+        ]
+      }
+    ],
+    "missed": [
+      {
+        "what": "addressed envelope",
+        "sam_phrase": "envelope",
+        "frame": 7,
+        "point": {
+          "x": 580,
+          "y": 645
+        },
+        "track_ids": [
+          "envelope:2"
+        ]
+      }
+    ],
+    "keyframes": [
+      "som/000001.jpg",
+      "som/000003.jpg",
+      "som/000006.jpg",
+      "som/000009.jpg",
+      "som/000005.jpg",
+      "som/000007.jpg"
+    ]
+  },
+  "keyframe_geometry": {
+    "bar_h": 40,
+    "frame_width": 1280,
+    "frame_height": 720,
+    "image_width": 1280,
+    "image_height": 760
+  },
+  "keyframe_urls": {
+    "1": "https://example.invalid/j_hero1/som/000001.jpg",
+    "3": "https://example.invalid/j_hero1/som/000003.jpg",
+    "5": "https://example.invalid/j_why/som/000005.jpg",
+    "6": "https://example.invalid/j_hero1/som/000006.jpg",
+    "7": "https://example.invalid/j_why/som/000007.jpg",
+    "9": "https://example.invalid/j_hero1/som/000009.jpg"
+  },
+  "plan": {
+    "frames": {
+      "1": [
+        {
+          "item_id": "i_3",
+          "shape": "box",
+          "box": [
+            1042,
+            552,
+            1158,
+            598
+          ],
+          "mask": null,
+          "style": "solid",
+          "grid": null
+        }
+      ],
+      "5": [
+        {
+          "item_id": "i_10",
+          "shape": "box",
+          "box": [
+            40,
+            300,
+            110,
+            390
+          ],
+          "mask": null,
+          "style": "pixelate",
+          "grid": [
+            40,
+            300,
+            11
+          ]
+        },
+        {
+          "item_id": "i_11",
+          "shape": "box",
+          "box": [
+            210,
+            300,
+            280,
+            390
+          ],
+          "mask": null,
+          "style": "pixelate",
+          "grid": [
+            210,
+            300,
+            11
+          ]
+        },
+        {
+          "item_id": "i_12",
+          "shape": "box",
+          "box": [
+            380,
+            300,
+            450,
+            390
+          ],
+          "mask": null,
+          "style": "pixelate",
+          "grid": [
+            380,
+            300,
+            11
+          ]
+        },
+        {
+          "item_id": "i_13",
+          "shape": "box",
+          "box": [
+            550,
+            300,
+            620,
+            390
+          ],
+          "mask": null,
+          "style": "pixelate",
+          "grid": [
+            550,
+            300,
+            11
+          ]
+        },
+        {
+          "item_id": "i_14",
+          "shape": "box",
+          "box": [
+            720,
+            300,
+            790,
+            390
+          ],
+          "mask": null,
+          "style": "pixelate",
+          "grid": [
+            720,
+            300,
+            11
+          ]
+        },
+        {
+          "item_id": "i_17",
+          "shape": "box",
+          "box": [
+            40,
+            430,
+            110,
+            520
+          ],
+          "mask": null,
+          "style": "solid",
+          "grid": null
+        },
+        {
+          "item_id": "i_18",
+          "shape": "box",
+          "box": [
+            210,
+            430,
+            280,
+            520
+          ],
+          "mask": null,
+          "style": "pixelate",
+          "grid": [
+            210,
+            430,
+            11
+          ]
+        },
+        {
+          "item_id": "i_19",
+          "shape": "box",
+          "box": [
+            380,
+            430,
+            450,
+            520
+          ],
+          "mask": null,
+          "style": "pixelate",
+          "grid": [
+            380,
+            430,
+            11
+          ]
+        },
+        {
+          "item_id": "i_20",
+          "shape": "box",
+          "box": [
+            550,
+            430,
+            620,
+            520
+          ],
+          "mask": null,
+          "style": "person_solid",
+          "grid": null
+        },
+        {
+          "item_id": "i_22",
+          "shape": "box",
+          "box": [
+            890,
+            430,
+            960,
+            520
+          ],
+          "mask": null,
+          "style": "pixelate",
+          "grid": [
+            890,
+            430,
+            11
+          ]
+        },
+        {
+          "item_id": "i_23",
+          "shape": "box",
+          "box": [
+            1060,
+            430,
+            1130,
+            520
+          ],
+          "mask": null,
+          "style": "pixelate",
+          "grid": [
+            1060,
+            430,
+            11
+          ]
+        },
+        {
+          "item_id": "i_15",
+          "shape": "box",
+          "box": [
+            190,
+            590,
+            310,
+            690
+          ],
+          "mask": null,
+          "style": "solid",
+          "grid": null
+        }
+      ],
+      "6": [
+        {
+          "item_id": "i_2",
+          "shape": "box",
+          "box": [
+            894,
+            193,
+            946,
+            257
+          ],
+          "mask": null,
+          "style": "solid",
+          "grid": null
+        }
+      ],
+      "7": [
+        {
+          "item_id": "i_16",
+          "shape": "box",
+          "box": [
+            510,
+            590,
+            650,
+            700
+          ],
+          "mask": null,
+          "style": "solid",
+          "grid": null
+        }
+      ],
+      "9": [
+        {
+          "item_id": "i_4",
+          "shape": "box",
+          "box": [
+            692,
+            140,
+            758,
+            225
+          ],
+          "mask": null,
+          "style": "pixelate",
+          "grid": [
+            692,
+            140,
+            11
+          ]
+        }
+      ]
+    },
+    "crowd_fills": []
+  },
+  "transcript": {
+    "status": "ok",
+    "source": "muse-voice-transcribe-1.0",
+    "source_kind": "primary",
+    "degraded": false,
+    "turns": [
+      {
+        "speaker": "S1",
+        "start": 0,
+        "end": 0.1,
+        "text": "So, who are you?"
+      },
+      {
+        "speaker": "S2",
+        "start": 0.1,
+        "end": 0.3,
+        "text": "Hi, I'm Amina, and today…"
+      }
+    ]
+  },
+  "scene": {
+    "status": "ok",
+    "model": "muse-spark-1.3",
+    "summary": "street interview with a guest",
+    "participants": [
+      {
+        "description": "woman in yellow jacket",
+        "evidence": "introduces herself at the start: \"Hi, I'm Amina\"",
+        "speaker": "S2",
+        "introduced_in_turn": 1,
+        "introduction_quote": "I'm Amina",
+        "is_creator": false
+      },
+      {
+        "description": "man holding the microphone",
+        "evidence": "asks the questions",
+        "speaker": "S1",
+        "introduced_in_turn": null,
+        "introduction_quote": null,
+        "is_creator": true
+      }
+    ],
+    "children": [
+      {
+        "description": "small child walking with an adult behind the guest"
+      }
+    ],
+    "others_present": "a few passers-by behind the guest",
+    "candidate_objects": [
+      {
+        "what": "parked car with a visible number plate",
+        "approx_time": "throughout"
+      }
+    ]
+  }
+}

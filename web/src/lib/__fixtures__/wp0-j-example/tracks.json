@@ -1,0 +1,154 @@
+{
+ "concepts": [
+  "face",
+  "person",
+  "license plate",
+  "screen",
+  "phone",
+  "document",
+  "name badge"
+ ],
+ "sam_fps": 8,
+ "sam_frames": 3,
+ "tracks": [
+  {
+   "track_id": "face:1",
+   "concept": "face",
+   "first": 1,
+   "last": 9,
+   "boxes": {
+    "1": [
+     600,
+     100,
+     700,
+     220
+    ],
+    "5": [
+     604,
+     100,
+     704,
+     220
+    ],
+    "9": [
+     610,
+     102,
+     710,
+     222
+    ]
+   },
+   "masks": {
+    "1": {
+     "size": [
+      720,
+      1280
+     ],
+     "counts": "^P]=T3\\c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000bgn<"
+    }
+   },
+   "reentry_of": null,
+   "source": "sam-3.1",
+   "prompt": "face",
+   "origin": "sam",
+   "sam_object": {
+    "request": 0,
+    "object_id": "0"
+   },
+   "child_phrase": false,
+   "conf": {
+    "1": 0.91,
+    "5": 0.88
+   }
+  },
+  {
+   "track_id": "face:2",
+   "concept": "face",
+   "first": 5,
+   "last": 9,
+   "boxes": {
+    "5": [
+     100,
+     300,
+     160,
+     380
+    ],
+    "9": [
+     110,
+     300,
+     170,
+     380
+    ]
+   },
+   "reentry_of": null,
+   "source": "sam-3.1",
+   "prompt": "face",
+   "sam_object": {
+    "request": 0,
+    "object_id": "3"
+   }
+  },
+  {
+   "track_id": "screen:1",
+   "concept": "screen",
+   "first": 1,
+   "last": 5,
+   "boxes": {
+    "1": [
+     900,
+     400,
+     1100,
+     600
+    ],
+    "5": [
+     900,
+     400,
+     1100,
+     600
+    ]
+   },
+   "source": "sam-3.1",
+   "prompt": "screen",
+   "sam_object": {
+    "request": 1,
+    "object_id": "0"
+   }
+  },
+  {
+   "track_id": "envelope:1",
+   "concept": "envelope",
+   "first": 9,
+   "last": 9,
+   "boxes": {
+    "9": [
+     300,
+     500,
+     380,
+     560
+    ]
+   },
+   "source": null,
+   "prompt": "envelope",
+   "origin": "static"
+  }
+ ],
+ "crowded_frames": [],
+ "requests": [
+  {
+   "kind": "phrase",
+   "concept": "face",
+   "file_id": "file-123456",
+   "fps": 8,
+   "frames_billed": 50,
+   "matches": 2,
+   "usd": 0.01
+  },
+  {
+   "kind": "phrase",
+   "concept": "screen",
+   "file_id": "file-123456",
+   "fps": 8,
+   "frames_billed": 50,
+   "matches": 1,
+   "usd": 0.01
+  }
+ ]
+}

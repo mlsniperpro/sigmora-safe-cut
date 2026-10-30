@@ -1,0 +1,51 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# The synthetic sample clips (drawn shapes, no people) are the mock-mode demo media; the
+# root *.mp4 rule keeps real footage out, so these few are allowed back in by name.
+!/public/sample/prepared.mp4
+!/public/sample/redacted.mp4
+# The root jobs/ rule is for pipeline job directories; this is the /jobs route.
+!/src/app/jobs/
+
+# The e2e run's failure screenshot (written next to the app when --shots is not given)
+/e2e-failure.png

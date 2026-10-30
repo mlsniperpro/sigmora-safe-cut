@@ -1,0 +1,9 @@
+{
+  "status": 409,
+  "body": {
+    "error": {
+      "code": "upload_incomplete",
+      "message": "upload_incomplete (for logs only)"
+    }
+  }
+}

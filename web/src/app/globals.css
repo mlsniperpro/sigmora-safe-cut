@@ -1,0 +1,140 @@
+@import "tailwindcss";
+
+/* Design tokens. Every state colour is paired with an icon and a word in the UI (UI-SPEC §0). */
+:root {
+  --bg: #f7f6f3;
+  --surface: #ffffff;
+  --surface-2: #efede8;
+  --text: #1c1b19;
+  --text-muted: #57534e;
+  --border: #d6d3cd;
+  /* A text field's edge is its only affordance: ≥ 3:1 on surface and bg (WCAG 1.4.11). */
+  --field-border: #8a857d;
+  --accent: #0f5c57;
+  --accent-hover: #0b4743;
+  --accent-text: #ffffff;
+  --focus: #1d4ed8;
+  --hidden-bg: #e7e5e4;
+  --hidden-fg: #292524;
+  --kept-bg: #dcfce7;
+  --kept-fg: #14532d;
+  --needs-bg: #fef3c7;
+  --needs-fg: #713f12;
+  --danger: #b91c1c;
+  --danger-bg: #fee2e2;
+  --demo-bg: #e0e7ff;
+  --demo-fg: #1e1b4b;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 4px 16px rgb(0 0 0 / 0.06);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121211;
+    --surface: #1c1c1a;
+    --surface-2: #262624;
+    --text: #f5f5f4;
+    --text-muted: #b8b3ac;
+    --border: #3a3936;
+    --field-border: #8d8982;
+    --accent: #5eead4;
+    --accent-hover: #99f6e4;
+    --accent-text: #0b2a28;
+    --focus: #93c5fd;
+    --hidden-bg: #33312e;
+    --hidden-fg: #f5f5f4;
+    --kept-bg: #14532d;
+    --kept-fg: #dcfce7;
+    --needs-bg: #5b3a0b;
+    --needs-fg: #fef3c7;
+    --danger: #fca5a5;
+    --danger-bg: #450a0a;
+    --demo-bg: #312e81;
+    --demo-fg: #e0e7ff;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 4px 16px rgb(0 0 0 / 0.3);
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-text: var(--text);
+  --color-muted: var(--text-muted);
+  --color-border: var(--border);
+  --color-field: var(--field-border);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-text: var(--accent-text);
+  --color-focus: var(--focus);
+  --color-hidden-bg: var(--hidden-bg);
+  --color-hidden-fg: var(--hidden-fg);
+  --color-kept-bg: var(--kept-bg);
+  --color-kept-fg: var(--kept-fg);
+  --color-needs-bg: var(--needs-bg);
+  --color-needs-fg: var(--needs-fg);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --color-demo-bg: var(--demo-bg);
+  --color-demo-fg: var(--demo-fg);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+html {
+  scroll-padding-top: var(--sticky-top, 0px);
+  scroll-padding-bottom: var(--sticky-bottom, 0px);
+}
+
+body {
+  /* Text from the API can hold a long URL or ID: it wraps instead of widening the page (WCAG 1.4.10). */
+  overflow-wrap: anywhere;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  /* Room for the review page's fixed bottom bar, so it never covers the footer (WCAG 2.4.11). */
+  padding-bottom: var(--sticky-bottom, 0px);
+}
+
+/* Controls keep whole words: `anywhere` would let a short label in a tight flex row shrink and split ("Dismis/s"). */
+button,
+a,
+[role="tab"],
+[role="radio"],
+[role="menuitem"] {
+  overflow-wrap: normal;
+}
+
+/* One visible focus ring everywhere: 2 px, ≥ 3:1 on light and dark surfaces. */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* The toast sits on the inverse surface, where --focus is under 3:1: its ring takes the toast's text colour. */
+[data-toast] :focus-visible {
+  outline-color: currentColor;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.masked {
+  -webkit-text-security: disc;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

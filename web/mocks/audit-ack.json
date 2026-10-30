@@ -1,0 +1,9 @@
+{
+  "status": 202,
+  "body": {
+    "job_id": "j_hero1",
+    "status": "rendering",
+    "stage": "audit",
+    "mode": "live"
+  }
+}

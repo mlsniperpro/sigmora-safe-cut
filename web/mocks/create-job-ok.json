@@ -1,0 +1,9 @@
+{
+  "status": 201,
+  "body": {
+    "job_id": "j_new",
+    "mode": "live",
+    "upload_url": "https://example.invalid/upload/j_new",
+    "upload_expires_at": "2026-10-27T10:15:00Z"
+  }
+}

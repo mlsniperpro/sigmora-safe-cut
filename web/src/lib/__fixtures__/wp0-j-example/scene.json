@@ -1,0 +1,23 @@
+{
+ "status": "ok",
+ "model": "muse-spark-1.3",
+ "summary": "street interview at a market",
+ "participants": [
+  {
+   "description": "woman in yellow jacket",
+   "evidence": "introduced as Amina by S1 at 0.0s",
+   "speaker": "S1",
+   "is_creator": true,
+   "introduced_in_turn": 0,
+   "introduction_quote": "I'm Amina"
+  }
+ ],
+ "candidate_objects": [
+  {
+   "what": "phone screen showing a chat",
+   "approx_time": "middle"
+  }
+ ],
+ "children": [],
+ "others_present": "shoppers passing behind"
+}
