@@ -6,7 +6,7 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SafeCutClient, type RawResponse, type Transport } from "@/lib/api";
 import { setClientForTests } from "@/lib/client";
-import { MockBackend } from "@/lib/mock-backend";
+import { MockBackend } from "@/test/mock-backend";
 import { FAST_MS, URL_REFRESH_MS } from "@/lib/polling";
 import { useJob, withFreshUrls } from "./useJob";
 import type { JobResponse } from "@/lib/contracts";

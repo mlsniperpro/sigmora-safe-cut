@@ -105,6 +105,8 @@ class JobState(BaseModel):
     requeues: int = 0
     #: The clip length in seconds, once known (for the cap estimate and ``eta_s``).
     duration_s: float | None = None
+    #: A replay of synthetic recordings (the drawn test clip): every response says so (AGENTS rule 9).
+    synthetic: bool = False
 
 
 def new_job_id() -> str:

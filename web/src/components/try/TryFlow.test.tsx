@@ -6,7 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SafeCutClient } from "@/lib/api";
 import { setClientForTests } from "@/lib/client";
-import { MockBackend } from "@/lib/mock-backend";
+import { MockBackend } from "@/test/mock-backend";
 import { COPY } from "@/lib/copy";
 import { ModeBanners, ModeProvider } from "../mode";
 import { TryFlow } from "./TryFlow";
@@ -60,11 +60,10 @@ async function enterCode(user: ReturnType<typeof userEvent.setup>, code: string)
 const fileInput = () => document.querySelector<HTMLInputElement>('input[type="file"]')!;
 
 describe("/try", () => {
-  it("in mock mode, says nothing is uploaded before describing the live service", () => {
+  it("describes what happens to the clip on the live service, first", () => {
     setup();
     const bullets = within(screen.getByRole("heading", { name: "What happens to your clip" }).parentElement as HTMLElement).getAllByRole("listitem");
-    expect(bullets[0]).toHaveTextContent("In this preview nothing is uploaded and your clip isn't analysed: you'll review a built-in sample scene. On the live service:");
-    expect(bullets[1]).toHaveTextContent(/^It's sent to Meta's Model API/);
+    expect(bullets[0]).toHaveTextContent(/^It's sent to Meta's Model API/);
   });
 
   it("asks for a code when it's empty", async () => {

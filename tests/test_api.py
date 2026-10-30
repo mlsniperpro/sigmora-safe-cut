@@ -63,6 +63,7 @@ def _fake_runner(stage: Stage) -> Callable[..., Path]:
 @pytest.fixture(autouse=True)
 def fake_stages(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(Stage, "runner", _fake_runner)
+    monkeypatch.setattr("safecut.api.app.auditor_available", lambda settings: True)
 
 
 def settings_for(tmp_path: Path, **overrides: Any) -> Settings:
@@ -151,6 +152,7 @@ def test_full_flow_in_replay(make_client: Callable[..., tuple[TestClient, Servic
     assert client.get(f"/v1/jobs/{job_id}").json()["status"] == "created"
     job = run_to(client, svc, job_id, "start", "review")
     assert job["mode"] == "replay"
+    assert job["synthetic"] is True  # the recording's manifest says so, and every response carries it
     assert job["stage"] == "review"
     assert job["progress"] == 1.0
     assert job["job"]["frames"] == 12
@@ -458,6 +460,31 @@ def test_job_and_code_caps(make_client: Callable[..., tuple[TestClient, Service]
     )
     assert refused.status_code == 429
     assert refused.json()["error"]["code"] == "code_cap"
+
+
+def test_live_start_needs_the_auditor(
+    make_client: Callable[..., tuple[TestClient, Service]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("safecut.api.app.auditor_available", lambda settings: False)
+    client, _ = make_client(replay=False, model_api_key=SecretStr("sk-test"))
+    job_id = upload_clip(client)
+    refused = client.post(f"/v1/jobs/{job_id}/start")
+    assert refused.status_code == 503
+    assert refused.json()["error"]["code"] == "auditor_unavailable"
+
+
+def test_auditor_available_follows_the_audit_stage(monkeypatch: pytest.MonkeyPatch) -> None:
+    import sys  # noqa: PLC0415
+    import types  # noqa: PLC0415
+
+    from safecut.api import app as app_module  # noqa: PLC0415
+
+    monkeypatch.undo()
+    audit = types.ModuleType("safecut.audit")
+    monkeypatch.setitem(sys.modules, "safecut.audit", audit)
+    assert app_module.auditor_available(Settings()) is True
+    audit.auditor_available = lambda settings: False  # type: ignore[attr-defined] -- a stand-in audit stage
+    assert app_module.auditor_available(Settings()) is False
 
 
 def test_live_start_needs_the_meta_key(make_client: Callable[..., tuple[TestClient, Service]]) -> None:

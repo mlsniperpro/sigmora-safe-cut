@@ -109,7 +109,7 @@ export function ResultPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const { coolingDown, coolDown } = useCooldown();
   const { replay } = useMode();
-  useReportMode(job?.mode ?? (result.kind === "ready" ? result.result.mode : null));
+  useReportMode(job?.mode ?? (result.kind === "ready" ? result.result.mode : null), job?.synthetic ?? (result.kind === "ready" && result.result.synthetic));
   useHeadingTitle("Loading your clip");
 
   const status = job?.status;

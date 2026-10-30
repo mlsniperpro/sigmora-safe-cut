@@ -11,7 +11,7 @@ import reentryMock from "../../../mocks/job-review-reentry.json";
 import unresolvedMock from "../../../mocks/result-unresolved-review.json";
 import { SafeCutClient } from "../api";
 import { jobResponseSchema, type ReviewEdit } from "../contracts";
-import { MockBackend } from "../mock-backend";
+import { MockBackend } from "@/test/mock-backend";
 import { buildItems, initialState, step, type Action, type ReviewState } from "./reducer";
 
 const RUNS = Number(process.env.FUZZ_RUNS ?? 60);

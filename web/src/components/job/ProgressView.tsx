@@ -4,7 +4,7 @@
  * and Cancel and delete. Shared by `/try` step C and `/jobs/[id]` while processing.
  */
 import { useEffect, useRef, useState } from "react";
-import { ApiError, isMockMode } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 import { getClient } from "@/lib/client";
 import { useCooldown } from "@/hooks/useCooldown";
 import { COPY } from "@/lib/copy";
@@ -118,7 +118,7 @@ export function ProgressView({
         <p className="mt-8 text-sm">Keep this page open until the upload finishes. Leaving now stops it.</p>
       ) : (
       <div className="mt-8 flex flex-wrap items-center gap-3 text-sm">
-        <span>You can leave this page. Your review link{isMockMode() ? " (in this preview it only works in this browser)" : ""}:</span>
+        <span>You can leave this page. Your review link:</span>
         <code ref={linkRef} className="rounded bg-surface-2 px-2 py-1 break-all">
           {link}
         </code>

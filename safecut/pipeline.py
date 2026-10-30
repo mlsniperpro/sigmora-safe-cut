@@ -141,6 +141,19 @@ def find_recording(clip_sha256: str, root: Path = FIXTURE_JOBS) -> Path | None:
     return None
 
 
+def recording_is_synthetic(job_dir: Path) -> bool:
+    """Whether the job replays synthetic recordings (``raw/manifest.json`` ``synthetic``; unknown counts as yes,
+    so nothing unlabelled is ever presented as a real run)."""
+    manifest = job_dir / RAW_DIR / RAW_MANIFEST
+    if not manifest.is_file():
+        return False
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return True
+    return not (isinstance(data, dict) and data.get("synthetic") is False)  # pyright: ignore[reportUnknownMemberType] -- untyped JSON
+
+
 def attach_recording(job_dir: Path, recording: Path) -> None:
     """Copy a recorded job's ``raw/`` responses into ``job_dir`` for replay."""
     raw = recording / RAW_DIR
@@ -409,6 +422,7 @@ __all__ = [
     "job_caller",
     "job_ledger",
     "publish",
+    "recording_is_synthetic",
     "run_stage",
     "status",
 ]

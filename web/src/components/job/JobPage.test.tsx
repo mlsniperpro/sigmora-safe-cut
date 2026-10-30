@@ -8,7 +8,7 @@ import { COPY } from "@/lib/copy";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { SafeCutClient } from "@/lib/api";
 import { setClientForTests } from "@/lib/client";
-import { MockBackend } from "@/lib/mock-backend";
+import { MockBackend } from "@/test/mock-backend";
 import { ModeBanners, ModeProvider } from "../mode";
 import { FRESH_URL_WAIT_MS } from "../review/VideoPane";
 import { JobPage } from "./JobPage";

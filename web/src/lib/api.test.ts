@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import heroMock from "../../mocks/job-review-hero1.json";
 import { ApiError, GET_RETRY_DELAYS_MS, REQUEST_TIMEOUT_MS, SafeCutClient, type RawResponse, type RequestInit, type Transport } from "./api";
-import { MockBackend } from "./mock-backend";
+import { MockBackend } from "@/test/mock-backend";
 
 const headers = (h: Record<string, string> = {}) => ({ get: (k: string) => h[k] ?? null });
 

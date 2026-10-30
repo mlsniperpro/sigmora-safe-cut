@@ -53,7 +53,7 @@ export function JobPage() {
   const viewReview = params.get("view") === "review";
   const { load, resume, refreshUrls, patch, markDeleted } = useJob(id);
   const job = load.kind === "ready" ? load.job : null;
-  useReportMode(job?.mode);
+  useReportMode(job?.mode, job?.synthetic);
   useHeadingTitle("Loading your clip");
 
   // A render this page started moves on to the result when it's done, even from ?view=review (§3.5).
