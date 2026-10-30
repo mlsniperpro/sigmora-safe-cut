@@ -1,0 +1,676 @@
+# WIN-CHECKLIST (PRE-B): criteria → evidence
+
+Status: **live, updated each audit round** (first version 2026-10-24 17:30 UTC). This maps every judging criterion, every PRE-B deliverable and every audit finding to the evidence that covers it. The file name carries `-PRE-B` so it can't collide with PRE-A's `docs/WIN-CHECKLIST-PRE-A.md`.
+
+Judging facts are from the official participant guide, [OFFICIAL-GUIDE.md](OFFICIAL-GUIDE.md) (captured 2026-10-26 16:25Z), whose answers are applied in [RULES-CHECKLIST.md](RULES-CHECKLIST.md) §0; the weights match [MAXXING.md](MAXXING.md) §3.
+
+**Marks:** `[x]` done, with the evidence named on the line · `[P]` the PRE-B part is done, and the rest depends on an owner input in [BLOCKED-PRE-B.md](BLOCKED-PRE-B.md) or on a later WP building from this spec · `[-]` superseded or not applicable, with the reason. No line is left unmarked.
+
+## 1. Judging criteria
+
+- [P] **Impact (30%)**: A real problem, real users, measured gains. Evidence: Labelled test set with a written ground-truth rule and 31 worked cases ([LABELING-GUIDE.md](labeling/LABELING-GUIDE.md) §1–3); human-agreement reporting (percent + κ + 2×2, §5); creator pilots with timed protocol and honest reporting of capped times ([PILOTS.md](PILOTS.md) §5–6). Builder: WP7 (numbers), owner (pilots). Waiting on: owner input: footage, labeller B, pilots
+- [P] **Use of Meta AI tooling (25%)**: Meta models doing things only they can, used deeply. Evidence: The Why? drawer puts the loop on screen: SAM 3.1's numbered tracks, Muse Spark's 3 votes, escalation, Voice Transcribe lines ([UI-SPEC.md](UI-SPEC.md) §4); progress labels name each model's job (§2.5); storyboard beat 4 shows it ([STORYBOARD.md](STORYBOARD.md) 4.1–4.2). Builder: WP6, WP2 (mark numbers). Waiting on: build: WP6
+- [P] **Technical depth (20%)**: Hard parts solved, not glued. Evidence: Ground truth that isn't SAM-derived (LABELING-GUIDE §2.4); MOT export behaviour answered from CVAT v2.80.0 source ([CVAT-SETUP.md](labeling/CVAT-SETUP.md) §7.1); exact label schema, validator codes and test vectors ([LABEL-FORMAT.md](labeling/LABEL-FORMAT.md) §6–9); frame-accurate overlay on PRE-A's time axes (UI-SPEC §3.6, §10.6). Builder: WP6, WP7. Waiting on: build: WP6, WP7
+- [P] **Demo (25%)**: It works live and the video lands. Evidence: 20-shot storyboard at 2:50 with every number traced to a `metrics.json` (STORYBOARD §1–2); 11 named screen recordings (§3); demo-mode banner for replay (UI-SPEC §6); cut plans down to 2:00 and below (RULES-CHECKLIST §4). Builder: WP6, WP8, owner. Waiting on: owner input: hero footage, VO
+- [P] **Startup: holds up in production**: A deployed, safe, observable service. Evidence: Every state, validation rule, error and retry policy (UI-SPEC §2.6, §3.7, §10.2–10.4); deletion promise tied to the live cleanup (PILOTS §4); receipt and audit wording that can't overstate (UI-SPEC §5, distinct `patched_item` count). Builder: WP5, WP6. Waiting on: build: WP5, WP6
+- [x] **Stage 1 (pass/fail): theme fit and real Meta model use**: Build for Your World; Muse Spark, SAM 3.1 and Muse Voice Transcribe through the Meta Model API; not an anti-project. Evidence: RULES-CHECKLIST §0 (theme, anti-project and models rows).
+- [P] **New work only: a visible made-during-the-event boundary**: Evidence: RULES-CHECKLIST §0 (README and `SUBMISSION.md` "Built during the event" paragraph), STORYBOARD 9.1 end card with `{first_code_commit}`, the Sigmora label in 8.1. Builder: WP8.
+- [P] **Submission package: three-minute video, live product, public repo, every contributor listed**: Evidence: STORYBOARD (2:50), UI-SPEC (live product), BLOCKED-PRE-B (repo public once the owner OKs it, before submitting; contributors on the form). Owner input: BLOCKED-PRE-B.
+- [x] **Bonus: Community Vote / Most Viral**: Shareable proof. Evidence: RULES-CHECKLIST §0 and §6 (the demo posted on X before submitting, its link in the submission; the gallery link from Nov 9); BLOCKED-PRE-B Nov 4 steps. Builder: WP8.
+- [P] **Bonus: Best Agentic Use-Case**: Autonomy, task completion, usefulness. Evidence: RULES-CHECKLIST §0 (the miss loop, self-audit with patch loop and fail-closed holds, named in the submission). Builder: WP8.
+- [P] **Bonus: Best Build on Meta Open-Weight Models**: Decided by PRE-A (`docs/API-NOTES.md` §3.8): Muse Spark Open on Baseten as an additive audit second opinion. Evidence: PRE-B names it from `audit.open_weight.model` (UI-SPEC §1.3, RULES-CHECKLIST §0/§5, STORYBOARD 9.1) and discloses Baseten in the data copy and consent note; BLOCKED-PRE-B (credits, `BASETEN_API_KEY`). Builder: WP4, WP0 probe h.
+
+## 2. PRE-B deliverables ([PRE-B.md](work-packages/PRE-B.md))
+
+- [x] **Step 1: `should_hide` rules, 15+ edge cases (all 8 named)**. Evidence: LABELING-GUIDE §1–3 (31 cases: named ones are #1, #2, #4, #6, #8–9, #10, #12, #14).
+- [x] **Step 1: Box conventions, resolving disagreements**. Evidence: LABELING-GUIDE §2.3, §5.
+- [x] **Step 1: CVAT on a build box (not the Intel Mac), project, labels, interpolation, MOT export, privacy**. Evidence: CVAT-SETUP §1–7.
+- [x] **Step 1: Label JSON + MOT, fully worked 10 s example**. Evidence: LABEL-FORMAT §2–5 (plus schema §6, validator §7 with 30 codes incl. single-labeller LBL032–035, examples §8 with V1–V7 (+V6b) and X1–X30, test vectors §9).
+- [x] **Step 1: Hours per clip; ~18-clip plan; reduced plan**. Evidence: [SCHEDULE.md](labeling/SCHEDULE.md) §2–4. Note: estimates until timed
+- [x] **Step 2: Every WP6 screen: wireframes desktop + mobile, copy deck, states, keyboard/a11y, contract fields**. Evidence: UI-SPEC §1–9, build contract §10.
+- [x] **Step 2: The Why? drawer in detail; progress-stage labels**. Evidence: UI-SPEC §4, §2.5.
+- [x] **Step 3: Shot-by-shot 2:50 with frame, text, VO, duration, source; Nov 3 recordings; placeholders**. Evidence: STORYBOARD §1–3.
+- [x] **Step 4: Pilot profile, 15 candidates by channel type, 2 drafts < 120 words, consent note, protocol, results policy**. Evidence: PILOTS §1–6 (DM 106 words, email 113, placeholders as one word).
+- [x] **Step 5: Rules checklist with an action for every answer**. Evidence: RULES-CHECKLIST §1–12.
+- [x] **Step Done: Cross-links to DESIGN, EVAL, DEMO; no executable code**. Evidence: Verified by the docs check in the PR evidence.
+- [x] **Step Owner: Owner-only inputs with defaults and stub paths**. Evidence: BLOCKED-PRE-B.
+
+## 3. Audit findings
+
+Every finding from every round, with its fix. "Round" names the review that found it.
+
+- [x] **#1 (review 1)**: Video numbers not traced to `metrics.json`. Fix: STORYBOARD §2: every placeholder → a committed results dir.
+- [x] **#2 (review 1)**: Hook called staged actors non-consenting. Fix: STORYBOARD 1.1–1.2 wording + on-screen "Staged with actors".
+- [x] **#3 (review 1)**: Outreach promised 24 h deletion before WP5 exists. Fix: PILOTS §4 two-stage promise.
+- [x] **#4 (review 1)**: 2:00 cut plan only reached 2:22. Fix: RULES-CHECKLIST §4 stage A/B (verified 142 s → 120 s).
+- [x] **#5 (review 1)**: Results table dropped EVAL's "Muse without tracking". Fix: UI-SPEC §1 rows.
+- [x] **#6 (review 1)**: Tooltips changed metric units. Fix: UI-SPEC §1.3 restated with EVAL units.
+- [x] **#7 (review 1)**: κ procedure biased upward. Fix: LABELING-GUIDE §5 (percent + κ + 2×2 + detection count).
+- [x] **#8 (review 1)**: R2 test split contradicted the split rule. Fix: LABELING-GUIDE §6, SCHEDULE §4.
+- [x] **#9 (review 1)**: Pilot "30 minutes" unrealistic. Fix: PILOTS §5 30-min cap, "up to an hour".
+- [x] **#10 (review 1)**: Chip actions unreachable by keyboard. Fix: UI-SPEC §3.8.
+- [x] **#11 (review 2)**: Edge-case table broken at case 9. Fix: LABELING-GUIDE §3.
+- [x] **#12 (review 2)**: Hero 1 filming default missing cast. Fix: BLOCKED-PRE-B, SCHEDULE R4.
+- [x] **#13 (review 2)**: SCHEDULE still left the split to the owner. Fix: SCHEDULE §3.
+- [x] **#14 (review 2)**: Intel Mac named as CVAT fallback. Fix: CVAT-SETUP §2.
+- [x] **#15 (review 2)**: Eval-clip due dates wrong. Fix: BLOCKED-PRE-B.
+- [x] **#16 (review 2)**: `job.times` meant different things in two docs. Fix: Now one definition: PRE-A API-NOTES §5b (LABEL-FORMAT §2, UI-SPEC §3.6).
+- [x] **#17 (review 2)**: Capped pilot times could show as a median. Fix: STORYBOARD 8.3.
+- [x] **#18 (review 2)**: Leak count = rows, not leaks. Fix: UI-SPEC §5.6 (distinct `patched_item`).
+- [x] **#19 (review 2)**: Hard-coded "30 s clip"; `{speedup}` unsourced. Fix: STORYBOARD 2.1, §2.
+- [x] **#20 (review 2)**: AI-voice row and company status left open. Fix: RULES-CHECKLIST §4, §7.
+- [x] **#21 (owner audit)**: Reconcile with PRE-A (child < 18, times, cost, split). Fix: LABELING-GUIDE §2.1; LABEL-FORMAT §2; PILOTS §5; SCHEDULE §3.
+- [x] **#22 (owner audit)**: 3 CVAT export questions open. Fix: CVAT-SETUP §7.1 from v2.80.0 source.
+- [-] **#23 (owner audit)**: WP0/WP7 bound to 12/3 and $20. Fix: SCHEDULE §3. **Superseded by #360:** the $20 pilot cap no longer binds WP0/WP7; their own WP caps do.
+- [x] **#24 (owner audit)**: Root BLOCKED.md conflicts with PRE-A. Fix: moved to docs/BLOCKED-PRE-B.md.
+- [x] **#25 (review 3)**: VFR drift between `times` and the player clock. Fix: the overlay maps the player on the prepared clock (`clamp(floor(mediaTime × fps + 0.25), 0, frames − 1)`), never through `times`, per PRE-A §5b at `3d33e5f` (UI-SPEC §3.6). This replaces an interim fix (`times` as the MP4's own timestamps) that PRE-A later rejected.
+- [x] **#26 (review 3)**: Display time and transcript on the wrong clock. Fix: UI-SPEC §0, §4.6 now follow §5b.
+- [x] **#27 (review 3)**: `bystander` row said "adult or teen". Fix: LABELING-GUIDE §2.1.
+- [x] **#28 (review 3)**: Two CVAT line citations didn't support claims. Fix: CVAT-SETUP §7.1 (`include_empty=True` line 2101; `CommonData` default).
+- [-] **#29 (review 3)**: $20 cap enforcer unnamed; EVAL.md split conflict. Fix: SCHEDULE §3 (WP5; request to EVAL.md's owner). **Superseded by #360:** SCHEDULE §3 no longer names the pilot cap or its enforcer.
+- [x] **#30 (review 3)**: Pilot estimate ignored clip length. Fix: PILOTS §5.
+- [x] **#31 (win audit 1)**: PRE-A moved the time-axis definition into §5b (its interim draft said no trim and `times[0] = 0`; the current `3d33e5f` text has two clocks and lets `times[0]` exceed 0); pilot estimate now $8.70. Fix: UI-SPEC §3.6, LABEL-FORMAT §2, PILOTS §5, SCHEDULE §3.
+- [x] **#32 (win audit 1)**: Builders had no exact schema, validator codes, examples or test vectors. Fix: LABEL-FORMAT §6–9.
+- [x] **#33 (win audit 1)**: Builders had no mocks list, validation rules, error map, state machine, reducer tests. Fix: UI-SPEC §10.
+- [x] **#34 (win audit 1)**: Owner inputs had no stub path. Fix: BLOCKED-PRE-B "Until it arrives" lines.
+- [x] **#35 (win audit 2)**: Main review mock broke the spec's own `times` check; §10.6 used a 61 s time. Fix: UI-SPEC §10.1 mock, §10.6.
+- [x] **#36 (win audit 2)**: Plates sent through the screen keep-confirm; §4.3 said plates are always hidden. Fix: UI-SPEC §4.3, §10.5 R1–R2; café mock added.
+- [x] **#37 (win audit 2)**: BLOCKED promised a café mock that didn't exist. Fix: UI-SPEC §10.1 `job-review-cafe`; BLOCKED-PRE-B.
+- [x] **#38 (win audit 2)**: κ vector K1 disagreed with IEEE float arithmetic. Fix: LABEL-FORMAT §9 tolerance and rounding rule.
+- [x] **#39 (win audit 2)**: No validator path for a missing labeller-B file (plan R3). Fix: LABEL-FORMAT §7 warning code + cases.
+- [x] **#40 (win audit 2)**: Several §8.3 expected codes didn't follow from §7. Fix: LABEL-FORMAT §7 stop rules, §8.3.
+- [x] **#41 (win audit 2)**: State machine contradicted §5.4 and §10.3; missing states. Fix: UI-SPEC §10.4.
+- [x] **#42 (win audit 2)**: Reducer guards, CONFIRM_KEEP, MERGE precedence and UNDO undefined. Fix: UI-SPEC §10.5, §8 request 5.
+- [x] **#43 (win audit 2)**: 404 on a job route mapped to two different pages. Fix: UI-SPEC §7, §10.3, §10.4.
+- [x] **#44 (win audit 2)**: SoM mark given per item, needed per track. Fix: UI-SPEC §0, §8 request 2, §10.1 mock.
+- [x] **#45 (win audit 3)**: Chips showed numeric SoM marks; PRE-A burns `<concept>:<n>` labels on keyframes. Fix: UI-SPEC §0, mocks, copy; STORYBOARD 4.1/4.3.
+- [x] **#46 (win audit 3)**: "Back to review" from a done job bounced back to the result page. Fix: UI-SPEC §5, §10.4 (`?view=review`).
+- [x] **#47 (win audit 3)**: Pilot spend would hit PRE-A's $3/day public cap. Fix: PILOTS §5 (pilot codes outside the daily cap; WP5 request).
+- [x] **#48 (win audit 3)**: κ vector K1 sat on a rounding tie. Fix: LABEL-FORMAT §9.2 K1 = 11/26; tie rule.
+- [x] **#49 (win audit 3)**: Escalation `suggested_role` not shown; impossible "Hidden, unsure" row; scene link already in PRE-A. Fix: UI-SPEC §4.3, §4.6, §8.
+- [x] **#50 (win audit 3)**: Mock evidence frames had no keyframe or box. Fix: UI-SPEC §10.1 mocks.
+- [x] **#51 (win audit 3)**: Re-entry bystander offered a merge into a non-participant. Fix: UI-SPEC §3.3–3.4, §10.5.
+- [x] **#52 (win audit 3)**: Merged items' counts, overlay and later edits undefined. Fix: UI-SPEC §10.5.
+- [x] **#53 (win audit 3)**: Limit messages could show the limit itself (floor rounding). Fix: UI-SPEC §2.6, §10.2.
+- [x] **#54 (win audit 3)**: No single-labeller copy for the landing results footnote. Fix: UI-SPEC §1.3–1.4.
+- [x] **#55 (win audit 4)**: Time axes followed PRE-A's rejected draft; PRE-A @3d33e5f uses a constant-rate prepared clock and non-decreasing source-second `times`. Fix: UI-SPEC §0, §3.3, §3.6, §4.6, §8, §10.1, §10.6.
+- [x] **#56 (win audit 4)**: Label → prepared mapping was "nearest frame"; PRE-A decided prepared → label at `times[i]`. Fix: LABEL-FORMAT §2, §9.1.
+- [x] **#57 (win audit 4)**: No UI state for PRE-A's `retry_later` job status. Fix: UI-SPEC §10.4, copy, mock.
+- [x] **#58 (win audit 4)**: Drawer said Muse Spark isn't asked about plates; PRE-A's role pass judges them. Fix: UI-SPEC §4.3–4.4, hero mock.
+- [x] **#59 (win audit 4)**: Muse evidence quoted raw frame numbers into the drawer. Fix: UI-SPEC §4.3 frame → m:ss transform + tests.
+- [x] **#60 (win audit 4)**: Landing footnote showed κ without the 2×2 counts; no K3 variant. Fix: UI-SPEC §1.3–1.4.
+- [x] **#61 (win audit 4)**: `removed` flag had no contract field. Fix: UI-SPEC §8 request (`removed_by_creator`), reducer.
+- [x] **#62 (win audit 4)**: X8's expected codes didn't follow stop rule 4. Fix: LABEL-FORMAT §7 stop rule 4, §8.3.
+- [x] **#63 (win audit 4)**: Mock `scene` lacked PRE-A's required fields. Fix: UI-SPEC §10.1 mocks, field list.
+- [x] **#64 (win audit 4)**: Shots 1.2 and 8.3 ran above 150 wpm. Fix: STORYBOARD 1.2, 8.3, rule 6 (now 265 words, max ≤150 wpm per shot).
+- [x] **#65 (win audit 5)**: Every `failed` job got one generic retry; no failure reason, pilot code cap or daily-cap reset defined. Fix: UI-SPEC §2.6, §10.3, `failure: {stage, reason}`, `code_cap`, requests 1 and 10.
+- [x] **#66 (win audit 5)**: Ground-truth matching needed unrounded `times`; nothing required it. Fix: LABEL-FORMAT §2 (WP1 request), vector M8.
+- [x] **#67 (win audit 5)**: Escalation ruling had no field of its own; `escalated` undefined on failure. Fix: UI-SPEC §4.3, §4.6, §8 request 3 (`escalation_evidence`, `escalation_frames`).
+- [x] **#68 (win audit 5)**: No copy for PRE-A's "audit couldn't run" / "over budget" cases. Fix: UI-SPEC §5.3–5.6, `redteam_status`, request 11, mocks.
+- [x] **#69 (win audit 5)**: Frame-reference rewrite missed lists and bare ranges. Fix: UI-SPEC §4.3 rules + 7 more cases (incl. ARCHITECTURE §3.5's example).
+- [x] **#70 (win audit 5)**: Undo reused the idempotency key; reducer cases had no fixture. Fix: UI-SPEC §10.3, §10.5, `reducer-state.json`.
+- [x] **#71 (win audit 5)**: Label header: upper-case extensions, hero naming, rotated clips. Fix: LABEL-FORMAT §1, §2, §6.1, V7, portrait vector.
+- [x] **#72 (win audit 5)**: Unsupported claims shown to users ("doesn't train on it", "storage off", "every frame"). Fix: UI-SPEC §1.3, §2, §5; PILOTS §4; STORYBOARD 6.2.
+- [x] **#73 (win audit 5)**: Thumbnail used `track_ids[0]`, not the primary track. Fix: UI-SPEC §3.3.
+- [x] **#74 (win audit 5)**: Stale cross-doc statements (WIN #25/#31, SCHEDULE 4-clip subset, WP6 step 4; PRE-A's BLOCKED-PRE-A line 3 and WIN row 56). Fix: PRE-B side fixed (WIN #25/#31, SCHEDULE §3, UI-SPEC request 12). PRE-A side resolved by PRE-A itself at `948b678`: its BLOCKED pointer now names `docs/BLOCKED-PRE-B.md` (PRE-A WIN row 66), and its shared-facts list (§4) marks the time axes and UI fields as matching.
+- [x] **#75 (win audit 6)**: Clip ID = "first 7 characters" broke hero IDs. Fix: LABEL-FORMAT §1, §6.1, §7 (one regex).
+- [x] **#76 (win audit 6)**: Ring and thumbnail ignored the keyframe's 40 px frame-number bar. Fix: UI-SPEC §4.3 geometry, `keyframe_geometry`, request 13.
+- [x] **#77 (win audit 6)**: Removed person kept clear still counted as removed. Fix: UI-SPEC §3.4, §10.5 R13b.
+- [x] **#78 (win audit 6)**: Degraded or fallback transcript shown as "no speech" with exact times. Fix: UI-SPEC §4.3–4.6, mocks.
+- [x] **#79 (win audit 6)**: Over-blur had no per-frame definition or test vectors. Fix: LABEL-FORMAT §9.3 (≥ 0.50; O1–O4).
+- [x] **#80 (win audit 6)**: Harmless non-screen objects got the wrong drawer sentence; concept→kind unmapped. Fix: UI-SPEC §0, §3.4, §4.3, request 14.
+- [x] **#81 (win audit 6)**: Mock and §10.6 times were rounded (fails M8). Fix: UI-SPEC §10.1, §10.6.
+- [x] **#82 (win audit 6)**: Consent note promised per-call data handling the receipt doesn't record. Fix: PILOTS §4.
+- [x] **#83 (win audit 6)**: Cut plans kept VO that breaks 150 wpm. Fix: RULES-CHECKLIST §4 cut-version VO table.
+- [x] **#84 (win audit 6)**: Person size threshold ambiguous for 4K and portrait. Fix: LABELING-GUIDE §2, §4; LABEL-FORMAT LBL020, X20.
+- [x] **#85 (win audit 7)**: Server rule for clearing `removed_by_creator` on a later keep was missing. Fix: UI-SPEC request 9, request 5, §3.4.
+- [x] **#86 (win audit 7)**: Keyframe-mismatch fixture couldn't produce its state. Fix: UI-SPEC §4.3 checks, `keyframe_geometry` fields, stubbed image loading.
+- [x] **#87 (win audit 7)**: No "Hidden by you" sentence. Fix: UI-SPEC §4.3 table and precedence.
+- [x] **#88 (win audit 7)**: Over-blur counted Needs-you harmless objects as hidden with no stated rule. Fix: LABEL-FORMAT §9.3: two labelled rows (as shipped; suggestions accepted).
+- [x] **#89 (win audit 7)**: Kind `other` items (second-look finds) had no drawer path. Fix: UI-SPEC §4.3, request 15.
+- [x] **#90 (win audit 7)**: Speech-fallback fixture couldn't detect a missing ±1.5 s window. Fix: UI-SPEC §10.1 `job-review-speech-fallback.json`.
+- [x] **#91 (win audit 7)**: Limited-speech check keyed on a hard-coded model ID. Fix: UI-SPEC `source_kind` (request 16), AGENTS rule 8.
+- [x] **#92 (win audit 7)**: Reducer `confirm` still described as screen/document only. Fix: UI-SPEC §10.5.
+- [x] **#93 (win audit 7)**: Hero clip numbers limited to 1–3; SHOTLIST allows 3–4. Fix: LABEL-FORMAT §1, §6.1 (1–9).
+- [x] **#94 (win audit 7)**: LBL020 message had no number format. Fix: LABEL-FORMAT §7 (1 decimal).
+- [x] **#95 (win audit 8)**: `budget` failure copy wrong when the daily cap (not the job cap) ran out. Fix: UI-SPEC §2.6, §10.3 (`job_cap` vs `daily_cap`), request 1.
+- [x] **#96 (win audit 8)**: Publish could be enabled when the red-team check never ran. Fix: UI-SPEC §5.6 (`redteam_status == "ok"`).
+- [x] **#97 (win audit 8)**: 3/3 participant on one keyframe shown as "checks didn't agree". Fix: UI-SPEC §4.3 sentence; marks vs majority vote.
+- [x] **#98 (win audit 8)**: Landing said all test clips were filmed in public. Fix: UI-SPEC §1.3 footnotes (`n_public` / `n_staged`).
+- [x] **#99 (win audit 8)**: Results table had no row for over-blur with suggestions accepted. Fix: UI-SPEC §1 table; STORYBOARD §2 placeholder note.
+- [x] **#100 (win audit 8)**: 7.2 VO described over-blur as people only. Fix: STORYBOARD 7.2.
+- [x] **#101 (win audit 8)**: No mocks for budget, code-cap or deterministic failures. Fix: UI-SPEC §10.1 (5 mocks).
+- [x] **#102 (win audit 8)**: Sunday labelling hours didn't follow the table. Fix: SCHEDULE §3 (≈ 8 h).
+- [x] **#103 (win audit 8)**: Remove person: person-only in one place, person and child in another. Fix: UI-SPEC §3.1 overflow menu.
+- [x] **#104 (win audit 8)**: Result wireframe dropped the "of {frames}" denominator. Fix: UI-SPEC §5.1–5.2.
+- [x] **#105 (win audit 9)**: One-keyframe row missing from the drawer's precedence list. Fix: UI-SPEC §4.3.
+- [x] **#106 (win audit 9)**: Escalation sentence said "checks disagreed" for a unanimous one-keyframe case. Fix: UI-SPEC §4.3.
+- [x] **#107 (win audit 9)**: Too-long or broken clips found after upload had no failure reason; client and server limits differed. Fix: UI-SPEC §2.6, §10.2, §10.3 (`too_long`/`too_large`/`bad_media`; one 60.05 s rule), request 17.
+- [-] **#108 (win audit 9)**: Nov 3 recordings would exceed the $3/day public cap. Fix: STORYBOARD §3 (owner recording code, $6 cap). **Superseded by #128:** the recording code is now $12 (bound $15.00 since #331).
+- [x] **#109 (win audit 9)**: "Review them" for unresolved audit spots led to a panel with nothing to fix. Fix: UI-SPEC §3.3 "Unfixed spot" chips, `cover_spot`, request 18.
+- [x] **#110 (win audit 9)**: Pilot clip spec didn't mention the 150 MB limit. Fix: PILOTS §5.
+- [x] **#111 (win audit 9)**: `{h1a_seconds}` sourced from a run without a `job.json`. Fix: STORYBOARD §2 (hero-live run).
+- [x] **#112 (win audit 9)**: No state for a job created but never uploaded. Fix: UI-SPEC §10.4 `created`.
+- [x] **#113 (win audit 9)**: Labelling guide would fork into two master copies at kickoff. Fix: LABELING-GUIDE header (single master; WP7 links).
+- [x] **#114 (win audit 10)**: Over-budget audit path contradicted PRE-A (it adds to `unresolved`). Fix: UI-SPEC §5 mocks, PRE-A invariant.
+- [x] **#115 (win audit 10)**: Invented `redteam_status`; PRE-A already defines `blocked_reason` and "Run the audit again". Fix: UI-SPEC §5, request 11 (PRE-A's fields).
+- [x] **#116 (win audit 10)**: Audit failure modelled as `done`; PRE-A sends it to job status `needs_you`. Fix: UI-SPEC §10.4 `needs_you` row, banner.
+- [x] **#117 (win audit 10)**: Pilot caps used withdrawn PRE-A figures; PRE-A asked for $6 per code. Fix: PILOTS §5 ($6 per code, $20 total; $1.12 / $11.20), BLOCKED-PRE-B.
+- [x] **#118 (win audit 10)**: Bottom bar called uncovered leaks "hidden". Fix: UI-SPEC §3.5 (disabled until covered).
+- [x] **#119 (win audit 10)**: `cover_spot` had no reducer action; audit missing from the job response. Fix: UI-SPEC §10.5 COVER_SPOT, R19–R22, §8.
+- [x] **#120 (win audit 10)**: A-labels collided between audit items and unfixed spots. Fix: UI-SPEC §0, §3.3 (U1… for spots).
+- [x] **#121 (win audit 10)**: Duration rule still described a 422 path. Fix: UI-SPEC §10.2 (`failure.duration_s`, fallback copy).
+- [x] **#122 (win audit 10)**: Landing hero job would be deleted after 24 h and needs a code. Fix: UI-SPEC §1.6, request 19 (`GET /v1/demo/{hero_id}`, pinned).
+- [-] **#123 (win audit 10)**: Recording budget used withdrawn costs and undercounted runs. Fix: STORYBOARD §3 ($10 owner code from PRE-A's hero line). **Superseded by #128:** a $12 code, and PRE-A has no hero line (#207).
+- [x] **#124 (win audit 11)**: Pilot estimate's margin ignored 60 s clips. Fix: PILOTS §5 (clips 15–45 s; ≈ $15–17 for 10 clips).
+- [-] **#125 (win audit 11)**: Early pilots could use up the shared $20 before later ones ran. Fix: PILOTS §5 (≤ 2 jobs per code), UI-SPEC request 20. **Superseded by #135:** the per-code job count was removed in round 13; the $6 code cap and the $20 pool bound spend instead.
+- [x] **#126 (win audit 11)**: Running out of the shared pilot total pointed pilots to a new code. Fix: UI-SPEC §2.6 `pilot_pool_cap` copy.
+- [x] **#127 (win audit 11)**: Owner recording code existed only in STORYBOARD. Fix: UI-SPEC §8 request 20, BLOCKED-PRE-B Nov 3 step, WIN §4 WP5 row.
+- [-] **#128 (win audit 11)**: Recording budget priced hero runs at the 30 s rate. Fix: STORYBOARD §3 (45 s ≈ $1.5–1.7; $12 code). **Superseded by #339:** STORYBOARD §3 now uses PRE-A's $2.34 worst case.
+- [x] **#129 (win audit 12)**: `pilot_pool_cap` missing from the reason list, error table and mocks. Fix: UI-SPEC request 1, §10.3, §10.1.
+- [-] **#130 (win audit 12)**: Third job on a pilot code had no error; failed uploads used up jobs. Fix: UI-SPEC `code_job_limit`, request 20 (jobs count only past prepare). **Superseded by #135:** the per-code job count was removed in round 13; the $6 code cap and the $20 pool bound spend instead.
+- [x] **#131 (win audit 12)**: Recording code described as resetting daily. Fix: STORYBOARD §3, BLOCKED-PRE-B (a total; owner raises it).
+- [x] **#132 (win audit 12)**: Over-budget audit button stayed enabled when a code or pool cap was the cause. Fix: UI-SPEC §5.3 banner by `audit_budget_cause`, mocks, request 20.
+- [-] **#133 (win audit 12)**: Pilot cap sized for 2 clips while the protocol runs 1. Fix: PILOTS §5 (one clip, 2 jobs allowed; estimate ≈ $8). **Superseded by #135:** the per-code job count was removed in round 13; the $6 code cap and the $20 pool bound spend instead.
+- [x] **#134 (win audit 12)**: Daily-cap reasoning still cited 60 s pilot clips. Fix: PILOTS §5.
+- [x] **#135 (win audit 13)**: `code_job_limit` placed on two different endpoints. Fix: Simplified away: no job count; the $6 code cap and the $20 pool bound spend (UI-SPEC request 20, PILOTS §5).
+- [x] **#136 (win audit 13)**: Job limit couldn't be checked before prepare. Fix: Same simplification.
+- [x] **#137 (win audit 13)**: `audit_budget_cause` and `retry_at` missing from the audit request. Fix: UI-SPEC request 11 (PRE-B's one addition).
+- [x] **#138 (win audit 13)**: State machine always showed [Run the audit again]; §5.3 hid it for some causes. Fix: UI-SPEC §5.3: always shown, disabled only before `retry_at`.
+- [x] **#139 (win audit 13)**: A cap raised by the owner could never re-enable the audit; pool cap blamed the code. Fix: UI-SPEC §5.3 cause lines, mock.
+- [-] **#140 (win audit 13)**: "Hero line has room" was false at 45 s clip costs. Fix: STORYBOARD §3 (overrun noted; re-pricing request to PRE-A). **Superseded by #339 and #331:** no hero line; PRE-A's $12 recording line and $2.34 worst case.
+- [x] **#141 (win audit 13)**: [Try again tomorrow] always restarted the whole pipeline. Fix: UI-SPEC §2.6, §10.3 (same stage routing as [Try again]).
+- [x] **#142 (win audit 14)**: SR-01 would show the access code in the public video. Fix: UI-SPEC §10.2 masked field; STORYBOARD SR-01 and §4 checklist; BLOCKED-PRE-B revoke step.
+- [x] **#143 (win audit 14)**: Code-kind caps requested only of WP5; the budget guard lives in WP0's client. Fix: UI-SPEC request 20 (WP0 + `cost.jsonl` code fields; request to PRE-A).
+- [-] **#144 (win audit 14)**: Edits in the `needs_you` state could be lost by re-running only the audit. Fix: UI-SPEC §3.5 (an edit switches to Approve & render). **Superseded by #157:** `needs_you` is now read-only, and edits go through an explicit reopen.
+- [x] **#145 (win audit 14)**: `job_cap` audit offered an endless re-run. Fix: UI-SPEC §5.3 (no button; shorter clip).
+- [x] **#146 (win audit 14)**: `daily_cap` retry button described two ways. Fix: UI-SPEC §10.3 aligned with §2.6.
+- [x] **#147 (win audit 14)**: Superseded job-count fixes still marked [x]. Fix: WIN #125, #130, #133 → [-].
+- [-] **#148 (win audit 15)**: An edit in `needs_you` didn't change the server state. Fix: UI-SPEC request 5, §3.5, §10.4 transitions, R24. **Superseded by #157:** `needs_you` is now read-only, and edits go through an explicit reopen.
+- [x] **#149 (win audit 15)**: `job_cap` in `needs_you` left the bar empty or allowed a doomed re-render. Fix: UI-SPEC §3.3, §3.5, §5.3–5.4, §10.4, mock, R23.
+- [x] **#150 (win audit 15)**: `job_cap` exception missing from three other sections and mocks. Fix: Same propagation as #149.
+- [x] **#151 (win audit 15)**: Code kinds and caps had no config home; risk of codes in the public repo. Fix: UI-SPEC request 20 (`SAFECUT_ACCESS_CODES` JSON secret, `SAFECUT_PILOT_POOL_USD`); BLOCKED-PRE-B, STORYBOARD.
+- [x] **#152 (win audit 15)**: `type=password` would trigger Chrome's save prompt inside SR-01. Fix: UI-SPEC §10.2 text input with CSS masking.
+- [x] **#153 (win audit 15)**: A stage failing on `code_cap` couldn't recover after the cap was raised. Fix: UI-SPEC §2.6, §10.3, mock.
+- [x] **#154 (win audit 15)**: `retry_later` promised open-ended retries; PRE-A re-queues once. Fix: UI-SPEC §2.6, request 1, §10.3–10.4, `upstream` failure, mock.
+- [x] **#155 (win audit 16)**: Read-only chips under `job_cap` had no reducer guard. Fix: UI-SPEC §10.5 `readOnly` (rendering, needs_you), R23, R24.
+- [x] **#156 (win audit 16)**: Bar chosen by `blocked_reason` showed the wrong action after a reload. Fix: UI-SPEC §3.5 (by job status + cause).
+- [-] **#157 (win audit 16)**: Approve & render after an edit could only fail on an exhausted cap. Fix: Simplified: `needs_you` is read-only; [Edit and render again] reopens with a budget confirm. **Superseded by #176:** reopen was removed in round 18.
+- [x] **#158 (win audit 16)**: 429 cap codes mapped only on POST /start. Fix: UI-SPEC §10.3 (one mapping for /start, /render, /audit; `/reopen` later removed, #176).
+- [x] **#159 (win audit 16)**: [Run the audit again] had no endpoint. Fix: UI-SPEC request 11 (`POST /v1/jobs/{id}/audit`), mocks. (`/reopen` was removed later, #176.)
+- [x] **#160 (win audit 16)**: Download promised in `needs_you` had no URL or button. Fix: UI-SPEC request 1 (`result.video_url` on the job), §3.5.
+- [-] **#161 (win audit 16)**: No fixture for the reload-after-edit state. Fix: UI-SPEC §10.1 `job-reopened-review.json`; R24 replaced. **Superseded by #176:** reopen was removed, so the fixture went with it; reload after an edit is `job-done-edited.json`.
+- [x] **#162 (win audit 16)**: BLOCKED said WP5 issues the recording code. Fix: BLOCKED-PRE-B (the owner adds it to the deploy secret).
+- [x] **#163 (win audit 16)**: /start code-cap copy left the pilot at a dead end. Fix: UI-SPEC §2.6 (Start stays enabled).
+- [-] **#164 (win audit 17)**: Reopen didn't check the per-job cap. Fix: UI-SPEC request 11 (`409 job_cap`), §3.5, §10.3, mock. **Superseded by #176:** reopen was removed in round 18.
+- [x] **#165 (win audit 17)**: 409 on /audit said keep polling while polling was paused. Fix: UI-SPEC §10.3 (resume polling).
+- [x] **#166 (win audit 17)**: Re-running the audit skipped the receipt. Fix: UI-SPEC request 11, §10.4 (audit then receipt).
+- [x] **#167 (win audit 17)**: Old daily-cap and rate-limit rows contradicted the single 429 mapping. Fix: UI-SPEC §10.3 rows removed.
+- [x] **#168 (win audit 17)**: §2.6 daily-limit row sent job pages away to /. Fix: UI-SPEC §2.6 (two contexts).
+- [x] **#169 (win audit 17)**: §3.3 banner keyed on `blocked_reason`, not job status. Fix: UI-SPEC §3.3.
+- [x] **#170 (win audit 17)**: Polling rule didn't cover `needs_you` or the new endpoints. Fix: UI-SPEC §10.3 (one authoritative polling rule).
+- [x] **#171 (win audit 18)**: Polling never restarted after [Try again] from `failed`. Fix: UI-SPEC §10.3 polling rule (POST /start resumes).
+- [x] **#172 (win audit 18)**: Reopen's job-cap answer lived only in client memory. Fix: Removed: no reopen (#176).
+- [x] **#173 (win audit 18)**: `job_cap` had two HTTP mappings. Fix: Removed with reopen; one mapping keyed by `error.code`.
+- [x] **#174 (win audit 18)**: `429 daily_cap` on POST /v1/jobs had no row. Fix: UI-SPEC §10.3 single cap mapping.
+- [x] **#175 (win audit 18)**: Audit re-run plus receipt not reconciled with PRE-A's wording. Fix: UI-SPEC request 11 (wording request to PRE-A).
+- [x] **#176 (win audit 18)**: Audit re-run outcomes undefined; reopen added states that kept breaking. Fix: UI-SPEC request 11 outcomes; reopen and [Edit and render again] removed; needs_you has exactly 3 actions.
+- [x] **#177 (win audit 18)**: Old audit's "Details row" didn't exist. Fix: Removed with reopen.
+- [x] **#178 (win audit 18)**: No GET fixtures for the audit re-run flow. Fix: UI-SPEC §10.1 (2 fixtures).
+- [x] **#179 (win audit 18)**: Polling "resumed" into a paused state on reopen. Fix: Removed with reopen.
+- [x] **#180 (win audit 19)**: "No re-render" contradicted WP4's auto-patch loop. Fix: UI-SPEC request 11, §3.5 (patch passes may re-render segments).
+- [x] **#181 (win audit 19)**: No delete in `needs_you`; pilot deletion promise broken. Fix: UI-SPEC §3.5, §5.4, §10.1, §10.4, R22–R24 ([Delete everything now] always shown).
+- [x] **#182 (win audit 19)**: Same gap seen from PILOTS §4. Fix: Fixed by #181.
+- [x] **#183 (win audit 19)**: R24's COVER_SPOT couldn't prove the readOnly guard. Fix: UI-SPEC R24 (later moved to `result-audit-failed-with-leak.json`, #186).
+- [x] **#184 (win audit 19)**: R25 duplicated R24. Fix: R25 merged into R24.
+- [x] **#185 (win audit 20)**: Banner counted a leak as an unchecked frame. Fix: UI-SPEC §5.3 `{unchecked_frames}`, `{unfixed_spots}`.
+- [x] **#186 (win audit 20)**: Audit-failed fixture contradicted R22 on U chips. Fix: Fixture reverted; separate `result-audit-failed-with-leak.json`.
+- [x] **#187 (win audit 20)**: §5.4 hid U chips in `needs_you`. Fix: UI-SPEC §5.4 (read-only U chips).
+- [x] **#188 (win audit 20)**: Re-run stages omitted the auto-patch render; wrong progress label. Fix: UI-SPEC §2.5 `stage_reason: audit_patch` label, §10.3–10.4, fixture.
+- [x] **#189 (win audit 20)**: R24's UNDO couldn't prove the readOnly guard. Fix: UI-SPEC R24 (seeded undo stack).
+- [x] **#190 (win audit 20)**: Spec promised the re-run would cover U chips. Fix: UI-SPEC §3.3, R22 (covered later via [Cover it]).
+- [x] **#191 (win audit 21)**: Reducer still used a `rendering` boolean. Fix: UI-SPEC §10.5 (`status`, `has_render`, derived `readOnly`; SERVER_ACK carries status).
+- [x] **#192 (win audit 21)**: "Edited after rendering" keyed on a status that no longer applies; row precedence undefined. Fix: UI-SPEC §3.5 (`has_render`; explicit 7-row precedence).
+- [x] **#193 (win audit 21)**: One unfixed leak became one chip per frame. Fix: UI-SPEC request 18 `audit.spots[]` (grouped runs), one chip and one cover per spot.
+- [x] **#194 (win audit 21)**: §3.3 re-run wording contradicted request 11. Fix: UI-SPEC §3.3.
+- [x] **#195 (win audit 21)**: §10.4 transitions omitted auto-patch and the return to needs_you. Fix: UI-SPEC §10.4.
+- [x] **#196 (win audit 21)**: needs_you button rules split by an inserted sentence. Fix: UI-SPEC §3.5 (one bullet per button).
+- [x] **#197 (win audit 21)**: Request 5 forbade DELETE in needs_you. Fix: UI-SPEC request 5 (DELETE in every state).
+- [x] **#198 (win audit 22)**: Spots had no covered state; a reload brought them back. Fix: UI-SPEC `spots[].covered_by`, item `spot_id`, reducer `spots`.
+- [x] **#199 (win audit 22)**: Grouping by consecutive frames failed on sampled audits; covers missed gap frames. Fix: UI-SPEC request 18 (`sample_step`, interpolated cover with padding).
+- [x] **#200 (win audit 22)**: R19 contradicted the bar precedence. Fix: UI-SPEC R19.
+- [x] **#201 (win audit 22)**: Unchanged done job at review could re-render for nothing. Fix: UI-SPEC §3.5 row 5 "Nothing changed since the render".
+- [x] **#202 (win audit 22)**: Re-run described as every frame. Fix: UI-SPEC §3.3 (same pass as a first audit).
+- [x] **#203 (win audit 22)**: Reducer fixture prose still said `rendering: false`. Fix: UI-SPEC §10.5.
+- [-] **#204 (win audit 23)**: `POST /start` answered `422 job_cap`; PRE-A §10.3 refuses with `429` and the cap's reason. Fix: UI-SPEC §2.6 row, §10.3 row and fixture `error-429-job-cap.json`. **Superseded by #331** (PRE-A @ `565eee3`'s rule is adopted).
+- [x] **#205 (win audit 23)**: Request 1 said `429 code_cap` only once the budget was "already used"; PRE-A refuses once a cap can't cover the job's §9.1 estimate. Fix: UI-SPEC request 1 (all four caps, the estimate formula) and the `code_cap` copy "doesn't have enough budget left for this clip".
+- [-] **#206 (win audit 23)**: Access codes had no validity window, though PRE-A §9.2 limits judge/public codes and service keys to Nov 5 00:00 – Nov 10 23:59 UTC and the recording code to Nov 3 23:59 UTC. Fix: UI-SPEC request 20 (`valid_from`/`valid_until`, pilot codes to Nov 2 23:59 EAT, the window gates new jobs only), §2.6 and §10.3 `401 code_not_active` rows, fixture `error-401-not-active.json`. (The pilot end moved to Nov 3 11:59 UTC in #222, and the fixture was split in #212.) **Superseded by #331** (PRE-A @ `565eee3`'s rule is adopted).
+- [-] **#207 (win audit 23)**: The recording-code raise was bounded at $15 against PRE-A's old $3.00 headroom; PRE-A @ `4bb3cec` has $2.86. Fix: STORYBOARD §3, BLOCKED-PRE-B and UI-SPEC request 20 all say at most $14.86 (+$2.86, shared with every other overrun). **Superseded by #331:** at most $15.00 (+$3.00, PRE-A @ `565eee3`).
+- [x] **#208 (win audit 23)**: UI-SPEC §5.3 "Audit detail link" described a sampled EgoBlur scan; PRE-A has no sampled mode (vector L10). Fix: the copy says EgoBlur scans every frame and unchecked frames stay unpublishable.
+- [x] **#209 (win audit 23)**: PRE-A pins in STORYBOARD, UI-SPEC §3.3, PILOTS §5 and SCHEDULE §3 pointed at superseded commits (`4a682c2`, `948b678`, `498fa20`). Fix: all now cite `4bb3cec`, PRE-A's last docs commit.
+- [x] **#210 (reconcile, PRE-A §12 request)**: Nothing in PRE-B kept the test split's mean clip at ≤ 30 s, the basis of PRE-A's $43.20 test line. Fix: SCHEDULE §3 (owner checks; WP7's freezer refuses an over-30 s mean and a clip is swapped, never trimmed).
+- [x] **#211 (reconcile)**: RULES-CHECKLIST kept the demo live "to Nov 9" with judging "Nov 4–8"; PRE-A's paid public window is Nov 5 00:00 – Nov 10 23:59 UTC. Fix: RULES-CHECKLIST §11 row (live through Nov 10 23:59 UTC; after that replay-only, codes not extended because the headroom can't fund a $3 day).
+- [x] **#212 (win audit 24)**: The `code_not_active` copy had no wording for an end-only code (the pilot and recording codes), so "It works from  to …" could render. Fix: UI-SPEC §2.6 picks "isn't active yet" / "has expired" / "isn't active right now" by the dates; fixtures `error-401-not-yet-active.json` and `error-401-expired.json` replace `error-401-not-active.json`.
+- [x] **#213 (win audit 24)**: `code_not_active` on `POST /start` said "stay on step A", but Start is on step B, and the created job was left behind. Fix: UI-SPEC §2.6 and §10.3 step-B handling (Start disabled, [Use a different code], `DELETE` the created job).
+- [x] **#214 (win audit 24)**: Nothing said what Continue on step A sends, though it shows `401` copy. Fix: UI-SPEC request 21 `POST /v1/codes/check` (no side effects), §10.2 Continue row, §10.3 rows, fixture `code-check-ok.json`.
+- [x] **#215 (win audit 24)**: The #202 fix was incomplete: §3.5 row 2 still said the re-run covers "every frame". Fix: "scanning the same frames a first audit does (§3.3)".
+- [x] **#216 (win audit 24)**: The #208 EgoBlur copy said "It scans every frame" unconditionally, breaking §5.3's `{frames}` wording rule. Fix: "It's meant to scan all of them; any frame it couldn't check counts as not checked".
+- [x] **#217 (win audit 24)**: §2.6 and §10.2 still sent every `401` to "That code didn't work." and selected the text. Fix: both now except `code_not_active`.
+- [x] **#218 (win audit 24)**: `audit.sample_step` was "1 when every frame was checked" in PRE-B but `round(job.fps)` for every row in PRE-A §12, so spot counts and cover padding differed. Fix: UI-SPEC §3.3, request 18 and fixture `result-unresolved-review.json` use PRE-A's definition.
+- [x] **#219 (win audit 24)**: SCHEDULE §3 let dev tuning add the hero clips, citing a "thin tuning set" note PRE-A doesn't have; 8 rounds of 6 clips would be $28.32 against WP2's $15. Fix: the citation is gone; hero clips only by cutting rounds (≤ 4 rounds × 6 clips = $14.16).
+- [x] **#220 (win audit 24)**: UI-SPEC §4.6, §8 and request 7 cited PRE-A §5b step 4 for prepared-clock turn times; it's step 6. Fix: all three cite step 6.
+- [-] **#221 (win audit 24)**: CVAT-SETUP §2 and BLOCKED-PRE-B let real-public clips go to the bucket and to labeller B's machine, against AGENTS rule 5 and LABELING-GUIDE §6. Fix: test clips stay on the owner's machines (B labels them there or over the SSH tunnel); the fallback machine takes consented clips only. **Superseded by #235 and #249:** no SSH tunnel for test clips; they're labelled in person at the box.
+- [-] **#222 (win audit 24)**: Pilot codes ended Nov 2 20:59 UTC, so a US pilot lost the afternoon of the advertised "Oct 30 – Nov 2". Fix: UI-SPEC request 20 ends them Nov 3 11:59 UTC; PILOTS §7 and BLOCKED collect results Nov 3 15:00 EAT. **Superseded by #331** (PRE-A @ `565eee3`'s rule is adopted).
+- [x] **#223 (win audit 24)**: Hero 1's raw clip is published, but nothing kept strangers out of frame or said whose car's plate is shown. Fix: BLOCKED-PRE-B and SCHEDULE R4 (cast only, re-take if anyone walks in, a cast member's car or a fake plate).
+- [x] **#224 (win audit 24)**: Plan R3's blind re-label had no file kind, inviting a fake labeller-B file. Fix: LABEL-FORMAT §1 and §6 `labeller-A2.json`, §9.2 K5 intra-rater wording; SCHEDULE R3.
+- [x] **#225 (win audit 24)**: SCHEDULE gave disputes to the owner; LABELING-GUIDE §5 has A and B settle them. Fix: SCHEDULE §3 Mon row.
+- [x] **#226 (win audit 24)**: Worked example e5 (70 px tall) was tagged `small` (< 48 px). Fix: LABEL-FORMAT §5.1.
+- [x] **#227 (win audit 24)**: The outreach follow-up said "3 days later" (Oct 30), but the timeline has it Oct 28–29. Fix: PILOTS §3 "2 days later, on Oct 29".
+- [x] **#228 (win audit 24)**: #108, #123, #159 and #161 claimed evidence later removed. Fix: marked `[-]` with what superseded them, or annotated.
+- [x] **#229 (win audit 24)**: STORYBOARD 7.1 showed a "human agreement" line with no placeholder. Fix: a footnote from `{kappa}` only.
+- [x] **#230 (win audit 25)**: A plain `401` on step B (a code revoked after Continue) had no handling once §10.3 limited it to the code check. Fix: UI-SPEC §2.6 and §10.3 step-B refusal for every `401`; fixture `error-401-revoked-start.json`.
+- [x] **#231 (win audit 25)**: `429 job_cap` and `pilot_pool_cap` on `POST /start` left the created job behind. Fix: UI-SPEC §2.6 and §10.3 delete it; `code_cap` and `daily_cap` keep it for the re-send.
+- [x] **#232 (win audit 25)**: `code_not_active` on a job page's `POST /start` was undefined. Fix: UI-SPEC request 20: dates gate job creation only; a revoked code gives a plain `401` on paid job requests, with the new "Code refused on a job page" row (no automatic `DELETE`).
+- [x] **#233 (win audit 25)**: `pilot_pool_cap` had "none" in §2.6 but "stays enabled, re-send" in §10.3; `code_cap` re-sent `POST /start` even when `POST /v1/jobs` failed. Fix: one rule per cap in both places.
+- [x] **#234 (win audit 25)**: Fixtures `code-check-ok.json` and `error-401-expired.json` omitted `valid_from`, against requests 20–21. Fix: both keys always present (`null` when unset), fixtures updated.
+- [x] **#235 (win audit 25)**: #221 left the test split with no labelling machine when the owner has none, and its SSH-tunnel option streamed real-public frames to B's browser. Fix: CVAT-SETUP §2 and BLOCKED (the borrowed machine comes into the owner's custody for test clips; B labels them in person only).
+- [x] **#236 (win audit 25)**: #224's `labeller-A2.json` wasn't wired into the validator. Fix: LABEL-FORMAT §6 (four kinds, A2 uses `label-b`), §7 naming, LBL002, LBL007, new LBL035, stop rules 1–2, vectors V6b and X30.
+- [x] **#237 (win audit 25)**: #225's joint resolution wasn't in B's recruited hours or the total. Fix: BLOCKED (B about 5.5 h), SCHEDULE §3 (≈ 24 h people time; ≈ 25 h since #255).
+- [x] **#238 (win audit 25)**: BLOCKED still had "one follow-up after 3 days" (#227 incomplete). Fix: "on Oct 29 (2 days after sending)".
+- [x] **#239 (win audit 25)**: #206 still claimed the old pilot end, and HANDOFF said the checklist ended at #211. Fix: #206 annotated; HANDOFF rewritten.
+- [x] **#240 (win audit 25)**: #232's "dates gate creation only" let judge and public jobs started near Nov 10 23:59 UTC spend on a 7th daily-cap day PRE-A's ledger doesn't have. Fix: UI-SPEC request 20 (daily-cap codes also refuse paid requests after `valid_until`), §2.6 and §10.3 rows.
+- [x] **#241 (win audit 25)**: CVAT-SETUP §2 cited SHOTLIST for "never in the bucket", but SHOTLIST line 15 says "plus a private bucket". Fix: citation dropped; the conflict is stated and filed as a request to SHOTLIST's owner (PR #2 requests).
+- [x] **#242 (win audit 26)**: `pilot_pool_cap` on `POST /audit` had three rules, one of which deleted the creator's `needs_you` job. Fix: UI-SPEC §2.6 (one rule: disabled, delete only on `/try`), §3.5 row 2 (disabled), §2.6.1 (never an automatic `DELETE` on a job page).
+- [x] **#243 (win audit 26)**: "the step-B refusal (next row)" pointed at the job-page row. Fix: UI-SPEC §2.6.1 defines the step-B and job-page refusals once; every row cites it.
+- [x] **#244 (win audit 26)**: The job-page refusal kept a [Delete now] the review page doesn't have. Fix: UI-SPEC §3.5 bar row 0 "Code refused" with [Delete everything now], and precedence rule 0.
+- [x] **#245 (win audit 26)**: `error-401.json` said "any" and drove the wrong copy on job pages. Fix: scoped to `POST /v1/codes/check`; new fixtures `error-401-job-render.json` and `error-401-job-expired-audit.json`.
+- [x] **#246 (win audit 26)**: `429` caps on `POST /v1/jobs` had no matching WP5 request and no computable estimate. Fix: UI-SPEC request 1 (refuse below the $1.12 floor).
+- [x] **#247 (win audit 26)**: §10.3 said the job-page row was "below"; it's above. Fix: "above".
+- [x] **#248 (win audit 26)**: STORYBOARD §2 required non-eval results "committed before Nov 3", but the hero runs and pilot results are produced on Nov 3. Fix: committed by Nov 3 23:59 EAT, before WP8 finalises the script (moved to 18:00 EAT in #286).
+- [x] **#249 (win audit 26)**: CVAT-SETUP §1 rule 2 still let anyone tunnel to the box holding test clips. Fix: the tunnel is for the owner, hero and dev clips only; test clips are labelled in person on any machine (§1, §2).
+- [-] **#250 (win audit 26)**: No owner step set code validity windows, so judge and pilot codes could spend after their windows. Fix: BLOCKED pilot and judge code JSON with `valid_until`; UI-SPEC request 20 makes `valid_until` required for every code. **Superseded by #331** (PRE-A @ `565eee3`'s rule is adopted).
+- [x] **#251 (win audit 26)**: A staged clip moved to `test` kept its copies in the bucket, `fixtures/` and borrowed machines. Fix: LABELING-GUIDE §6 and BLOCKED delete every copy outside the owner's custody.
+- [x] **#252 (win audit 26)**: "Private backup" of test clips could mean a cloud backup. Fix: an encrypted local drive in the owner's custody (BLOCKED, LABEL-FORMAT §1, SCHEDULE §3).
+- [x] **#253 (win audit 26)**: #221 was `[x]` but its SSH-tunnel evidence was removed. Fix: marked `[-]`, superseded by #235 and #249.
+- [x] **#254 (win audit 26)**: LABEL-FORMAT §2 pinned PRE-A at `3d33e5f`, said "first decoded source frame", and gave a float `times` formula. Fix: pinned `4bb3cec`, "video frame", PRE-A step 4's `Fraction` formula.
+- [x] **#255 (win audit 26)**: SCHEDULE's people time left out A's 1 h fixing B-flagged boxes. Fix: A 18 h, total ≈ 25 h.
+- [x] **#256 (win audit 26)**: LABEL-FORMAT §2 said `boxes` is `null` only in B files; A2 files need it too. Fix: "B or A2".
+- [-] **#257 (win audit 26)**: `.agent/win/SAFECUT-PRE-B/LEASE` is on the PR branch outside PRE-B's paths. Not changed: the owner's PICK UP instruction requires the lease, and PRE-A keeps the same file. `.agent/` is session hand-off state; removing it before merge is listed in HANDOFF and the PR.
+- [x] **#258 (win audit 27)**: §3.5 row 0 beat row 2, so a refused re-run on a `needs_you` job showed Approve & render and dropped [Download this version]. Fix: row 0's buttons by status; fixture `error-401-job-expired-audit.json` expects row 2's set.
+- [x] **#259 (win audit 27)**: The §2.6 cap rows chose `/try` actions by request, so a failed-job page's `POST /start` could auto-delete the job or offer a Start it doesn't have. Fix: UI-SPEC §2.6.1 "the page decides" with one job-page cap line per cap; §2.6 and §10.3 rows scoped to `/try`.
+- [x] **#260 (win audit 27)**: §3.5 row 2 and its fixture sent a re-run's `429 code_cap` to the `/try` copy ("press Start again"). Fix: they cite the §2.6.1 job-page cap line.
+- [x] **#261 (win audit 27)**: The job-page expiry copy was unconditional in one row and date-tested in the other. Fix: both use the same `valid_until` test.
+- [x] **#262 (win audit 27)**: Labeller B's cutoff (Oct 25 09:00 EAT) came before hero 1 could be filmed, so R3 always fired. Fix: BLOCKED and SCHEDULE R3: B recruited and free to calibrate by Oct 26 08:00 EAT.
+- [x] **#263 (win audit 27)**: R1 labelled only 1 dev clip before Wave B, which needs 3. Fix: SCHEDULE R1 labels C, G, J × 1 by Oct 27.
+- [x] **#264 (win audit 27)**: Pilots could withdraw after publication and weren't told their timings are published. Fix: PILOTS §4 consent (anonymous publication, cutoff Nov 3 12:00 UTC, removal from later versions only), §6 commit after the cutoff.
+- [x] **#265 (win audit 27)**: SR-10 was scheduled both before and on Nov 3. Fix: BLOCKED Nov 3 step lists SR-01–SR-09 and SR-11 only.
+- [x] **#266 (win audit 27)**: Deliverable step 1's evidence still counted 29 validator codes and X1–X29. Fix: 30 codes, V1–V7 (+V6b), X1–X30.
+- [x] **#267 (win audit 27)**: STORYBOARD 7.1 dropped DEMO.md beat 7's "human-agreement ceiling line" without saying so, and WP8 builds from DEMO.md. Fix: STORYBOARD rule 7 supersedes it (no literature number on the chart), filed as a request to DEMO.md's owner.
+- [x] **#268 (win audit 28)**: Failed `too_long`/`too_large`/`bad_media` jobs had no [Delete now], unlike every other failure. Fix: UI-SPEC §2.6, §10.3 and fixture `job-failed-too-long.json`.
+- [x] **#269 (win audit 28)**: A `too_large` failure found in `prepare` had no field for `{size}`. Fix: request 17 adds `failure.size_bytes`; fallback copy "This file is larger than 150 MB."
+- [x] **#270 (win audit 28)**: The review page had no delete control in `review` or `rendering`, though PILOTS §4 promises deletion from every state. Fix: UI-SPEC §3.5 "Delete is always there" ([Delete everything now] at the bar's right end in every status).
+- [x] **#271 (win audit 28)**: A `429` on `POST /render` wasn't in the bar precedence, so Approve & render stayed enabled. Fix: §3.5 rule 0 and row 0 "Refused" cover `401` and every `429` (`code_cap` keeps the button enabled).
+- [x] **#272 (win audit 28)**: `413` was detected "on the upload" but the fixture had it on `POST /v1/jobs`. Fix: `POST /v1/jobs` takes `size_bytes` and answers `413` (request 17, §10.3).
+- [x] **#273 (win audit 28)**: `{seconds}` and `{duration}` named one placeholder, and the no-duration fallback wasn't in the copy deck. Fix: `{duration}` everywhere; fallback added to §2.6.
+- [x] **#274 (win audit 28)**: Shot 8.3 put a named pilot next to their own timings, though the consent note publishes timings anonymously. Fix: STORYBOARD 8.3 shows the quote and credit next to the pilot medians only.
+- [x] **#275 (win audit 28)**: #265 was incomplete: STORYBOARD §3 still listed SR-10 among Nov 3 retakes. Fix: SR-10 recorded once before Nov 3; takes list excludes it.
+- [x] **#276 (win audit 28)**: Judge codes were due "before Nov 5", after the Nov 4 23:00 EAT submission that must contain them. Fix: BLOCKED creates them before submitting, with the activation time in the form text.
+- [x] **#277 (win audit 28)**: PILOTS said a failed check "moves" the pilot window, but its end is fixed. Fix: the window shrinks; end, collection and `valid_until` stay.
+- [x] **#278 (win audit 29)**: #271's row 0 kept Approve & render enabled for `code_cap` while beating rules 3–4, so it could be enabled during a save or with a visible spot. Fix: `code_cap` never selects row 0; it's a note above the normal bar.
+- [x] **#279 (win audit 29)**: Row 0 disabled [Run the audit again] for `code_cap` in `needs_you`, contradicting row 2, §2.6.1 and §10.3. Fix: with `code_cap` out of row 0, row 2 governs (enabled).
+- [x] **#280 (win audit 29)**: `rate_limited` without `Retry-After` had no end. Fix: 60 s in rule 0 and §10.3.
+- [x] **#281 (win audit 29)**: The always-there delete used the §5.3 confirm even with no video, and two "After delete" strings existed. Fix: confirm by `has_render`/status; one "After delete" string everywhere.
+- [x] **#282 (win audit 29)**: No fixture pinned a review-page `429`. Fix: `error-429-render-code-cap.json` and `error-429-render-daily-cap.json`.
+- [x] **#283 (win audit 29)**: STORYBOARD 8.3 used `{n_pilots}` and `{n_capped}` with no source row. Fix: STORYBOARD §2 row and PILOTS §6 `metrics.json` fields.
+- [x] **#284 (win audit 29)**: #274 was incomplete: with 1–2 pilots the "median" next to a named quote is that pilot's own time. Fix: STORYBOARD 8.3 shows medians only when `n_pilots` ≥ 3.
+- [x] **#285 (win audit 29)**: EVAL's "Creator time" is timed on 3 clips, but the owner was asked to time only H1A. Fix: BLOCKED times H1A, H2 and H3 (only H1A recorded); STORYBOARD §2 says `{manual_minutes}` is H1A's value and the README reports all 3. (Narrowed to H1A and H1B in #290.)
+- [x] **#286 (win audit 29)**: The Nov 3 VO had no ordering against the results and script it speaks. Fix: results committed by Nov 3 18:00 EAT (STORYBOARD §2, PILOTS §6–7), script final by 20:00 EAT, VO after it (BLOCKED; Nov 4 morning buffer). (Recordings split from the VO in #288.)
+- [x] **#287 (win audit 29)**: The cut-8.3 fallback line advertised Sigmora even if the rules exclude company products. Fix: STORYBOARD §1 note adds the RULES-CHECKLIST §1 condition.
+- [x] **#288 (win audit 30)**: #286 put the paid hero recordings after 20:00 EAT, though their results were due at 18:00. Fix: BLOCKED splits them: recordings Nov 3 morning (live runs by 16:00 EAT), results by 18:00, VO after 20:00.
+- [x] **#289 (win audit 30)**: The "Nov 4 buffer" covered paid recordings, but the recording code expires Nov 3 23:59 UTC. Fix: the buffer is for the VO only.
+- [x] **#290 (win audit 30)**: "Creator time" on H1A, H2 and H3 had no Safe Cut run for H3 and measured to "Ready for you", not to an approved render. Fix: H1A and H1B (both rendered live), upload to approved render, n = 2 reported, EVAL's "3 clips" filed as a request.
+- [x] **#291 (win audit 30)**: PILOTS §6 hard-coded "n = 5". Fix: "n = `{n_pilots}`".
+- [x] **#292 (win audit 30)**: `n_pilots` meant "pilots who finished", so shot 8.3's "`{n_capped}` of `{n_pilots}` didn't finish" and its ≥ 3 gate could count wrongly. Fix: PILOTS §6 and STORYBOARD §2: `n_pilots` includes capped pilots, `n_capped` is its subset; Risk 3 reworded to match 8.3.
+- [x] **#293 (win audit 30)**: §3.5 rule 0 and the `code_cap` note had no reducer state or clearing rule. Fix: UI-SPEC §10.5 `refusal` and `capNote` (never cleared by `SERVER_ACK` or `GET`), tests R25–R26.
+- [x] **#294 (win audit 30)**: After a delete, polling could replace "Deleted." with the §7 expiry copy, and a failed `DELETE` had no handling. Fix: UI-SPEC §10.4 `deleted` state (polling stops, later responses ignored; non-2xx keeps the page with an error).
+- [x] **#295 (win audit 30)**: A `429` on `POST /review` matched two §10.3 rows, and a `429` on a polling `GET` matched none. Fix: `POST /review` 429 → `SERVER_REJECT` with the rate-limit toast; a polling 429 waits `Retry-After` or 60 s.
+- [x] **#296 (win audit 30)**: The daily-cap copy pointed at a home-page link the job page doesn't have. Fix: a job-page variant without it (§2.6, §2.6.1).
+- [x] **#297 (win audit 30)**: The `needs_you` fixtures didn't set `has_render`, which now picks the delete confirm. Fix: mock invariant `has_render: true` whenever `result.video_url` is set.
+- [x] **#298 (win audit 31)**: R26 expected a render `202` to move the bar, but no reducer action or fixture handled it. Fix: UI-SPEC §10.5 `ACTION_ACK(button, status)` and fixture `render-ack.json`.
+- [x] **#299 (win audit 31)**: The `deleted` state had no fixtures or tests, and a `404` on `DELETE` (job already gone) showed an error forever. Fix: `404` on `DELETE` counts as success; fixtures `delete-ok.json`, `error-404-delete.json`, `error-500-delete.json`; tests R27–R28.
+- [x] **#300 (win audit 31)**: In `needs_you` with `code_cap`, the same sentence could show three times. Fix: `capNote` isn't set there (§10.5).
+- [x] **#301 (win audit 31)**: The polling rule called `deleted` both permanent and restartable. Fix: its own sentence: stops for good.
+- [x] **#302 (win audit 31)**: BLOCKED told the owner to render H2, which PRE-A's $12 recording line doesn't pay for. Fix: the paid list matches STORYBOARD §3 and PRE-A §9.2 (H2 isn't rendered).
+- [x] **#303 (win audit 31)**: The Safe Cut side of "Creator time" was raw wall-clock, which would include the Nov 3 recording sessions and retakes. Fix: STORYBOARD §2 sums measured parts (stage timings plus a stopwatch-timed uninterrupted review, BLOCKED), excluding the gap. The timed pass's edits are undone before SR-02–SR-04, so those takes still start from the Needs-you state.
+- [x] **#304 (win audit 31)**: SR-04 makes edits, so a take recorded after SR-08's render would need a paid re-render and leave SR-07 stale. Fix: STORYBOARD §3 recording order (every SR-02–SR-04 take before SR-08; no edit after it).
+- [x] **#305 (win audit 32)**: §10.3's general rows caught `DELETE` answers against §10.4 (404 as expiry, 500 as a full-page error), a `429` on `DELETE` and a failed `/try` delete had no rule. Fix: one §10.3 Delete row (incl. `/try`), with the general rows scoped.
+- [x] **#306 (win audit 32)**: Row 2 and its fixture said a `429 code_cap` in `needs_you` shows a line the reducer never sets. Fix: both say it changes nothing.
+- [x] **#307 (win audit 32)**: The reducer fixture lacked `spots`, `refusal` and `capNote`. Fix: added.
+- [x] **#308 (win audit 32)**: [Delete now] on a failed-job page had no named confirm. Fix: the same `has_render` choice as the review bar.
+- [x] **#309 (win audit 32)**: The Ctrl+Z procedure relied on undo-stack behaviour the reducer didn't define (a second Ctrl+Z could re-revert the same edit). Fix: UI-SPEC §10.5 stack rule, §3.8 shortcut definition, test R29; BLOCKED cites §10.5.
+- [x] **#310 (win audit 32)**: SR-04 and SR-05 takes had no reset, so later takes (and SR-02) showed the wrong state. Fix: STORYBOARD §3 order (SR-02/03 first) and an off-camera Ctrl+Z before each later edit take.
+- [x] **#311 (win audit 32)**: STORYBOARD's summed-parts creator time redefined EVAL §2 without marking it. Fix: marked as superseding for hero runs and filed to EVAL's owner; pilot creator time stays wall-clock and is reported separately.
+- [x] **#312 (win audit 32)**: The timed review said "every decision you'd make for real" but never said to stop before Approve & render (paid, read-only after). Fix: BLOCKED stops the stopwatch there without pressing it.
+- [x] **#313 (win audit 32)**: `review_s` was noted in minutes but summed with seconds. Fix: BLOCKED notes seconds.
+- [x] **#314 (win audit 32)**: Ctrl+Z only works with focus in the chip area, which BLOCKED and STORYBOARD didn't say. Fix: both say to focus a chip first.
+- [x] **#315 (win audit 32)**: #299 claimed tests for `error-404-delete.json`, but no test used it. Fix: UI-SPEC test R28b.
+- [x] **#316 (win audit 33)**: §10.4's `deleted` row sent a `DELETE` 429 to the generic error, against §10.3's Delete row (#305 incomplete). Fix: §10.4 defers to the Delete row.
+- [x] **#317 (win audit 33)**: The toast [Undo] had no defined interaction with the undo stack (out-of-order or dead buttons). Fix: UI-SPEC §10.5: one edit toast at a time, any undo dismisses its toast; test R30.
+- [x] **#318 (win audit 33)**: A rejected undo was "put back" with no position. Fix: at its original position.
+- [x] **#319 (win audit 33)**: The Ctrl+Z undo applied to H1B too, so R-03B would render the model's defaults, not the timed review's decisions (and H1A's final take wasn't tied to the timed pass). Fix: BLOCKED undoes H1A only, its last SR-04 take re-makes the timed decisions; H1B keeps them for R-03B; STORYBOARD §3 order says so.
+- [x] **#320 (win audit 33)**: STORYBOARD §3 said only SR-01 and SR-08 start paid work and never said when the H1B and H2 runs start. Fix: the budget paragraph lists every paid start; the order starts H1B and H2 right after SR-01.
+- [x] **#321 (win audit 34)**: §10.5 never said when an edit goes onto `undo` or that a rejected edit leaves it. Fix: push rule (every edit-sending action pushes when sent; [Undo] disabled while pending), `SERVER_REJECT` removes it; test R31.
+- [x] **#322 (win audit 34)**: SR-04 scripts a Hide, which can contradict the timed review the render must match (#319). Fix: BLOCKED and STORYBOARD §3: SR-04 follows the timed decision (shot 4.3 says so if it's Keep clear), other timed edits re-made off camera before SR-08.
+- [x] **#323 (win audit 34)**: With 1–2 pilots, the README and SUBMISSION could print a credited pilot's own time next to their quote, against the anonymous-timings consent. Fix: PILOTS §6 extends the 8.3 rule to every output.
+- [x] **#324 (win audit 34)**: `{h1_frames_scanned}` and `{h1_leaks_fixed}` didn't say which H1 job, though H1A and H1B are both rendered. Fix: STORYBOARD §2 and the renders list name H1A (the SR-08 render shown in SR-07).
+- [x] **#325 (win audit 35)**: #323 worked output by output, so with 1 pilot the README timing and a named quote elsewhere (or `per_pilot.csv`) still identified them. Fix: PILOTS §6: with ≤ 2 pilots every quote carries only the anonymous credit, across the whole submission.
+- [x] **#326 (win audit 35)**: #322 wasn't carried into STORYBOARD shot 4.3 and the SR-04 row, which still scripted a Hide. Fix: both apply the timed review's decision, with the Keep-clear toast.
+- [x] **#327 (win audit 35)**: #324 left shot 6.2's source as "H1". Fix: H1A (the SR-08 render).
+- [x] **#328 (win audit 35)**: The edit-failed [Try again] had no reducer action, and the reject rules left a retry undefined. Fix: UI-SPEC §10.5 `RETRY(edit_id)` (guards re-run, same `edit_id`, re-pushed); test R14b.
+- [x] **#329 (win audit 35)**: `SERVER_REJECT` never dropped the edit from `pending`, and `UNDO`'s edit never entered `pending`. Fix: both stated; R14 expects `pending` empty.
+- [x] **#330 (win audit 35)**: §3.4 still described a one-level undo. Fix: the row describes the stack.
+- [x] **#331 (reconcile, PRE-A @ `565eee3`)**: PRE-A moved on in parallel (it reconciled against PR #2 @ `22283eb`): `422 job_cap` on `/start` (not retryable), $3.00 headroom and a $15.00 recording bound, default code windows per kind that entries may only narrow (pilot until Nov 2 23:59 UTC), the window checked on every paid request for every kind, an `owner` kind, `code_valid_until`, `failure.reason: "code_not_active"`, `503 auditor_unavailable`, and new 60 s figures ($2.02–2.09). Fix: PRE-B adopts all of them (PRE-A owns API and cost facts): UI-SPEC requests 1 and 20, §2.6, §10.3, fixture `error-422-job-cap.json`; STORYBOARD §3, BLOCKED, PILOTS §4/§5/§7, RULES-CHECKLIST §11. This supersedes #204's 429, #207's $14.86 bound and #206/#222/#250's own window rules.
+- [x] **#332 (reconcile, PRE-A §12 requests)**: New Why rows (static area, `hold` = `no_roles`/`no_scene`/`no_speech`/`unmatched_child`/`no_speech_link`) with their precedence; `other` items get object rulings; `child_phrase` → child; `cover_spot` is one union box with PRE-A's span formula and `origin: "audit_patch"`/`audit_label`; transcript speakers shown as "Voice S1"/"Voice U1"; static items exempt from the keyframe-box invariant; café mock's host linked to speech. Fix: UI-SPEC §3.3, §4.3, §4.6, requests 14 and 18, §10.1.
+- [x] **#333 (win audit 36)**: Fixture `error-401-job-expired-audit.json` still expected the old expired copy. Fix: PRE-A's copy.
+- [x] **#334 (win audit 36)**: [Try again tomorrow] was hidden in §2.6 but "shown at once" in §10.3, and the `code_valid_until` check missed §3.5 row 2, §5.3 and the job-page cap line. Fix: one §2.6.1 expiry rule cited everywhere; `code_valid_until` in the field list; fixture `job-failed-daily-cap-expiring.json`.
+- [x] **#335 (win audit 36)**: `503 auditor_unavailable` had no §10.3 row (fell into "Something went wrong") and no fixture. Fix: §10.3 row (`/try` and job page) and fixture `error-503-auditor-unavailable.json`.
+- [x] **#336 (win audit 36)**: §3.5 row 0 still keyed on `429 job_cap`, which no `/render` or `/audit` answer returns. Fix: removed.
+- [x] **#337 (win audit 36)**: The `code_not_active` copy promised a download that may not exist, and the reason was missing from request 1's enum. Fix: §2.6.1 download-or-delete rule; enum and fixture `job-failed-code-not-active.json`.
+- [x] **#338 (win audit 36)**: BLOCKED's recording and judge entries carried `valid_until` …:59:59Z, 59 s wider than PRE-A's …:59Z defaults, so the deploy would refuse them. Fix: entries carry no dates (the kind's window applies); UI-SPEC fixtures use PRE-A's …:59:00Z ends.
+- [x] **#339 (win audit 36)**: STORYBOARD §3 priced recording runs at $2.09, which doesn't reach PRE-A's ≤ $10.00 bound. Fix: PRE-A's $2.34 no-cache worst case plus a $2.34 retake.
+- [x] **#340 (win audit 36)**: The outreach still promised "between Oct 30 and Nov 2" though pilot codes end Nov 2 23:59 UTC (#222's harm back). Fix: both drafts say "Nov 2 (UTC)" (DM 104, email 111 words, BLOCKED updated); UI-SPEC request 20 cites PILOTS §5.
+- [x] **#341 (win audit 36)**: The long `.agent` HANDOFF still gave the dropped window and bound rules. Fix: its stale lines updated and the file marked as secondary to `docs/HANDOFF-PRE-B.md`.
+- [x] **#342 (win audit 36)**: #332 fixed only the café mock's prose; its JSON still had `matches_participant: null` on the kept host. Fix: `0`.
+- [x] **#343 (win audit 36)**: The speech-limited mock (degraded transcript) still auto-kept `i_1`, against PRE-A's `hold: "no_speech"` (P9). Fix: `i_1` is `needs_you` with that hold.
+- [x] **#344 (win audit 36)**: The mocks lacked the stage-file `status` fields PRE-A §12 makes required. Fix: `status: "ok"` on `scene`, `roles` and `transcript` in the written mocks, and a mock invariant.
+- [x] **#345 (win audit 36)**: With `job_cap` gone from row 0, nothing said how a job cap on `/render` or `/audit` appears. Fix: §3.5 rule 0 note (a `failure.reason` or `audit_budget_cause`, never an HTTP refusal).
+- [x] **#346 (win audit 37)**: #334's expiry rule appended a fragment instead of complete strings, and missed §3.5 row 0, §10.3's action-cap row, §2.6's daily-limit row and `refusal.until`. Fix: §2.6.1 lists the full strings per place; every place cites it; `refusal.until = null`; fixture `error-429-render-daily-cap-expiring.json`.
+- [x] **#347 (win audit 37)**: Row 0 for `review` had no [Download this version], though the download-or-delete rule promises one when `has_render`. Fix: row 0 shows it; the expired-audit fixture sets `has_render: true`.
+- [x] **#348 (win audit 37)**: #332's "Voice" prefix was missing in §4.6's example and the wireframe. Fix: "Voice S2"/"Voice S1" (wireframe widths kept).
+- [x] **#349 (win audit 37)**: The speech-limited mock made `i_1` `needs_you` but left it out of the plan, so the overlay would show it uncovered; it cited only P9. Fix: plan regions and a hold reason added, PRE-A §12 cited; new mock invariant (every hidden or needs-you item has a plan region).
+- [x] **#350 (win audit 37)**: STORYBOARD 8.3 still allowed a named credit with 1–2 pilots (#325 fixed only PILOTS). Fix: `{pilot_credit}` is format + country with ≤ 2 pilots; `{pilot_country}` in §2.
+- [x] **#351 (win audit 37)**: Outreach word counts (104/111) split placeholders, against RULES-CHECKLIST's one-word rule; deliverable step 4 still said 103/110. Fix: 102/109 everywhere (recounted).
+- [x] **#352 (win audit 37)**: `{n_test_clips}` was sourced from `config.json`/a hash file, not a `metrics.json`. Fix: `metrics.json` `n_clips` (request to WP7).
+- [x] **#353 (win audit 37)**: Both HANDOFF files misstated the audit position. Fix: rewritten (round 37 done, next round 38, findings to #354).
+- [x] **#354 (win audit 37)**: SCHEDULE said "about 54 elapsed hours"; Sat 14:00 → Mon 17:00 is 51. Fix: 51.
+- [x] **#355 (win audit 38)**: §3.5 row 0 for `needs_you` disabled [Run the audit again] where the expiry rule hides it, and rule 0's duration ignored the expiry case (#346 incomplete). Fix: both cite the expiry rule.
+- [x] **#356 (win audit 38)**: The #349 plan invariant was unmeetable for audit-patch and static items (no keyframes, no evidence frames). Fix: they're checked against their span; both are exempt from the keyframe-box invariant.
+- [x] **#357 (win audit 38)**: The speech-limited mock's added regions had no `shape`, `mask` or `grid` and used raw track boxes. Fix: both regions written out in full.
+- [x] **#358 (win audit 38)**: #352 was incomplete: UI-SPEC's results footnotes still took clip counts from `config.json`, and no §8 request asked WP7 for them. Fix: footnotes cite `metrics.json` `n_clips`/`n_public`/`n_staged`; request 22.
+- [x] **#359 (win audit 38)**: With 1–2 pilots, shot 8.3's VO still spoke the timing the card hides. Fix: the VO carries no timing then.
+- [x] **#360 (win audit 38)**: SCHEDULE §3 told WP0 and WP7 to plan within the $20 pilot cap. Fix: their WP caps and PRE-A §9.2's lines; the pilot cap covers pilot codes only.
+- [x] **#361 (win audit 38)**: Shot 8.3's text placeholders had no committed source, so STORYBOARD §2's rule would cut the shot. Fix: `eval/results/pilots-<date>/quotes.json` (permitted quotes and credits only; request to WP7).
+- [x] **#362 (win audit 38)**: BLOCKED had no deadlines for the CVAT machine and the clip upload, both on the critical path. Fix: Oct 25 evening; hero 1 by kickoff, the rest by Oct 27.
+- [x] **#363 (win audit 38)**: #207 and #108 still claimed the $14.86 bound. Fix: #207 `[-]` superseded by #331, #108 updated, #331's list extended.
+- [x] **#364 (win audit 39)**: Audit-added items were "drawn like any hidden item" (so a toggle), with no source for their time range or thumbnail, against PRE-A §12 (`track_ids: []`, `locked: true`, `first`/`last`). Fix: UI-SPEC §3.3 audit-patch paragraph; plan-region invariant reworded.
+- [x] **#365 (win audit 39)**: The review response carried only `items` and `plan`, but the reducer and R18/R19/R21 need `status`, `has_render` and `spots` from it. Fix: §8 table, fixture `review-ack.json`, `SERVER_ACK` signature.
+- [x] **#366 (win audit 39)**: The step-B wireframe said Start is disabled until the tick, against §10.2. Fix: "disabled until a file is in".
+- [x] **#367 (win audit 39)**: "(s)" plurals had no rendering rule, and a fixture expected the literal "leak(s)". Fix: §2.6 plural rule; fixture uses the rendered form.
+- [x] **#368 (win audit 39)**: The results footnotes' agreement and run placeholders had no source, and a developer note sat inside the copy. Fix: §1.3 footnote-sources paragraph; request 22 extended.
+- [x] **#369 (win audit 39)**: Needs-you counts ignored U chips. Fix: §3.9 header counts include uncovered spots; row 7 unchanged.
+- [x] **#370 (win audit 39)**: R22–R24's mocks had no items, and R24 used `COVER_SPOT(U1)` and argument-less `MERGE`. Fix: `result-audit-*` mocks use the hero items; R24 arguments explicit.
+- [x] **#371 (win audit 39)**: `job-done-edited.json` lacked `has_render: true`, which its bar row needs. Fix: added.
+- [x] **#372 (win audit 39)**: The speech-limited mock's pixelate regions (90 px, cell 11) broke WP3's ≤ 6 blocks across a face, and claimed WP3's padding exactly. Fix: cell 15; the padding called an approximation of 15% + 8 px.
+- [x] **#373 (win audit 39)**: Which hero-1 take is labelled was undefined (SCHEDULE "best take", STORYBOARD needs H1A, LABELING-GUIDE case 13 uses H1B). Fix: H1A always, H1B only if time allows.
+- [x] **#374 (win audit 39)**: Test clips and labels were kept "on the owner's Mac", the one machine PRE-A says can't run the test eval. Fix: BLOCKED, LABEL-FORMAT §1 and CVAT-SETUP keep them on the owner's CVAT/eval box (Linux NVIDIA, PRE-A BLOCKED), copied on an encrypted drive if separate, never labeller B's.
+- [x] **#375 (main-session check)**: STORYBOARD 8.3's no-timing VO example said "8 words"; it's 9. Fix: 9.
+- [x] **#376 (win audit 39)**: BLOCKED had no step for the final cut, the YouTube upload and the link. Fix: a Nov 4 18:00 EAT step before submission.
+- [x] **#377 (win audit 39)**: BLOCKED's code steps never said to redeploy, so new codes or a raised cap might not take effect. Fix: redeploy and check at `/try` in the pilot, recording, raise and judge steps.
+- [x] **#378 (win audit 39)**: The cast-only, re-take rule covered hero 1 only, though raw café footage is published. Fix: BLOCKED hero 2–3 step.
+- [x] **#379 (win audit 39)**: PILOTS §6 publishes reported misses, which the consent note didn't mention. Fix: the consent note says anonymised miss descriptions are published.
+- [x] **#380 (win audit 39)**: LABELING-GUIDE participant rule 4 relied on a role in the release the release doesn't carry, contradicting the "role in the story" note. Fix: rule 4 uses SHOTLIST's cast role; releases never decide roles.
+- [x] **#381 (win audit 39)**: STORYBOARD §3 implied H2 gets a timed review. Fix: H1B's only.
+- [x] **#382 (win audit 39)**: Without a consented child, BLOCKED cut shot 4.1, the only Set-of-Mark explanation. Fix: 4.1 uses the hidden bystander's chip.
+- [x] **#383 (win audit 39)**: The API key and repo-public steps were undated. Fix: Oct 26 at kickoff.
+- [x] **#384 (win audit 39)**: SCHEDULE R2 said "about 6 h for A"; the midpoints sum to 6.5 h. Fix: 6.5 h with the sum.
+- [x] **#385 (win audit 39)**: #23, #29, #128, #140 and #237 cited evidence since replaced. Fix: marked superseded or annotated.
+- [x] **#386 (main-session self-review)**: After #288 split the Nov 3 step, the recording-code sub-bullet sat under the VO step. Fix: moved under the screen-recordings step.
+- [x] **#387 (main-session self-review)**: STORYBOARD §3's order never placed H1A's timed review and its undo, which must come between SR-01 and SR-02. Fix: placed there; the doubled citation tidied.
+- [x] **#388 (win audit 40)**: The speech-limited mock's pixelate grid moved between frames, against ARCHITECTURE §3.7's locked grid. Fix: frame 9 uses frame 3's grid.
+- [x] **#389 (win audit 40)**: Kind, label and menu were undefined for track-less audit items and U chips (a locked A item could offer Remove), and the A numbering rule contradicted itself. Fix: UI-SPEC §0 (server kind, `audit_label`, menu without Remove; numbering as PRE-A §12).
+- [x] **#390 (win audit 40)**: The no-keyframe caption said "Added by the audit" for static items too. Fix: a caption per origin.
+- [x] **#391 (win audit 40)**: No fixture held an A item, and the cover span wasn't clamped (negative for `s1`). Fix: fixture `review-ack-cover-spot.json`; span clamped to `[0, frames − 1]` in §3.3 and request 18.
+- [x] **#392 (win audit 40)**: `result-unresolved.json` had no `spots`, so "0 spot(s)" would render. Fix: added.
+- [x] **#393 (win audit 40)**: #370 put the 12-frame hero mock under fixtures claiming 40 unchecked frames. Fix: 4 (and 5 = 4 + 1) in the fixtures and R22.
+- [x] **#394 (win audit 40)**: Widths 481–1023 px were undefined. Fix: §0 breakpoints (mobile layout below 1024 px).
+- [x] **#395 (win audit 40)**: The polling rule listed a paused state under "resumes". Fix: its own sentence.
+- [x] **#396 (win audit 40)**: Some strings had no plural rule (is/are, them) or marker (`{unchecked_frames}` frames). Fix: §2.6 rule extended; "frame(s)".
+- [x] **#397 (win audit 40)**: Wireframe text and buttons differed from the copy deck with no rule for which wins. Fix: §0: the deck and §3.3 win.
+- [x] **#398 (win audit 40)**: #382's no-child fallback still left a child in shot 1.2's VO, shot 3.3, SR-03, SR-10 and 4.1's lock and VO. Fix: STORYBOARD §1 no-child variant covering all of them; BLOCKED points to it.
+- [x] **#399 (win audit 40)**: UI-SPEC cited PRE-A escalation.md "rules 3 and 5"; there is no rule 5. Fix: "rule 3".
+- [x] **#400 (win audit 40)**: The `no_speech_link` row cited vector P9, which is `no_speech`; the case is P9c. Fix: "P8, P9c".
+- [x] **#401 (win audit 40)**: #377 garbled BLOCKED's recording-code sentence. Fix: rewritten.
+- [x] **#402 (win audit 40)**: BLOCKED had no owner step for labeller A's ~18 h of labelling (SCHEDULE §1/§3). Fix: a dated step.
+- [x] **#403 (win audit 40)**: BLOCKED had no owner step for freezing the test split on the owner's eval box (only `test.sha256` committed) by Oct 29 23:59. Fix: a dated step.
+- [x] **#404 (win audit 40)**: BLOCKED had no owner step for the Oct 30 – Nov 1 test-split run and committing its metrics and agreement report. Fix: a dated step.
+- [x] **#405 (win audit 40)**: The upload step assumed the private bucket and tokens existed. Fix: create bucket, write token and read-only token before the Oct 26 19:00 EAT upload (O3).
+- [x] **#406 (win audit 40)**: Hero 1's fabricated phone number and fake plate could match real people. Fix: clearly fictional number; a plate format no registered vehicle uses.
+- [x] **#407 (win audit 40)**: Hero 3's framed photos could show unsigned, identifiable people in published raw footage. Fix: signed cast or nobody identifiable.
+- [x] **#408 (win audit 40)**: `.agent` HANDOFF's owner-blockers list missed the bucket upload, the Oct 26 API key and the Nov 4 18:00 EAT final cut. Fix: added, with #402–#404.
+- [x] **#409 (PRE-A @ `02c605e`)**: Mock `scene.participants[]` lacked `introduced_in_turn` and `introduction_quote` (scene-pass.md schema). Fix: UI-SPEC's scene shape names both; every mock carries them (hero guest: turn 1, "I'm Amina").
+- [x] **#410 (PRE-A @ `02c605e`)**: Request 20 didn't say service keys answer `401 code_not_active` outside the judge window, with no replay. Fix: stated.
+- [x] **#411 (PRE-A @ `02c605e`)**: EgoBlur copy was fixed text, so the Oct 28 YuNet fallback would be misreported. Fix: UI-SPEC §1.3 auditor name rule (from `egoblur.model`; no plate count when `plates` is null; baseline row "not run"), the `audit` stage line names no detector, STORYBOARD 6.2/7.1 variants.
+- [x] **#412 (PRE-A @ `02c605e`)**: No copy for `503 billing` on `/start`. Fix: §2.6 row, §10.3 row and exemption, fixture `error-503-billing.json`.
+- [x] **#413 (PRE-A @ `02c605e`)**: The consent note didn't say `store: false` doesn't cover Meta's prompt cache, and the Oct 29 check read only "`store: false` is set". Fix: PILOTS §4 sentence; the check reads the receipt's `store_by_model` / `no_store_param` against PRE-A §10.6 (PILOTS, BLOCKED).
+- [x] **#414 (PRE-A @ `02c605e`)**: RULES-CHECKLIST's "Meta models used" listed EgoBlur Gen 2 unconditionally. Fix: the auditor from the final run's `egoblur.model`.
+- [x] **#415 (PRE-A @ `02c605e`)**: Fixture window ends used `T23:59:00Z`; PRE-A's are `T23:59:59Z`. Fix: all six changed.
+- [x] **#416 (win audit 41)**: Request 19's demo route returned only the result shape, so the landing toggle had no raw clip and step 3 no `egoblur.model`. Fix: it also returns `job` and `audit`; fixtures `demo-hero.json`, `demo-hero-yunet.json`.
+- [x] **#417 (win audit 41)**: `review-ack-cover-spot.json` used a machine `reason`, lacked `spot_id` and a plan region, and its leak rows had no `kind`. Fix: human reason, `spot_id`, a `solid` region on frames 0–11, `kind: "face"` on both leak fixtures.
+- [x] **#418 (win audit 41)**: An escalation that ruled `child` would have said "You decide". Fix: its own drawer sentence; a `child` ruling isn't a suggestion.
+- [x] **#419 (win audit 41)**: The primary track was ambiguous with two `face:*` tracks ("whatever order"). Fix: the first `face:*` in `track_ids` order; the server appends merged tracks after the target's.
+- [x] **#420 (win audit 41)**: §0's kind mapping missed `child_phrase` → `child` (request 14). Fix: added to §0.
+- [x] **#421 (win audit 41)**: Remove was offered on audit-added person items. Fix: §3.3 menu rows and `REMOVE_PERSON` require non-empty `track_ids`.
+- [x] **#422 (win audit 41)**: Developer notes sat inside copy cells (step 3, `audit` stage line, audit detail). Fix: removed; the rule paragraph covers them.
+- [x] **#423 (win audit 41)**: "§2 auditor name rule" pointed at the wrong section. Fix: §1.3 (UI-SPEC, STORYBOARD, #411).
+- [x] **#424 (win audit 41)**: Plural markers didn't cover agreeing verbs ("1 item still need you"). Fix: verbs with a marked subject agree.
+- [x] **#425 (win audit 41)**: No reducer action set `refusal` or `capNote` or expired `refusal`. Fix: `ACTION_REFUSE`, `ACTION_CAP`, `REFUSAL_EXPIRED`, tests R32–R33.
+- [x] **#426 (win audit 41)**: Request 5 didn't say what undoing `cover_spot` does. Fix: removes the item, `covered_by` back to `null`.
+- [x] **#427 (win audit 41)**: No fixtures for the auditor name rule or several Why rows. Fix: `result-clean-yunet.json`, `results-no-egoblur.json`, `job-review-why-rows.json`.
+- [x] **#428 (win audit 41)**: The `created` strings were in no copy deck. Fix: §2.6 row.
+- [x] **#429 (win audit 41)**: `job-review-no-audio.json` had no transcript, breaking the invariants. Fix: PRE-A's no-audio transcript; `source_kind: null` allowed only without audio.
+- [x] **#430 (win audit 41)**: "The only place raw IDs appear" contradicted the keyframe caption and alt text. Fix: exceptions named.
+- [x] **#431 (win audit 41)**: Timed-out POSTs had no outcome. Fix: re-enable, §7 unreachable copy, resume polling for paid requests.
+- [x] **#432 (win audit 41)**: Minor UI-SPEC gaps: `queued` called a status, U chips had no Enter behaviour, demo mode on a non-Sigmora job, the expiry rule didn't list row 0's Approve & render. Fix: each stated.
+- [x] **#433 (win audit 41)**: (audit C) The test-split in-person requirement for labeller B wasn't in BLOCKED, so a remote B silently lost κ. Fix: stated; R3 for the test split otherwise.
+- [x] **#434 (win audit 41)**: (audit C) Copying test data to a separate eval box was due after the freeze needed it. Fix: before Oct 29 23:59 EAT.
+- [x] **#435 (win audit 41)**: (audit C) The consent note promised a receipt prompt-cache sentence the Oct 29 check didn't verify. Fix: the check reads `data_handling.notes`.
+- [x] **#436 (win audit 41)**: (audit C) BLOCKED lacked the widen-the-search and new-start-date pilot messages. Fix: added as defaults.
+- [x] **#437 (win audit 41)**: (audit C) Labeller A's hours summed to 19.5 h but said 18 h. Fix: "19.5 h: 18 h of labelling plus the 1.5 h session".
+- [x] **#438 (win audit 41)**: (audit C) The bucket host wasn't added to the network allowlist. Fix: added to the upload step.
+- [x] **#439 (win audit 41)**: (audit C) Hero 1 instructions lacked the guest's on-mic introduction and allowed strangers' plates and house numbers, and a cast member's real plate. Fix: introduction line; nothing legible but planted props; a fake plate always.
+- [x] **#440 (win audit 41)**: (audit C) The consent note named only Meta as a recipient. Fix: Modal and Cloudflare R2 named.
+- [x] **#441 (win audit 41)**: (audit C) "Collect by Nov 3 12:00 UTC" allowed collecting before the withdrawal window closed. Fix: "at or after".
+- [x] **#442 (win audit 41)**: (audit C) BLOCKED said a render makes the panel read-only. Fix: an edit after it needs another paid render.
+- [x] **#443 (win audit 41)**: (audit C) BLOCKED lacked the clip-length rule, RULES-CHECKLIST missed EgoBlur Gen 1, the header overclaimed "Until it arrives", and O2/O5 (Modal, domain) were missing. Fix: each added.
+- [x] **#444 (win audit 41)**: (audit A) UI-SPEC request 6 and LABEL-FORMAT §2/§9 told WP1/WP7 to use ffprobe, which `imageio-ffmpeg` doesn't ship (AGENTS rule 11; PRE-A §5b). Fix: the bundled ffmpeg's `framemd5` packet list everywhere.
+- [x] **#445 (win audit 41)**: (audit A) Unsupported-language speech (Swahili isn't in Voice Transcribe's 25, PRE-A §4.3) was unaddressed, and "No speech was found" over-claimed. Fix: drawer copy names the limit; PILOTS §1 language rule (record per pilot, keep in medians, README states it).
+- [x] **#446 (win audit 41)**: (audit A) Mocks kept `style: "pixelate"` on `keep` items (PRE-A: `null`), the unsure track's evidence lacked "Judges disagreed: ", and an object placeholder (`content: ""`) would show an empty ruling. Fix: `style: null` and "Cover: none (kept clear)", the prefix, placeholder counts as no entry.
+- [x] **#447 (win audit 41)**: (audit A) §10.1's "PRE-A's additions" list omitted the introduction fields, stage `status`, `hold`, `origin`, `audit_label`. Fix: listed, plus PRE-A §12's other rows.
+- [x] **#448 (win audit 41)**: (audit A) The chip seek had no rule for an empty `evidence_frames`. Fix: the item's first frame.
+- [x] **#449 (win audit 41)**: (audit A) Smaller gaps: the read token's name, BLOCKED-PRE-A as the second owner list, the README naming the auditor, no WP1/WP4 rows in §4. Fix: each added.
+- [x] **#450 (PRE-A @ `df5b1dc`)**: The upload contract lacked `content_type`, the signed `PUT` headers, the delete-and-restart retry and `409 upload_incomplete`. Fix: request 17, §2.6 rows, §10.3 rows, fixture `error-409-upload-incomplete.json`.
+- [x] **#451 (PRE-A @ `df5b1dc`)**: An audit-added item's `reason` must be PRE-A's fixed sentence, not a lowercase variant, and the drawer repeated it. Fix: the fixture uses it, request 4 exempts audit patches, the drawer shows only the fixed sentence.
+- [x] **#452 (self-review)**: The timeout rule implied a re-pressed `/start` or `/audit` gets `409`; only `/render` does (§10.3). Fix: narrowed.
+- [x] **#453 (win audit 42)**: An empty browser MIME type left no `content_type` for the signed upload. Fix: derive it from the extension and send it in both requests.
+- [x] **#454 (win audit 42)**: `job-review-speech-limited.json` left `i_1.style: null` on a covered item after #446. Fix: `pixelate`.
+- [x] **#455 (win audit 42)**: [Cover it] had an undo toast with no copy. Fix: §3.4 row "{U label} will be covered." and R19.
+- [x] **#456 (win audit 42)**: Polling didn't resume after a timed-out paid POST, and R25 assumed a poll while paused. Fix: "or timed out"; R25 uses an in-flight `GET`.
+- [x] **#457 (win audit 42)**: §0's frame-number rule ignored §4.3's exceptions. Fix: named.
+- [x] **#458 (win audit 42)**: Copy used "strangers" and "identifies", which the vocabulary rules ban. Fix: "bystanders", "reveals who someone is".
+- [x] **#459 (win audit 42)**: The Why-rows fixture lacked creator-decided keep and hide items. Fix: added.
+- [x] **#460 (win audit 42)**: The drawer ring used "the item's tracks" against the primary-track rule. Fix: primary track.
+- [x] **#461 (win audit 42)**: Loose references: §3.9 meant ARCHITECTURE §3.9; the `needs_you` action list contradicted row 2 for `job_cap`. Fix: both.
+- [x] **#462 (win audit 42)**: (audit C) No owner step handed Claude the Nov 3 run files and timings before the 24 h purge. Fix: a dated step with a cut-the-shots default.
+- [x] **#463 (win audit 42)**: (audit C) BLOCKED lacked the Dec 1 test-set deletion, the borrowed-machine wipe, conditional teammate and release-addendum steps, and Nov 4–9 steps. Fix: added.
+- [x] **#464 (win audit 42)**: (audit C) Staged dev clips had no release or cast-only rule though they go to the bucket. Fix: same rules as hero 1.
+- [x] **#465 (win audit 42)**: (audit C) The pilot pre-send check didn't verify R2 upload deletion that the consent note promises. Fix: added to both check lines.
+- [x] **#466 (win audit 42)**: (audit C) The beat-1 caption said "Everyone signed" though a guardian signs for the child. Fix: wording, with the no-child variant.
+- [x] **#467 (win audit 42)**: (audit A) With an empty MIME the `PUT` could send no `Content-Type` and fail the signature. Fix: the `PUT` always sets it to the declared value (extends #453).
+- [x] **#468 (win audit 42)**: (audit A) PRE-A's failure-placeholder votes (`failed_votes`) would show as Muse Spark judgements. Fix: no marks for them, "{n} of the 3 checks didn't run.", whole section collapses when all failed; data table and Why-rows fixture.
+- [x] **#469 (win audit 42)**: (audit A) A static item's `reason` ("possible missed object at F{frame}") would show a raw frame number. Fix: the rewrite also applies to `reason`; §10.6 case.
+- [x] **#470 (win audit 42)**: (audit A) SCHEDULE had WP7's freezer refuse a >30 s mean, against PRE-A's cut-run-3 rule. Fix: warns and still freezes.
+- [x] **#471 (win audit 42)**: (audit A) The `source_kind` invariant broke PRE-A's failed/skipped transcript shape. Fix: `null` also when `status` isn't `ok`.
+- [x] **#472 (win audit 42)**: (audit A) PILOTS' per-pilot record lacked the clip language. Fix: added.
+- [x] **#473 (win audit 42)**: (audit A) The results footnotes and video footer omitted the run count. Fix: `{runs_per_clip}` in request 22, footnotes, 7.1 and the STORYBOARD sources.
+- [x] **#474 (win audit 42)**: (audit A) "Everything is deleted" overclaimed given Meta's unknown retention and prompt cache. Fix: "deleted from Safe Cut's servers".
+- [x] **#475 (win audit 42)**: (audit A) The VO said SAM tracks "frame by frame" (it sees an 8 fps proxy). Fix: "through the clip".
+- [x] **#476 (win audit 42)**: (audit A) Two stale requests to PRE-A (receipt stage after a re-audit; escalation field names) were already answered. Fix: removed.
+- [x] **#477 (PRE-A @ `9ab5bd9`)**: The rights tick didn't cover age or the people in the clip (Meta Terms §10.1, §16.2, PRE-A §7). Fix: "I'm 18 or over, and I have the right to upload this clip and the people in it." (copy, wireframes, error row, PILOTS consent).
+- [x] **#478 (PRE-A @ `9ab5bd9`)**: The cover-spot ack's plan box ignored WP3's spatial padding. Fix: marked approximate; the test checks containment.
+- [x] **#479 (PRE-A @ `9ab5bd9`)**: The empty-transcript rule cited PRE-A §4.2. Fix: §4.3, the §12 speech-evidence row and P9c.
+- [x] **#480 (win audit 43)**: (audit C) The Nov 3 handover ran before the renders, so it missed `audit.json` and render timings. Fix: after `SR-08` and `R-03B`.
+- [x] **#481 (win audit 43)**: (audit C) The handover relied on an export command nobody was asked to write. Fix: UI-SPEC request 23 to WP5.
+- [x] **#482 (win audit 43)**: (audit C) Recorded values (vote marks, receipt cost and hash) had no committed source. Fix: `roles.json`, `decisions.json`, `receipt.json`, `cost.jsonl` in the handover and `hero-live`; a STORYBOARD §2 row requires recordings to match them.
+- [x] **#483 (win audit 43)**: (audit C) The pilot-results handover had no deadline. Fix: 17:00 EAT with a not-counted default.
+- [x] **#484 (win audit 43)**: (audit C) The outreach promised flat deletion. Fix: "from its servers"; counts now DM 106, email 113.
+- [x] **#485 (win audit 43)**: (audit C+A) `runs_per_clip` was one number though run 3 can be partial. Fix: `runs_per_clip_min`/`max`, rendered as "3 runs" or "2–3 runs".
+- [x] **#486 (win audit 43)**: (audit C) SCHEDULE R3 didn't define the test-split-only variant BLOCKED uses. Fix: added.
+- [x] **#487 (win audit 43)**: (audit B) The landing caption said everyone signed though a guardian signs for the child. Fix: matching STORYBOARD wording.
+- [x] **#488 (win audit 43)**: (audit B+A) "Nothing from this clip is kept" still overclaimed. Fix: "Deleted from Safe Cut's servers." everywhere.
+- [x] **#489 (win audit 43)**: (audit B+A) The failed-votes rule left marks with two remaining votes, the heading `n`, the `roles.status` case and the escalation opener undefined or false. Fix: each defined.
+- [x] **#490 (win audit 43)**: (audit B) "they're fixed" wasn't a plural marker. Fix: "until each is fixed".
+- [x] **#491 (win audit 43)**: (audit B) The Why-rows mock's holds conflicted with ok statuses. Fix: stated as per-item; invariant exemption.
+- [x] **#492 (win audit 43)**: (audit B) `m:ss.s` had no element. Fix: the keyframe caption's "Frame at".
+- [x] **#493 (win audit 43)**: (audit B) Landing step 3 and the audit detail claimed every leak is fixed. Fix: "can fix … can't fix stops publishing".
+- [x] **#494 (win audit 43)**: (audit B) The empty-MIME sentence put derivation in the reject branch. Fix: reworded.
+- [x] **#495 (win audit 43)**: (audit B) A pending `A?` chip had no kind source. Fix: no kind until `SERVER_ACK`.
+- [x] **#496 (win audit 43)**: (audit A) "Never Contributor mode" overclaimed given Meta's tier routing (PRE-A §7). Fix: "Standard-mode model IDs only" in UI-SPEC and PILOTS.
+- [x] **#497 (official guide)**: (official guide) WIN-CHECKLIST's judging facts pointed at MAXXING pending the rules. Fix: OFFICIAL-GUIDE.md committed verbatim; §1 cites it; Stage 1, new-work, submission-package and bonus rows added.
+- [x] **#498 (official guide)**: (official guide) RULES-CHECKLIST had no answers yet. Fix: §0 with an action per guide clause (theme, anti-projects, new work, team, track, video, live product, repo, weights, deadline, four bonus prizes, model list).
+- [x] **#499 (official guide)**: (official guide) BLOCKED made the repo public at kickoff; the owner keeps it private until they OK it. Fix: public before submitting, after the owner's OK.
+- [x] **#500 (official guide)**: (official guide) Most Viral needs the X post link in the submission, but the plan held all posts until after submitting. Fix: the demo goes on X just before submitting; RULES-CHECKLIST §6 silent default updated; BLOCKED step.
+- [x] **#501 (official guide)**: (official guide) Nothing in the video marked what was built during the event, and Sigmora's screen wasn't identified as existing. Fix: STORYBOARD 9.1 end card with `{first_code_commit}`, 8.1 label, placeholder source.
+- [x] **#502 (official guide)**: (official guide) The submit step didn't name the Representative or list contributors. Fix: added.
+- [x] **#503 (official guide)**: (official guide) The open-weight bonus had no path. Fix: owner requests Baseten credits by Oct 27; a decision request to PRE-A and WP owners by Oct 28.
+- [x] **#504 (win audit 44)**: (audit A; PRE-A §3.8) The open-weight bonus was recorded as undecided though PRE-A decided an audit second opinion on Muse Spark Open. Fix: RULES-CHECKLIST §0/§5, UI-SPEC auditor rule and data bullet, PILOTS consent, STORYBOARD 9.1, BLOCKED credits and `BASETEN_API_KEY`, WIN row.
+- [x] **#505 (win audit 44)**: (audit A) The end card claimed "everything shown" was built during the event, though Sigmora and the pre-kickoff footage and labels appear. Fix: a scoped claim naming all three; RULES-CHECKLIST §0 row matches.
+- [x] **#506 (win audit 44)**: (audit A) RULES-CHECKLIST §3 still made the repo public at kickoff. Fix: before submitting, after the owner's OK.
+- [x] **#507 (win audit 44)**: (audit A; PRE-A open) The §10.2 rights-tick validation copy was stale. Fix: the 18+ string.
+- [x] **#508 (win audit 44)**: (audit A; PRE-A open) The Nov 3 handover committed `audit.json` with private red-team text. Fix: text replaced by "text read (n characters)".
+- [x] **#509 (win audit 44)**: (audit A; PRE-A open) Nothing kept users or pilots in Meta's restricted territories out. Fix: the tick covers it (linking the policy); PILOTS excludes such recruits.
+- [x] **#510 (win audit 44)**: (audit A; PRE-A open) The consent note lacked Meta's retention (Terms §4.4). Fix: added, with the Baseten clause.
+- [x] **#511 (win audit 44)**: (audit A; PRE-A open) Request 15 excluded static fallback tracks. Fix: PRE-A's wording.
+- [x] **#512 (win audit 44)**: (audit A; PRE-A open) The post-Nov-10 state was conditional. Fix: replay-only landing and code-outside-dates `/try` from Nov 11 stated as the plan.
+- [x] **#513 (win audit 44)**: (audit A) The API-key step omitted the credit form and card on file. Fix: added.
+- [x] **#514 (win audit 44)**: (audit A) The anti-project row ignored the protest-coverage persona. Fix: neutral-tool sentence; the persona stays out of submission copy.
+- [x] **#515 (win audit 44)**: (audit C) Sigmora's screen in 8.1 relied on the startup exception without a fallback. Fix: shown only in a Startups-track entry, else the download line.
+- [x] **#516 (win audit 44)**: (audit C) `{first_code_commit}` resolved to a pre-kickoff commit. Fix: `git log --since=2026-10-26T16:00:00Z -- safecut web eval tests`; RULES-CHECKLIST lists the pre-kickoff non-doc files.
+- [x] **#517 (win audit 44)**: (audit C) The repo-public step had no deadline order or default. Fix: check by Nov 4 12:00 EAT, public by 20:00 before the X post; no OK means no valid submission.
+- [x] **#518 (win audit 44)**: (audit C) The credits step had no spend-limit guard. Fix: console limit or alert at $150 if offered.
+- [x] **#519 (win audit 44)**: (audit C) PILOTS §5 had no eligibility line. Fix: 18+, rights, not in a restricted territory.
+- [x] **#520 (win audit 44)**: (audit C) No Nov 9 step posted the gallery link. Fix: dated BLOCKED step.
+- [x] **#521 (win audit 44)**: (audit C) `per_pilot.csv` could re-identify named pilots via region or language. Fix: minutes, chips and capped flag only, sorted; language stays private with a count in the footnote.
+- [x] **#522 (win audit 44)**: (audit C) RULES-CHECKLIST §0 had no row for the guide's rights clause. Fix: licence row (EgoBlur, SA-Co/VEval, releases, no music, SR-10 editor).
+- [x] **#523 (win audit 44)**: (audit B) `UNDO` and [Try again] needed `prev` and the rejected edit, which State dropped. Fix: `undo` holds `{edit, prev}`; `rejected` added.
+- [x] **#524 (win audit 44)**: (audit B) The Why-rows exemption pointed at a missing invariant. Fix: hold-vs-status and introduction-index invariants added.
+- [x] **#525 (win audit 44)**: (audit B) The YuNet wording reintroduced "every frame". Fix: removed.
+- [x] **#526 (win audit 44)**: (audit B) A keyboard user couldn't select a chip. Fix: chips are focusable and Enter selects; [Why?] opens the drawer.
+- [x] **#527 (win audit 44)**: (audit B) Notes sat inside copy cells (data bullet 1, caption variant). Fix: a "Copy notes" paragraph; cells hold only copy.
+- [x] **#528 (win audit 44)**: (audit B) The wireframes-vs-deck rule omitted §3.4, §3.5, §4.3. Fix: added.
+- [x] **#529 (win audit 44)**: (audit B) "(n checks)" lacked a plural marker. Fix: "check(s)".
+- [x] **#530 (win audit 44)**: (audit B) The failed-votes case fell to "didn't all agree". Fix: a "some checks didn't run" Why row in the table and precedence; fixture track escalated.
+- [x] **#531 (win audit 44)**: (audit B) `{runs_per_clip}` rendered "2–2 runs". Fix: single value when min = max.
+- [x] **#532 (win audit 44)**: (audit B) No-turn mocks kept the hero introduction index. Fix: `null` in both.
+- [x] **#533 (win audit 44)**: (audit B) The results-rows sentence omitted "suggestions accepted"; the footer said uploads are deleted outright. Fix: both.
+- [x] **#534 (win audit 45)**: (audit B) A rejected `undo` couldn't be put back (the undone entry wasn't stored). Fix: the `undo` edit's `pending` entry stores `undone: {entry, index}`; R31b.
+- [x] **#535 (win audit 45)**: (audit B) [Try again] on a rejected object keep failed `CONFIRM_KEEP`'s `confirm` precondition. Fix: `KEEP`'s precondition only; R31c.
+- [x] **#536 (win audit 45)**: (audit B) `rejected` was missing from the reducer fixture and never cleared. Fix: fixture key; cleared by `RETRY` or when the toast is replaced or closed.
+- [x] **#537 (win audit 45)**: (audit B) The hold-vs-status invariant was stricter than PRE-A for `no_roles`. Fix: `failed_votes` 3 and unescalated `unsure` included.
+- [x] **#538 (win audit 45)**: (audit B) Copy notes cited UI-SPEC §10.6 for a PRE-A fact. Fix: "PRE-A §10.6".
+- [x] **#539 (win audit 45)**: (audit B) Data bullet 1 said "Standard-mode models" while the note banned the claim. Fix: "Standard model IDs".
+- [x] **#540 (win audit 45)**: (audit B) Tab and ↑/↓ didn't cover the new chip `<article>` stop. Fix: both rows.
+- [x] **#541 (win audit 45)**: (audit B) The Baseten sentence had no UI trigger. Fix: step B, from `codes/check`'s `open_weight` (request 21).
+- [x] **#542 (win audit 45)**: (audit B) The header counts line had no deck string or plural. Fix: "`{u}` need(s) you".
+- [x] **#543 (win audit 45)**: (audit A) The end card and RULES-CHECKLIST said all footage and test labels were made before kickoff, against PRE-B's own schedule. Fix: hero 1's filming date (`{hero1_filmed_date}`), labelling during the event; the README lists dates.
+- [x] **#544 (win audit 45)**: (audit A) The redaction omitted `redteam_open[]`. Fix: added.
+- [x] **#545 (win audit 45)**: (audit A) The data-bullet wireframe and the consent note still said "Standard mode". Fix: "Standard model IDs".
+- [x] **#546 (win audit 45)**: (audit A) PRE-A's MAXXING request (judging dates, live window, O7) was unrecorded and RULES-CHECKLIST cited MAXXING §4 for Nov 5–10. Fix: request in HANDOFF and the PR body; cite marked stale.
+- [x] **#547 (win audit 45)**: (audit A) The end card's Sigmora sentence wasn't gated like 8.1. Fix: same conditions.
+- [x] **#548 (win audit 45)**: (audit A) STORYBOARD's `{runs_per_clip}` regressed to "2–2 runs". Fix: UI-SPEC's rule.
+- [x] **#549 (win audit 45)**: (audit A) The unsupported-language pilot count had no committed source. Fix: `n_unsupported_language` in `metrics.json` and STORYBOARD §2.
+- [x] **#550 (win audit 45)**: (audit A) RULES-CHECKLIST called EgoBlur's licence a research licence. Fix: the download's licence (Apache 2.0 per PRE-A, access by agreement).
+- [x] **#551 (win audit 45)**: (audit A) The open-weight switch cited probe g; the Baseten probe is h. Fix: probe h; PRE-A's own stale bullet noted as a request.
+- [x] **#552 (win audit 45)**: (audit A) The Baseten owner step lacked the environment secret and allowlist host. Fix: added, with both dates.
+- [x] **#553 (win audit 45)**: (audit A) HANDOFF bookkeeping was stale (round 43, round 44 count). Fix: corrected.
+- [x] **#554 (win audit 45)**: (audit A) PILOTS listed `per_pilot.csv` among places carrying quotes. Fix: removed.
+- [x] **#555 (win audit 45)**: (self-review) The reducer fixture lacked `rejected`; fixed with #536 (audit A also found it).
+- [x] **#556 (win audit 45)**: (audit C) The new-work row still said the planning docs were written before kickoff, though they were updated after. Fix: "started before kickoff and updated during the event; git history dates every change" (with #543).
+- [x] **#557 (win audit 45)**: (audit C) The hero `audit.json` redaction had no check. Fix: Claude greps for remaining read text before committing (with #544).
+- [x] **#558 (win audit 45)**: (audit C) MAXXING's O7 "public at kickoff" clashed with BLOCKED's O7. Fix: BLOCKED says it supersedes MAXXING; request recorded (#546).
+- [x] **#559 (win audit 45)**: (audit C) `MODEL_API_KEY` wasn't added to the Modal secret, and no step created the Vercel project. Fix: both owner steps, dated, with defaults.
+- [x] **#560 (win audit 45)**: (audit C) The consent note said "we don't share it" while naming processors. Fix: "with anyone other than the processors named below".
+- [x] **#561 (win audit 45)**: (audit C) The anonymous credit example used a city. Fix: country.
+- [x] **#562 (win audit 45)**: (audit C) Hero releases didn't cover Baseten for the recording-kind second opinion. Fix: addendum before Nov 3, else `recording` stays out of `SAFECUT_OPEN_WEIGHT_CODE_KINDS`.
+- [x] **#563 (win audit 45)**: (audit C) The conditional rules item had no date. Fix: Oct 27, once the full rules are read.
+- [x] **#564 (win audit 46)**: (audit B) The Baseten line sat "below the data bullets" on step B, where there are none, with no deck row, fixture or model-name rule. Fix: Data bullet 4 row (step B, above the tick), wireframe line, `open_weight` absent = false, `code-check-ok-open-weight.json`, `demo-hero-open-weight.json`, a display-name rule.
+- [x] **#565 (win audit 46)**: (audit B) The header-counts placeholders reused §3.5's `k` and `u`. Fix: `{n_hidden}`, `{n_kept}`, `{n_needs}`.
+- [x] **#566 (win audit 46)**: (audit B) A retried rejected `undo` lost its put-back data. Fix: `undone` typed in `pending`/`rejected`, carried by `RETRY`; R31d.
+- [x] **#567 (win audit 46)**: (audit B) The RETRY sentence was garbled after #535. Fix: rewritten.
+- [x] **#568 (win audit 46)**: (audit B) §3.4 said pressing Undo again steps back, but "Undone." has no [Undo]. Fix: `Ctrl+Z`/`Z`.
+- [x] **#569 (win audit 46)**: (audit B) Several `/try` strings existed only in wireframes. Fix: §2.6 rows (title, judge hint, drop zone, reveal toggle Show/Hide, progress heading, leave note).
+- [x] **#570 (win audit 47)**: (audit B; PRE-A §12) The open-weight code-kind default was given as `owner` and `recording`; PRE-A's is `owner`, `recording` only after the addendum, and the switch must be on. Fix: copy note and `code-check-ok-open-weight.json` (now `owner`).
+- [x] **#571 (win audit 47)**: (audit B) The fallback model name produced "an open-weight model, an open-weight model…". Fix: a separate sentence for non-Muse-Spark-Open models.
+- [x] **#572 (win audit 47)**: (audit B) Request 21 stated the 200 shape twice, the second without `open_weight`. Fix: both carry it.
+- [x] **#573 (win audit 47)**: (audit B) `{review_url}` was undefined. Fix: origin + `/jobs/` + id, shown in full, copied as is.
+- [x] **#574 (win audit 47)**: (audit B) The 60.05 s server rule wasn't in request 17. Fix: added.
+- [x] **#575 (win audit 47)**: (audit B; PRE-A scene-pass.md) No-turn mocks kept participant speakers. Fix: `speaker` null; invariant extended.
+- [x] **#576 (win audit 47)**: (audit B) `REMOVE_PERSON` didn't set `decided_by`. Fix: `creator`.
+- [x] **#577 (win audit 47)**: (audit B) The Tab row's button order contradicted the NEW and U chips'. Fix: §3.3 order, with examples.
+- [x] **#578 (win audit 47)**: (audit B) With shortcuts off, older edits couldn't be undone. Fix: `Ctrl+Z` stays on; Tab row names the exception.
+- [x] **#579 (win audit 47)**: (audit B) The open-weight fixture lacked PRE-A's `frames` and `findings`. Fix: added.
+- [x] **#580 (win audit 47)**: (audit B) "First tab" on mobile was ambiguous. Fix: the tab selected on open; order unchanged.
+- [x] **#581 (win audit 47)**: (audit A+C; PRE-A @ 07208d9) The open-weight code-kind default is now empty in PRE-A; hero and dev frames would reach Baseten before any addendum. Fix: UI-SPEC copy note (default empty; `pilot`/`judge`/`public`/`service` never); BLOCKED addendum before the first Baseten run on any consented footage, with its one-line text, then add `owner` and `recording`.
+- [x] **#582 (win audit 47)**: (audit A+C; PRE-A open) The pilot consent note said frames may go to Baseten, which never happens for pilot codes. Fix: "Your clip is never sent to Baseten…"; the Oct 29 check confirms no `audit.open_weight` on a pilot job.
+- [x] **#583 (win audit 47)**: (audit A+C; PRE-A open) RULES-CHECKLIST claimed filming continued during the event "as BLOCKED plans" (it doesn't), and the end card dated only hero 1. Fix: each clip's real dates from the owner in the README; end card "Demo clips were filmed with consenting actors; dates in the README"; `.agent/` in the pre-kickoff list.
+- [x] **#584 (win audit 47)**: (audit A+C; PRE-A open) The repo-public step ignored that CI has no runner while private and didn't scrub `.agent/**` history or re-check the flip commit. Fix: flip as soon as the owner OKs; scrub and re-check first; Nov 4 20:00 EAT the latest; ARCHITECTURE request recorded.
+- [x] **#585 (win audit 47)**: (audit A+C; PRE-A open) Muse Spark Open was named beside test-split numbers measured without it. Fix: the scope note on the end card, RULES-CHECKLIST §0/§5 and the landing results footnote.
+- [x] **#586 (win audit 47)**: (audit A+C) BLOCKED misstated PRE-A's Baseten date. Fix: one step pointing at PRE-A's, same Oct 27 date.
+- [x] **#587 (win audit 47)**: (audit C) "Real-public clips local" ignored that test-run frames go to Meta. Fix: stored only on the owner's machines; frames sent to Meta during test runs; metrics only published.
+- [x] **#588 (win audit 47)**: (audit C) BLOCKED's header promised a default for every item. Fix: "where a fallback exists".
+- [x] **#589 (win audit 47)**: (audit C) The Oct 29 deletion check couldn't observe a 24 h sweep. Fix: a forced cleanup run on a throwaway consented job.
+- [x] **#590 (win audit 47)**: (audit A) RULES-CHECKLIST §9/§1 called the repo already public. Fix: "will be public before submission".
+- [x] **#591 (win audit 47)**: (audit A; PRE-A open) The credits step lacked card-first (else `402 billing_not_configured`), auto top-up and expiry. Fix: added; the judge window ends at expiry if earlier (RULES-CHECKLIST §11).
+- [x] **#592 (win audit 47)**: (audit A; PRE-A open) MAXXING's bonus list request and the probe-g remnants. Fix: request recorded in HANDOFF and the PR body; WIN-CHECKLIST says probe h; the stale HANDOFF sentence struck.
+- [x] **#593 (win audit 47)**: (PRE-A open) Presigned GETs live 15 min, and the landing page had no refetch. Fix: one `GET /v1/demo` refetch on 403; §10.3's row covers download and receipt URLs.
+- [x] **#594 (win audit 48)**: (audit A; PRE-A @ 715b977) The consent note and copy notes lacked Meta's refined retention (flagged requests up to 2 years; no training on Standard content). Fix: PRE-A's wording in PILOTS and the copy notes.
+- [x] **#595 (win audit 48)**: (audit A; PRE-A open) No `/privacy` page (Meta Terms §6.2), no Terms/AUP link on `/try`, no region page. Fix: UI-SPEC §7.1 `/privacy` with copy, footer link, a line under the rights tick, §7 "Not available in your region" page and a middleware test.
+- [x] **#596 (win audit 48)**: (audit A; PRE-A open) `/try` never said frames don't go to Baseten for non-consented codes. Fix: Data bullet 4's "otherwise" row.
+- [x] **#597 (win audit 48)**: (audit A; PRE-A open) No request told WP8 to write the README's event boundary, auditor names and scope note. Fix: WP8 request in HANDOFF and the PR body.
+- [x] **#598 (win audit 48)**: (audit A) The PR #2 body and HANDOFF line 3 were stale (counts, 22 requests, word counts, PRE-A sha). Fix: body refreshed from the draft; HANDOFF corrected. Also "Safe Cut deletes everything" on the expired page → "from its servers".
+- [x] **#599 (win audit 48)**: (audit C; PRE-A §3.8) The Muse Spark Open scope note said "recorded hero runs only", but it also runs on owner-code and hero/dev eval jobs after the addendum. Fix: "consented hero and dev footage, where `audit.open_weight.status` is `ok`" in all four places.
+- [x] **#600 (win audit 48)**: (audit C; OFFICIAL-GUIDE) The guide's building period starts Oct 27 while our boundary is Oct 26 16:00 UTC, and WP0/WP6 committed product code on Oct 26. Fix: RULES-CHECKLIST §0 row and a BLOCKED step to ask in #office-hours by Nov 3; default keeps kickoff and lists the Oct 26 commits in the README.
+- [x] **#601 (win audit 48)**: (audit C) RULES-CHECKLIST §1 said "docs only before kickoff", against §0 and PRE-A's since-removed calculation script. Fix: §0's wording plus the README disclosure.
+- [x] **#602 (win audit 48)**: (audit C) BLOCKED's default pilot credit omitted the 1–2-pilot anonymous override. Fix: added, with telling the pilot why.
+- [x] **#603 (win audit 48)**: (audit B) The shortcuts switch was reachable only by `?`, which it disables. Fix: a visible [Keyboard shortcuts] button in the Tab order; dialog title and switch label given.
+- [x] **#604 (win audit 48)**: (audit B) Receipt URLs had no field names, and the 403 refetch pointed at an endpoint that didn't return them. Fix: `result: {video_url, receipt_html_url, receipt_json_url}` on both routes.
+- [x] **#605 (win audit 48)**: (audit B) How the access code reaches the server was unspecified. Fix: `POST /v1/jobs` takes `code`, bound to the job; later paid requests use the job link and that binding.
+- [x] **#606 (win audit 48)**: (audit B) Static items had no defined votes section. Fix: omitted (heading included) for static and audit-added items unless an object ruling exists.
+- [x] **#607 (win audit 48)**: (audit B) `job-failed-render.json` cited §10.4 for its retry rule. Fix: §10.3.
+- [x] **#608 (win audit 49)**: (audit A; PRE-A open) The field map still offered `plan_url`. Fix: `plan` inline.
+- [x] **#609 (win audit 49)**: (audit A; PRE-A open) The pilot gate didn't check `responses_delete_requested` when SAM gets no `store`. Fix: added to the PILOTS check and timeline.
+- [x] **#610 (win audit 49)**: (audit A; PRE-A open) The copy note still banned "doesn't train on it", and Data bullet 1 lacked Meta's Data Commitments. Fix: bullet 1 quotes it as Meta's statement; note updated.
+- [x] **#611 (win audit 49)**: (audit A) PILOTS, LABELING-GUIDE, LABEL-FORMAT and STORYBOARD named requests the PR body didn't carry. Fix: WP7 (guide link, CVAT-zip loader) and EVAL (summed creator time) added to HANDOFF and the PR body.
+- [x] **#612 (win audit 49)**: (audit A; PRE-A §7) The region check was country-only and missed the Ukrainian regions. Fix: `geolocation()` / region header, `UA` + Crimea, Sevastopol, Donetsk, Luhansk; a UA test case.
+- [x] **#613 (win audit 49)**: (audit A) The no-Baseten check looked for an absent `audit.open_weight`, which PRE-A always writes. Fix: `status` is `off` (or absent).
+
+## 4. Which builder reads what
+
+| WP | Reads from PRE-B | For |
+|---|---|---|
+| WP0 | SCHEDULE §3 (split), BLOCKED-PRE-B (fixture fallbacks) | fixtures, probe clips |
+| WP1 | UI-SPEC §8 request 6; LABEL-FORMAT §2 (`times` precision) | prepared clip, `job.frames`, `job.times` |
+| WP2 | UI-SPEC §8 requests 2, 3, 7 | SoM numbers, speaker links, transcript timeline |
+| WP3 | UI-SPEC §3.4, §8 requests 4–5, §10.5 | reason strings, review edit names, reducer semantics |
+| WP4 | UI-SPEC §8 requests 11 and 18 (a contract change to ARCHITECTURE §3.8), §1.3 auditor name rule, §5.3 | audit spots, `cover_spot`, receipt wording |
+| WP5 | UI-SPEC §8 (incl. request 20: pilot and recording codes), §10.1–10.3; PILOTS §4–5; STORYBOARD §3 | API fields, error codes, idempotency, per-code cap, deletion |
+| WP6 | UI-SPEC (all) | every screen |
+| WP7 | LABEL-FORMAT (all), LABELING-GUIDE §5, SCHEDULE §3, PILOTS §6 | loader, validator, agreement, metrics test vectors, pilot results |
+| WP8 | STORYBOARD, RULES-CHECKLIST §5–6, PILOTS §6 | video script, submission fields, launch |
+
+## 5. Open risks to the win (ranked)
+
+- [P] **Risk 1: Hero footage late** (effect: Demo 25%, Impact story). Mitigation: Default plan R4 → R1; synthetic-clip and mock paths keep code moving. Owner input: Film hero 1 by Oct 25 18:00 EAT.
+- [P] **Risk 2: No labeller B** (effect: Weaker Impact evidence (no κ)). Mitigation: R3 with honest "not measured". Owner input: Recruit B.
+- [P] **Risk 3: Fewer than 5 pilots** (effect: Weaker Impact). Mitigation: Report the real count; shot 8.3 shows a permitted quote with medians only from 3 pilots, and is cut with no permitted pilot data (STORYBOARD 8.3). Owner input: Send outreach Oct 27.
+- [P] **Risk 4: Official rules differ from MAXXING** (effect: Any). Mitigation: RULES-CHECKLIST: an action for every answer. Owner input: Accept the rules at kickoff.
+- [P] **Risk 5: API field names drift between WP5 and WP6** (effect: Demo breaks). Mitigation: UI-SPEC §10.1: mocks follow WP5's names. Owner input: —.
