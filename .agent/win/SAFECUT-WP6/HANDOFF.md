@@ -74,10 +74,11 @@
 - Audit round 29 (on 99cf743): 2 low (the merge label's space, menu items under the bar), fixed in the round-29 commit. On that commit: 858 tests, e2e 127/127.
 - Audit round 30 (on 140bac7): 1 medium (at large default text, the sticky player and bar covered the phone screen), fixed in the round-30 commit with em media gates. On that commit: 858 tests, e2e 130/130.
 - Audit round 31 (on 6ad7c81): 1 medium (the ⋯ menu off screen at large text) and 1 low (a squeezed Why sheet on short screens), fixed in the round-31 commit, with a flaky e2e wait fixed too. On that commit: 858 tests, e2e 132/132.
+- Audit round 32 (on 234db94): 1 medium (the JS layout query in px against Tailwind's rem) and 2 low, fixed in the round-32 commit. All layout gates now follow the text size. On that commit: 858 tests, e2e 135/135.
 - CLEAN_AUDITS_IN_A_ROW is 0. Two clean full audits are still needed, then a fresh break-it.md (fresh clone + FUZZ_RUNS=100000).
 
 ## Next steps, in order
-1. Run the next full audit round on HEAD (round 32 is next). If it finds anything, fix it and reset CLEAN_AUDITS_IN_A_ROW to 0. Repeat until two consecutive audits find nothing. Then set AUDITED_COMMIT to the last code commit and CLEAN_AUDITS_IN_A_ROW to 2.
+1. Run the next full audit round on HEAD (round 33 is next). If it finds anything, fix it and reset CLEAN_AUDITS_IN_A_ROW to 0. Repeat until two consecutive audits find nothing. Then set AUDITED_COMMIT to the last code commit and CLEAN_AUDITS_IN_A_ROW to 2.
 2. After the last code change, run the fresh-clone `checks.sh` (`git clone --branch wp6-web` into an empty dir) and the FUZZ_RUNS=100000 agreement soak. Rewrite break-it.md with TESTED_COMMIT set to that commit.
 3. Run the gate until it prints `GATE: PASS` on the pushed HEAD. Then post the final status on PR #4, including the gate's last line.
 4. If time remains: live deployment (owner sets up Vercel), Safari/Firefox runs.

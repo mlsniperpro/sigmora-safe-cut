@@ -15,7 +15,7 @@ import { effectiveDecision, initialState, step, tracksShown, visibleItems, type 
 import { buildChips, columnsOf, headerCounts, isObjectChip, mergeTargets, type Chip as ChipModel, type Column } from "@/lib/review/view";
 import { formatFrame } from "@/lib/time";
 import { buildWhy } from "@/lib/why/model";
-import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { DESKTOP_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
 import { useCaptions } from "@/hooks/useCaptions";
 import { useNow } from "@/hooks/useNow";
 import { HiddenIcon, KeptIcon, NeedsIcon, WarningIcon } from "../icons";
@@ -120,7 +120,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
     [jobId, onPatchJob],
   );
 
-  const desktop = useMediaQuery("(min-width: 1024px)");
+  const desktop = useMediaQuery(DESKTOP_QUERY);
   const captionsUrl = useCaptions(job.transcript, job.job?.audio ?? false);
   const now = useNow(15_000);
   const chips = useMemo(() => buildChips(state, job), [state, job]);

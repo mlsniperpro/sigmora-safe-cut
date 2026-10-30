@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 6ad7c81
+AUDITED_COMMIT: 234db94
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -413,3 +413,13 @@ Noted, not counted: at 320 px with 200% text the header scrolls 8 px sideways (n
 Also: the e2e check "reduced motion: Play demo leaves while the clip plays" failed once in about ten runs, because it read the button the moment the video fired `playing`, before React re-rendered. It now waits up to 5 s for the button to go. It still fails if the button stays.
 
 Noted, not counted: at 320 px with 200% text the landing figure scrolls 31 px sideways (the same family as round 30's header note). The toasts overlap the bar's 17 px top padding (no text hidden).
+
+## Round 32 (audited 234db94 by a Sonnet reviewer: the Why sheet at 4 text sizes × 6 viewports with trap, Escape and scroll checks; 450 menu opens over 3 fixtures × 5 text sizes × 10 viewports; axe on 77 routes × 3 widths × light/dark; text-spacing; forced colours; a live build; region proxy; fixes in the next commit)
+
+0 critical, 0 high, 1 medium, 2 low. Round 31's two changes held.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | medium | At 125%+ default text on a 1024–1535 px screen, the JS layout query (px) picked the three columns while Tailwind's `lg:` (rem) kept their headings hidden and no tabs showed: three unnamed columns | fixed: one `DESKTOP_QUERY = "(min-width: 64em)"` (em, like `lg:`) for the review panel and the Why sheet, so JS and CSS switch together. e2e at 125% text and 1100 px requires named columns (fails on 234db94: no tabs, no visible headings) |
+| 2 | low | The Why sheet's Expand/Collapse handle was invisible in forced colours | fixed: `forced-colors:bg-[CanvasText]` on the handle. e2e in forced colours (fails on 234db94) |
+| 3 | low | A ⋯ menu left open while the screen turned kept its old width cap and ran off screen | fixed: the cap is recomputed on resize while open, and the listener is removed when the menu closes. e2e at 200% text turns the screen with a menu open (fails on 234db94 at x=−179) |

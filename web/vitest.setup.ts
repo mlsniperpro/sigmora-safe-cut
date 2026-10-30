@@ -9,7 +9,7 @@ afterEach(() => {
 // jsdom lacks these browser APIs; components use them, tests don't need real behaviour.
 if (typeof window !== "undefined") {
   window.matchMedia ??= ((query: string) => ({
-    matches: query.includes("min-width: 1024px"),
+    matches: query.includes("min-width: 64em"),
     media: query,
     onchange: null,
     addEventListener: () => undefined,

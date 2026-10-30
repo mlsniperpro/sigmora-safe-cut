@@ -95,12 +95,18 @@ function OverflowMenu({ chip, onRemove, onJump }: { chip: ChipModel; onRemove: (
   const menu = useRef<HTMLUListElement>(null);
   useEffect(() => {
     if (!open) return;
-    // Right-anchored to the trigger: never wider than the room to its left (large text makes w-64 wider than a phone).
-    const room = (button.current?.getBoundingClientRect().right ?? 0) - 8;
-    if (menu.current && room > 0) menu.current.style.maxWidth = `${room}px`;
+    // Right-anchored to the trigger: never wider than the room to its left (large text makes w-64
+    // wider than a phone), kept up to date if the screen turns while it's open.
+    const cap = () => {
+      const room = (button.current?.getBoundingClientRect().right ?? 0) - 8;
+      if (menu.current && room > 0) menu.current.style.maxWidth = `${room}px`;
+    };
+    cap();
+    window.addEventListener("resize", cap);
     menu.current?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
     // The whole menu comes into view, above the fixed bottom bar (the page's scroll-padding), not just its first item.
     menu.current?.scrollIntoView({ block: "nearest" });
+    return () => window.removeEventListener("resize", cap);
   }, [open]);
   const close = () => {
     setOpen(false);

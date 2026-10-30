@@ -168,6 +168,9 @@ Round 14 (fixes in the round-14 commit; details in `reaudit.md`):
 - [x] R15-1 (low) a late fresh URL brings the review player back: JobPage test
 - [x] R15-2 (low) an action's GET isn't made quiet by a cut-short refresh: useJob test
 - [x] Self-found: fixture dates shift with the clock, so the mock and the tests hold on any date: mock-backend tests, suite run at clock shifts up to +400 days
+- [x] R32-1 (medium) JS layout query in em, matching lg: e2e at 125% text, 1100 px
+- [x] R32-2 (low) Why handle visible in forced colours: e2e
+- [x] R32-3 (low) menu cap follows a resize: e2e
 - [x] R31-1 (medium) ⋯ menu capped to the room left of its trigger at large text: e2e at 200%
 - [x] R31-2 (low) short screens scroll the whole Why sheet: e2e at 200% landscape
 - [x] R30-1 (medium) sticky player and bar step aside at large text sizes (em gates): e2e at 200% default text

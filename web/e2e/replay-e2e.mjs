@@ -415,6 +415,11 @@ try {
     const sel = widths.find(([s]) => s)?.[1];
     const unsel = widths.find(([s]) => !s)?.[1];
     check("forced colours: the selected chip stands out", !!sel && !!unsel && sel !== unsel, `${sel} vs ${unsel}`);
+    // The Why sheet's drag handle (Expand/Collapse) stays visible.
+    await page.getByRole("button", { name: /^Why\? / }).first().click();
+    const handle = await page.getByRole("button", { name: /^(Expand|Collapse)$/ }).evaluate((b) => [getComputedStyle(b.querySelector("span")).backgroundColor, getComputedStyle(b.closest("dialog")).backgroundColor]);
+    check("forced colours: the Why sheet's handle is visible", handle[0] !== handle[1], handle.join(" vs "));
+    await page.keyboard.press("Escape");
     await context.close();
   }
 
@@ -517,7 +522,27 @@ try {
     await landscape.getByRole("dialog").waitFor();
     const sheet = await landscape.locator("[data-drawer-body]").evaluate((el) => ({ h: el.clientHeight, overflow: getComputedStyle(el).overflowY, vh: innerHeight }));
     check("200% text, 844×390: the Why sheet's body isn't squeezed", sheet.overflow === "visible" || sheet.h >= sheet.vh * 0.4, `${sheet.h}px of ${sheet.vh} (${sheet.overflow})`);
+    // A ⋯ menu left open while the screen turns keeps its cap.
+    await landscape.keyboard.press("Escape");
+    const turn = landscape.getByRole("button", { name: /^More actions for / }).first();
+    await turn.scrollIntoViewIfNeeded();
+    await turn.click();
+    await landscape.setViewportSize({ width: 390, height: 844 });
+    await landscape.waitForTimeout(200);
+    const turned = await landscape.getByRole("menu").boundingBox();
+    check("200% text: an open ⋯ menu stays on screen when the phone turns", !!turned && turned.x >= 0 && turned.x + turned.width <= 390, turned ? `x=${Math.round(turned.x)} w=${Math.round(turned.width)}` : "no menu");
     await big.close();
+    // 125% text on a 1100 px screen: the layout JS and CSS agree, so the columns keep their names (headings or tabs).
+    const mid = await chromium.launch({ args: ["--blink-settings=defaultFontSize=20,minimumFontSize=0"] });
+    const wide = await (await mid.newContext({ viewport: { width: 1100, height: 800 } })).newPage();
+    await wide.goto(`${BASE}/jobs/job-review-cafe`, { waitUntil: "networkidle" });
+    await wide.getByText(/hidden · /).waitFor();
+    const named = await wide.evaluate(() => ({
+      tabs: document.querySelectorAll('[role="tab"]').length,
+      headings: [...document.querySelectorAll("section h2")].filter((h) => getComputedStyle(h).display !== "none").length,
+    }));
+    check("125% text, 1100 px: the review columns are named", named.tabs === 3 || named.headings === 3, JSON.stringify(named));
+    await mid.close();
     // At the default text size the phone layout keeps its sticky player.
     const normal = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
     await normal.goto(`${BASE}/jobs/job-review-cafe`, { waitUntil: "networkidle" });

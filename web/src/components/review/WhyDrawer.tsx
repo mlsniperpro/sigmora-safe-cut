@@ -5,7 +5,7 @@
  * a side drawer on desktop, a bottom sheet on mobile.
  */
 import { useEffect, useRef, useState } from "react";
-import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { DESKTOP_QUERY, useMediaQuery } from "@/hooks/useMediaQuery";
 import type { Box, JobResponse, KeyframeGeometry } from "@/lib/contracts";
 import { geometryMatches, regionWords, ringOnScreen } from "@/lib/keyframe";
 import { formatFrame, formatFrameTenths } from "@/lib/time";
@@ -138,7 +138,7 @@ export function WhyDrawer({
   };
   const [index, setIndex] = useState(0);
   const [expanded, setExpanded] = useState(false);
-  const desktop = useMediaQuery("(min-width: 1024px)");
+  const desktop = useMediaQuery(DESKTOP_QUERY);
   useEffect(() => {
     const d = ref.current;
     if (!d) return;
@@ -177,7 +177,7 @@ export function WhyDrawer({
         // On a short screen (landscape, large text) the whole sheet scrolls: a fixed header and footer would leave the body a sliver.
         <div className="flex h-full flex-col [@media(max-height:36em)]:h-auto">
           <button type="button" className="mx-auto mt-1 flex min-h-11 w-24 items-center justify-center lg:hidden" aria-label={expanded ? "Collapse" : "Expand"} onClick={() => setExpanded((v) => !v)}>
-            <span aria-hidden="true" className="h-1.5 w-12 rounded-full bg-border" />
+            <span aria-hidden="true" className="h-1.5 w-12 rounded-full bg-border forced-colors:bg-[CanvasText]" />
           </button>
           <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-3">
             <div>
