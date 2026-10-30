@@ -77,6 +77,12 @@ export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function Vi
     latest.current = { props, mode };
   });
   const frameRef = useRef(0);
+  /**
+   * The presentation time of the frame on screen, from the last frame callback (§3.6 maps frames from
+   * `mediaTime`, not `currentTime`: a paused seek late in a frame shows that frame, and `currentTime`
+   * would read as the next). Null after a seek starts and before any frame is presented.
+   */
+  const shownTime = useRef<number | null>(null);
 
   const draw = useCallback((mediaTime: number) => {
     const c = canvas.current;
@@ -91,6 +97,11 @@ export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function Vi
     drawOverlay(ctx, v.readyState >= 2 ? v : null, ops, c.width / p.width);
   }, []);
 
+  /** What a paused redraw maps: the frame on screen, or `currentTime` until one is presented. */
+  const redraw = useCallback(() => {
+    draw(shownTime.current ?? video.current?.currentTime ?? 0);
+  }, [draw]);
+
   // Keep the canvas the size of the displayed video, in device pixels.
   useEffect(() => {
     const c = canvas.current;
@@ -100,13 +111,13 @@ export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function Vi
       const dpr = window.devicePixelRatio || 1;
       c.width = Math.max(1, Math.round(rect.width * dpr));
       c.height = Math.max(1, Math.round(rect.height * dpr));
-      draw(video.current?.currentTime ?? 0);
+      redraw();
     };
     const ro = new ResizeObserver(resize);
     ro.observe(c);
     resize();
     return () => ro.disconnect();
-  }, [draw]);
+  }, [redraw]);
 
   // Redraw on every presented frame; fall back to rAF on browsers without rVFC, and say so.
   useEffect(() => {
@@ -117,6 +128,7 @@ export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function Vi
     if ("requestVideoFrameCallback" in HTMLVideoElement.prototype) {
       const loop: VideoFrameRequestCallback = (_now, meta) => {
         if (stopped) return;
+        shownTime.current = meta.mediaTime;
         draw(meta.mediaTime);
         handle = v.requestVideoFrameCallback(loop);
       };
@@ -140,8 +152,8 @@ export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function Vi
 
   // Redraw when edits, selection or the toggle change while paused.
   useEffect(() => {
-    draw(video.current?.currentTime ?? 0);
-  }, [draw, props.overlay, mode, selected]);
+    redraw();
+  }, [redraw, props.overlay, mode, selected]);
 
   useImperativeHandle(
     ref,
@@ -152,6 +164,7 @@ export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function Vi
         v.pause();
         // Aim at the middle of the frame so the quarter-frame switch point lands on it.
         v.currentTime = frameStart(frame, fps) + 0.5 / fps;
+        shownTime.current = null;
         draw(v.currentTime);
       },
       togglePlay() {
@@ -189,9 +202,13 @@ export const VideoPane = forwardRef<VideoPaneHandle, VideoPaneProps>(function Vi
             // A source that loads re-arms the one refresh, for when its signed URL expires later.
             onLoadedMetadata={() => setRefreshedFor(null)}
             // A paused seek's frame callback can come before the frame is decoded (readyState < 2), when a
-            // pixelate cover can only be drawn solid: redraw once the frame is there, as the render shows it.
-            onSeeked={(e) => draw(e.currentTarget.currentTime)}
-            onLoadedData={(e) => draw(e.currentTarget.currentTime)}
+            // pixelate cover can only be drawn solid: redraw once the frame is there, as the render shows it,
+            // on the frame that callback presented.
+            onSeeking={() => {
+              shownTime.current = null;
+            }}
+            onSeeked={redraw}
+            onLoadedData={redraw}
             onError={() => {
               // A background refresh already brought a fresher URL: switch to it first.
               if (src && playing && src !== playing && refreshedFor === null) {

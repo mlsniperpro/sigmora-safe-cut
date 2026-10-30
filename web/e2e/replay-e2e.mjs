@@ -604,6 +604,37 @@ try {
     await context.close();
   }
 
+  // A paused scrub late in a frame (0.8 in) shows that frame: the overlay follows the frame on screen,
+  // after the seek and after the Raw/Safe Cut toggle (§3.6 maps mediaTime, not currentTime).
+  {
+    const context = await browser.newContext({ viewport: { width: 1600, height: 1900 } });
+    const page = await context.newPage();
+    await page.goto(`${BASE}/jobs/job-review-sample`, { waitUntil: "networkidle" });
+    await page.getByText(/hidden · /).waitFor();
+    await page.locator("video").first().evaluate((el) => new Promise((res) => (el.readyState >= 2 ? res(true) : el.addEventListener("loadeddata", () => res(true), { once: true }))));
+    // The passer-by's cover starts at x 39 on frame 202 and at x 32 on frame 203 (job-review-sample plan).
+    const coveredAt = (x) =>
+      page.evaluate((x) => {
+        const canvas = document.querySelector("canvas");
+        const s = canvas.width / 1280;
+        return canvas.getContext("2d").getImageData(Math.round(x * s), Math.round(300 * s), 1, 1).data[3] > 200;
+      }, x);
+    await page.evaluate(async () => {
+      const video = document.querySelector("video");
+      video.pause();
+      video.currentTime = 202.8 / 30;
+      await new Promise((r) => video.addEventListener("seeked", r, { once: true }));
+      await new Promise((r) => setTimeout(r, 400));
+    });
+    const afterSeek = [await coveredAt(34), await coveredAt(60)];
+    await page.getByRole("radio", { name: "Raw" }).click();
+    await page.getByRole("radio", { name: "Safe Cut" }).click();
+    await page.waitForTimeout(300);
+    const afterToggle = [await coveredAt(34), await coveredAt(60)];
+    check("a paused scrub late in a frame draws that frame's covers, also after the toggle", !afterSeek[0] && afterSeek[1] && !afterToggle[0] && afterToggle[1], JSON.stringify({ afterSeek, afterToggle }));
+    await context.close();
+  }
+
   // Turning a tablet across the desktop breakpoint swaps tabs and columns: the focused chip keeps focus.
   {
     const context = await browser.newContext({ viewport: { width: 800, height: 900 } });

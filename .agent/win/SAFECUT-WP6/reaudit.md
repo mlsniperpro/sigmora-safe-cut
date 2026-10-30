@@ -1,4 +1,4 @@
-AUDITED_COMMIT: f76be71
+AUDITED_COMMIT: c83e97a
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -550,3 +550,15 @@ On the fix commit: `checks.sh` exit 0, 883 tests, e2e 143/143.
 | 2 | low | The Set-of-Mark keyframes' person labels overprinted the face labels at the same corner ("pface:3 2", "peface:8"), also in the chip thumbnails (§4.3's burned-in track IDs) | fixed: person labels sit at the bottom of their box; `som/*.jpg` regenerated and the screenshots re-shot. Checked by eye on frames 75 and 195 |
 
 On the fix commit: `checks.sh` exit 0, 884 tests, e2e 144/144.
+
+## Round 43 (audited c83e97a by a Sonnet reviewer: the whole app in mock mode and against a spec-shaped fake https API, round 42's changes, every fixture route, keyboard shortcuts, axe on 9 routes at 2 widths, the frame-reference rewrite and the RLE decoder; fixes in the next commit)
+
+0 critical, 0 high, 0 medium, 1 low. CLEAN_AUDITS_IN_A_ROW stays 0. The rest of the app was clean.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | low | A regression from round 42: the `seeked` redraw mapped the frame from `currentTime`, so a paused scrub landing in the last quarter of a frame drew the next frame's covers (§3.6 maps the presented frame's `mediaTime`). The same cause, already present before round 42, also hit the paused redraws on the Raw/Safe Cut toggle, an edit, the selection and a resize. Preview only; the render is unaffected | fixed: the player remembers the presented frame's `mediaTime` from the frame callback (cleared when a seek starts) and every paused redraw maps that, with `currentTime` only before a frame is presented or without rVFC. VideoPane test (fails on c83e97a with frame 203 for 202) and an e2e check at 0.8 into frame 202, after the seek and after the toggle (fails on c83e97a's build after the toggle); the e2e ran green three times |
+
+Noted, not counted: the auditor suspected that an ack for a later edit arriving before an earlier edit's ack could revert the later one, but did not reproduce it; the model-based agreement fuzz (interleaved acks and rejects over pending edits) finds client and server state agreeing.
+
+On the fix commit: `checks.sh` exit 0, 885 tests, e2e 145/145.
