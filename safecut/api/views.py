@@ -66,7 +66,7 @@ def public_audit(audit: Audit) -> dict[str, Any]:
 
 #: Parsed job files, keyed by path, model and the file's (mtime_ns, size): a poll re-parses only what changed
 #: (validating plan.json and tracks.json is most of a poll's CPU on a long clip). Read-only use: never mutated.
-_PARSED: OrderedDict[tuple[str, str], tuple[tuple[int, int], BaseModel]] = OrderedDict()
+_PARSED: OrderedDict[tuple[str, str], tuple[tuple[int, int, int, int], BaseModel]] = OrderedDict()
 _PARSED_LOCK = threading.Lock()
 _PARSED_MAX = 256
 
@@ -78,7 +78,8 @@ def _optional[M: BaseModel](path: Path, model: type[M]) -> M | None:
         return None
     if not path.is_file():
         return None
-    key, stamp = (str(path), model.__qualname__), (stat.st_mtime_ns, stat.st_size)
+    # dump() writes a new file and renames it, so the inode changes on every write even within one mtime tick.
+    key, stamp = (str(path), model.__qualname__), (stat.st_ino, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size)
     with _PARSED_LOCK:
         hit = _PARSED.get(key)
         if hit is not None and hit[0] == stamp:

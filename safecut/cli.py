@@ -52,6 +52,8 @@ def _replay(flag: bool | None, job: Path | None = None) -> bool:
     review publishes in replay without the flag); else ``SAFECUT_REPLAY``."""
     if flag is None and job is not None and (job / INTAKE).is_file():
         flag = load(job / INTAKE, Intake).mode == "replay"
+        if not flag and load_settings().replay:  # replay wins either way: a demo-mode shell never pays
+            raise pipeline.PipelineError("SAFECUT_REPLAY is set, but this job is live: unset it, or pass --live")
     replay = load_settings().replay if flag is None else flag
     if replay:
         netguard.block()

@@ -29,7 +29,7 @@ It's open source, and it's built to be called by Sigmora, our creator platform. 
 | Time | Top half | Bottom half | Caption |
 |---|---|---|---|
 | 0–3 s | Raw hero clip 1 | — | "Who shouldn't be in this video?" |
-| 3–8 s | Blur-every-face baseline (labelled "our baseline") | Safe Cut's result | "Blur everything… or decide." |
+| 3–8 s | Every face blurred in an editor (labelled "illustration": the repo renders no baseline video) | Safe Cut's result | "Blur everything… or decide." |
 | 8–14 s | The review panel: the Why drawer on the child (locked) and on the guest (three votes) | — | "Muse Spark votes 3× on who's in the story" |
 | 14–18 s | The audit summary and the privacy receipt | — | "Checked frame by frame, then a receipt" |
 | 18–20 s | Title card | — | "Safe Cut · built with Meta SAM 3.1 + Muse Spark" |

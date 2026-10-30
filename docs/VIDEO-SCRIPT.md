@@ -1,6 +1,6 @@
 # Demo video script (final structure; ends at 2:50)
 
-The beats of `docs/DEMO.md`, shot by shot in `docs/STORYBOARD.md`, timed here to **2:50**. The VO is about 235 to 250 words (depending on which 2:00 line is used), under 1:45 at 150 words a minute, so every beat has room for its screen.
+The beats of `docs/DEMO.md`, shot by shot in `docs/STORYBOARD.md`, timed here to **2:50**. The VO is about 235 to 265 words (depending on which 2:00 line is used and how many figures it reads), under 1:50 at 150 words a minute, so every beat has room for its screen.
 
 The rules carry over from the storyboard:
 - every screen is a recording of the deployed app;
@@ -15,7 +15,7 @@ A beat whose number has no committed source changes its shot (beat 7 below); nob
 | ID | What | Clip |
 |---|---|---|
 | R-01 | Hero 1 raw, full frame | H1A (street interview, signed releases) |
-| R-02 | Hero 1 through the blur-every-face baseline (`eval/run.py --variant blur_all`) | H1A |
+| R-02 | Hero 1 with every face blurred, made in a video editor and labelled "Blur every face (illustration)" on screen: the repo's `blur_all` baseline scores plans and renders no video | H1A |
 | SR-01 | `/try`: code, drop the clip, Start, the progress list (time-lapse, labelled "sped up") | H1A |
 | SR-02 | The review panel: Hidden, Kept clear, Needs you | H1A |
 | SR-03 | The Why drawer: the child (locked), then the guest (three votes, the transcript line) | H1A |
@@ -30,7 +30,7 @@ A beat whose number has no committed source changes its shot (beat 7 below); nob
 | Time | Beat | On screen | VO |
 |---|---|---|---|
 | 0:00–0:12 | Hook | R-01; thin labels as each problem appears: "Child", "Phone number", "Number plate"; corner: "Staged with actors. Everyone signed a release." | "Here's a typical street interview. It also shows a child, a stranger's phone number and a number plate. In real footage, none of them agreed to be in it." |
-| 0:12–0:30 | The status quo fails | Split: R-02, labelled "Blur every face (our baseline)", next to a manual-masking time-lapse | "Today you either blur everyone, including your guest, or mask by hand, frame by frame. Most creators just publish, and hope nobody complains." |
+| 0:12–0:30 | The status quo fails | Split: R-02, labelled "Blur every face (illustration)", next to a manual-masking time-lapse | "Today you either blur everyone, including your guest, or mask by hand, frame by frame. Most creators just publish, and hope nobody complains." |
 | 0:30–0:55 | One pass | SR-01, then SR-02 | "With Safe Cut you upload the clip once. SAM 3.1 tracks every face, person, plate and screen. Muse Voice Transcribe hears who's speaking. Muse Spark decides who is part of the story, and everything uncertain stays hidden." |
 | 0:55–1:20 | Why | SR-03, SR-04 | "We show Muse Spark the people SAM is tracking, numbered on the frame, three separate times. The guest is kept clear because every check agrees: they're introduced, and they speak. Children are always hidden. When the checks disagree, it's your call: one tap, and you can undo it." |
 | 1:20–1:40 | The context test | SR-05 | "A screen isn't private because it's a screen. This inbox is. Muse Spark reads the other one as a menu, and asks you before it's shown." |
@@ -41,7 +41,7 @@ A beat whose number has no committed source changes its shot (beat 7 below); nob
 
 ## Before recording
 
-- Use the deployed app with the owner code (`BLOCKED.md`), on hero clips 1 and 2.
+- Use the deployed app with the recording code (`BLOCKED.md`: its own cap, valid until Nov 3), on hero clips 1 and 2.
 - Record at 1080p with the cursor visible, and keep captions on.
 - Show no real keys, emails or private footage on screen.
 - Don't imply the audio is redacted: Safe Cut covers the picture and keeps the soundtrack as recorded (the receipt says so). The VO says "hides" of people on screen only.

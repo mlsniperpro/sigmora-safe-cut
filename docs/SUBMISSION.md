@@ -32,7 +32,7 @@ It is a production service: an API with access codes, service keys for Sigmora, 
 
 ## Meta models used
 
-SAM 3.1 · Muse Spark (`muse-spark-1.3`, and `muse-spark-1.2` as the speech fallback) · Muse Voice Transcribe · Muse Spark Open on Baseten (`meta-models/muse-spark-open-1026`, the optional open-weight audit opinion) · EgoBlur Gen 2 (Meta's open face and plate detector, as the every-frame auditor on a GPU machine with its gated weights; the deployed service has no GPU, so its audit runs the bundled YuNet face detector with plates left to the red team, and `audit.json` and the receipt name the detector that ran). What each one does: README, "What each Meta model does here".
+SAM 3.1 · Muse Spark (`muse-spark-1.3`, and `muse-spark-1.2` as the speech fallback) · Muse Voice Transcribe · ⟨owner: keep only if the Baseten steps in BLOCKED.md are done and it ran: Muse Spark Open on Baseten (`meta-models/muse-spark-open-1026`, the optional open-weight audit opinion)⟩ · EgoBlur Gen 2 (Meta's open face and plate detector, as the every-frame auditor on a GPU machine with its gated weights; the deployed service has no GPU, so its audit runs the bundled YuNet face detector with plates left to the red team, and `audit.json` and the receipt name the detector that ran). What each one does: README, "What each Meta model does here".
 
 ## Links
 
@@ -48,7 +48,7 @@ SAM 3.1 · Muse Spark (`muse-spark-1.3`, and `muse-spark-1.2` as the speech fall
 ## Testing instructions for judges
 
 1. Open https://safecut.sigmora.org. The landing page plays the demo job, labelled as a demo: until the owner records the hero clips, it is a synthetic test clip (drawn shapes, scripted answers), and the page says so. The Raw / Safe Cut toggle compares the original and the result.
-2. Press **Try it** and enter the access code ⟨owner: type the judge code here in the form itself, never in this file: the repo is public⟩. It works from Nov 5 00:00 to Nov 10 23:59 UTC, within a daily spend cap.
+2. Press **Try it** and enter the access code ⟨owner: type the judge code here in the form itself, never in this file: the repo is public⟩. It works ⟨owner: from Nov 5 00:00, or the opening you set in `SAFECUT_CODE_WINDOWS`⟩ to Nov 10 23:59 UTC, within a daily spend cap.
 3. Upload a clip of up to 60 seconds and 150 MB (MP4 or MOV), tick the rights box and press Start. Safe Cut redacts the picture only: the audio is kept as recorded (the receipt says so).
 4. When the review panel appears, open **Why?** on any item to see the numbered keyframe and the three votes. Try:
    - **Hide** or **Keep clear** on an item;
