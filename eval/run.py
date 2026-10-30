@@ -144,6 +144,7 @@ def run(
     sha = git_sha()
     run_id = f"{now:%Y%m%dT%H%M%SZ}-{split_name}-{variant}-{sha[:7]}"
     scores: list[JobScore] = []
+    detail: dict[str, str] = {}
     synthetic = False
     work = Path(tempfile.mkdtemp(prefix=f"eval-{run_id}-"))
     try:
@@ -162,8 +163,9 @@ def run(
                     raise EvalError(f"{entry.clip} has no recording to replay")
                 pipeline.attach_recording(job_dir, base / entry.recording)
                 synthetic = synthetic or pipeline.recording_is_synthetic(job_dir)
-            regions = run_variant(variant, job_dir, replay=replay)
-            scores.append(score_job(job_dir, load_labels(base / entry.labels), regions))
+            result = run_variant(variant, job_dir, replay=replay)
+            detail.update(result.detail)
+            scores.append(score_job(job_dir, load_labels(base / entry.labels), result.regions))
     finally:
         shutil.rmtree(work, ignore_errors=True)
     run_dir = out / run_id

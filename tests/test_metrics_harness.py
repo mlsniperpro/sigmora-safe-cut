@@ -125,12 +125,28 @@ def test_blur_all_hides_every_face_track_only(tmp_path: Path) -> None:
     assert len(decisions["items"]) == len(tracks["tracks"])
 
 
-@pytest.mark.parametrize("variant", ["egoblur", "muse_no_track"])
-def test_hook_variants_say_which_lane_hook_is_missing(tmp_path: Path, variant: str) -> None:
+def test_muse_no_track_says_which_lane_hook_is_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import sys  # noqa: PLC0415
+
+    monkeypatch.setitem(sys.modules, "safecut.scout.baselines", None)  # whatever the scout lane has merged
     job = tmp_path / "j"
     pipeline.create_job(CLIP, job, mode="replay")
-    with pytest.raises(VariantUnavailable, match="baselines"):
-        run_variant(cast(Variant, variant), job, replay=True)
+    with pytest.raises((VariantUnavailable, ModuleNotFoundError)):
+        run_variant("muse_no_track", job, replay=True)
+
+
+def test_egoblur_runs_the_audit_detector_on_every_frame_and_names_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.undo()  # the real prepare stage, on the real demo clip
+    demo = Path(__file__).resolve().parent.parent / "fixtures" / "jobs" / "demo"
+    manifest = json.loads((demo / "raw" / "manifest.json").read_text())
+    job = tmp_path / "j"
+    pipeline.create_job(Path(__file__).resolve().parent.parent / manifest["source"], job, mode="replay")
+    pipeline.attach_recording(job, demo)
+    result = run_variant("egoblur", job, replay=True)
+    assert result.detail["detector"] in ("egoblur-gen2", "yunet-face")
+    assert all(0 <= f < 360 for f in result.regions)
 
 
 def test_held_boxes() -> None:

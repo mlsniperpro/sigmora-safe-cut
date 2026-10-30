@@ -34,6 +34,7 @@ NAMES = {
     "full": "**Safe Cut (full)**",
     "no_audit": "Safe Cut without the audit pass",
 }
+DETECTOR_NAMES = {"yunet-face": "OpenCV YuNet face detector", "egoblur-gen1": "EgoBlur Gen 1"}
 COLOURS = {
     "blur_all": "#9aa5b1",
     "egoblur": "#7b8794",
@@ -104,6 +105,10 @@ def render(runs: list[dict[str, Any]], settings: Settings | None = None) -> str:
                 lines.append(f"| {NAMES[variant]} | not run | | | | | |")
                 continue
             m, link = run["metrics"], f"[{run['dir']}](results/{run['dir']}/metrics.json)"
+            name = NAMES[variant]
+            detector = run["config"].get("detail", {}).get("detector")
+            if variant == "egoblur" and detector and detector != "egoblur-gen2":
+                name = f"{DETECTOR_NAMES.get(detector, detector)} on every frame (EgoBlur weights not installed)"
             load = "n/a" if m["review_load_per_min"] is None else f"{m['review_load_per_min']:.2f}"
             lines.append(
                 f"| {NAMES[variant]} | {pct(m['entity_recall'])} | {pct(m['exposure_rate'])} | "

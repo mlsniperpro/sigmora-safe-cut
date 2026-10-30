@@ -22,12 +22,12 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import httpx
-from fastapi import APIRouter, Depends, FastAPI, Header, Request
+from fastapi import APIRouter, Body, Depends, FastAPI, Header, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from imageio_ffmpeg import get_ffmpeg_exe
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
+from pydantic import BaseModel, ConfigDict, Field
 
 from safecut import netguard, pipeline
 from safecut.api.access import MAX_UPLOAD_BYTES, Access, ApiRefusal, Grant, RateLimiter, check_caps, estimate_usd
@@ -44,7 +44,6 @@ from safecut.stages import INTAKE, RAW_DIR, SOURCE_DIR, stage
 
 log = logging.getLogger("safecut.api")
 
-EDIT = TypeAdapter[ReviewEdit](ReviewEdit)
 #: /healthz asks Meta's status endpoint at most this often (PRE-A §10.7: every 5 min before Nov 5, then 1 min).
 HEALTH_EVERY_EARLY = timedelta(minutes=5)
 HEALTH_EVERY = timedelta(minutes=1)
@@ -457,11 +456,9 @@ def get_job(svc: Svc, job_id: str) -> dict[str, Any]:
 
 
 @router.post("/v1/jobs/{job_id}/review", dependencies=[api_limit])
-async def review(svc: Svc, job_id: str, request: Request) -> dict[str, Any]:
-    try:
-        edit = EDIT.validate_json(await request.body())
-    except ValidationError as exc:
-        raise ApiRefusal(422, "bad_request", f"not a review edit: {exc.error_count()} error(s)") from None
+def review(svc: Svc, job_id: str, edit: Annotated[ReviewEdit, Body()]) -> dict[str, Any]:
+    """A plain (sync) handler: the guard re-plans in FastAPI's threadpool, never on the event loop, so polling and
+    media keep flowing while an edit is applied."""
     return _review(svc, job_id, edit)
 
 
@@ -499,9 +496,9 @@ def _review(svc: Service, job_id: str, edit: ReviewEdit) -> dict[str, Any]:
             if current.status == "done":
                 current.status, current.stage = "review", "review"
         status = current.status
-    decisions = load(job_dir / "decisions.json", Decisions)
-    plan_now = load(job_dir / "plan.json", Plan)
-    audit_now = load(job_dir / "audit.json", Audit) if (job_dir / "audit.json").is_file() else None
+        decisions = load(job_dir / "decisions.json", Decisions)
+        plan_now = load(job_dir / "plan.json", Plan)
+        audit_now = load(job_dir / "audit.json", Audit) if (job_dir / "audit.json").is_file() else None
     return {
         "edit_id": edit.edit_id,
         "mode": state.mode,

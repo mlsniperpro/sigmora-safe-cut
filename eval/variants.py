@@ -4,7 +4,8 @@
 - ``no_audit``: the same up to the render, without the audit pass (isolates what the second look adds).
 - ``blur_all``: SAM 3.1 ``face`` only, everything hidden (YouTube Studio's "blur all faces", CapCut Face Mosaic).
 - ``detector_only``: SAM 3.1 ``face``, ``license plate`` and ``screen``, everything hidden, no Muse reasoning.
-- ``egoblur``: EgoBlur Gen 2 on every frame, every detection hidden (the audit lane's detector wrapper).
+- ``egoblur``: EgoBlur Gen 2 on every frame, every detection hidden (the audit lane's detector wrapper; without its
+  gated weights that wrapper runs YuNet, and the run records which one ran).
 - ``muse_no_track``: Muse Spark's per-keyframe boxes held until the next keyframe (the scout lane's baseline).
 
 The hidden-everything baselines go through the same leak guard as Safe Cut (padding and temporal hold), so they
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
@@ -107,7 +109,31 @@ def scaled(box: IntBox, factor: float, job: Job) -> IntBox:
     )
 
 
-def run_variant(variant: Variant, job_dir: Path, *, replay: bool) -> dict[int, list[Region]]:
+def detector_boxes(job_dir: Path) -> tuple[str, dict[int, list[IntBox]]]:
+    """WP4's audit detector (EgoBlur Gen 2, or the bundled YuNet when its weights are missing) on every frame of
+    the prepared clip: ``(the model that actually ran, boxes per frame)``."""
+    from safecut.audit.detectors import load_detector  # noqa: PLC0415 -- heavy (OpenCV nets); this variant only
+    from safecut.config import load_settings  # noqa: PLC0415 -- with the line above
+    from safecut.render.video import read_frames  # noqa: PLC0415 -- with the line above
+
+    job = load(job_dir / "job.json", Job)
+    detector = load_detector(load_settings())
+    boxes: dict[int, list[IntBox]] = {}
+    for index, frame in enumerate(read_frames(job_dir / job.prepared, job)):
+        found = [d.box for d in detector.detect(frame)]
+        if found:
+            boxes[index] = found
+    return detector.model, boxes
+
+
+@dataclass(frozen=True)
+class VariantResult:
+    regions: dict[int, list[Region]]
+    #: What the run actually used where it can differ from the config (the egoblur baseline's detector).
+    detail: dict[str, str] = field(default_factory=dict[str, str])
+
+
+def run_variant(variant: Variant, job_dir: Path, *, replay: bool) -> VariantResult:
     """Run ``variant`` in ``job_dir`` (a created job with its recording attached) and return what it renders."""
     analyse = pipeline.analyse
     if variant in ("full", "no_audit"):
@@ -117,19 +143,18 @@ def run_variant(variant: Variant, job_dir: Path, *, replay: bool) -> dict[int, l
             pipeline.publish(job_dir, replay=replay)
         else:
             pipeline.run_stage(job_dir, stage("render"), replay=replay)
-        return frame_regions(load(job_dir / "plan.json", Plan))
+        return VariantResult(frame_regions(load(job_dir / "plan.json", Plan)))
     if variant in CONCEPTS:
         analyse(job_dir, replay=replay, until="track")
         hide_everything(job_dir, CONCEPTS[variant])
         pipeline.run_stage(job_dir, stage("guard"), replay=replay, force=True)
-        return frame_regions(load(job_dir / "plan.json", Plan))
-    job_path = job_dir / "job.json"
+        return VariantResult(frame_regions(load(job_dir / "plan.json", Plan)))
     analyse(job_dir, replay=replay, until="prepare")
-    job = load(job_path, Job)
+    job = load(job_dir / "job.json", Job)
     if variant == "egoblur":
-        detections = _hook("safecut.audit.baselines", "egoblur_boxes")(job_dir, replay=replay)
+        model, detections = detector_boxes(job_dir)
         grown = {f: [scaled(b, EGOBLUR_SCALE, job) for b in boxes] for f, boxes in detections.items()}
-        return held_boxes(grown, job.frames, hold=False)
+        return VariantResult(held_boxes(grown, job.frames, hold=False), {"detector": model})
     analyse(job_dir, replay=replay, until="track")
     keyframes = _hook("safecut.scout.baselines", "muse_keyframe_boxes")(job_dir, replay=replay)
-    return held_boxes(keyframes, job.frames, hold=True)
+    return VariantResult(held_boxes(keyframes, job.frames, hold=True))

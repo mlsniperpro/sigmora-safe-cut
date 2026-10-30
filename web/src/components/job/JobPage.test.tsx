@@ -58,6 +58,22 @@ describe("review panel", () => {
     expect(screen.getByText("1 item still needs you. If you render now, it stays hidden.")).toBeInTheDocument();
   });
 
+  it("re-enables Undo when two edits were in flight at once (an undo, then a remove)", async () => {
+    const user = setup("job-review-hero1");
+    backend = new MockBackend({ latencyMs: 400, stepMs: 60_000 });
+    setClientForTests(new SafeCutClient({ transport: backend, sleep: () => Promise.resolve() }));
+    await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
+    await user.click(screen.getByRole("button", { name: "Hide Face 6" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Undo" })).toBeEnabled(), { timeout: 3_000 });
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    await user.click(screen.getByRole("button", { name: "More actions for Face 2" }));
+    await user.click(screen.getByRole("menuitem", { name: "Remove this person from the video" }));
+    await user.click(within(screen.getByRole("dialog", { name: "Remove this person?" })).getByRole("button", { name: "Remove" }));
+    expect(await screen.findByText("Face 2 will be fully covered wherever they appear.")).toBeInTheDocument();
+    await waitFor(() => expect(reviewPosts()).toHaveLength(3), { timeout: 3_000 });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Undo" })).toBeEnabled(), { timeout: 5_000 });
+  });
+
   it("hides with one tap, toasts with Undo, and undoes", async () => {
     const user = setup("job-review-hero1");
     await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
