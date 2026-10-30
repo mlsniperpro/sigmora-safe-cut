@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 6d93e0b
+AUDITED_COMMIT: b9b13d8
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -80,3 +80,14 @@ Not clean (perception mediums). Reasoning half: clean (0 C/H/M, 7 lows). All ver
 - L child words missing (schoolgirl, newborn, tween, …) → added; stricter only (`test_more_child_words_lock`)
 - Decision: SAM recordings without `source_sha256` (the committed synthetic fixtures) still replay: they are bound to their clip by the manifest's `source_sha256`, which `pipeline.find_recording` matches before any replay.
 - Decision: speech-fallback's `self_intro`/`addresses` sanity check is not applied: the fields are dropped by design, the role pass reads `text` (the same evidence), and speech can never create a keep.
+
+## Audit 6 (two auditors) at 7db7881: 0 critical, 0 high, 3 medium (perception), 11 low
+Not clean (perception mediums; none can under-hide). Reasoning half: clean (0 C/H/M; one Low+ fixed exactly).
+- M an 8192² upload passed the probe and its transcode used 2.2 GB unbounded → sources over 40 Mpx refused before any full decode; the transcode runs under a 6 GiB limit with fixed thread counts (`test_a_resolution_bomb_is_refused_before_any_full_decode`, `test_the_transcode_runs_under_its_own_memory_limit`)
+- M non-UTF-8 container metadata crashed `facts` with a UnicodeDecodeError (service: "internal") → stderr decoded with replacement; header facts read from ffmpeg's own lines only, so a title can't fake the duration either (`test_metadata_bytes_and_lies_never_break_the_stream_facts`)
+- M a clip under ~1.75 s passed prepare and failed track as an untyped TrackError ("internal") → `ClipTooShort` carries reason bad_media, which the service maps (`test_a_clip_too_short_for_sam_fails_before_any_call`)
+- L probe decodes on many-core hosts → one thread and one filter thread, 2 GiB; 1080p and 4K60 phone-style clips prepare end to end (checked by hand: 1.5 s and 2.8 s)
+- L a 10+ digit SAM field (mask size) reached Meta's int() → fails closed first; an unusable checkpoint (ValueError) is asked again (`test_a_huge_mask_size_fails_closed`)
+- L one parse pool per SAM stream could start dozens of interpreters → one pool at a time per process
+- Low+ (reasoning) a roles re-run after a phrase sweep re-billed pass 1 (concepts/crowded frames not restored) → roles keeps a copy of its input and stamps its output; a re-run on its own output restores the exact input (`test_a_re_run_after_a_phrase_sweep_re_bills_nothing`)
+- L a child ruling on a label escalation wasn't asked about was dropped → locks (`test_a_child_ruling_on_an_unasked_label_locks_it`); `schoolchildren's`, youth, adolescent, preschooler, kindergartener lock (`test_possessives_and_more_child_words_lock`); corrupt scene/transcript → no context, roles.json still written (`test_a_corrupt_scene_file_still_writes_roles`); WAV disk error → fallback; go-live: a stopped run exits 1 (`test_a_stopped_run_is_not_reported_as_success`), `--id` keeps dots as separators (`test_ids_keep_their_dots_as_separators`)
