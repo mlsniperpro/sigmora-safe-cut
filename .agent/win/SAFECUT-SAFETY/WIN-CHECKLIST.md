@@ -79,3 +79,27 @@ Evidence is a test name, a command run in this session, or a commit. Owner input
 - [-] Mid-clip IDs without `reentry_of`: ARCHITECTURE §3.2 and the contract define "new ID" as `reentry_of` (see reaudit.md).
 - [-] Approval hash vs audit patches; private red-team text in API views: SHIP's paths, filed with SHIP.
 - [-] Mosaic noise is deterministic by design (DESIGN §2.7 fixed per-block noise; the ≤ 6-block grid protects).
+
+## Audit findings (round 4, fixed with tests at 6e83d9b, merged 2b5aacf; details in reaudit.md)
+- [x] Replay never inherits a recorded opinion (`test_a_replayed_recording_never_brings_its_opinion_into_another_job`).
+- [x] Receipt gated on `validate_job_dir` (`test_no_receipt_on_a_job_directory_that_does_not_validate`).
+- [x] Replay disclosure, banner wording (`test_a_replayed_recording_is_disclosed`, `test_the_banner_names_the_checks_that_actually_ran`).
+- [x] Malformed red-team boxes per finding (`test_a_malformed_box_keeps_its_finding_as_a_whole_frame_leak`).
+- [x] YuNet fallback without torch; cached availability (`tests/test_audit_gpu.py`).
+- [x] Whole-person body cover per frame (`test_a_whole_person_item_covers_a_body_where_only_its_face_is_tracked`); cache lock.
+- [-] Job-cap pre-check before the audit: SHIP's `pipeline.run_stage` (fails closed), filed with SHIP.
+
+## Audit findings (round 5, fixed with tests at dd1312d, merged d126234; details in reaudit.md)
+- [x] Child carried by an adult; unpaired child face locks bodies (`tests/test_policy.py`, `tests/test_binding.py`).
+- [x] Read-through keeps whole-person cover; spot numbers stable (`tests/test_guard.py`, `tests/test_policy_review.py`).
+- [x] Fail-closed audit on a crash; receipt validated before it stands (`test_a_crash_part_way_never_leaves_the_old_clean_verdict`).
+- [x] Crash-safe second-opinion record; manifest and files_deleted honesty (`tests/test_audit_opinion.py`, `tests/test_receipt.py`).
+- [-] go_live.py recording replacement: SENSE's script, already fixed by SENSE (0dd5d1e).
+- [-] Frame-label spill, `detector` literal, unhashed video: spec-literal or outside the contract (reaudit.md).
+
+## Audit findings (round 6, fixed with tests at a9e3b34, merged 362379f; details in reaudit.md)
+- [x] Child closure over items, re-entries and unpaired face/body links; duplicate rows fail closed (`tests/test_policy.py`).
+- [x] Close-up faces hidden whole; body grows from the padded face box (`test_a_close_up_face_without_a_body_is_hidden_whole`, E4 coverage property).
+- [x] Renders stamped with their plan; audits with their video; receipts refuse a mismatch (`test_the_audit_redraws_a_video_drawn_from_another_plan`, `test_a_receipt_never_seals_an_audit_of_another_video`).
+- [x] Receipt for `.`; scanned only after judging (`test_a_receipt_for_the_current_directory_by_its_dot`, `test_a_frame_whose_detections_were_not_all_judged_is_unscanned`).
+- [-] CLI "done" on a blocked audit; `_review` and a standing receipt: SHIP's files, filed with SHIP.

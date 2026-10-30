@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 225d9c6aacd0d157c4707dabedba42ea9a43d282
+AUDITED_COMMIT: a9e3b34c0111eda6b70cbafdee4a1df52b5de960
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -83,4 +83,62 @@ verified here before it is fixed, and fixed with a named test. The counter reset
 - WP3 low: reasons unbounded → ≤ 90 chars, lowercase-first, no full stop (`test_reasons_are_short_lowercase_first_without_a_full_stop`).
 - WP3 low: extra concepts mapped to screen/document → exactly API-NOTES §12's map (`test_kinds`).
 
-## Round 4: running at 225d9c6 (main ede3dc1)
+## Round 4 (at 225d9c6): 0 critical, 0 high; verified and fixed at 6e83d9b (merged 2b5aacf) or filed
+- WP4 medium: a recording's `raw/audit/opinion*` replayed into another job claimed its frames went to Baseten (and
+  made the job dir invalid) → the marker and record name their job
+  (`test_a_replayed_recording_never_brings_its_opinion_into_another_job`, fails without the fix).
+- WP4 medium: `validate_job_dir` gated nothing in production → the receipt stage validates the whole job directory
+  and withdraws the receipt when it doesn't (`test_no_receipt_on_a_job_directory_that_does_not_validate`).
+- WP4 low: a replayed real recording wasn't disclosed → `REPLAY_NOTE` (`test_a_replayed_recording_is_disclosed`).
+- WP4 low (SHIP's): the job-cap pre-check raises before the audit, so a cap stop is `failed`, not `over_budget`
+  (fails closed) → filed with SHIP.
+- WP4 low: `auditor_available` loaded models per request, and weights without torch gave 503 → cached per weights
+  state; falls back to YuNet, recorded (`tests/test_audit_gpu.py`).
+- WP4 low: a box that isn't 4 integers voided the response → a whole-frame leak per finding
+  (`test_a_malformed_box_keeps_its_finding_as_a_whole_frame_leak`).
+- WP4 low: the banner named a red team and an all-purpose detector even for the oracle / YuNet → names what ran
+  (`test_the_banner_names_the_checks_that_actually_ran`). The unkeyed hash is a tamper check, as the page says.
+- WP3 medium: a whole-person item left the body bare on frames its body track didn't reach → body estimate per
+  frame (`test_a_whole_person_item_covers_a_body_where_only_its_face_is_tracked`, fails without the fix).
+- WP3 low: the region-cache registry wasn't thread-safe → locked.
+
+## Round 5 (at 6e83d9b): 1 high, 2 medium, lows; verified and fixed at dd1312d (merged d126234) or filed/accepted
+- WP3 high: an exact face/body share tie paired nothing, so a child's body could be kept and one child counted twice
+  → ties go to the body the face fills most; an unpaired child face locks every body holding it
+  (`test_a_child_carried_by_an_adult_pairs_with_their_own_body`, `test_a_child_face_no_body_can_claim_locks_every_body_holding_it`,
+  both fail without the fix).
+- WP3 medium: a read-through solid re-render dropped the whole-person body cover → the item's own style decides
+  (`test_a_read_through_whole_person_stays_whole_when_it_goes_solid`, fails without the fix).
+- WP3 low: re-covering a spot after an undo renumbered it on the next replay → kept (`test_a_spot_covered_again_after_an_undo_keeps_its_patch_number`, fails without the fix).
+- WP3 low: the audit loop re-planned without the region cache; the cache key was taken after the reads → both fixed.
+- WP4 medium: a crash part-way through an audit left the old clean audit.json / receipt → the audit retires the receipt
+  and writes a blocked audit.json first (`test_a_crash_part_way_never_leaves_the_old_clean_verdict`, fails without the fix).
+- WP4 low: the receipt stood before it was validated → validated in a shadow job dir, then put in place.
+- WP4 low: a crash or torn write lost the second opinion's record → atomic writes; a lost answer reads `failed`
+  (`test_a_crash_during_the_opinion_is_recorded_as_failed_not_off`).
+- WP4 low: an unreadable manifest read as a real run; `files_deleted: true` with no files.json after billed SAM → fixed
+  (`test_an_unreadable_recording_manifest_never_reads_as_a_real_run`, `test_without_files_json_a_billed_sam_call_is_never_claimed_deleted`).
+- WP4 low (SENSE's): `scripts/go_live.py` deletes the old recording before the new run is known good → already fixed by SENSE (0dd5d1e).
+- WP4 low accepted: a frame-label text box spilling out of the bar stays a leak (G8: dropped "only if" wholly inside;
+  fails closed); YuNet leaks carry the contract literal `detector: "egoblur"` (`audit.egoblur.model` names YuNet);
+  the receipt doesn't hash the video (not in §3.9's contract).
+
+## Round 6 (at dd1312d): 0 critical, 0 high; mediums and lows verified, fixed at a9e3b34 (merged 362379f) or filed
+- WP3 medium: a re-entry of a body that is a child only through its item wasn't locked; a face inside an unpaired
+  child body could be kept → one fixed-point child closure over items, re-entry chains and unpaired face/body links
+  (`test_a_reentry_of_a_childs_body_is_locked_too`, `test_a_face_inside_an_unpaired_child_body_is_locked`, both fail
+  without the fix).
+- WP3 low: duplicate role rows let a later row override a child vote → the row that hides more wins
+  (`test_duplicate_role_rows_fail_closed`).
+- WP3 low: a prominent face with no body track got the mosaic → whole person (`test_a_close_up_face_without_a_body_is_hidden_whole`);
+  this surfaced a real gap (the body estimate grew from a mask outline's box, inside the padded box), caught by the
+  E4 coverage property → the body now grows from the padded face box.
+- WP4 medium: the audit trusted any existing video → each render stamps its plan's sha256 and the audit redraws a
+  video drawn from another plan (`test_the_audit_redraws_a_video_drawn_from_another_plan`, fails without the fix).
+- WP4 medium: a clean audit.json could be sealed over a newer render → the audit records the video's sha256 and the
+  receipt refuses any other (`test_a_receipt_never_seals_an_audit_of_another_video`, fails without the fix).
+- WP4 medium: `receipt.run(Path("."))` crashed (shadow dir) → named from the resolved path (`test_a_receipt_for_the_current_directory_by_its_dot`).
+- WP4 low: a frame was marked scanned before its detections were judged → after (`test_a_frame_whose_detections_were_not_all_judged_is_unscanned`).
+- WP4 low (SHIP's): the CLI prints "done" for a blocked audit; `_review` leaves a standing receipt → filed with SHIP.
+
+## Round 7: running at a9e3b34 (main 362379f)

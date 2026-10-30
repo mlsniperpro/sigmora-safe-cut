@@ -135,16 +135,15 @@ def _reverted(unique: list[ReviewEdit]) -> set[str]:
 
 def _default_style(item: DecisionItem, tracks: Tracks | None, job: Job | None) -> Style:
     """A kept item hidden again gets the style the policy gives a hidden person (DESIGN §2.7/§2.7b): with the tracks,
-    exactly (a prominent body whole-person solid, else the mosaic); without them, a body is covered whole (it may be
-    prominent) and a face alone gets the mosaic. Anything else is solid."""
+    exactly (a prominent body or close-up face whole-person solid, else the mosaic); without them, the person is
+    covered whole (they may be prominent). Anything else is solid."""
     if item.kind != "person":
         return "solid"
     if tracks is not None and job is not None:
         by_id = {t.track_id: t for t in tracks.tracks}
         return style_for("person", [by_id[t] for t in item.track_ids if t in by_id], job)
-    if any(t.startswith("person:") for t in item.track_ids):
-        return "person_solid"
-    return "pixelate" if any(t.startswith("face:") for t in item.track_ids) else "solid"
+    # Without the tracks nothing says the person isn't prominent (or a close-up): cover them whole.
+    return "person_solid" if any(t.startswith(("person:", "face:")) for t in item.track_ids) else "solid"
 
 
 def _patch_kind(leaks: list[Leak]) -> Literal["person", "plate", "other"]:
@@ -322,10 +321,13 @@ def apply_review(
         if last.reverts not in {e.edit_id for e in unique[:-1]}:
             raise ReviewError("unknown_edit", last.edit_id, f"no earlier edit {last.reverts} to undo")
     reverted = _reverted(unique)
-    for edit in unique:
-        if isinstance(edit, CoverSpotEdit) and edit.edit_id in reverted:
-            fold.uncover(edit.spot_id)
     active = effective(unique)
+    # A spot an undone cover opened stays covered when a later cover still in force covers it again: its patch (and
+    # A-number, which never changes once given) is that cover's, replayed as a no-op.
+    still_covered = {edit.spot_id for edit in active if isinstance(edit, CoverSpotEdit)}
+    for edit in unique:
+        if isinstance(edit, CoverSpotEdit) and edit.edit_id in reverted and edit.spot_id not in still_covered:
+            fold.uncover(edit.spot_id)
     skipped: list[str] = []
     for index, edit in enumerate(active):
         try:

@@ -27,6 +27,15 @@ def edits(*raw: dict[str, Any]) -> list[ReviewEdit]:
     return [EDIT.validate_python(e) for e in raw]
 
 
+def base_tracks() -> Any:
+    return tracks(
+        track("face:1", 0, 20, (10, 10, 30, 30)),
+        track("face:2", 0, 20, (100, 10, 120, 30)),
+        track("face:3", 0, 20, (200, 10, 220, 30)),
+        track("face:4", 25, 35, (10, 10, 30, 30), reentry_of="face:1"),
+    )
+
+
 def base() -> Decisions:
     """i_1 kept participant (face:1), i_2 bystander (face:2), i_3 locked child (face:3), i_4 re-entry (face:4)."""
     ts = [
@@ -54,8 +63,11 @@ def by_id(d: Decisions) -> dict[str, DecisionItem]:
 def test_keep_and_hide_are_the_creators() -> None:
     got = by_id(apply_review(base(), edits({"type": "keep", "edit_id": "a", "item_id": "i_2"})).decisions)
     assert (got["i_2"].decision, got["i_2"].decided_by, got["i_2"].style) == ("keep", "creator", None)
-    got = by_id(apply_review(base(), edits({"type": "hide", "edit_id": "b", "item_id": "i_1"})).decisions)
+    hide = edits({"type": "hide", "edit_id": "b", "item_id": "i_1"})
+    got = by_id(apply_review(base(), hide, tracks=base_tracks(), job=job()).decisions)  # exactly the policy's style
     assert (got["i_1"].decision, got["i_1"].decided_by, got["i_1"].style) == ("hide", "creator", "pixelate")
+    got = by_id(apply_review(base(), hide).decisions)  # without the tracks nothing rules out a close-up: whole person
+    assert got["i_1"].style == "person_solid"
 
 
 def test_a_locked_child_can_not_be_kept_or_merged() -> None:
@@ -305,3 +317,29 @@ def test_a_kept_prominent_person_hidden_again_is_covered_whole() -> None:
 def test_a_creator_hide_clears_the_hold() -> None:
     got = by_id(apply_review(base(), edits({"type": "hide", "edit_id": "h", "item_id": "i_4"})).decisions)
     assert (got["i_4"].decision, got["i_4"].hold, got["i_4"].decided_by) == ("hide", None, "creator")
+
+
+def test_a_spot_covered_again_after_an_undo_keeps_its_patch_number() -> None:
+    """API-NOTES §12: an A-number never changes once given, even as the server replays the whole log."""
+    log = edits(
+        {"type": "cover_spot", "edit_id": "c1", "spot_id": "s1"},
+        {"type": "undo", "edit_id": "u1", "reverts": "c1"},
+        {"type": "cover_spot", "edit_id": "c2", "spot_id": "s1"},
+    )
+    raw = audit_with_spot().model_dump(mode="json")
+    raw["leaks"].append({"frame": 40, "box": [100, 40, 120, 60], "kind": "face", "detector": "egoblur",
+                         "patched_item": None, "unresolved": True})  # fmt: skip
+    raw["spots"].append({"spot_id": "s2", "first": 40, "last": 40, "boxes": {"40": [100, 40, 120, 60]}})
+    raw["unresolved"] = 2
+    two = Audit.model_validate(raw)
+    log += edits({"type": "cover_spot", "edit_id": "c3", "spot_id": "s2"})  # takes the next number
+    first = apply_review(base(), log, audit=two, frames=60)
+    assert first.audit is not None
+    covered_by = first.audit.spots[0].covered_by
+    label = by_id(first.decisions)[str(covered_by)].audit_label
+    more = [*log, *edits({"type": "keep", "edit_id": "k1", "item_id": "i_2"})]
+    # The API folds the whole log over the decisions and audit the last edit saved.
+    again = apply_review(first.decisions, more, audit=first.audit, frames=60)
+    assert again.audit is not None
+    assert again.audit.spots[0].covered_by == covered_by
+    assert by_id(again.decisions)[str(covered_by)].audit_label == label

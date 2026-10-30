@@ -8,6 +8,7 @@ changes nothing.
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import cv2
@@ -53,7 +54,37 @@ def render(job_dir: Path) -> Path:
                 path = thumbs / f"{spec.item_id}.jpg"
                 if not cv2.imwrite(str(path), cut_thumb(redacted, spec.box), [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY]):
                     raise RenderError(f"couldn't write {path.name}")
+    write_atomic(job_dir / PLAN_STAMP, file_sha256(job_dir / "plan.json") + "\n")
     return out
+
+
+def write_atomic(path: Path, text: str) -> None:
+    """Whole or not at all (a temp file renamed into place): a crash never leaves a torn record."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
+
+
+#: The sha256 of the ``plan.json`` the current ``redacted.mp4`` was drawn from, written after the video is complete.
+PLAN_STAMP = Path("raw/render/plan.sha256")
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def rendered_from_plan(job_dir: Path) -> bool:
+    """Whether ``redacted.mp4`` exists and was drawn from the current ``plan.json`` (a crash between writing a plan
+    and finishing its render, or any later plan edit, leaves this false)."""
+    stamp = job_dir / PLAN_STAMP
+    if not (job_dir / REDACTED).exists() or not stamp.exists():
+        return False
+    return stamp.read_text(encoding="utf-8").strip() == file_sha256(job_dir / "plan.json")
 
 
 def run(job_dir: Path, *, replay: bool = False) -> Path:
@@ -66,4 +97,14 @@ def run(job_dir: Path, *, replay: bool = False) -> Path:
     return render(job_dir)
 
 
-__all__ = ["REDACTED", "THUMBS", "RenderError", "fills_by_frame", "render", "run"]
+__all__ = [
+    "PLAN_STAMP",
+    "REDACTED",
+    "THUMBS",
+    "RenderError",
+    "file_sha256",
+    "fills_by_frame",
+    "render",
+    "rendered_from_plan",
+    "run",
+]

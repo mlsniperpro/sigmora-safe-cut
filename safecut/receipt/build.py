@@ -14,6 +14,7 @@ import json
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
+from typing import cast
 
 from safecut.config import Settings
 from safecut.contracts import (
@@ -38,6 +39,7 @@ from safecut.contracts import (
     read_cost_lines,
     receipt_hash,
 )
+from safecut.render import file_sha256, rendered_from_plan
 
 RUN = Path("raw/audit/run.json")
 APPROVAL = "approval.json"
@@ -63,8 +65,13 @@ def is_synthetic(job_dir: Path) -> bool:
     """A job replayed from synthetic answers: SENSE's demo recording (``raw/manifest.json`` ``synthetic: true``), a
     ``synthetic.json`` marker, or the red-team oracle's truth file."""
     manifest = job_dir / "raw" / "manifest.json"
-    if manifest.exists() and json.loads(manifest.read_text(encoding="utf-8")).get("synthetic") is True:
-        return True
+    if manifest.exists():
+        try:
+            data: object = json.loads(manifest.read_text(encoding="utf-8"))
+        except ValueError:
+            return True  # unreadable counts as synthetic, like pipeline.recording_is_synthetic: never shown as real
+        if not isinstance(data, dict) or cast("dict[str, object]", data).get("synthetic") is not False:
+            return True
     return (job_dir / SYNTHETIC_MARKER).exists() or (job_dir / SYNTHETIC_TRUTH).exists()
 
 
@@ -129,6 +136,13 @@ def data_handling(job_dir: Path, models: dict[str, str], audit: Audit) -> DataHa
     billed = (job_dir / "cost.jsonl").exists() and any(
         line.usd > 0 or line.estimated for line in read_cost_lines(job_dir / "cost.jsonl")
     )
+    sam_billed = (
+        sam is not None
+        and (job_dir / "cost.jsonl").exists()
+        and any(
+            line.model == sam and (line.usd > 0 or line.estimated) for line in read_cost_lines(job_dir / "cost.jsonl")
+        )
+    )
     if is_synthetic(job_dir) and not billed:  # a job any model was paid for isn't "no model was called"
         notes.append(SYNTHETIC_NOTE)
     elif is_replay(job_dir) and not billed:
@@ -149,11 +163,24 @@ def data_handling(job_dir: Path, models: dict[str, str], audit: Audit) -> DataHa
         store=any(store_by_model.values()),
         store_by_model=store_by_model,
         no_store_param=no_store,
-        files_deleted=files.all_deleted if files is not None else True,
+        # Without files.json nothing records an upload: true only when no SAM call was billed to this job.
+        files_deleted=files.all_deleted if files is not None else not sam_billed,
         responses_delete_requested=responses.requested if responses is not None else 0,
         responses_delete_pending=len(responses.pending) if responses is not None else 0,
         notes=notes,
     )
+
+
+def audited_current_video(job_dir: Path) -> bool:
+    """The audit on record checked exactly the ``redacted.mp4`` in the job (its run record names the video's sha256)."""
+    run, video = job_dir / RUN, job_dir / "redacted.mp4"
+    if not run.exists() or not video.exists():
+        return False
+    try:
+        record = json.loads(run.read_text(encoding="utf-8"))
+    except ValueError:
+        return False  # a torn record vouches for nothing
+    return isinstance(record, dict) and cast("dict[str, object]", record).get("video_sha256") == file_sha256(video)
 
 
 def build(
@@ -162,6 +189,10 @@ def build(
     """Seal the receipt for ``job_dir``."""
     if not (job_dir / "audit.json").exists() or not (job_dir / "decisions.json").exists():
         raise ReceiptError("a receipt needs decisions.json and audit.json (run decide … audit first)")
+    if not rendered_from_plan(job_dir):
+        raise ReceiptError("redacted.mp4 wasn't drawn from the current plan.json (it changed since): render it again")
+    if not audited_current_video(job_dir):
+        raise ReceiptError("audit.json doesn't describe the current redacted.mp4 (re-rendered since): run the audit")
     job = load(job_dir / "job.json", Job)
     decisions = load(job_dir / "decisions.json", Decisions)
     audit = load(job_dir / "audit.json", Audit)

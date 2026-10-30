@@ -11,7 +11,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from safecut import contracts
-from safecut.contracts import Decisions, Participant, StageStatus, Turn
+from safecut.contracts import Decisions, Participant, StageStatus, Track, Turn
 from safecut.decide import run as decide_run
 from safecut.decide.policy import (
     HOLD_ORDER,
@@ -542,3 +542,100 @@ def test_reasons_are_short_lowercase_first_without_a_full_stop() -> None:
     assert reason.endswith("…")
     assert short_reason("Hidden.") == "hidden"
     assert short_reason("  ") == "hidden by default"
+
+
+def test_a_child_carried_by_an_adult_pairs_with_their_own_body() -> None:
+    """The child's face lies inside the adult's body box and their own: the body it fills most is theirs, so the
+    child's whole item is locked, the adult's face and body stay one item, and one child counts once."""
+    adult_face = track("face:1", 0, 20, (60, 10, 80, 30))
+    adult = track("person:1", 0, 20, (40, 5, 160, 175))
+    child_face = track("face:2", 0, 20, (110, 60, 122, 72))
+    child = track("person:2", 0, 20, (100, 55, 135, 120))
+    rs = [matched("face:1"), matched("person:1"), row("face:2", "child", "participant", "participant"),
+          matched("person:2")]  # fmt: skip
+    got = run(adult_face, adult, child_face, child, rs=rs, scene=scene(children=1))
+    kid = only(got, "face:2")
+    assert (kid["track_ids"], kid["kind"], kid["locked"], kid["decision"]) == (
+        ["face:2", "person:2"], "child", True, "hide"
+    )  # fmt: skip
+    assert only(got, "face:1")["track_ids"] == ["face:1", "person:1"]
+    assert only(got, "face:1")["decision"] == "keep"
+
+
+def test_a_child_face_no_body_can_claim_locks_every_body_holding_it() -> None:
+    """Two identical bodies hold the child's face equally (an exact tie pairs nothing): neither body can be kept."""
+    child_face = track("face:2", 0, 20, (110, 60, 122, 72))
+    a = track("person:1", 0, 20, (100, 55, 135, 120))
+    b = track("person:2", 0, 20, (100, 55, 135, 120))
+    rs = [row("face:2", "child", "child", "child"), matched("person:1"), matched("person:2")]
+    got = run(child_face, a, b, rs=rs, scene=scene(children=1))
+    assert only(got, "face:2")["track_ids"] == ["face:2"]
+    for body in ("person:1", "person:2"):
+        item = only(got, body)
+        assert (item["decision"], item["kind"], item["locked"]) == ("hide", "child", True), body
+
+
+def test_a_reentry_of_a_childs_body_is_locked_too() -> None:
+    """The body is a child only through its item (grouped with a face voted child): its re-entry is still locked."""
+    face = track("face:1", 0, 20, (20, 10, 40, 30))
+    body = track("person:1", 0, 20, (10, 5, 60, 100))
+    back = track("person:2", 40, 60, (10, 5, 60, 100), reentry_of="person:1")
+    rs = [row("face:1", "child", "child", "child"), row("person:1", *("bystander",) * 3), matched("person:2")]
+    got = run(face, body, back, rs=rs, scene=scene(children=1))
+    item = only(got, "person:2")
+    assert (item["decision"], item["kind"], item["locked"]) == ("hide", "child", True)
+
+
+def test_a_face_inside_an_unpaired_child_body_is_locked() -> None:
+    """The face lies inside the body on only 70 % of frames (so they don't group); the body is voted child."""
+    boxes = {f: (20, 10, 40, 30) if f < 14 else (200, 10, 220, 30) for f in range(20)}
+    face = Track.model_validate({**track("face:1", 0, 19).model_dump(), "boxes": boxes})
+    body = track("person:1", 0, 19, (10, 5, 60, 100))
+    rs = [matched("face:1"), row("person:1", "child", "child", "child")]
+    got = run(face, body, rs=rs, scene=scene(children=1))
+    assert only(got, "face:1")["track_ids"] == ["face:1"]
+    item = only(got, "face:1")
+    assert (item["decision"], item["kind"], item["locked"]) == ("hide", "child", True)
+
+
+def test_duplicate_role_rows_fail_closed() -> None:
+    rs = [row("face:1", "child", "child", "child"), matched("face:1")]
+    assert only(run(track("face:1", 0, 20), rs=rs), "face:1")["kind"] == "child"
+    rs = [matched("face:1"), row("face:1", *("bystander",) * 3)]
+    assert only(run(track("face:1", 0, 20), rs=rs), "face:1")["decision"] == "hide"
+
+
+def test_a_close_up_face_without_a_body_is_hidden_whole() -> None:
+    """WP3 step 3 / DESIGN §2.7b: prominent (over a quarter of the frame height); SAM found no body."""
+    got = only(run(track("face:1", 0, 20, (100, 20, 160, 130)), rs=[row("face:1", *("bystander",) * 3)]), "face:1")
+    assert got["style"] == "person_solid"
+
+
+def test_a_childs_body_is_locked_when_their_face_pairs_with_the_adult_holding_them() -> None:
+    """The adult's face isn't tracked; the child's face lies in the adult's body on every frame and in their own on
+    most, so it pairs with the adult. The child's own (unpaired) body holds a child face: locked, never kept."""
+    adult = track("person:1", 0, 20, (40, 5, 160, 175))
+    boxes = {f: (110, 60, 122, 72) if f < 18 else (60, 60, 72, 72) for f in range(21)}
+    child_face = Track.model_validate({**track("face:4", 0, 20).model_dump(), "boxes": boxes})
+    child = track("person:3", 0, 20, (100, 55, 135, 120))
+    rs = [matched("person:1"), row("face:4", "child", "child", "child"), matched("person:3")]
+    got = run(adult, child_face, child, rs=rs, scene=scene(children=1))
+    item = only(got, "person:3")
+    assert (item["decision"], item["kind"], item["locked"]) == ("hide", "child", True)
+
+
+def test_one_child_split_across_items_counts_once_for_the_scene() -> None:
+    """A child's face and two duplicate bodies, all voted child, tie and pair nothing: still one child, so a scene
+    with two children holds the participant (one child unaccounted for)."""
+    child_face = track("face:4", 0, 20, (210, 60, 222, 72))
+    b1 = track("person:3", 0, 20, (200, 55, 235, 120))
+    b2 = track("person:5", 0, 20, (200, 55, 235, 120))
+    kid = ("child", "child", "child")
+    rs = [matched("face:1"), row("face:4", *kid), row("person:3", *kid), row("person:5", *kid)]
+    got = run(track("face:1", 0, 20), child_face, b1, b2, rs=rs, scene=scene(children=2))
+    assert only(got, "face:1")["hold"] == "unmatched_child"
+
+
+def test_a_face_only_child_is_covered_whole() -> None:
+    got = only(run(track("face:4", 0, 20, (100, 20, 120, 40)), rs=[row("face:4", "child", "child", "child")]), "face:4")
+    assert (got["kind"], got["style"]) == ("child", "person_solid")

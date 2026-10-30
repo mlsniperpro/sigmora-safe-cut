@@ -28,6 +28,7 @@ from safecut.receipt.build import (
     YUNET_NOTE,
     build,
     data_handling,
+    is_synthetic,
 )
 from safecut.render import render
 from safecut.render import run as render_run
@@ -213,3 +214,62 @@ def test_the_banner_names_the_checks_that_actually_ran(job_dir: Path) -> None:
     page = (job_dir / RECEIPT_HTML).read_text()
     assert "The face detector (faces only) scanned every output frame" in page
     assert "a synthetic ground-truth oracle checked sampled frames" in page
+
+
+def test_an_unreadable_recording_manifest_never_reads_as_a_real_run(tmp_path: Path) -> None:
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    (raw / "manifest.json").write_text("{not json")
+    assert is_synthetic(tmp_path)  # like pipeline.recording_is_synthetic
+    (raw / "manifest.json").write_text(json.dumps({"synthetic": False}))
+    assert not is_synthetic(tmp_path)
+
+
+def test_without_files_json_a_billed_sam_call_is_never_claimed_deleted(job_dir: Path) -> None:
+    line = CostLine.model_validate({
+        "ts": "2026-10-30T12:00:00Z", "provider": "meta", "job_id": "j_synth", "stage": "sam",
+        "model": "sam-3.1", "attempt": 1, "units": {"frames": 10.0}, "usd": 0.002, "estimated": False,
+        "request_id": "r1", "code_kind": "owner", "code_id": None,
+    })  # fmt: skip
+    append_cost_line(line, job_dir / "cost.jsonl")
+    audit = load(job_dir / "audit.json", Audit)
+    assert not (job_dir / "files.json").exists()
+    assert not data_handling(job_dir, {"sam": "sam-3.1", "auditor": "yunet-face"}, audit).files_deleted
+    assert data_handling(job_dir, {"auditor": "yunet-face"}, audit).files_deleted
+
+
+def test_a_receipt_never_seals_an_audit_of_another_video(job_dir: Path) -> None:
+    """A re-render after the audit (``safecut render`` then ``safecut receipt``): the clean audit.json describes the
+    old video, so no receipt until the audit runs on the new one."""
+    receipt_run(job_dir, settings=SETTINGS)
+    plan = load(job_dir / "plan.json", contracts.Plan)
+    frames = {f: es for f, es in plan.frames.items() if f % 2}  # a weaker plan: half the frames bare
+    contracts.dump(plan.model_copy(update={"frames": frames}), job_dir / "plan.json")
+    render_run(job_dir)
+    with pytest.raises(ReceiptError, match=r"current redacted\.mp4"):
+        receipt_run(job_dir, settings=SETTINGS)
+    audit_run(job_dir, replay=True, settings=SETTINGS)
+    receipt_run(job_dir, settings=SETTINGS)  # the audit of this video is on record now
+
+
+def test_a_receipt_for_the_current_directory_by_its_dot(job_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(job_dir)
+    assert receipt_run(Path("."), settings=SETTINGS).name == RECEIPT
+
+
+def test_a_receipt_never_seals_a_plan_the_video_was_not_drawn_from(job_dir: Path) -> None:
+    """Decisions and plan changed after the render (``safecut guard`` then ``safecut receipt``): the video still shows
+    what the old plan left clear, so no receipt until it is drawn again."""
+    decided = load(job_dir / "decisions.json", contracts.Decisions)
+    hidden = [i.model_copy(update={"decision": "hide", "style": "pixelate", "decided_by": "creator"})
+              if i.decision == "keep" else i for i in decided.items]  # fmt: skip
+    contracts.dump(contracts.Decisions(items=hidden), job_dir / "decisions.json")
+    guard_run(job_dir)
+    with pytest.raises(ReceiptError, match="drawn from the current plan"):
+        receipt_run(job_dir, settings=SETTINGS)
+
+
+def test_a_torn_audit_run_record_vouches_for_nothing(job_dir: Path) -> None:
+    (job_dir / "raw/audit/run.json").write_text('{"video_sha2')
+    with pytest.raises(ReceiptError, match="describe the current"):
+        receipt_run(job_dir, settings=SETTINGS)

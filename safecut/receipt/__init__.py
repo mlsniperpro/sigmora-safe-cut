@@ -9,12 +9,15 @@ re-render or re-audit fails never shows the previous video's verdict. ``python -
 
 from __future__ import annotations
 
+import os
+import tempfile
 from pathlib import Path
 
 from safecut.config import Settings, load_settings
 from safecut.contracts import ContractError, Receipt, dump, load, validate_job_dir
 from safecut.receipt.build import ReceiptError, build, verify_chain
 from safecut.receipt.html import render_html
+from safecut.render import write_atomic
 
 RECEIPT = "receipt.json"
 RECEIPT_HTML = "receipt.html"
@@ -27,18 +30,32 @@ def run(job_dir: Path, *, replay: bool = False, settings: Settings | None = None
     """Write ``receipt.json`` and ``receipt.html``; return the JSON's path."""
     del replay  # no API call in this stage
     settings = settings or load_settings()
-    previous = retire(job_dir) or _retired(job_dir)
+    current = load(job_dir / RECEIPT, Receipt) if (job_dir / RECEIPT).exists() else None  # tampered: raises
+    previous = current or _retired(job_dir)
     receipt = build(job_dir, settings, prev_hash=previous.hash if previous is not None else None)
-    path = dump(receipt, job_dir / RECEIPT)
     try:
         # The executable contract gates publishing (ARCHITECTURE §3): a receipt only stands on a job directory that
-        # validates as a whole; otherwise it is withdrawn and the stage fails (the old one stays in the history).
-        validate_job_dir(job_dir)
+        # validates as a whole. It is checked before it is put in place, so no reader ever sees one that fails.
+        _validate_with(job_dir, receipt)
     except ContractError as exc:
-        path.unlink()
         raise ReceiptError(f"the job directory doesn't validate, so no receipt: {exc}") from exc
+    retire(job_dir)
+    path = dump(receipt, job_dir / RECEIPT)
     (job_dir / RECEIPT_HTML).write_text(render_html(receipt, job_dir), encoding="utf-8")
     return path
+
+
+def _validate_with(job_dir: Path, receipt: Receipt) -> None:
+    """``validate_job_dir`` on the job as it would be with ``receipt`` in place: a shadow directory of the same name
+    whose entries link to the job's, plus the new receipt."""
+    with tempfile.TemporaryDirectory() as tmp:
+        shadow = Path(tmp) / Path(os.path.abspath(job_dir)).name  # "." has no name of its own
+        shadow.mkdir()
+        for entry in job_dir.iterdir():
+            if entry.name not in (RECEIPT, RECEIPT_HTML):
+                (shadow / entry.name).symlink_to(entry.resolve(), target_is_directory=entry.is_dir())
+        dump(receipt, shadow / RECEIPT)
+        validate_job_dir(shadow)
 
 
 def retire(job_dir: Path) -> Receipt | None:
@@ -50,7 +67,7 @@ def retire(job_dir: Path) -> Receipt | None:
         return None
     previous = load(path, Receipt)
     dump(previous, job_dir / HISTORY / f"{previous.hash}.json")
-    (job_dir / HISTORY / HEAD).write_text(previous.hash, encoding="utf-8")
+    write_atomic(job_dir / HISTORY / HEAD, previous.hash)
     path.unlink()
     (job_dir / RECEIPT_HTML).unlink(missing_ok=True)
     return previous

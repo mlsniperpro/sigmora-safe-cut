@@ -155,12 +155,12 @@ def test_the_pixelate_grid_is_locked_to_the_first_face_and_sized_for_6_blocks() 
 
 def test_a_face_that_grows_gets_cells_from_its_widest_box() -> None:
     t = Track.model_validate(
-        {**track("face:1", 0, 1).model_dump(), "boxes": {0: (10, 10, 22, 22), 1: (10, 10, 70, 70)}}
-    )
+        {**track("face:1", 0, 1).model_dump(), "boxes": {0: (10, 10, 22, 22), 1: (10, 10, 52, 52)}}
+    )  # 42 px at its widest: under a quarter of the frame, so a mosaic (a taller face is a close-up, covered whole)
     ts = tracks(t)
     (e,) = entries(plan(JOB, ts, hide_all(ts)), 1, "i_1")
     assert e.grid is not None
-    assert e.grid[2] == 10
+    assert e.grid[2] == 7  # ceil(42 / 6)
 
 
 def test_an_item_read_through_renders_solid_from_then_on() -> None:
@@ -203,7 +203,8 @@ def test_a_pixelated_item_without_a_face_is_refused() -> None:
 def test_mask_entries_follow_sams_outline_padded_outward() -> None:
     t = track("face:1", 10, 14, (70, 60, 131, 121), masks={10: disk(100, 90, 30), 14: disk(100, 90, 30)})
     ts = tracks(t)
-    p = plan(JOB, ts, hide_all(ts))
+    (item,) = hide_all(ts).items  # a close-up (a third of the frame): whole person; here its face's own outline
+    p = plan(JOB, ts, Decisions(items=[item.model_copy(update={"style": "solid"})]))
     for frame in (10, 12, 14):  # its own mask, then both neighbours' shifted to the box between them
         (e,) = entries(p, frame, "i_1")
         assert e.shape == "mask"
@@ -423,3 +424,29 @@ def test_a_whole_person_item_covers_a_body_where_only_its_face_is_tracked() -> N
     p = plan(JOB, ts, decided)
     for frame in (0, 5, 20, 45, 50):
         assert covered(p, frame, "i_1", (120, 55, 170, H)), frame  # below the face, to the frame's bottom
+
+
+def test_a_read_through_whole_person_stays_whole_when_it_goes_solid() -> None:
+    """redteam.md re-renders a read-through item solid; that never shrinks a whole-person cover to the face."""
+    ts = tracks(track("face:1", 0, 20, (150, 20, 170, 40)))
+    removed = apply_review(hide_all(ts), [EDIT.validate_python({"type": "remove_person", "edit_id": "r",
+                                                                 "item_id": "i_1"})]).decisions  # fmt: skip
+    p = plan(JOB, ts, removed, solid={"i_1"})
+    (e,) = entries(p, 10, "i_1")
+    assert e.style == "solid"
+    assert covered(p, 10, "i_1", (140, 40, 180, H))
+
+
+def test_a_merged_face_away_from_the_items_body_still_gets_a_body() -> None:
+    """A whole-person item's body region covers its own frames; a merged face elsewhere in the frame (a re-entry's
+    back-fill while the old body is held) gets its own estimated body, not the far-away one's."""
+    body = track("person:1", 0, 20, (10, 5, 60, 170))
+    face = track("face:2", 40, 100, (250, 20, 270, 40), reentry_of="person:1")
+    ts = tracks(body, face)
+    decided = hide_all(ts)
+    merged = Decisions(items=[DecisionItem.model_validate({**decided.items[0].model_dump(), "track_ids": [
+        "person:1", "face:2"], "style": "person_solid", "decision": "hide", "decided_by": "creator",
+        "removed_by_creator": True})])  # fmt: skip
+    p = plan(JOB, ts, merged)
+    for frame in (25, 30):  # face:2's back-fill, person:1's extend/hold region elsewhere
+        assert covered(p, frame, "i_1", (245, 40, 275, H)), frame
