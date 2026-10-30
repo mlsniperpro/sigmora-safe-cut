@@ -164,6 +164,7 @@ def test_too_large_is_refused_before_transcode(tmp_path: Path, monkeypatch: pyte
     with pytest.raises(prepare.PrepareError) as err:
         prepare.prepare(Path("fixtures/clips/counter_24fps.mp4"), tmp_path / "j")
     assert err.value.reason == "too_large"
+    assert err.value.size_bytes is not None
     assert not (tmp_path / "j" / prepare.PREPARED).exists()
 
 
@@ -173,6 +174,8 @@ def test_too_long_is_refused(tmp_path: Path) -> None:
     with pytest.raises(prepare.PrepareError) as err:
         prepare.prepare(clip, tmp_path / "j")
     assert err.value.reason == "too_long"
+    assert err.value.duration_s is not None
+    assert err.value.duration_s > 60
 
 
 def test_exactly_sixty_seconds_is_allowed(tmp_path: Path) -> None:
@@ -187,12 +190,12 @@ def test_unreadable_and_videoless_uploads(tmp_path: Path) -> None:
     junk.write_bytes(b"not a video at all")
     with pytest.raises(prepare.PrepareError) as err:
         prepare.prepare(junk, tmp_path / "j1")
-    assert err.value.reason == "unreadable"
+    assert err.value.reason == "bad_media"
     audio_only = tmp_path / "audio.m4a"
     media.run(["-y", "-f", "lavfi", "-i", "sine=duration=1", "-c:a", "aac", str(audio_only)])
     with pytest.raises(prepare.PrepareError) as err:
         prepare.prepare(audio_only, tmp_path / "j2")
-    assert err.value.reason in ("no_video", "unreadable")
+    assert err.value.reason == "bad_media"
 
 
 def test_run_finds_the_one_upload(tmp_path: Path) -> None:

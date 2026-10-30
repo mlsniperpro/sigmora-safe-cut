@@ -34,15 +34,21 @@ MAX_FPS = 30
 MAX_EDGE = 1280
 _HASH_CHUNK = 1 << 20
 
-Reason = Literal["too_long", "too_large", "unreadable", "no_video", "no_source"]
+#: The API's and UI's codes (WP5, UI-SPEC §10.2); ``no_source`` is a job directory without its upload.
+Reason = Literal["too_long", "too_large", "bad_media", "no_source"]
 
 
 class PrepareError(ValueError):
-    """The upload can't be prepared. ``reason`` is the API's and UI's error code (WP5, PR #2 UI-SPEC)."""
+    """The upload can't be prepared. ``reason`` is the API's and UI's error code (WP5, PR #2 UI-SPEC);
+    ``duration_s`` and ``size_bytes`` are set where they are known (the API shows them)."""
 
-    def __init__(self, reason: Reason, message: str) -> None:
+    def __init__(
+        self, reason: Reason, message: str, *, duration_s: float | None = None, size_bytes: int | None = None
+    ) -> None:
         super().__init__(message)
         self.reason: Reason = reason
+        self.duration_s = duration_s
+        self.size_bytes = size_bytes
 
 
 @dataclass(frozen=True)
@@ -93,13 +99,13 @@ def probe(source: Path) -> SourceProbe:
     """Limits first (size, then duration), so an over-limit upload is refused before any transcode."""
     size = source.stat().st_size
     if size > config.MAX_UPLOAD_BYTES:
-        raise PrepareError("too_large", f"{size} bytes is over the {config.MAX_UPLOAD_BYTES}-byte upload limit")
+        raise PrepareError("too_large", f"{size} bytes is over the {config.MAX_UPLOAD_BYTES}-byte upload limit",
+                           size_bytes=size)  # fmt: skip
     try:
         facts = media.facts(source)
         video = media.packets(source, "v:0")
     except media.MediaError as exc:
-        reason: Reason = "no_video" if "no v:0 packets" in str(exc) else "unreadable"
-        raise PrepareError(reason, f"can't read the video stream: {exc}") from exc
+        raise PrepareError("bad_media", f"can't read the video stream: {exc}", size_bytes=size) from exc
     audio: media.Packets | None = None
     audio_start: Fraction | None = None
     if facts.audio:
@@ -111,7 +117,8 @@ def probe(source: Path) -> SourceProbe:
             log.warning("audio stream announced but unreadable; prepared without audio", extra={"source": source.name})
     duration = max(video.span, Fraction(facts.duration).limit_denominator(1_000_000))
     if duration > Fraction(str(config.MAX_CLIP_SECONDS)):
-        raise PrepareError("too_long", f"{float(duration):.2f} s is over the {config.MAX_CLIP_SECONDS} s limit")
+        raise PrepareError("too_long", f"{float(duration):.2f} s is over the {config.MAX_CLIP_SECONDS} s limit",
+                           duration_s=float(duration), size_bytes=size)  # fmt: skip
     return SourceProbe(video=video, audio=audio, audio_start=audio_start, fps=job_fps(video), duration=duration,
                        size_bytes=size)  # fmt: skip
 
@@ -186,12 +193,12 @@ def prepare(source: Path, job_dir: Path, intake: Intake | None = None) -> Path:
         out_facts = media.facts(partial)
     except media.MediaError as exc:
         partial.unlink(missing_ok=True)
-        raise PrepareError("unreadable", f"transcode failed: {exc}") from exc
+        raise PrepareError("bad_media", f"transcode failed: {exc}") from exc
     partial.replace(prepared)
     try:
         extract_keyframes(prepared, job_dir / KEYFRAMES, fps=found.fps, frames=frames)
     except media.MediaError as exc:
-        raise PrepareError("unreadable", f"keyframes failed: {exc}") from exc
+        raise PrepareError("bad_media", f"keyframes failed: {exc}") from exc
     job = Job(
         job_id=job_dir.name,
         source=intake.source if intake is not None else source.name,
