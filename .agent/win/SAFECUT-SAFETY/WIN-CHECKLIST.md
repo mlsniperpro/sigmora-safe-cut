@@ -88,3 +88,11 @@ Evidence is a test name, a command run in this session, or a commit. Owner input
 - [x] YuNet fallback without torch; cached availability (`tests/test_audit_gpu.py`).
 - [x] Whole-person body cover per frame (`test_a_whole_person_item_covers_a_body_where_only_its_face_is_tracked`); cache lock.
 - [-] Job-cap pre-check before the audit: SHIP's `pipeline.run_stage` (fails closed), filed with SHIP.
+
+## Audit findings (round 5, fixed with tests at dd1312d, merged d126234; details in reaudit.md)
+- [x] Child carried by an adult; unpaired child face locks bodies (`tests/test_policy.py`, `tests/test_binding.py`).
+- [x] Read-through keeps whole-person cover; spot numbers stable (`tests/test_guard.py`, `tests/test_policy_review.py`).
+- [x] Fail-closed audit on a crash; receipt validated before it stands (`test_a_crash_part_way_never_leaves_the_old_clean_verdict`).
+- [x] Crash-safe second-opinion record; manifest and files_deleted honesty (`tests/test_audit_opinion.py`, `tests/test_receipt.py`).
+- [-] go_live.py recording replacement: SENSE's script, filed with SENSE.
+- [-] Frame-label spill, `detector` literal, unhashed video: spec-literal or outside the contract (reaudit.md).

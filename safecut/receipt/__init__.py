@@ -9,6 +9,7 @@ re-render or re-audit fails never shows the previous video's verdict. ``python -
 
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 
@@ -47,7 +48,7 @@ def _validate_with(job_dir: Path, receipt: Receipt) -> None:
     """``validate_job_dir`` on the job as it would be with ``receipt`` in place: a shadow directory of the same name
     whose entries link to the job's, plus the new receipt."""
     with tempfile.TemporaryDirectory() as tmp:
-        shadow = Path(tmp) / job_dir.name
+        shadow = Path(tmp) / Path(os.path.abspath(job_dir)).name  # "." has no name of its own
         shadow.mkdir()
         for entry in job_dir.iterdir():
             if entry.name not in (RECEIPT, RECEIPT_HTML):
