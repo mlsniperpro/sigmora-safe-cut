@@ -29,6 +29,7 @@ from safecut.receipt.build import (
     build,
     data_handling,
     is_synthetic,
+    models_ran,
 )
 from safecut.render import render
 from safecut.render import run as render_run
@@ -273,3 +274,16 @@ def test_a_torn_audit_run_record_vouches_for_nothing(job_dir: Path) -> None:
     (job_dir / "raw/audit/run.json").write_text('{"video_sha2')
     with pytest.raises(ReceiptError, match="describe the current"):
         receipt_run(job_dir, settings=SETTINGS)
+
+
+def test_the_escalation_model_is_the_one_its_calls_recorded(job_dir: Path) -> None:
+    """AGENTS rule 9: the model behind each stage comes from what ran, not from today's settings."""
+    roles = json.loads((job_dir / "roles.json").read_text())
+    roles["tracks"][0]["escalated"] = True  # a track the escalation ruled on
+    contracts.dump(contracts.Roles.model_validate(roles), job_dir / "roles.json")
+    record = job_dir / "raw" / "escalate" / "w0.json"
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text(json.dumps({"stage": "escalate", "model": "muse-spark-1.3"}))
+    audit = load(job_dir / "audit.json", Audit)
+    models = models_ran(job_dir, SETTINGS.model_copy(update={"escalate_model": "muse-wonder-1.0"}), audit)
+    assert models["escalate"] == "muse-spark-1.3"
