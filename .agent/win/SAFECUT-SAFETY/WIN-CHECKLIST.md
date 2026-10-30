@@ -108,3 +108,8 @@ Evidence is a test name, a command run in this session, or a commit. Owner input
 - [x] Child links across pairings drive the lock and the scene count (`tests/test_policy.py`).
 - [x] Whole-person covers: re-hide fallback, face-only child, per-face body (`tests/test_policy_review.py`, `tests/test_guard.py`).
 - [x] Receipt needs the current render; leaks survive re-runs and crashes; atomic records (`tests/test_receipt.py`, `tests/test_audit_loop.py`).
+
+## Audit findings (round 8, fixed with tests at c437aa3, merged efd8b9d; details in reaudit.md)
+- [x] Mosaic never covers its own read-through; crash-safe plan/decisions order (`tests/test_audit_loop.py`).
+- [x] Close-ups with an early-ending body; duplicate object rulings fail closed (`tests/test_policy.py`).
+- [-] Private red-team text in API views; approval vs patches: SHIP's files, fixed on SHIP's branch.

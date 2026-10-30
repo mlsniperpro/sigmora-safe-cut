@@ -1,4 +1,4 @@
-AUDITED_COMMIT: a6702a7580a111f56a69100ea827f80fb5fa2bff
+AUDITED_COMMIT: c437aa3fc7517e1f9ca4a6e5ce3c363d3c15e382
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -161,4 +161,18 @@ verified here before it is fixed, and fixed with a named test. The counter reset
   (`test_a_torn_audit_run_record_vouches_for_nothing`).
 - Noted, conservative: held-box growth capped at 100 %, edge velocity fallback, a misaligned face may touch 7 cells.
 
-## Round 8: running at a6702a7 (main 9047b78)
+## Round 8 (at a6702a7, findings must be reproduced): 0 critical, 0 high; 3 medium/low reproduced, fixed at c437aa3 (merged efd8b9d)
+- WP4 medium: a mosaic read through counted as cover for its own unresolved leak → only solid regions cover
+  (`test_a_mosaic_read_through_never_counts_as_cover_for_its_unresolved_leak`, fails without the fix).
+- WP4 medium-low: a crash between writing decisions and plan left them disagreeing (fail-closed at the receipt,
+  but stuck) → plan first, re-plan when they disagree, and a leak whose patch never landed is found again
+  (`test_a_crash_between_plan_and_decisions_is_re_planned[plan.json|decisions.json]`, both fail without the fix).
+- WP3 low/medium: the close-up rule was skipped when a body track ended early → any face over a quarter of the
+  frame (`test_a_close_up_face_whose_body_track_ends_early_is_hidden_whole`, fails without the fix).
+- Note acted on: a duplicate object ruling fails closed (`test_a_duplicate_object_ruling_fails_closed`).
+- Cross-lane (SHIP's): private red-team text in `api/views.py`; approval vs audit patches → fixed on SHIP's branch
+  (2fd65da), merging with SHIP's gate.
+- Notes kept as notes: mosaic block limit is width-based (the contract's reading); pixelated bodies use the face's
+  cell; red-team re-checks the leak frame (spec), not the patch span; scene descriptions in the approved words.
+
+## Round 9: running at c437aa3 (main efd8b9d)
