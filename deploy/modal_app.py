@@ -50,8 +50,10 @@ secrets = [modal.Secret.from_name("safecut-secrets")]
 @app.function(
     volumes={"/data": jobs, "/models": models},
     secrets=secrets,
-    cpu=4.0,
-    memory=8192,
+    # Always on (min_containers=1) for the demo and the in-process sweep, so sized to what it runs: the models are
+    # remote; ffmpeg, the render and the YuNet audit are the local work, two worker threads at most.
+    cpu=2.0,
+    memory=4096,
     min_containers=1,
     max_containers=1,
     timeout=60 * 60,
@@ -127,10 +129,40 @@ def pipeline_worker_smoke() -> dict[str, object]:
     }
 
 
+@app.function(volumes={"/data": jobs}, timeout=5 * 60)
+def ledger_smoke() -> dict[str, object]:
+    """The spend ledger is SQLite (WAL) on the jobs Volume: prove it reserves, settles and reads back there, from a
+    fresh connection, before the service relies on it (a ledger error would fail every live job closed)."""
+    import uuid  # noqa: PLC0415 -- inside the container
+
+    from safecut.meta.budget import CapLimit, LocalLedger  # noqa: PLC0415 -- inside the container
+
+    path = Path(JOBS) / f".ledger-smoke-{uuid.uuid4().hex}.sqlite"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        ledger = LocalLedger(path)
+        limit = CapLimit("daily", "daily:smoke", 1.0)
+        ledger.reserve("smoke-1", None, 0.25, [limit])
+        ledger.settle("smoke-1", 0.2)
+        ledger.reserve("smoke-2", None, 0.5, [limit])
+        ledger.release("smoke-2")
+        reread = LocalLedger(path).spent("daily:smoke")
+        return {"ok": abs(reread - 0.2) < 1e-9, "spent": reread}
+    except Exception as exc:  # reported to the local entrypoint, which fails the deploy
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    finally:
+        for leftover in path.parent.glob(f"{path.name}*"):
+            leftover.unlink(missing_ok=True)
+
+
 @app.local_entrypoint()
 def smoke() -> None:
-    """``modal run deploy/modal_app.py``: the smoke run, failing loudly."""
+    """``modal run deploy/modal_app.py``: the smoke runs, failing loudly."""
     result = pipeline_worker_smoke.remote()
     print(result)
     if result["exit"] != 0 or result["unresolved"] != 0 or not result["receipt"] or not result["redacted"]:
         raise SystemExit(f"smoke run failed: {result}")
+    ledger = ledger_smoke.remote()
+    print(ledger)
+    if not ledger.get("ok"):
+        raise SystemExit(f"the spend ledger doesn't work on the jobs Volume: {ledger}")

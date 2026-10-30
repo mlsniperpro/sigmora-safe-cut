@@ -7,6 +7,7 @@ a job (UI-SPEC §8 request 17), so it must be unguessable.
 
 from __future__ import annotations
 
+import json
 import re
 import secrets
 import shutil
@@ -211,6 +212,20 @@ class JobStore:
         _reap(doomed)
         return True
 
+    def reap_orphan(self, job_id: str) -> bool:
+        """Remove ``job_id``'s directory if it has no state: what a stage still running wrote after the job was
+        deleted (``dump`` re-creates parent folders). True if something was removed."""
+        if not _valid_id(job_id):
+            return False
+        with self._lock(job_id):
+            target = self.path(job_id)
+            if not target.is_dir() or (target / STATE).exists():
+                return False
+            doomed = self.root / f"{DELETING}{job_id}-{secrets.token_hex(4)}"
+            target.rename(doomed)
+        _reap(doomed)
+        return True
+
     def ids(self) -> list[str]:
         return sorted(p.name for p in self.root.iterdir() if p.is_dir() and _valid_id(p.name))
 
@@ -223,9 +238,15 @@ class JobStore:
             try:
                 state = load(self.path(job_id) / STATE, JobState)
             except ContractError:
-                # No readable state: a directory a stage re-created after its job was deleted (or a broken one).
-                # A job is created with its state in the same breath, so only one older than a minute is reaped.
-                expired = _age(self.path(job_id), now) > STATELESS_GRACE
+                if (self.path(job_id) / STATE).exists():
+                    # Present but not valid (a deploy whose schema moved on, a torn write): its own created_at
+                    # still decides, so a schema change never deletes live jobs early nor keeps one past its TTL.
+                    created = _created_at(self.path(job_id) / STATE)
+                    expired = (now - created if created else _age(self.path(job_id), now)) >= self.ttl
+                else:
+                    # No state at all: what a stage re-created after its job was deleted. A job is created with
+                    # its state in the same breath, so only one older than a minute is reaped.
+                    expired = _age(self.path(job_id), now) > STATELESS_GRACE
             else:
                 expired = not state.pinned and now >= state.created_at + self.ttl
             if expired and self.delete(job_id):
@@ -247,6 +268,15 @@ def _reap(path: Path) -> None:
         if not path.exists():
             return
         time.sleep(0.05)
+
+
+def _created_at(path: Path) -> datetime | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))["created_at"]
+        created = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return created if created.tzinfo else created.replace(tzinfo=UTC)
 
 
 def _age(path: Path, now: datetime) -> timedelta:

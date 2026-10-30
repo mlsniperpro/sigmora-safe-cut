@@ -43,6 +43,7 @@ from safecut.decide import REVIEW, policy_decisions
 from safecut.decide.review import ReviewEdit, ReviewError, ReviewLog, apply_review
 from safecut.meta.status import StatusUnavailableError, fetch_status
 from safecut.stages import INTAKE, RAW_DIR, SOURCE_DIR, stage
+from safecut.track.media import SAFE_INPUT
 
 log = logging.getLogger("safecut.api")
 
@@ -76,7 +77,11 @@ def hero_job_id(hero_id: str) -> str:
 def clip_duration(path: Path) -> float | None:
     """The container's duration from ffmpeg's header line (imageio-ffmpeg ships no ffprobe)."""
     proc = subprocess.run(  # noqa: S603 -- fixed argv, our own ffmpeg
-        [get_ffmpeg_exe(), "-hide_banner", "-i", str(path)], capture_output=True, text=True, timeout=30, check=False
+        [get_ffmpeg_exe(), "-hide_banner", *SAFE_INPUT, "-i", str(path)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
     )
     match = re.search(r"Duration: (\d+):(\d\d):(\d\d(?:\.\d+)?)", proc.stderr)
     if not match:
@@ -125,6 +130,9 @@ class Service:
             cleanup_every=timedelta(minutes=settings.cleanup_interval_min),
         )
         self.worker = worker or Worker(self.store, settings)
+        #: Jobs whose upload is streaming right now (one PUT per job at a time).
+        self.uploading: set[str] = set()
+        self.uploads_lock = threading.Lock()
         self.access = Access(settings)
         self.limiter = RateLimiter()
         self.ledger = pipeline.job_ledger(settings)
@@ -415,8 +423,20 @@ async def upload(svc: Svc, job_id: str, request: Request, exp: str | None = None
     if request.headers.get("content-type", "").split(";")[0].strip() != spec.content_type:
         raise ApiRefusal(403, "bad_signature", "The upload's Content-Type isn't the one this link was made for.")
     length = request.headers.get("content-length")
-    if length is None or not length.isdigit() or int(length) != spec.size_bytes:
+    if length is None or not (length.isascii() and length.isdigit()) or int(length) != spec.size_bytes:
         raise ApiRefusal(403, "bad_signature", "The upload's Content-Length isn't the one this link was made for.")
+    with svc.uploads_lock:
+        if job_id in svc.uploading:  # two PUTs on one link would interleave in the same .part file
+            raise ApiRefusal(409, "already_uploading", "This clip is already being uploaded.")
+        svc.uploading.add(job_id)
+    try:
+        return await _receive(svc, job_id, spec, request)
+    finally:
+        with svc.uploads_lock:
+            svc.uploading.discard(job_id)
+
+
+async def _receive(svc: Service, job_id: str, spec: UploadSpec, request: Request) -> Response:
     folder = svc.store.path(job_id) / SOURCE_DIR
     folder.mkdir(exist_ok=True)
     partial = folder / f".{spec.file_name}.part"
@@ -738,7 +758,15 @@ def create_app(settings: Settings | None = None, *, service: Service | None = No
             if blocking:
                 netguard.unblock()
 
-    app = FastAPI(title="Sigmora Safe Cut API", version="0.1.0", lifespan=lifespan, docs_url="/docs", redoc_url=None)
+    # No public /docs or /openapi.json: the API's contract is UI-SPEC §8 and the web app's zod schemas.
+    app = FastAPI(
+        title="Sigmora Safe Cut API",
+        version="0.1.0",
+        lifespan=lifespan,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
     app.state.service = svc
     app.add_middleware(
         CORSMiddleware,

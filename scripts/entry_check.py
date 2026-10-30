@@ -199,6 +199,49 @@ def e3() -> None:
         shutil.rmtree(work, ignore_errors=True)
 
 
+#: Mean absolute change (0–255, over the truth box) that counts a should-hide entity's frame as really covered in
+#: the rendered video: the demo's covers change it by 15 to 190, the codec alone moves a kept face by about 2.5.
+RENDER_CHANGE = 8.0
+
+
+def render_hides(job: Path, clip_labels: Any) -> list[str]:
+    """The plan is scored above; this checks the **pixels**: in ``redacted.mp4``, every should-hide entity's truth
+    box differs from the prepared clip on at least 99 % of its visible frames (a renderer that draws nothing, or
+    draws in the wrong place, fails here even when the plan is right)."""
+    import numpy as np  # noqa: PLC0415 -- the check's own dependencies, loaded only when E3 runs
+
+    video = importlib.import_module("safecut.render.video")
+    contracts = importlib.import_module("safecut.contracts")
+    meta = contracts.load(job / "job.json", contracts.Job)
+    sx, sy = meta.width / clip_labels.width, meta.height / clip_labels.height
+    hides = [e for e in clip_labels.entities if e.should_hide and e.dense]
+    changed = dict.fromkeys((e.id for e in hides), 0)
+    seen = dict.fromkeys((e.id for e in hides), 0)
+    rendered_frames = video.read_frames(job / "redacted.mp4", meta)
+    frames = zip(video.read_frames(job / meta.prepared, meta), rendered_frames, strict=True)
+    for f, (source, rendered) in enumerate(frames):
+        for entity in hides:
+            box = entity.dense.get(f)
+            if box is None:
+                continue
+            x1, y1 = max(int(box[0] * sx), 0), max(int(box[1] * sy), 0)
+            x2, y2 = min(int(np.ceil(box[2] * sx)), meta.width), min(int(np.ceil(box[3] * sy)), meta.height)
+            if x2 <= x1 or y2 <= y1:
+                continue
+            seen[entity.id] += 1
+            a = source[y1:y2, x1:x2].astype(np.int16)
+            b = rendered[y1:y2, x1:x2].astype(np.int16)
+            if float(np.abs(a - b).mean()) >= RENDER_CHANGE:
+                changed[entity.id] += 1
+    if not any(seen.values()):
+        return ["the rendered video shows none of the should-hide entities' frames"]
+    return [
+        f"{eid}: covered in redacted.mp4 on only {changed[eid]}/{n} visible frames"
+        for eid, n in seen.items()
+        if n and changed[eid] / n < 0.99
+    ]
+
+
 def score_against_truth(job: Path, truth: Path) -> None:
     sys.path.insert(0, str(ROOT))
     try:
@@ -223,7 +266,9 @@ def score_against_truth(job: Path, truth: Path) -> None:
     print(f"  scored {len(score.entities)} entities against {truth.name}")
     # Never a vacuous pass: the truth must hold something to hide that is actually on screen, and someone to keep.
     if not any(e.should_hide and e.visible_frames for e in score.entities):
-        problems.append("the truth file has no visible entity that should be hidden")
+        problems.insert(0, "the truth file has no visible entity that should be hidden")
+    else:
+        problems += render_hides(job, clip_labels)
     if not any(not e.should_hide and e.visible_frames for e in score.entities):
         problems.append("the truth file has no visible entity that should be kept clear")
     if problems:
@@ -552,7 +597,6 @@ def e11() -> None:
         for line in history.stdout.splitlines()
         if line.startswith("+")
         and SECRET.search(line)
-        and "gate-allow" not in line
         and "SECRET_RE" not in line
         and "SECRET = re.compile" not in line
         and "SECRET.search(" not in line  # the scanner's own tests feed it key-shaped strings
@@ -580,7 +624,8 @@ def e11() -> None:
             "git",
             "grep",
             "-nE",
-            r"pytest\.mark\.(skip|skipif|xfail)\b|pytest\.(skip|xfail|importorskip)\(|\b(it|test|describe)\.(skip|only|fixme|todo)\(",
+            r"pytest\.mark\.(skip|skipif|xfail)\b|pytest\.(skip|xfail|importorskip)\(|\b(it|test|describe)\.(skip|skipIf|runIf|only|fixme|todo|fails)\b"
+            r"|\bx(it|test|describe)\(",
             "--",
             "tests",
             "web/src",

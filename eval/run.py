@@ -124,19 +124,21 @@ def check_test_split(split: SplitFile, root: Path = SPLIT_DIR, base: Path = ROOT
 
 
 def git_sha() -> str:
-    """HEAD's sha, with ``-dirty`` when tracked code differs from it (results and the report don't count), so a
-    run says whether the committed code produced it."""
+    """HEAD's sha, with ``-dirty`` when the code differs from it (a changed or untracked file outside the results
+    themselves), so a run says whether the committed code produced it. No git, no sha: ``unknown-dirty``."""
     proc = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=False)  # noqa: S607 -- git from PATH
-    sha = proc.stdout.strip() or "unknown"
+    sha = proc.stdout.strip()
+    if proc.returncode != 0 or not sha:
+        return "unknown-dirty"
     paths = [".", ":(exclude)eval/results", ":(exclude)eval/RESULTS.md", ":(exclude)eval/splits/test.runs.json"]
     status = subprocess.run(  # noqa: S603 -- a fixed argv of constants
-        ["git", "status", "--porcelain", "--untracked-files=no", "--", *paths],  # noqa: S607 -- git from PATH
+        ["git", "status", "--porcelain", "--untracked-files=normal", "--", *paths],  # noqa: S607 -- git from PATH
         cwd=ROOT,
         capture_output=True,
         text=True,
         check=False,
     )
-    return f"{sha}-dirty" if status.stdout.strip() else sha
+    return f"{sha}-dirty" if status.returncode != 0 or status.stdout.strip() else sha
 
 
 def now_id(now: datetime) -> str:

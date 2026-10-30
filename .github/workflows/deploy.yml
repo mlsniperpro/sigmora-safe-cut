@@ -68,8 +68,9 @@ jobs:
       - name: Check the live URLs
         if: steps.gate.outputs.run == 'true'
         run: |
-          if [ -z "$SAFECUT_API_URL" ]; then
-            echo "::notice title=URL check skipped::set the SAFECUT_API_URL (and SAFECUT_WEB_URL) repository variables to check the deployment"
-          else
-            bash scripts/deploy-check.sh "$SAFECUT_API_URL" "${SAFECUT_WEB_URL:--}"
+          # A deploy is green only once its live URLs pass: the variables are an owner step (BLOCKED.md).
+          if [ -z "$SAFECUT_API_URL" ] || [ -z "$SAFECUT_WEB_URL" ]; then
+            echo "::error title=Deploy not checked::set the SAFECUT_API_URL and SAFECUT_WEB_URL repository variables (BLOCKED.md); the deployment was not health-checked"
+            exit 1
           fi
+          bash scripts/deploy-check.sh "$SAFECUT_API_URL" "$SAFECUT_WEB_URL"

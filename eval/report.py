@@ -81,7 +81,7 @@ def latest(runs: list[dict[str, Any]]) -> dict[tuple[str, bool], dict[str, dict[
 
 
 def render(runs: list[dict[str, Any]], settings: Settings | None = None) -> str:
-    s = settings or Settings()
+    s = settings or Settings.model_construct()  # the shipped defaults, whatever this shell's SAFECUT_* say
     lines = [
         "# Results",
         "",

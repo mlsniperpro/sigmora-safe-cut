@@ -59,19 +59,19 @@ From [`eval/RESULTS.md`](eval/RESULTS.md), which `eval/report.py` builds from th
 | Safe Cut without the audit pass | 100.0% | 0.0% | 0 | 0.0% |
 <!-- results:end -->
 
-The honest failures on this clip: the YuNet baseline finds no drawn face at all (they aren't faces), so it exposes everything. Blur-every-face hides both participants. Safe Cut's own over-blur comes from deny-by-default: the guest leaves and comes back, the tracker gives the return a new ID, and with the policy auto-approved that span stays hidden until a creator merges it (one tap in review). Recall, exposure, leak bursts and over-blur are defined in `eval/RESULTS.md` and tested in `tests/test_metrics.py`.
+The honest failures on this clip: the YuNet baseline finds no drawn face at all (they aren't faces), so it exposes everything. Blur-every-face hides both participants. Safe Cut's over-blur reads zero here, but deny-by-default still costs the guest a moment: he leaves and comes back, the tracker gives the return a new ID, and with the policy auto-approved that span stays hidden until a creator merges it (one tap in review). It is too short to count under the over-blur threshold, and `per_clip.csv` in each run shows the guest's hidden frames. Recall, exposure, leak bursts and over-blur are defined in `eval/RESULTS.md` and tested in `tests/test_metrics.py`.
 
 ## Production notes
 
 - **Service:** FastAPI on Modal (`deploy/modal_app.py`). It runs one API container, because the per-IP rate limits and the spend ledger are in-process; the pipeline runs in that container's worker threads. Job folders live on a Volume.
-- **Access:** judge and public access codes, plus pilot, recording and owner codes, each with its own validity window, and Bearer service keys for Sigmora. A code is bound to its job by a non-secret ID, so revoking it stops paid work at the next paid step (and a restart re-checks every resumed job's code).
+- **Access:** judge and public access codes, plus pilot, recording and owner codes, each with its own validity window, and Bearer service keys for Sigmora. A code is bound to its job by a non-secret ID, so revoking it (removing it from `SAFECUT_ACCESS_CODES` and redeploying) stops its jobs' paid work at their next paid step: every start, render, audit and re-queue re-checks the code, and so does the restart.
 - **Spend caps,** checked before any paid work. The values are in `eval/RESULTS.md`'s service limits:
   - a per-clip cap;
   - a daily cap for judge and public codes, reset at 00:00 UTC;
   - per-code caps and a shared pilot pool;
   - a worst-case estimate refused up front.
 - **Uploads:** signed `PUT` URLs, valid 15 minutes, for the exact size and type declared; up to 60 s and 150 MB.
-- **Deletion:** every job is deleted 24 hours after it is created, by a cron and an in-process sweep, and any job past its deletion time is refused and deleted on sight. `DELETE /v1/jobs/{id}` works in every state of a creator's job (the pinned demo job is read-only); a stage still running stops at its next step.
+- **Deletion:** every job is deleted 24 hours after it is created, by a cron and an in-process sweep, and any job past its deletion time is refused and deleted on sight. `DELETE /v1/jobs/{id}` works in every state of a creator's job (the pinned demo job is read-only); a stage still running stops at its next step, and anything it wrote after the delete is removed as soon as it returns.
 - **Replay mode:**
   - it reads the saved responses in `raw/` and refuses every outbound connection: process-wide for the CLI and for a demo-mode server, and per stage, in a child process, when a live server precomputes the demo job;
   - every response says `mode: "replay"`, and `synthetic: true` when the recordings are synthetic;

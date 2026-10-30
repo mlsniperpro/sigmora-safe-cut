@@ -203,6 +203,13 @@ class Worker:
 
     def _run(self, job_id: str, action: Action) -> None:
         try:
+            self._run_action(job_id, action)
+        finally:
+            # Deleted while a stage ran: whatever that stage wrote afterwards goes now, not at the next sweep.
+            self.store.reap_orphan(job_id)
+
+    def _run_action(self, job_id: str, action: Action) -> None:
+        try:
             state = self.store.get(job_id)
         except JobNotFound:
             return

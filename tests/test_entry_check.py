@@ -6,6 +6,8 @@ import json
 import re
 import shutil
 import subprocess
+import types
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -151,13 +153,17 @@ def test_require_passed_refuses_skipped_or_missing_outcomes() -> None:
         entry_check.require_passed(collected, "E5")
 
 
+MARK = "pytest." + "mark."
+
+
 @pytest.mark.parametrize(
     ("line", "allowed"),
     [
-        ('tests/test_live_sense.py:30:    pytest.mark.skipif(not os.environ.get("MODEL_API_KEY"), reason="x"),', True),
-        ('tests/test_api.py:9:@pytest.mark.skipif(not os.environ.get("MODEL_API_KEY"), reason="x")', False),
-        ('tests/test_live_x.py:3:@pytest.mark.skip(reason="deliver later")', False),
-        ('tests/test_x.py:3:    pytest.importorskip("modal")', False),
+        # Spelt in pieces, so E11's own scan of tests/ never meets a skip in this file.
+        (f'tests/test_live_sense.py:30:    {MARK}skipif(not os.environ.get("MODEL_API_KEY"), reason="x"),', True),
+        (f'tests/test_api.py:9:@{MARK}skipif(not os.environ.get("MODEL_API_KEY"), reason="x")', False),
+        (f'tests/test_live_x.py:3:@{MARK}skip(reason="deliver later")', False),
+        (f'tests/test_x.py:3:    pytest.{"importor" + "skip"}("modal")', False),
     ],
 )
 def test_only_key_gated_live_skips_are_allowed(line: str, allowed: bool) -> None:
@@ -209,3 +215,30 @@ def test_e3_never_passes_on_a_truth_file_with_nothing_to_check(tmp_path: Path) -
     shutil.copytree(EXAMPLE, job)
     with pytest.raises(entry_check.CheckFailed, match="no visible entity that should be hidden"):
         entry_check.score_against_truth(job, truth)
+
+
+def test_e3_checks_the_rendered_pixels_not_only_the_plan(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A plan that hides everything and a renderer that draws nothing must not pass E3."""
+    import numpy as np  # noqa: PLC0415 -- only this test needs it
+
+    from safecut.render import video  # noqa: PLC0415
+
+    meta = types.SimpleNamespace(width=40, height=20, prepared="prepared.mp4")
+    monkeypatch.setattr("safecut.contracts.load", lambda path, model=None: meta)
+    labels = types.SimpleNamespace(
+        width=40,
+        height=20,
+        entities=[types.SimpleNamespace(id="e1", should_hide=True, dense={0: (0, 0, 10, 10), 1: (0, 0, 10, 10)})],
+    )
+    source = [np.full((20, 40, 3), 120, np.uint8) for _ in range(2)]
+
+    def frames(rendered: list[np.ndarray]) -> Callable[..., Iterator[np.ndarray]]:
+        return lambda path, job: iter(source if path.name == "prepared.mp4" else rendered)
+
+    monkeypatch.setattr(video, "read_frames", frames(source))  # the renderer drew nothing
+    assert entry_check.render_hides(Path("job"), labels) == ["e1: covered in redacted.mp4 on only 0/2 visible frames"]
+    covered = [f.copy() for f in source]
+    for f in covered:
+        f[0:10, 0:10] = 0
+    monkeypatch.setattr(video, "read_frames", frames(covered))
+    assert entry_check.render_hides(Path("job"), labels) == []

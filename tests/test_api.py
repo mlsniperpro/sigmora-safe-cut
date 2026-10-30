@@ -1003,3 +1003,72 @@ def test_production_refuses_weak_secrets(tmp_path: Path) -> None:
         public_url="https://safecut--api.modal.run",
     )
     assert production_problems(strong) == []
+
+
+# ---------------------------------------------------------------------------
+# Audit round 3
+# ---------------------------------------------------------------------------
+
+
+def test_a_non_ascii_digit_in_a_signed_url_is_a_refusal_not_a_500(
+    make_client: Callable[..., tuple[TestClient, Service]],
+) -> None:
+    client, svc = make_client()
+    assert not svc.signer.verify("/p", "²", "ab")
+    job_id = upload_clip(client)
+    response = client.get(f"/v1/jobs/{job_id}/media/redacted.mp4", params={"exp": "²", "sig": "ab"})
+    assert response.status_code == 403
+
+
+def test_the_api_publishes_no_docs_or_schema(make_client: Callable[..., tuple[TestClient, Service]]) -> None:
+    client, _ = make_client()
+    for path in ("/docs", "/redoc", "/openapi.json"):
+        assert client.get(path).status_code == 404
+
+
+def test_a_second_upload_on_the_same_job_waits_its_turn(
+    make_client: Callable[..., tuple[TestClient, Service]],
+) -> None:
+    client, svc = make_client()
+    body = {"code": JUDGE, "size_bytes": CLIP.stat().st_size, "content_type": "video/mp4", "file_name": "a.mp4"}
+    created = client.post("/v1/jobs", json=body).json()
+    svc.uploading.add(created["job_id"])  # another PUT is streaming into this job's .part file
+    put = client.put(created["upload_url"], content=CLIP.read_bytes(), headers={"Content-Type": "video/mp4"})
+    assert put.status_code == 409
+    assert put.json()["error"]["code"] == "already_uploading"
+    svc.uploading.clear()
+    put = client.put(created["upload_url"], content=CLIP.read_bytes(), headers={"Content-Type": "video/mp4"})
+    assert put.status_code == 200
+
+
+def test_what_a_stage_writes_after_delete_is_removed_when_it_returns(
+    make_client: Callable[..., tuple[TestClient, Service]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, svc = make_client()
+    job_id = upload_clip(client)
+    job_dir = svc.store.path(job_id)
+    real = pipeline.analyse
+
+    def deleted_mid_stage(path: Path, **kwargs: Any) -> Any:
+        svc.store.delete(job_id)  # DELETE arrives while a stage is running
+        (path / "raw").mkdir(parents=True)  # the stage finishes and writes its output after it
+        (path / "raw" / "late.json").write_text("{}")
+        return real(path, **kwargs)
+
+    monkeypatch.setattr(pipeline, "analyse", deleted_mid_stage)
+    assert client.post(f"/v1/jobs/{job_id}/start").status_code == 202
+    svc.worker.wait(job_id)
+    assert not job_dir.exists()
+
+
+def test_the_sweep_trusts_a_valid_created_at_in_an_unreadable_state(tmp_path: Path) -> None:
+    """A deploy whose JobState schema moved on can't read old state files: they still expire by their own
+    created_at, never a minute after the deploy."""
+    store = JobStore(tmp_path / "jobs", ttl=timedelta(hours=24), cleanup_every=timedelta(minutes=15))
+    young = store.create(mode="live")
+    old = store.create(mode="live", now=datetime.now(UTC) - timedelta(hours=25))
+    for state in (young, old):
+        path = store.path(state.job_id) / "state.json"
+        path.write_text(path.read_text().replace('"status"', '"a_field_from_the_future": 1, "status"'))
+    assert store.sweep(now=datetime.now(UTC) + timedelta(minutes=5)) == [old.job_id]
+    assert store.path(young.job_id).is_dir()
