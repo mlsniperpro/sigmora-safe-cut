@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 6e83d9bf9173573cab0a4b30749a7c0495310de3
+AUDITED_COMMIT: dd1312d0c63a45fe20c393fa3d4d1dd9e0d4b0aa
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -102,4 +102,25 @@ verified here before it is fixed, and fixed with a named test. The counter reset
   frame (`test_a_whole_person_item_covers_a_body_where_only_its_face_is_tracked`, fails without the fix).
 - WP3 low: the region-cache registry wasn't thread-safe → locked.
 
-## Round 5: running at 6e83d9b (main 2b5aacf)
+## Round 5 (at 6e83d9b): 1 high, 2 medium, lows; verified and fixed at dd1312d (merged d126234) or filed/accepted
+- WP3 high: an exact face/body share tie paired nothing, so a child's body could be kept and one child counted twice
+  → ties go to the body the face fills most; an unpaired child face locks every body holding it
+  (`test_a_child_carried_by_an_adult_pairs_with_their_own_body`, `test_a_child_face_no_body_can_claim_locks_every_body_holding_it`,
+  both fail without the fix).
+- WP3 medium: a read-through solid re-render dropped the whole-person body cover → the item's own style decides
+  (`test_a_read_through_whole_person_stays_whole_when_it_goes_solid`, fails without the fix).
+- WP3 low: re-covering a spot after an undo renumbered it on the next replay → kept (`test_a_spot_covered_again_after_an_undo_keeps_its_patch_number`, fails without the fix).
+- WP3 low: the audit loop re-planned without the region cache; the cache key was taken after the reads → both fixed.
+- WP4 medium: a crash part-way through an audit left the old clean audit.json / receipt → the audit retires the receipt
+  and writes a blocked audit.json first (`test_a_crash_part_way_never_leaves_the_old_clean_verdict`, fails without the fix).
+- WP4 low: the receipt stood before it was validated → validated in a shadow job dir, then put in place.
+- WP4 low: a crash or torn write lost the second opinion's record → atomic writes; a lost answer reads `failed`
+  (`test_a_crash_during_the_opinion_is_recorded_as_failed_not_off`).
+- WP4 low: an unreadable manifest read as a real run; `files_deleted: true` with no files.json after billed SAM → fixed
+  (`test_an_unreadable_recording_manifest_never_reads_as_a_real_run`, `test_without_files_json_a_billed_sam_call_is_never_claimed_deleted`).
+- WP4 low (SENSE's): `scripts/go_live.py` deletes the old recording before the new run is known good → filed with SENSE.
+- WP4 low accepted: a frame-label text box spilling out of the bar stays a leak (G8: dropped "only if" wholly inside;
+  fails closed); YuNet leaks carry the contract literal `detector: "egoblur"` (`audit.egoblur.model` names YuNet);
+  the receipt doesn't hash the video (not in §3.9's contract).
+
+## Round 6: running at dd1312d (main d126234)
