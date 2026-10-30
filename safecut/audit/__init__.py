@@ -16,6 +16,7 @@ Per-frame CPU timings and the models that answered go to ``raw/audit/run.json`` 
 from __future__ import annotations
 
 import asyncio
+import functools
 from collections.abc import Sequence
 from contextlib import AsyncExitStack
 from pathlib import Path
@@ -99,7 +100,20 @@ async def _live(job_dir: Path, settings: Settings, detector: Detector, client: M
 
 def auditor_available(settings: Settings) -> bool:
     """Whether the audit can run here (WP5 answers ``POST /start`` with 503 ``auditor_unavailable`` when it can't):
-    EgoBlur when its weights are installed, else the bundled YuNet, whose weights must be present and unaltered."""
+    EgoBlur when its weights are installed (and torch is), else the bundled YuNet, whose weights must be present and
+    unaltered. Answered once per detector setup and weights folder state, not by loading models on every request."""
+    weights = Path(settings.egoblur_weights_dir)
+    stamp = weights.stat().st_mtime_ns if weights.exists() else None
+    return _available(settings.egoblur_model, str(weights), stamp, settings.egoblur_face_threshold,
+                      settings.egoblur_plate_threshold)  # fmt: skip
+
+
+@functools.lru_cache(maxsize=8)
+def _available(model: str, weights: str, stamp: int | None, face: float, plate: float) -> bool:
+    del stamp  # part of the cache key only: new or removed weights are seen
+    update = {"egoblur_model": model, "egoblur_weights_dir": weights, "egoblur_face_threshold": face,
+              "egoblur_plate_threshold": plate}  # fmt: skip
+    settings = load_settings().model_copy(update=update)
     try:
         load_detector(settings)
     except AuditorUnavailable:

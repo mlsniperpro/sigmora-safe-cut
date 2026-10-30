@@ -21,11 +21,11 @@ import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import Annotated, Any, Literal, Protocol, cast
 
 import cv2
 import numpy as np
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, ValidationError
 
 from safecut.config import CapKind, Settings
 from safecut.contracts import LeakKind, Plan
@@ -109,14 +109,24 @@ SCHEMA: dict[str, Any] = {
 }
 
 
+def _box_or_empty(raw: object) -> object:
+    if isinstance(raw, list):
+        items = cast("list[object]", raw)
+        if len(items) == 4 and all(isinstance(v, int) and not isinstance(v, bool) for v in items):
+            return items
+    return []
+
+
 class Finding(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: LeakKind
     detail: str
     text: str | None
-    #: Grid units (0-1000) as the model answered; validated here only as integers (a wrong count fails closed later).
-    box: list[int]
+    #: Grid units (0-1000) as the model answered. redteam.md: a box that isn't 4 integers (a float, a null, a string,
+    #: a wrong count) keeps its finding as a whole-frame leak; it is read here as ``[]``, which ``grid_box`` maps to
+    #: the whole frame, so one bad box never voids the frame's other findings.
+    box: Annotated[list[int], BeforeValidator(_box_or_empty)]
     confidence: Literal["low", "medium", "high"]
 
 

@@ -350,7 +350,7 @@ async def audit_job(
         dump(job, job_dir / "job.json")
     if opinion is not None and not job.open_weight_attempted:
         # At most once in the job's life, marked before the first call (redteam.md "Second opinion").
-        mark_attempted(job_dir)
+        mark_attempted(job_dir, job)
         state.job = job = job.model_copy(update={"open_weight_attempted": True})
         dump(job, job_dir / "job.json")
         bar = rules.bar_height(job.height)
@@ -359,11 +359,13 @@ async def audit_job(
                                       decisions=state.decisions, plan=state.plan,
                                       by_track={t.track_id: t for t in tracks.tracks},
                                       grid_ok=opinion_grid_ok)  # fmt: skip
-        save(job_dir, state.opinion)
+        save(job_dir, job, state.opinion)
         passes = await settle(state, job_dir, detector=detector, redteam=redteam, found=state.opinion.leaks,
                               words=words, passes=passes, max_passes=max_passes)  # fmt: skip
     elif job.open_weight_attempted:
-        state.opinion = recorded(job_dir)  # redteam.md "Re-runs": what it said is copied into every rewritten audit
+        state.opinion = recorded(
+            job_dir, job
+        )  # redteam.md "Re-runs": what it said is copied into every rewritten audit
     audit = summary(state, passes, detector, previous)
     dump(audit, job_dir / "audit.json")
     write_run(job_dir, audit, state, detector)

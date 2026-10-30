@@ -199,12 +199,16 @@ def load_detector(settings: Settings) -> Detector:
     if settings.egoblur_model != "yunet-face":
         files = egoblur_weights(Path(settings.egoblur_weights_dir), settings.egoblur_model)
         if files is not None:
-            return EgoBlur(
-                settings.egoblur_model,
-                *files,
-                face_threshold=settings.egoblur_face_threshold,
-                plate_threshold=settings.egoblur_plate_threshold,
-            )
+            try:
+                return EgoBlur(
+                    settings.egoblur_model,
+                    *files,
+                    face_threshold=settings.egoblur_face_threshold,
+                    plate_threshold=settings.egoblur_plate_threshold,
+                )
+            except AuditorUnavailable as exc:  # weights but no torch: YuNet, recorded as such, like missing weights
+                log.warning("EgoBlur can't load (%s): auditing with YuNet (faces only; plates by the red team)", exc)
+                return YuNet(settings.egoblur_face_threshold)
         log.warning(
             "EgoBlur weights not found in %s (owner step O8): auditing with YuNet (faces only; plates by the red team)",
             settings.egoblur_weights_dir,

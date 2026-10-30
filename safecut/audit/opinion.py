@@ -123,33 +123,38 @@ async def consult(
 #: The opinion as it came back, saved at once: it runs once per job, so a later crash must not lose it.
 RECORD = Path("raw/audit/opinion.json")
 #: Written before the first call, beside ``job.open_weight_attempted``: a stage that rewrites ``job.json`` from the
-#: source (a re-run of prepare) can't make the job eligible again.
+#: source (a re-run of prepare) can't make the job eligible again. It names its job: a recording's ``raw/`` copied
+#: into another job (replay) carries it along, and it says nothing about that job.
 ATTEMPTED = Path("raw/audit/opinion_attempted")
 
 
 def attempted(job_dir: Path, job: Job) -> bool:
-    return job.open_weight_attempted or (job_dir / ATTEMPTED).exists()
+    path = job_dir / ATTEMPTED
+    return job.open_weight_attempted or (path.exists() and path.read_text(encoding="utf-8").strip() == job.job_id)
 
 
-def mark_attempted(job_dir: Path) -> None:
+def mark_attempted(job_dir: Path, job: Job) -> None:
     path = job_dir / ATTEMPTED
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("open-weight second opinion attempted\n", encoding="utf-8")
+    path.write_text(job.job_id + "\n", encoding="utf-8")
 
 
-def save(job_dir: Path, opinion: Opinion) -> None:
+def save(job_dir: Path, job: Job, opinion: Opinion) -> None:
     path = job_dir / RECORD
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = {"summary": opinion.summary.model_dump(mode="json"), "entries": [e.model_dump(mode="json")
-                                                                             for e in opinion.entries]}  # fmt: skip
+    entries = [e.model_dump(mode="json") for e in opinion.entries]
+    data = {"job_id": job.job_id, "summary": opinion.summary.model_dump(mode="json"), "entries": entries}
     path.write_text(json.dumps(data))
 
 
-def recorded(job_dir: Path) -> Opinion | None:
-    """The saved opinion of an earlier run (its leaks were patched then; nothing to patch again)."""
+def recorded(job_dir: Path, job: Job) -> Opinion | None:
+    """The saved opinion of this job's earlier run (its leaks were patched then; nothing to patch again). One another
+    job recorded (a replayed recording's) never counts: that job's frames went to Baseten, not this one's."""
     path = job_dir / RECORD
     if not path.exists():
         return None
     data = json.loads(path.read_text(encoding="utf-8"))
+    if data.get("job_id") != job.job_id:
+        return None
     entries = TypeAdapter(list[RedteamNone | RedteamHit]).validate_python(data["entries"])
     return Opinion(summary=OpenWeightSummary.model_validate(data["summary"]), entries=entries)
