@@ -1,12 +1,12 @@
 {
- "run_id": "20261030T145045Z-dev-detector_only-c573ca2",
+ "run_id": "20261030T151031Z-dev-blur_all-c3d9426",
  "split": "dev",
- "variant": "detector_only",
+ "variant": "blur_all",
  "replay": true,
  "synthetic": true,
- "git_sha": "c573ca20354f1436bce57cf7b3fc93c6da2845bb",
+ "git_sha": "c3d9426a543028bf905f7f3c2d7b7c489cffb287",
  "split_hash": "1fd76cc3074b5e5f6337d92c3d51a6c7a1448c4b3c5cdfd047d43cb2ffa4ea04",
- "created_at": "2026-10-30T14:50:45.282447Z",
+ "created_at": "2026-10-30T15:10:31.109687Z",
  "clips": [
   "fixtures/clips/SC-A-91-synthetic-20261030.mp4"
  ],

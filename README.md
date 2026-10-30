@@ -50,8 +50,8 @@ From [`eval/RESULTS.md`](eval/RESULTS.md), which `eval/report.py` builds from th
 
 | Method (synthetic dev clip) | Recall | Exposure | Leak bursts | Over-blur |
 |---|---|---|---|---|
-| Blur every face (SAM 3.1 `face`, all hidden) | 40.0% | 59.5% | 3 | 100.0% |
-| Detector only (SAM 3.1 classes, no Muse Spark) | 80.0% | 10.3% | 1 | 100.0% |
+| Blur every face (SAM 3.1 `face`, all hidden) | 40.0% | 59.3% | 3 | 100.0% |
+| Detector only (SAM 3.1 classes, no Muse Spark) | 80.0% | 10.1% | 1 | 100.0% |
 | OpenCV YuNet face detector on every frame (EgoBlur weights not installed) | 0.0% | 100.0% | 5 | 0.0% |
 | **Safe Cut (full)** | 100.0% | 0.0% | 0 | 0.0% |
 
@@ -86,7 +86,7 @@ The worst honest failure on this clip: the YuNet baseline finds no drawn face at
 
 ## Run it yourself
 
-Needs Python `3.12` with [uv](https://docs.astral.sh/uv/). Everything below is offline: replay reads recorded responses and the network is blocked.
+Needs the Python version `pyproject.toml` pins, with [uv](https://docs.astral.sh/uv/). Everything below is offline: replay reads recorded responses and the network is blocked.
 
 <!-- fresh-clone:start -->
 ```bash

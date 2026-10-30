@@ -9,12 +9,12 @@ Recall: the share of should-hide entities covered (≥ 95 % of the box) on at le
 
 | Method | Recall | Exposure | Leak bursts | Over-blur | Needs-you items / min | Run |
 |---|---|---|---|---|---|---|
-| Blur every face (SAM 3.1 `face`, all hidden) | 40.0% | 59.5% | 3 | 100.0% | 0.00 | [20261030T145018Z-dev-blur_all-c573ca2](results/20261030T145018Z-dev-blur_all-c573ca2/metrics.json) |
-| OpenCV YuNet face detector on every frame (EgoBlur weights not installed) | 0.0% | 100.0% | 5 | 0.0% | 0.00 | [20261030T145113Z-dev-egoblur-c573ca2](results/20261030T145113Z-dev-egoblur-c573ca2/metrics.json) |
-| Detector only (SAM 3.1 classes, no Muse Spark) | 80.0% | 10.3% | 1 | 100.0% | 0.00 | [20261030T145045Z-dev-detector_only-c573ca2](results/20261030T145045Z-dev-detector_only-c573ca2/metrics.json) |
+| Blur every face (SAM 3.1 `face`, all hidden) | 40.0% | 59.3% | 3 | 100.0% | 0.00 | [20261030T151031Z-dev-blur_all-c3d9426](results/20261030T151031Z-dev-blur_all-c3d9426/metrics.json) |
+| OpenCV YuNet face detector on every frame (EgoBlur weights not installed) | 0.0% | 100.0% | 5 | 0.0% | 0.00 | [20261030T151125Z-dev-egoblur-c3d9426](results/20261030T151125Z-dev-egoblur-c3d9426/metrics.json) |
+| Detector only (SAM 3.1 classes, no Muse Spark) | 80.0% | 10.1% | 1 | 100.0% | 0.00 | [20261030T151058Z-dev-detector_only-c3d9426](results/20261030T151058Z-dev-detector_only-c3d9426/metrics.json) |
 | Muse Spark keyframe boxes, no tracking | not run | | | | | |
-| **Safe Cut (full)** | 100.0% | 0.0% | 0 | 0.0% | 5.00 | [20261030T144914Z-dev-full-c573ca2](results/20261030T144914Z-dev-full-c573ca2/metrics.json) |
-| Safe Cut without the audit pass | 100.0% | 0.0% | 0 | 0.0% | 5.00 | [20261030T144950Z-dev-no_audit-c573ca2](results/20261030T144950Z-dev-no_audit-c573ca2/metrics.json) |
+| **Safe Cut (full)** | 100.0% | 0.0% | 0 | 0.0% | 5.00 | [20261030T150921Z-dev-full-c3d9426](results/20261030T150921Z-dev-full-c3d9426/metrics.json) |
+| Safe Cut without the audit pass | 100.0% | 0.0% | 0 | 0.0% | 5.00 | [20261030T151001Z-dev-no_audit-c3d9426](results/20261030T151001Z-dev-no_audit-c3d9426/metrics.json) |
 
 1 clip(s), 5 should-hide and 2 should-keep entities, 0.20 min of footage. Chart: [charts/dev-synthetic.png](results/charts/dev-synthetic.png).
 
