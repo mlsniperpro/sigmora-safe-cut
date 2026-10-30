@@ -111,3 +111,27 @@ describe("chip names read as sentences (§9)", () => {
     expect(chip.accessibleName).not.toMatch(/\.\./);
   });
 });
+
+describe("the sample scene's plan hides what it draws (scripts/sample-scene.mjs)", () => {
+  const job = jobResponseSchema.parse(sampleMock);
+  it("every pixelate cell is coarse enough to hide its box on every frame", () => {
+    for (const [f, regions] of Object.entries(job.plan!.frames)) {
+      for (const r of regions) {
+        if (r.style !== "pixelate" || !r.box) continue;
+        // A face needs several cells across to lose its features; 4 px cells barely change it.
+        expect(r.grid![2], `${r.item_id} on frame ${f}`).toBeGreaterThanOrEqual(Math.ceil((r.box[2] - r.box[0]) / 8));
+      }
+    }
+  });
+
+  it("the passer-by's face track follows the larger head drawn while they cross in front (frames 140–175)", () => {
+    const face = job.tracks.find((t) => t.track_id === "face:3")!;
+    for (const f of [140, 160, 175]) {
+      const [x1, y1, x2, y2] = face.boxes[String(f)]!;
+      // Drawn as a head of radius 44 centred at y 236 (gen-sample.mjs draws entitiesAt's passer).
+      expect(y1, `frame ${f}`).toBeLessThanOrEqual(192);
+      expect(y2, `frame ${f}`).toBeGreaterThanOrEqual(280);
+      expect(x2 - x1, `frame ${f}`).toBeGreaterThanOrEqual(88);
+    }
+  });
+});

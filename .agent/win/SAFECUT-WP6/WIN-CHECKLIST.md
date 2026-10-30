@@ -168,6 +168,8 @@ Round 14 (fixes in the round-14 commit; details in `reaudit.md`):
 - [x] R15-1 (low) a late fresh URL brings the review player back: JobPage test
 - [x] R15-2 (low) an action's GET isn't made quiet by a cut-short refresh: useJob test
 - [x] Self-found: fixture dates shift with the clock, so the mock and the tests hold on any date: mock-backend tests, suite run at clock shifts up to +400 days
+- [x] R41-1 (medium) the sample's Safe Cut render hides the passer-by (pixelate cell from the largest box); media, mock and screenshots regenerated: view test
+- [x] R41-2 (low) the in-front passer-by is tracked as drawn: view test
 - [x] R40-1 (low) a deadline already due (Retry-After: 0) opens at once: useNow test
 - [x] R40 noted item: no doubled full stop in chip names and the Why reason: view test
 - [x] R40 noted item: ←/→ on the Why keyframe announces the frame: JobPage test

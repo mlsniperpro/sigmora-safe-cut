@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 9c46081
+AUDITED_COMMIT: 3c5f1ea
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -526,3 +526,16 @@ Also fixed in a follow-up commit: ←/→ on the Why drawer's keyframe changed t
 Noted, not counted: WP5 must send `Access-Control-Expose-Headers: Retry-After` for the UI to read it cross-origin (without it the UI holds the 60 s default, which §10.3 allows).
 
 On the fix commits: `checks.sh` exit 0, 881 tests, e2e 143/143.
+
+## Round 41 (audited 3c5f1ea by a Sonnet reviewer: the landing page end to end at 320–1280 px in light, dark and reduced motion, the README and docs from a fresh archive, and the review panel on the mock hero and sample jobs as a first-time user; fixes in the next commit)
+
+0 critical, 0 high, 1 medium, 1 low. CLEAN_AUDITS_IN_A_ROW stays 0. No regressions from round 40; the app code, README and docs were clean. Both findings are in the synthetic sample scene's generated media and plan.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | medium | The landing hero's "Safe Cut" video and the side-by-side "Safe Cut" still showed the passer-by's face clearly, against §1.3's "the plate and the passer-by are hidden": `samplePlan` took the pixelate cell from the face's first box, clipped at the frame edge where the passer-by enters, so cells were 4 px on a 78 px face | fixed: the cell follows the item's largest box (22 px for the passer-by); `redacted.mp4`, `safe-cut.jpg` and `job-review-sample.json` regenerated, and the screenshots in `web/docs/screenshots/` re-shot from the e2e (the old landing shot showed the face). view test: every pixelate cell is at least an eighth of its box on every frame (fails on 3c5f1ea's mock); frames checked by eye |
+| 2 | low | Frames 140–175 drew the passer-by larger and higher (crossing in front of the guest) while the tracks and plan kept the small head, so the face showed beside its cover, against the README's "boxes, plan and pixels agree" | fixed: `entitiesAt` returns the in-front geometry for those frames and `gen-sample.mjs` draws from it, so the tracks, plan and render follow the drawn head. view test on face:3's boxes (fails on 3c5f1ea's mock) |
+
+Noted, not counted: toggling Raw / Safe Cut on a paused hero resumes playback (§1.5 only says switching keeps the time). `public/sample/` isn't drift-checked the way the mocks are (`gen-sample.mjs` needs ffmpeg); its plan is, through `job-review-sample.json`.
+
+On the fix commit: `checks.sh` exit 0, 883 tests, e2e 143/143.

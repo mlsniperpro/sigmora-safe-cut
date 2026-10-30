@@ -27,7 +27,14 @@ export function entitiesAt(f) {
   const sway = Math.sin(f / 9) * 4;
   const guest = figure(450 + sway, 232, 38, 380, 120);
   const passerX = 1330 - f * 6.2;
-  const passer = passerX > -60 && passerX < W + 60 ? figure(passerX, 300, 24, 230, 70) : null;
+  // Between frames 140 and 175 the passer-by walks close past the camera, in front of the guest:
+  // drawn larger and higher, and tracked that way, so boxes, plan and pixels agree.
+  const passerInFront = f >= 140 && f <= 175;
+  const passer = !(passerX > -60 && passerX < W + 60)
+    ? null
+    : passerInFront
+      ? { ...figure(passerX, 236, 44, 0, 140), body: clampBox([passerX - 70, 200, passerX + 70, 700]) }
+      : figure(passerX, 300, 24, 230, 70);
   const childX = f >= 60 && f <= 200 ? 620 + (f - 60) * 3.1 : null;
   const child = childX === null ? null : figure(childX, 430, 17, 120, 44);
   const watcher = f >= 90 ? figure(1110, 250, 31, 300, 96) : null;
@@ -36,6 +43,7 @@ export function entitiesAt(f) {
     // The tracker loses the guest's face while the passer-by crosses in front (frames 150–165).
     guestFaceVisible: !(f >= 150 && f <= 165),
     passer,
+    passerInFront,
     child,
     watcher,
     plate: clampBox([1030, 638, 1130, 668]),
@@ -149,11 +157,13 @@ export function samplePlan(items, tracks) {
     for (const id of ids.length ? ids : item.track_ids) {
       const track = byId.get(id);
       if (!track) continue;
-      let grid = null;
-      for (const [f, box] of Object.entries(track.boxes)) {
-        const padded = padBox(box, track.concept === "face" ? 0.15 : 0.08, 8);
-        if (item.style === "pixelate" && grid === null) grid = [padded[0], padded[1], Math.max(4, Math.ceil((padded[2] - padded[0]) / 6))];
-        (frames[f] ??= []).push({ item_id: item.item_id, shape: "box", box: padded, mask: null, style: item.style ?? "solid", grid: item.style === "pixelate" ? grid : null });
+      const padded = Object.entries(track.boxes).map(([f, box]) => [f, padBox(box, track.concept === "face" ? 0.15 : 0.08, 8)]);
+      // One grid per item so the cells don't shimmer (DESIGN §2.7). Its cell follows the largest box, as
+      // a box clipped at the frame edge (where a face enters) would give cells too small to hide it.
+      const cell = Math.max(4, ...padded.map(([, b]) => Math.ceil((b[2] - b[0]) / 6)));
+      const grid = item.style === "pixelate" && padded.length ? [padded[0][1][0], padded[0][1][1], cell] : null;
+      for (const [f, box] of padded) {
+        (frames[f] ??= []).push({ item_id: item.item_id, shape: "box", box, mask: null, style: item.style ?? "solid", grid });
       }
     }
   }

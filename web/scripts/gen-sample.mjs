@@ -103,16 +103,10 @@ function rawFrame(f) {
   for (let k = 0; k < 6; k += 1) fillRect(buf, [e.plate[0] + 8 + k * 15, e.plate[1] + 7, e.plate[0] + 18 + k * 15, e.plate[3] - 7], [20, 20, 20]);
   drawFigure(buf, e.watcher, [70, 70, 80], SKIN[3]);
   drawFigure(buf, e.child, [220, 60, 120], SKIN[2]);
-  // The passer-by crosses in front of the guest between frames 150 and 165, hiding her face.
-  const passerInFront = f >= 140 && f <= 175;
-  if (!passerInFront) drawFigure(buf, e.passer, [60, 130, 90], SKIN[1]);
+  // The passer-by crosses in front of the guest between frames 140 and 175, hiding her face (150–165).
+  if (!e.passerInFront) drawFigure(buf, e.passer, [60, 130, 90], SKIN[1]);
   drawFigure(buf, e.guest, [232, 120, 40], SKIN[0]);
-  if (passerInFront && e.passer) {
-    const big = { ...e.passer, head: { ...e.passer.head, cy: 236, r: 44 }, body: [e.passer.head.cx - 70, 200, e.passer.head.cx + 70, 700] };
-    fillRect(buf, big.body, [60, 130, 90]);
-    fillCircle(buf, big.head, SKIN[1]);
-    drawFeatures(buf, big.head);
-  }
+  if (e.passerInFront) drawFigure(buf, e.passer, [60, 130, 90], SKIN[1]);
   return buf;
 }
 
