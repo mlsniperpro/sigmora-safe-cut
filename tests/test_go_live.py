@@ -153,3 +153,7 @@ def test_a_stopped_run_is_not_reported_as_success(tmp_path: Path, monkeypatch: p
     monkeypatch.setattr(pipeline, "analyse", stops)
     assert go_live.main([str(CLIP), "--id", "stopped", "--out-root", str(tmp_path)]) == 1
     assert (tmp_path / "fixtures" / "jobs" / "stopped" / "raw" / "track" / "a.json").is_file()  # still kept
+
+
+def test_clip_ids_never_end_in_a_separator() -> None:
+    assert go_live.clip_id(Path("a" * 59 + "-b.mp4")) == "a" * 59

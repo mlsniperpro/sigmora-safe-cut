@@ -143,3 +143,11 @@ def test_a_speaker_label_that_is_a_huge_number_is_relabelled() -> None:
     ])  # fmt: skip
     turns = speech.fallback_turns(answer, 5.0)
     assert [t.speaker for t in turns] == ["U1"]
+
+
+def test_the_fallback_keeps_a_bounded_number_of_turns() -> None:
+    many = [SpeechTurnOut(speaker="S1", start=i / 100, end=i / 100, text="x", self_intro=None, addresses=None)
+            for i in range(2000)]  # fmt: skip
+    turns = speech.fallback_turns(SpeechOut(has_speech=True, turns=many), 60.0)
+    assert len(turns) == speech.MAX_TURNS
+    assert turns == sorted(turns, key=lambda t: (t.start, t.end))
