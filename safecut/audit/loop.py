@@ -201,13 +201,11 @@ async def red_team(
     return found
 
 
-def patch(state: State, found: list[Leak]) -> tuple[list[Leak], set[int]]:
+def patch(state: State, found: list[Leak]) -> list[Leak]:
     """Turn this pass's leaks into fixes: every leak shares an audit patch over its box (static, padded, held over
-    ``f ± (half + extend)``), and an item a model read text through is re-rendered solid as well. Returns the leaks
-    with their ``patched_item`` and the frames the fixes changed (the next pass re-checks those)."""
+    ``f ± (half + extend)``), and an item a model read text through is re-rendered solid as well (the guard reads
+    the flags). Returns the leaks with their ``patched_item``."""
     job, plan = state.job, state.plan
-    redrawn = {leak.through_item for leak in found if leak.through_item is not None}
-    changed = {f for f, es in plan.frames.items() if any(e.item_id in redrawn for e in es)}
     number, label = rules.next_numbers(state.decisions)
     new_items: list[DecisionItem] = []
     patched: list[Leak] = []
@@ -217,10 +215,8 @@ def patch(state: State, found: list[Leak]) -> tuple[list[Leak], set[int]]:
         new_items.append(item)
         number, label = number + 1, label + 1
         patched += [leak.model_copy(update={"patched_item": item.item_id}) for leak in group.leaks]
-        if item.first is not None and item.last is not None:
-            changed.update(range(item.first, item.last + 1))
     state.decisions = Decisions(items=[*state.decisions.items, *new_items])
-    return patched, changed
+    return patched
 
 
 def summary(state: State, passes: int, detector: Detector, previous: Audit | None) -> Audit:
@@ -288,22 +284,25 @@ async def settle(
     passes: int,
     max_passes: int,
 ) -> int:
-    """``found`` are the leaks pass ``passes`` turned up. Patch them, re-plan, re-render and re-check the changed
-    frames as the next pass, until a pass finds nothing; leaks found by the last allowed pass stay unresolved.
-    Returns the passes run. (The second opinion's leaks come in the same way: its re-check is the next pass.)"""
+    """``found`` are the leaks pass ``passes`` turned up. Patch them, re-plan, re-render, and as the next pass scan
+    the whole new render and red-team the fixes, until a pass finds nothing; leaks found by the last allowed pass
+    stay unresolved. Returns the passes run. (The second opinion's leaks come in the same way: its re-check is the
+    next pass.)"""
     job, tracks = state.job, state.tracks
     while found:
         if passes >= max_passes:
             state.leaks += [leak.model_copy(update={"unresolved": True}) for leak in found]
             break
-        fixed, changed = patch(state, found)
+        fixed = patch(state, found)
         state.leaks += fixed
         state.plan = make_plan(job, tracks, state.decisions, solid=read_through(state.leaks))
         dump(state.decisions, job_dir / "decisions.json")
         dump(state.plan, job_dir / "plan.json")
         render(job_dir)
         passes += 1
-        found = scan(state, job_dir, detector, changed)
+        # Every frame of the new render, not just the patched ones: a re-encode shifts pixels on frames it didn't
+        # redraw (x264 rate control), and the detector's guarantee is about the video as published.
+        found = scan(state, job_dir, detector, set(range(job.frames)))
         rechecks = {group.first for group in rules.group_leaks(fixed, job.fps)} | {
             leak.frame for leak in fixed if leak.detector != "egoblur"
         }
