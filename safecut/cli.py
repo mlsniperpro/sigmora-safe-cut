@@ -75,6 +75,8 @@ def _stage_command(stage: Stage) -> Callable[..., None]:
                 pipeline.check_approval(job)  # render, audit and receipt run only on an approved plan
             result = pipeline.run_stage(job, stage, replay=_replay(replay), force=True)
             typer.echo(f"{stage.name}: wrote {result.output} ({result.elapsed_s:.2f} s)")
+            if stage.name in ("audit", "receipt"):
+                _refuse_if_blocked(job)  # the audit's verdict decides here too: exit 6 on a blocked audit
 
         _guarded(go)
 

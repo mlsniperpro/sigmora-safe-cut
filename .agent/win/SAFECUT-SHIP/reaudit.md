@@ -1,7 +1,7 @@
 AUDITED_COMMIT: pending
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
-CLEAN_AUDITS_IN_A_ROW: 1
+CLEAN_AUDITS_IN_A_ROW: 0
 
 # SAFECUT-SHIP re-audit log
 
@@ -138,3 +138,20 @@ It ran E2, E3, E4, E5, E7, E9, E10, E11 and E12 itself: all OK. Its lows were fi
 | L4 | low | VIDEO-SCRIPT's VO overstated the audit; AGENTIC-LOOP quoted a coverage figure with no committed source | Reworded | E10 |
 
 Also since round 7, found by SENSE's auditor and fixed in 697110f: the Modal image shipped only `.py` files (no prompt templates, no YuNet weights); `test_the_image_ships_every_data_file_the_package_reads`.
+
+## Round 9 (on cda38bc): 0 critical, 0 high, 2 medium, 4 low. Closed in the next commit.
+
+It ran E2, E3, E5, E7, E9, E10, E11 and E12: all OK; 230 targeted tests passed; the demo replay matches AGENTIC-LOOP.
+
+| # | Sev | Finding | Resolution | Test |
+|---|---|---|---|---|
+| M1 | medium | BLOCKED told the owner to run only `full` on the test split (3 runs total, across variants), so the video's "compared with blurring every face" would have no committed source; and a live run refuses an uncommitted freeze | BLOCKED: commit the freeze first, then `full` and `blur_all`, the third run kept for a retry | review |
+| M2 | medium | Labels loaded after the paid pipeline: a bad label cost a paid run and one of the 3 test runs; `LabelError` escaped `main` | Every clip's labels load before anything is counted or called; `main` reports `LabelError` | `test_a_bad_label_refuses_the_run_before_anything_is_counted_or_called` |
+| L3 | low | E11's tree scan split `git ls-files` on whitespace; a crafted `a b/scripts/entry_check.py` path inherited the scanner's exemption | `git ls-files -z`; the path comes from the `+++ b/` header inside the diff header | `test_history_scan_attributes_lines_to_their_files` |
+| L4 | low | No bare `Bearer <token>` shape | `BEARER` pattern; the tests' two bearer stand-ins are named in `STAND_INS`; history and tree: 0 hits | review |
+| L5 | low | `safecut audit` / `safecut receipt` exited 0 on a blocked audit | Exit 6, as `run` and `publish` | `test_the_single_stage_audit_command_exits_6_on_a_blocked_audit` |
+| L6 | low | `stage_reason: "audit_patch"` is never set | **Kept**: the audit's patch re-render happens inside SAFETY's audit stage, which the worker can't observe; the progress shows "audit" throughout, which is true | n/a |
+
+Also noted: a Modal redeploy may briefly overlap two containers on the Volume and ledger; BLOCKED now says not to push to main during the judging window.
+
+Round 9 was not clean (two medium): the clean count goes back to 0.

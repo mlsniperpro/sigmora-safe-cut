@@ -360,3 +360,17 @@ def test_muse_no_track_never_runs_the_tracker(base: Path, monkeypatch: pytest.Mo
     run_dir = runner.run("dev", "muse_no_track", replay=True, out=base / "results", splits=base / "splits", base=base)
     models = json.loads((run_dir / "config.json").read_text())["models"]
     assert models == {"keyframe_boxes": "muse-spark-1.3"}
+
+
+def test_a_bad_label_refuses_the_run_before_anything_is_counted_or_called(base: Path) -> None:
+    splits = base / "splits"
+    runner.freeze("test", splits, base)
+    (base / "labels" / "a.json").write_text("{}")  # changed after the freeze: the hash check refuses it too
+    with pytest.raises((runner.EvalError, ValueError)):
+        runner.run("test", "full", replay=False, out=base / "results", splits=splits, base=base)
+    assert runner.runs_made(splits) == []
+    dev = json.loads((splits / "dev.json").read_text())
+    assert dev["clips"][0]["labels"] == "labels/a.json"
+    with pytest.raises(ValueError, match=r"a\.json"):  # LabelError, before any job is created
+        runner.run("dev", "full", replay=False, out=base / "results", splits=splits, base=base)
+    assert not (base / "results").exists() or not any((base / "results").iterdir())

@@ -33,7 +33,7 @@ if str(ROOT) not in sys.path:  # run as a script (`python eval/run.py`): make th
 
 from pydantic import BaseModel, ConfigDict, Field  # noqa: E402 -- after the sys.path line above, on purpose
 
-from eval.labels import load_labels  # noqa: E402 -- after the sys.path line above, on purpose
+from eval.labels import LabelError, load_labels  # noqa: E402 -- after the sys.path line above, on purpose
 from eval.metrics import JobScore, score_job, summarize  # noqa: E402 -- after the sys.path line above, on purpose
 from eval.variants import VARIANTS, Variant, VariantUnavailable, preflight, run_variant  # noqa: E402 -- as above
 from safecut import netguard, pipeline  # noqa: E402 -- after the sys.path line above, on purpose
@@ -168,6 +168,9 @@ def run(
         # A live run costs credits (and a test run one of its 3): only committed code can back a reported number.
         raise EvalError("the working tree has uncommitted changes; commit them before a live run")
     preflight(variant)
+    # Every clip's labels load before anything is counted or called: a bad label never costs a paid run or a
+    # test-split run.
+    labels = {entry.labels: load_labels(base / entry.labels) for entry in split.clips}
     if split_name == "test":
         if replay:
             raise EvalError("the test split is reported from live runs only")
@@ -209,7 +212,7 @@ def run(
                 recorded["keyframe_boxes"] = result.detail["keyframe_boxes"]
             for role, model in recorded.items():
                 ran.setdefault(role, set()).add(model)
-            scores.append(score_job(job_dir, load_labels(base / entry.labels), result.regions))
+            scores.append(score_job(job_dir, labels[entry.labels], result.regions))
             spent += pipeline.job_spend(job_dir)
     finally:
         shutil.rmtree(work, ignore_errors=True)
@@ -331,7 +334,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.replay:
             netguard.block()  # a replay run never reaches the network, in any thread
         run_dir = run(args.split, args.variant, replay=args.replay, max_usd=args.max_usd)
-    except (EvalError, VariantUnavailable, pipeline.PipelineError) as exc:
+    except (EvalError, VariantUnavailable, pipeline.PipelineError, LabelError) as exc:
         print(f"eval: {exc}", file=sys.stderr)
         return 1
     print(f"wrote {run_dir.relative_to(ROOT) if run_dir.is_relative_to(ROOT) else run_dir}")

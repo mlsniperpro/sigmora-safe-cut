@@ -652,12 +652,20 @@ STAND_INS = frozenset(
     {"deploy-check-not-a-code", "judge-secret-7", "local-judge-code", "sigmora-service-key-0123456789"}
     # The API's one error code without an underscore (every other error code is a snake_case identifier).
     | {"unauthorized"}
+    # Bearer stand-ins in the API and Meta-client tests.
+    | {"wrong-key-wrong-key-wrong", "sk-test-not-a-real-key"}
 )
 
 
 def secret_hit(line: str) -> bool:
     """A key-shaped value on ``line`` that isn't one of the tests' named stand-ins."""
-    return any(m.group("credential") not in STAND_INS for m in SECRET.finditer(line))
+    return any(m.group("credential") not in STAND_INS for m in SECRET.finditer(line)) or any(
+        m.group(1) not in STAND_INS for m in BEARER.finditer(line)
+    )
+
+
+#: A bearer token pasted anywhere (a service key, or a Meta key whose shape we don't know).
+BEARER = re.compile(r"\bBearer\s+([A-Za-z0-9._~+/=\-]{20,})")
 
 
 SHIPPED = ("safecut", "eval", "deploy", "scripts", "web/src", "web/e2e", "web/scripts", ".github")
@@ -698,6 +706,9 @@ def history_hits(log: str) -> list[str]:
             in_header = False
             continue
         if in_header:
+            # The new side's own header names the file exactly (quoted when its name has spaces or non-ASCII).
+            if line.startswith(('+++ "b/', "+++ b/")):
+                current = line[4:].strip().strip('"').removeprefix("b/")
             continue
         if "+" in line[:columns] and current not in SCANNER_FILES and secret_hit(line):
             hits.append(f"{current}: {line}")
@@ -712,7 +723,7 @@ def e11() -> None:
     if hits:
         raise CheckFailed(f"secret-shaped text in git history: {hits[0][:100]}…")
     # And the tree as it stands, every tracked text file; only the scanner and its own tests may hold key shapes.
-    for name in sh(["git", "ls-files"]).stdout.split():
+    for name in sh(["git", "ls-files", "-z"]).stdout.split("\0"):
         path = ROOT / name
         if name in SCANNER_FILES or not path.is_file():
             continue
