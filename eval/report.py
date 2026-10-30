@@ -114,17 +114,24 @@ def render(runs: list[dict[str, Any]], settings: Settings | None = None) -> str:
                 f"| {name} | {pct(m['entity_recall'])} | {pct(m['exposure_rate'])} | "
                 f"{m['leak_bursts']} | {pct(m['over_blur'])} | {load} | {link} |"
             )
-        any_run = next(iter(by_variant.values()))["metrics"]
+        sizes = {
+            (r["metrics"]["clips"], r["metrics"]["should_hide"], r["metrics"]["should_keep"], r["metrics"]["minutes"])
+            for r in by_variant.values()
+        }
+        if len(sizes) > 1:
+            raise ValueError(f"split {split}: the reported runs scored different clip sets {sorted(sizes)}")
+        clips, hide, keep, minutes = sizes.pop()
         lines += [
             "",
-            f"{any_run['clips']} clip(s), {any_run['should_hide']} should-hide and "
-            f"{any_run['should_keep']} should-keep entities, {any_run['minutes']:.2f} min of footage. "
+            f"{clips} clip(s), {hide} should-hide and {keep} should-keep entities, {minutes:.2f} min of footage. "
             f"Chart: [charts/{split}{'-synthetic' if synthetic else ''}.png]"
             f"(results/charts/{split}{'-synthetic' if synthetic else ''}.png).",
             "",
         ]
         full = by_variant.get("full")
-        if full is not None:
+        if full is not None and full["config"].get("replay"):
+            lines += ["Cost: none measured; replay runs make no API calls.", ""]
+        elif full is not None:
             m = full["metrics"]
             lines += [
                 f"Cost of the full run: ${m['cost_usd']:.2f} measured"
@@ -143,7 +150,8 @@ def render(runs: list[dict[str, Any]], settings: Settings | None = None) -> str:
         f"${s.recording_code_usd:.2f}.",
         f"- A job's worst-case estimate before it starts: the larger of ${ESTIMATE_FLOOR_USD:.2f} and "
         f"${ESTIMATE_PER_MINUTE_USD:.2f} per minute of footage.",
-        f"- Clips: up to 60 s and 150 MB; jobs are deleted {s.job_ttl_hours:.0f} h after they're created.",
+        f"- Clips: up to 60 s and 150 MB; jobs are deleted {s.job_ttl_hours:.0f} h after they're created (the "
+        f"deletion sweep runs every {s.cleanup_interval_min} min, and a job past its time is refused on sight).",
         "",
     ]
     return "\n".join(lines)

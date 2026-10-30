@@ -7,8 +7,8 @@
 Splits: hero, dev, public, test (``eval/splits/<split>.json``). Variants: blur_all, egoblur, detector_only,
 muse_no_track, full, no_audit. Each run writes ``eval/results/<run-id>/``: ``metrics.json``, ``per_clip.csv``,
 ``cost.json``, ``config.json`` (model IDs, git SHA, split hash) and ``worst.json`` (the worst five exposures). The
-``test`` split refuses to run when its labels no longer match ``eval/splits/test.sha256``, stops after 3 runs, and
-writes metrics only.
+``test`` split runs live only, refuses to run when its labels no longer match ``eval/splits/test.sha256``, and
+stops after 3 runs (a run is counted when it starts). No split's results hold frames or images.
 """
 
 from __future__ import annotations
@@ -135,6 +135,10 @@ def git_sha() -> str:
     return f"{sha}-dirty" if status.stdout.strip() else sha
 
 
+def now_id(now: datetime) -> str:
+    return f"{now:%Y%m%dT%H%M%SZ}"
+
+
 def run(
     split_name: Split,
     variant: Variant,
@@ -147,13 +151,16 @@ def run(
 ) -> Path:
     """Run ``variant`` on every clip of the split; return the run directory."""
     split = load_split(split_name, splits)
+    now = now or datetime.now(UTC)
     if split_name == "test":
         if replay:
             raise EvalError("the test split is reported from live runs only")
         check_test_split(split, splits, base)
-    now = now or datetime.now(UTC)
+        # Counted before any paid call: a run that crashes halfway still used one of the 3.
+        counter = RunCounter(runs=[*runs_made(splits), f"{now_id(now)}-test-{variant}"])
+        (splits / "test.runs.json").write_text(counter.model_dump_json(indent=1) + "\n", encoding="utf-8")
     sha = git_sha()
-    run_id = f"{now:%Y%m%dT%H%M%SZ}-{split_name}-{variant}-{sha[:7]}"
+    run_id = f"{now_id(now)}-{split_name}-{variant}-{sha[:7]}"
     scores: list[JobScore] = []
     detail: dict[str, str] = {}
     synthetic = False
@@ -198,9 +205,6 @@ def run(
             "detail": detail,
         },
     )
-    if split_name == "test":
-        counter = RunCounter(runs=[*runs_made(splits), run_id])
-        (splits / "test.runs.json").write_text(counter.model_dump_json(indent=1) + "\n", encoding="utf-8")
     return run_dir
 
 

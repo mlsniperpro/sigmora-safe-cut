@@ -2,19 +2,21 @@
 
 Two scopes: :func:`block` refuses for the whole process (the CLI and an API started with ``SAFECUT_REPLAY=1``),
 and :func:`blocked` refuses only in the calling thread while its ``with`` lasts (``pipeline.run_stage`` in replay),
-so a replay job can't silence a live job running in another thread. Loopback stays open (a local API under test);
-everything else raises :class:`NetworkBlocked` at ``connect``/``getaddrinfo`` time, so a stage that forgot its
-replay branch fails loudly instead of spending.
+so a replay job can't silence a live job running in another thread. Loopback stays open (a local API under
+test), except the ports a configured HTTP(S) proxy listens on; everything else raises :class:`NetworkBlocked` at
+``connect``/``getaddrinfo`` time, so a stage that forgot its replay branch fails loudly instead of spending.
 """
 
 from __future__ import annotations
 
 import ipaddress
+import os
 import socket
 import threading
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Any
+from urllib.parse import urlsplit
 
 _LOCAL_NAMES = frozenset({"localhost", "localhost.localdomain", "ip6-localhost", "ip6-loopback"})
 
@@ -50,15 +52,37 @@ def _refusing() -> bool:
     return _global.is_set() or getattr(_local, "depth", 0) > 0
 
 
+def proxy_ports() -> frozenset[int]:
+    """Loopback ports an HTTP(S) proxy listens on (``HTTPS_PROXY=http://127.0.0.1:36343`` and the like): a local
+    proxy is a way out to the network, so in replay it is refused like any remote host."""
+    ports: set[int] = set()
+    for name, value in os.environ.items():
+        if not name.lower().endswith("_proxy") or name.lower() == "no_proxy":
+            continue
+        try:
+            parsed = urlsplit(value if "://" in value else f"http://{value}")
+            if parsed.port is not None and _is_local(parsed.hostname):
+                ports.add(parsed.port)
+        except ValueError:
+            continue
+    return frozenset(ports)
+
+
+def _allowed(family: int, address: Any) -> bool:
+    if family not in (socket.AF_INET, socket.AF_INET6):
+        return True
+    return _is_local(address[0]) and address[1] not in proxy_ports()
+
+
 def _guarded_connect(self: socket.socket, address: Any, /) -> None:
-    if _refusing() and self.family in (socket.AF_INET, socket.AF_INET6) and not _is_local(address[0]):
-        raise NetworkBlocked(f"replay mode: refused a connection to {address[0]!r}")
+    if _refusing() and not _allowed(self.family, address):
+        raise NetworkBlocked(f"replay mode: refused a connection to {address[0]!r}:{address[1]}")
     _original["connect"](self, address)
 
 
 def _guarded_connect_ex(self: socket.socket, address: Any, /) -> int:
-    if _refusing() and self.family in (socket.AF_INET, socket.AF_INET6) and not _is_local(address[0]):
-        raise NetworkBlocked(f"replay mode: refused a connection to {address[0]!r}")
+    if _refusing() and not _allowed(self.family, address):
+        raise NetworkBlocked(f"replay mode: refused a connection to {address[0]!r}:{address[1]}")
     return _original["connect_ex"](self, address)
 
 

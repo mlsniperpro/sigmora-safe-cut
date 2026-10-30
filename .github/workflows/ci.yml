@@ -23,7 +23,7 @@ jobs:
           version: "0.11.32"
           enable-cache: true
       - name: Install (dev group; the audit and deploy groups are installed on demand)
-        run: uv sync --locked --python 3.12
+        run: uv sync --locked --python 3.12 --all-groups --no-group audit
       - name: Lint
         run: uv run ruff check --output-format=github .
       - name: Format
@@ -32,6 +32,8 @@ jobs:
         run: uv run pyright
       - name: Test (no live Meta calls)
         run: uv run pytest -m "not live"
+      - name: RESULTS.md matches the committed eval runs
+        run: uv run python eval/report.py --check
 
   web:
     runs-on: ubuntu-latest

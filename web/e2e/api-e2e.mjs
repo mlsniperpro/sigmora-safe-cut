@@ -88,7 +88,7 @@ process.on("exit", stopAll);
 let browser;
 try {
   // The API, in replay, with one judge code, a high rate limit (the e2e polls a lot) and CORS for this web origin.
-  const api = spawn("uv", ["run", "--no-sync", "uvicorn", "--factory", "safecut.api.app:create_app", "--host", "127.0.0.1", "--port", String(apiPort), "--log-level", process.env.E2E_API_LOG ?? "warning"], {
+  const api = spawn("uv", ["run", "--no-sync", "uvicorn", "--factory", "safecut.api.app:create_app", "--host", "127.0.0.1", "--port", String(apiPort), "--log-level", process.env.E2E_API_LOG ?? "warning", "--no-proxy-headers"], {
     cwd: REPO,
     env: {
       ...process.env,

@@ -18,7 +18,7 @@ Recall: the share of should-hide entities covered (≥ 95 % of the box) on at le
 
 1 clip(s), 5 should-hide and 2 should-keep entities, 0.20 min of footage. Chart: [charts/dev-synthetic.png](results/charts/dev-synthetic.png).
 
-Cost of the full run: $0.00 measured ($0.00 per minute).
+Cost: none measured; replay runs make no API calls.
 
 ## Service limits (from `safecut/config.py` defaults)
 
@@ -26,4 +26,4 @@ Cost of the full run: $0.00 measured ($0.00 per minute).
 - Daily cap for judge and public codes (`SAFECUT_DAILY_USD_CAP`): $3.00, reset at 00:00 UTC.
 - Pilot codes: $6.00 each, $20.00 in total; the recording code: up to $15.00.
 - A job's worst-case estimate before it starts: the larger of $1.12 and $2.24 per minute of footage.
-- Clips: up to 60 s and 150 MB; jobs are deleted 24 h after they're created.
+- Clips: up to 60 s and 150 MB; jobs are deleted 24 h after they're created (the deletion sweep runs every 15 min, and a job past its time is refused on sight).

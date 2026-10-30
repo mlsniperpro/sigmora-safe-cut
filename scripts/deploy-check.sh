@@ -80,6 +80,19 @@ if [ "$WEB" != "-" ]; then
   if [ "$code" = "404" ]; then ok "web: unknown pages are 404"; else fail "web: an unknown page answered $code"; fi
 fi
 
+# Last, because it uses up this checker's own rate limit for a minute.
+# The per-IP limit must hold even when the client sends its own X-Forwarded-For (a proxy that doesn't set it would
+# let every request claim a new IP). SPOOF_N requests with a different forged address each must meet a 429.
+SPOOF_N="${SPOOF_N:-70}"
+limited=0
+for i in $(seq 1 "$SPOOF_N"); do
+  c="$(curl -sS -m 10 -o /dev/null -w '%{http_code}' -H "X-Forwarded-For: 198.51.100.$((i % 250))" "$API/v1/jobs/j_0000000000000000000000" 2>/dev/null || echo 000)"
+  if [ "$c" = "429" ]; then limited=1; break; fi
+done
+if [ "$limited" = "1" ]; then ok "API: the per-IP limit holds against forged X-Forwarded-For headers"
+else fail "API: $SPOOF_N requests with forged X-Forwarded-For were never rate limited (check SAFECUT_TRUST_PROXY)"; fi
+
+
 if [ "$FAILS" -eq 0 ]; then echo "DEPLOY: PASS"; exit 0; fi
 echo "DEPLOY: FAIL ($FAILS)"
 exit 1

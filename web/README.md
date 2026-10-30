@@ -13,7 +13,7 @@ Needs Node 22–24 (`engines`: `>=22 <25`) and pnpm 10.28 (`corepack enable` pic
 SAFECUT_REPLAY=1 SAFECUT_JOBS_DIR=/tmp/safecut-jobs SAFECUT_CORS_ORIGINS='["http://localhost:3000"]' \
   SAFECUT_ACCESS_CODES='[{"code": "local-judge-code", "kind": "judge"}]' \
   SAFECUT_CODE_WINDOWS='{"judge": [null, null]}' \
-  uv run uvicorn --factory safecut.api.app:create_app --port 8000
+  uv run uvicorn --factory safecut.api.app:create_app --port 8000 --no-proxy-headers
 ```
 
 ```bash

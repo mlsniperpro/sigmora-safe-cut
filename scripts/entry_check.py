@@ -283,6 +283,21 @@ def run_entry_tests(
         report.unlink(missing_ok=True)
 
 
+def require_passed(lines: list[dict[str, Any]], line: str) -> None:
+    """Every collected keyed test ran and passed: a skipped, xfailed or erroring one is a failure, whatever pytest's
+    exit code says."""
+    collected = {e["nodeid"] for e in lines if e.get("event") == "collected"}
+    passed = {
+        e["nodeid"]
+        for e in lines
+        if e.get("event") == "result" and e.get("when") == "call" and e.get("outcome") == "passed"
+    }
+    other = sorted({e["nodeid"] for e in lines if e.get("event") == "result" and e.get("outcome") != "passed"})
+    if other or collected - passed:
+        bad = other or sorted(collected - passed)
+        raise CheckFailed(f"{line} test(s) didn't pass: {', '.join(bad[:3])}")
+
+
 def keys_present(lines: list[dict[str, Any]], line: str, required: Iterable[str]) -> dict[str, list[str]]:
     by_key: dict[str, list[str]] = {}
     for entry in lines:
@@ -299,6 +314,7 @@ def keys_present(lines: list[dict[str, Any]], line: str, required: Iterable[str]
 def e4() -> None:
     lines = run_entry_tests("E4", extra=["--hypothesis-show-statistics"], env={"HYPOTHESIS_PROFILE": "entry"})
     by_key = keys_present(lines, "E4", E4_KEYS)
+    require_passed(lines, "E4")
     examples = {e["nodeid"]: e.get("examples") for e in lines if e.get("event") == "teardown"}
     for key in E4_PROPERTIES:
         for nodeid in by_key[f"E4:{key}"]:
@@ -324,7 +340,9 @@ def e4() -> None:
 
 
 def e5() -> None:
-    keys_present(run_entry_tests("E5"), "E5", E5_KEYS)
+    lines = run_entry_tests("E5")
+    keys_present(lines, "E5", E5_KEYS)
+    require_passed(lines, "E5")
 
 
 def e8() -> None:
@@ -461,10 +479,10 @@ FIGURE = re.compile(r"(?<![\w.\-/])(\$?\d+(?:\.\d+)?%|\$\d+(?:\.\d+)?|\d+\.\d+)(
 
 
 def prose(text: str) -> str:
-    """The text with fenced code, inline code, link targets and HTML comments removed."""
+    """The text a reader sees as prose: fenced code blocks, link targets and HTML comments removed. Inline code is
+    kept, so a figure can't hide in backticks (model IDs like ``sam-3.1`` never match :data:`FIGURE`)."""
     text = re.sub(r"```.*?```", " ", text, flags=re.DOTALL)
     text = re.sub(r"<!--.*?-->", " ", text, flags=re.DOTALL)
-    text = re.sub(r"`[^`\n]*`", " ", text)
     return re.sub(r"\]\([^)]*\)", "]", text)
 
 
@@ -488,7 +506,7 @@ def e10() -> None:
     results = results_path.read_text(encoding="utf-8")
     for doc in SUBMISSION_DOCS:
         for figure in FIGURE.findall(prose((ROOT / doc).read_text(encoding="utf-8"))):
-            if figure not in results:
+            if not re.search(rf"(?<![\w.]){re.escape(figure)}(?![\w%]|\.\d)", results):
                 raise CheckFailed(f"{doc}: the figure {figure} is not in eval/RESULTS.md")
 
 
@@ -500,7 +518,7 @@ SECRET = re.compile(
     r"sk-ant-[A-Za-z0-9_-]{20,}|sk_live_[A-Za-z0-9]{16,}|rk_live_[A-Za-z0-9]{16,}|AKIA[0-9A-Z]{16}"
     r"|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|xox[abpr]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{35}"
     r"|-----BEGIN ([A-Z]+ )?PRIVATE KEY-----|\"private_key\":\s*\"-----BEGIN"
-    r"|(MODEL_API_KEY|BASETEN_API_KEY|MODAL_TOKEN_SECRET|MODAL_TOKEN_ID)\s*[=:]\s*['\"]?[A-Za-z0-9_\-]{20,}"
+    r"|[\"']?(MODEL_API_KEY|BASETEN_API_KEY|MODAL_TOKEN_SECRET|MODAL_TOKEN_ID)[\"']?\s*[=:]\s*['\"]?[A-Za-z0-9_\-]{20,}"
 )
 SHIPPED = ("safecut", "eval", "deploy", "scripts", "web/src", "web/e2e", "web/scripts", ".github")
 #: The three unfinished-work markers, spelt in pieces so this file doesn't match its own check.
@@ -542,17 +560,23 @@ def e11() -> None:
             "git",
             "grep",
             "-nE",
-            r"@pytest\.mark\.(skip|xfail)|pytest\.skip\(|\b(it|test|describe)\.(skip|only)\(",
+            r"pytest\.mark\.(skip|skipif|xfail)\b|pytest\.(skip|xfail|importorskip)\(|\b(it|test|describe)\.(skip|only|fixme|todo)\(",
             "--",
             "tests",
             "web/src",
             "web/e2e",
         ]
     ).stdout.splitlines()
-    skips = [s for s in skips if "MODEL_API_KEY" not in s and "live" not in s]
+    skips = [s for s in skips if not LIVE_SKIP.match(s)]
     if skips:
         raise CheckFailed(f"skipped test outside the live suite: {skips[0][:120]}")
     fresh_clone_readme()
+
+
+#: The one allowed skip: a live test (tests/test_live*.py) skipping because its owner key isn't set.
+LIVE_SKIP = re.compile(
+    r"^tests/test_live[\w]*\.py:\d+:.*pytest\.mark\.skipif\(not os\.environ\.get\(\"(MODEL_API_KEY|BASETEN_API_KEY)\"\)"
+)
 
 
 def fresh_clone_readme() -> None:

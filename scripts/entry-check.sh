@@ -51,7 +51,7 @@ if wanted E1; then
   step "$log" uv sync --all-groups --locked || reason="uv sync --all-groups --locked failed"
   if [ -z "$reason" ]; then
     step "$log" uv run --no-sync pytest -q -p no:cacheprovider || reason="pytest failed"
-    if [ -z "$reason" ] && grep -qE '[0-9]+ skipped' "$log"; then reason="pytest skipped tests: $(grep -oE '[0-9]+ skipped' "$log" | tail -1)"; fi
+    if [ -z "$reason" ] && grep -qE '[0-9]+ (skipped|xfailed|xpassed)' "$log"; then reason="pytest skipped or xfailed tests: $(grep -oE '[0-9]+ (skipped|xfailed|xpassed)' "$log" | tail -1)"; fi
     step "$log" uv run --no-sync ruff check || reason="${reason:-ruff check failed}"
     step "$log" uv run --no-sync ruff format --check || reason="${reason:-ruff format --check failed}"
     step "$log" uv run --no-sync pyright || reason="${reason:-pyright failed}"

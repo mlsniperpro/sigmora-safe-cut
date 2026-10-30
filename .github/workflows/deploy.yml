@@ -1,10 +1,13 @@
 name: deploy
 
-# Deploys the API to Modal on every push to main, then smoke-tests the deployed image and the live URLs.
+# Deploys the API to Modal after CI passes on main, then smoke-tests the deployed image and the live URLs.
 # Without the Modal secrets (an owner input, BLOCKED.md) it skips with a notice instead of failing.
 
 on:
-  push:
+  # Only after CI passed on main: a red main is never deployed.
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -19,6 +22,7 @@ jobs:
   modal:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
@@ -36,6 +40,8 @@ jobs:
           fi
       - uses: actions/checkout@v4
         if: steps.gate.outputs.run == 'true'
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: astral-sh/setup-uv@v6
         if: steps.gate.outputs.run == 'true'
         with:
@@ -51,5 +57,10 @@ jobs:
         if: steps.gate.outputs.run == 'true'
         run: uv run modal run deploy/modal_app.py
       - name: Check the live URLs
-        if: steps.gate.outputs.run == 'true' && env.SAFECUT_API_URL != ''
-        run: bash scripts/deploy-check.sh "$SAFECUT_API_URL" "${SAFECUT_WEB_URL:--}"
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          if [ -z "$SAFECUT_API_URL" ]; then
+            echo "::notice title=URL check skipped::set the SAFECUT_API_URL (and SAFECUT_WEB_URL) repository variables to check the deployment"
+          else
+            bash scripts/deploy-check.sh "$SAFECUT_API_URL" "${SAFECUT_WEB_URL:--}"
+          fi

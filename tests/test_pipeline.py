@@ -452,3 +452,18 @@ def test_a_replay_is_synthetic_unless_its_manifest_says_otherwise(tmp_path: Path
     ):
         (raw / "manifest.json").write_text(content)
         assert pipeline.recording_is_synthetic(tmp_path) is expected, content
+
+
+def test_netguard_refuses_a_local_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
+    server = socket.socket()
+    server.bind(("127.0.0.1", 0))
+    server.listen(1)
+    port = server.getsockname()[1]
+    monkeypatch.setenv("HTTPS_PROXY", f"http://127.0.0.1:{port}")
+    monkeypatch.setenv("no_proxy", "localhost")
+    try:
+        assert port in netguard.proxy_ports()
+        with netguard.blocked(), pytest.raises(netguard.NetworkBlocked):
+            socket.create_connection(("127.0.0.1", port), timeout=2)
+    finally:
+        server.close()

@@ -40,6 +40,9 @@ WEB = "https://safecut.sigmora.org"
 def fake_stages(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(Stage, "runner", _fake_runner)
     monkeypatch.setattr("safecut.api.app.auditor_available", lambda settings: True)
+    # The stand-ins copy files from different example jobs, which don't cross-check; the gate itself is tested
+    # below (test_a_job_whose_files_disagree_never_ends_done) and on the real stages (test_flow_on_the_real_stages).
+    monkeypatch.setattr("safecut.api.worker.validate_job_dir", lambda job_dir: {})
 
 
 def settings_for(tmp_path: Path, **overrides: Any) -> Settings:
@@ -678,3 +681,196 @@ def test_cost_lines_count_against_the_job_cap(tmp_path: Path) -> None:
 
 def test_redacted_name_is_the_render_output() -> None:
     assert REDACTED == "redacted.mp4"
+
+
+def test_a_job_whose_files_disagree_never_ends_done(
+    make_client: Callable[..., tuple[TestClient, Service]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from safecut.contracts import validate_job_dir  # noqa: PLC0415 -- the real gate, unstubbed
+
+    monkeypatch.setattr("safecut.api.worker.validate_job_dir", validate_job_dir)
+    client, svc = make_client()
+    job_id = upload_clip(client)
+    run_to(client, svc, job_id, "start", "review")
+    job = run_to(client, svc, job_id, "render", "failed")  # the stand-ins' receipt doesn't match this job
+    assert job["failure"]["stage"] == "receipt"
+    assert job["failure"]["reason"] == "internal"
+
+
+@pytest.mark.entry("E5:flow")
+def test_flow_on_the_real_stages(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The whole flow on the real stages and the recorded (synthetic) demo job, replayed."""
+    monkeypatch.undo()
+    from safecut.contracts import Receipt  # noqa: PLC0415
+
+    demo = ROOT / "fixtures" / "jobs" / "demo"
+    clip = ROOT / json.loads((demo / "raw" / "manifest.json").read_text())["source"]
+    svc = Service(settings_for(tmp_path), fixtures=ROOT / "fixtures" / "jobs")
+    with TestClient(create_app(service=svc, background=False)) as client:
+        created = client.post(
+            "/v1/jobs",
+            json={
+                "code": JUDGE,
+                "size_bytes": clip.stat().st_size,
+                "content_type": "video/mp4",
+                "file_name": clip.name,
+            },
+        ).json()
+        assert (
+            client.put(
+                created["upload_url"], content=clip.read_bytes(), headers={"Content-Type": "video/mp4"}
+            ).status_code
+            == 200
+        )
+        job_id = created["job_id"]
+        job = run_to(client, svc, job_id, "start", "review")
+        assert job["synthetic"] is True
+        child = next(i for i in job["items"] if i["kind"] == "child")
+        refused = client.post(
+            f"/v1/jobs/{job_id}/review", json={"type": "keep", "edit_id": "k", "item_id": child["item_id"]}
+        )
+        assert refused.status_code == 409  # a child is never kept, whatever the creator asks
+        needs = next(i for i in job["items"] if i["decision"] == "needs_you")
+        assert (
+            client.post(
+                f"/v1/jobs/{job_id}/review", json={"type": "hide", "edit_id": "h", "item_id": needs["item_id"]}
+            ).status_code
+            == 200
+        )
+        done = run_to(client, svc, job_id, "render", "done")
+        assert done["audit"]["unresolved"] == 0
+        receipt = client.get(client.get(f"/v1/jobs/{job_id}/result").json()["receipt_json_url"]).json()
+        assert Receipt.model_validate(receipt).job_id == job_id
+
+
+def test_the_demo_job_is_read_only(make_client: Callable[..., tuple[TestClient, Service]]) -> None:
+    client, svc = make_client()
+    job_id = hero_job_id("demo")
+    svc.store.create(mode="replay", job_id=job_id, pinned=True)
+    with svc.store.update(job_id) as state:
+        state.status = "done"
+    for method, path, body in (
+        ("DELETE", "", None),
+        ("POST", "/review", {"type": "hide", "edit_id": "x", "item_id": "i_1"}),
+        ("POST", "/start", None),
+        ("POST", "/render", None),
+        ("POST", "/audit", None),
+    ):
+        response = client.request(method, f"/v1/jobs/{job_id}{path}", json=body)
+        assert response.status_code == 403, path
+        assert response.json()["error"]["code"] == "demo_read_only"
+    assert svc.store.path(job_id).is_dir()
+
+
+def test_two_concurrent_starts_run_the_analysis_once(
+    make_client: Callable[..., tuple[TestClient, Service]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import threading  # noqa: PLC0415
+
+    client, svc = make_client()
+    job_id = upload_clip(client)
+    submitted: list[str] = []
+    real_submit = svc.worker.submit
+    monkeypatch.setattr(
+        svc.worker, "submit", lambda jid, action: (submitted.append(action), real_submit(jid, action))[1]
+    )
+    barrier = threading.Barrier(2)
+    codes: list[int] = []
+
+    def go() -> None:
+        barrier.wait()
+        codes.append(client.post(f"/v1/jobs/{job_id}/start").status_code)
+
+    threads = [threading.Thread(target=go) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(codes) == [202, 409]
+    assert submitted == ["analyse"]
+    svc.worker.wait(job_id)
+
+
+def test_a_restart_requeues_interrupted_jobs(make_client: Callable[..., tuple[TestClient, Service]]) -> None:
+    client, svc = make_client()
+    job_id = upload_clip(client)
+    run_to(client, svc, job_id, "start", "review")
+    with svc.store.update(job_id) as state:  # as a crash mid-render would leave it
+        state.status, state.stage = "rendering", "render"
+    pipeline.approve(svc.store.path(job_id), how="review")
+    assert svc.recover() == [job_id]
+    svc.worker.wait(job_id)
+    assert client.get(f"/v1/jobs/{job_id}").json()["status"] == "done"
+    assert svc.recover() == []
+
+
+@pytest.mark.parametrize(
+    ("reason", "message", "expected"),
+    [
+        ("unreadable", "transcode failed", ("bad_media", None, None)),
+        ("no_video", "no video", ("bad_media", None, None)),
+        ("too_long", "61.20 s is over the 60 s limit", ("too_long", 61.2, None)),
+        ("too_large", "157286401 bytes is over the limit", ("too_large", None, 157286401)),
+        ("no_source", "source/ is empty", ("internal", None, None)),
+    ],
+)
+def test_prepare_rejections_map_to_the_ui_reasons(
+    reason: str, message: str, expected: tuple[str, float | None, int | None]
+) -> None:
+    from safecut.api.worker import failure_for  # noqa: PLC0415
+    from safecut.prepare import PrepareError  # noqa: PLC0415
+
+    failure, transient = failure_for(PrepareError(reason, message), "prepare")  # type: ignore[arg-type] -- a Reason
+    assert (failure.reason, failure.duration_s, failure.size_bytes) == expected
+    assert transient is False
+
+
+@pytest.mark.entry("E5:upload_limits")
+def test_a_clip_over_60_s_fails_in_prepare_with_its_duration(
+    make_client: Callable[..., tuple[TestClient, Service]], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The 60 s rule (> 60.05 s, UI-SPEC §10.2) is applied by the real prepare stage, after the upload."""
+    import subprocess  # noqa: PLC0415
+
+    from imageio_ffmpeg import get_ffmpeg_exe  # noqa: PLC0415
+
+    from safecut.prepare import run as real_prepare  # noqa: PLC0415 -- the real stage, not the stand-in
+
+    def runner(stage: Stage) -> Callable[..., Path]:
+        return real_prepare if stage.name == "prepare" else _fake_runner(stage)
+
+    monkeypatch.setattr(Stage, "runner", runner)
+    long_clip = tmp_path / "long.mp4"
+    subprocess.run(  # noqa: S603 -- our bundled ffmpeg, a fixed argv
+        [
+            get_ffmpeg_exe(),
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=gray:s=64x64:r=2:d=61",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            str(long_clip),
+        ],
+        check=True,
+        timeout=60,
+    )
+    client, svc = make_client(replay=False, model_api_key=SecretStr("sk-test"))
+    created = client.post(
+        "/v1/jobs",
+        json={
+            "code": JUDGE,
+            "size_bytes": long_clip.stat().st_size,
+            "content_type": "video/mp4",
+            "file_name": "long.mp4",
+        },
+    ).json()
+    client.put(created["upload_url"], content=long_clip.read_bytes(), headers={"Content-Type": "video/mp4"})
+    job = run_to(client, svc, created["job_id"], "start", "failed")
+    assert job["failure"]["stage"] == "prepare"
+    assert job["failure"]["reason"] == "too_long"
+    assert job["failure"]["duration_s"] == pytest.approx(61, abs=0.1)

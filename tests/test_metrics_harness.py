@@ -238,6 +238,7 @@ def test_report_tables_link_every_number_and_label_synthetic_runs(base: Path) ->
     assert "(results/20261030T120000Z-dev-full-0123456/metrics.json)" in full_row
     assert "| EgoBlur Gen 2 on every frame | not run |" in text
     assert "$3.00" in text  # the service limits come from config defaults
+    assert "Cost: none measured; replay runs make no API calls." in text  # never a $0.00 "measured" claim
     assert report.render(runs) == text  # deterministic
     charts = report.charts(runs, base / "charts")
     assert [c.name for c in charts] == ["dev-synthetic.png"]
@@ -264,3 +265,16 @@ def test_an_egoblur_run_records_the_detector_that_ran_and_the_report_names_it(
         assert "OpenCV YuNet face detector on every frame (EgoBlur weights not installed)" in text
         assert "| EgoBlur Gen 2 on every frame |" not in text
     assert (root / "eval" / "splits" / "dev.json").is_file()
+
+
+def test_a_test_run_that_crashes_still_counts(base: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    splits = base / "splits"
+    runner.freeze("test", splits, base)
+
+    def crash(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("Meta went away halfway")
+
+    monkeypatch.setattr(runner, "run_variant", crash)
+    with pytest.raises(RuntimeError):
+        runner.run("test", "full", replay=False, out=base / "results", splits=splits, base=base)
+    assert len(runner.runs_made(splits)) == 1

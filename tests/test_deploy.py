@@ -73,6 +73,7 @@ def api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
             str(port),
             "--log-level",
             "warning",
+            "--no-proxy-headers",
         ],
         env=env,
         cwd=ROOT,

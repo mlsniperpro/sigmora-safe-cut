@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -123,3 +124,41 @@ def test_secret_pattern_catches_assigned_keys_but_not_the_fake_one() -> None:
 def test_unknown_check_is_a_usage_error(capsys: pytest.CaptureFixture[str]) -> None:
     assert entry_check.main(["E99"]) == 2
     assert "usage" in capsys.readouterr().err
+
+
+def test_figures_in_inline_code_are_checked_and_matched_whole() -> None:
+    assert entry_check.FIGURE.findall(entry_check.prose("cap `$3.00`, recall `97.5%`")) == ["$3.00", "97.5%"]
+    results = "recall 85.0% and $13.00"
+    for figure, present in (("85.0%", True), ("5.0%", False), ("$3.00", False), ("$13.00", True)):
+        found = bool(re.search(rf"(?<![\w.]){re.escape(figure)}(?![\w%]|\.\d)", results))
+        assert found is present, figure
+
+
+def test_require_passed_refuses_skipped_or_missing_outcomes() -> None:
+    collected = [{"event": "collected", "nodeid": "t::a", "keys": ["E5:x"]}]
+    entry_check.require_passed(
+        [*collected, {"event": "result", "nodeid": "t::a", "when": "call", "outcome": "passed"}], "E5"
+    )
+    with pytest.raises(entry_check.CheckFailed, match="didn't pass"):
+        entry_check.require_passed(
+            [*collected, {"event": "result", "nodeid": "t::a", "when": "setup", "outcome": "skipped"}], "E5"
+        )
+    with pytest.raises(entry_check.CheckFailed, match="didn't pass"):
+        entry_check.require_passed(collected, "E5")
+
+
+@pytest.mark.parametrize(
+    ("line", "allowed"),
+    [
+        ('tests/test_live_sense.py:30:    pytest.mark.skipif(not os.environ.get("MODEL_API_KEY"), reason="x"),', True),
+        ('tests/test_api.py:9:@pytest.mark.skipif(not os.environ.get("MODEL_API_KEY"), reason="x")', False),
+        ('tests/test_live_x.py:3:@pytest.mark.skip(reason="deliver later")', False),
+        ('tests/test_x.py:3:    pytest.importorskip("modal")', False),
+    ],
+)
+def test_only_key_gated_live_skips_are_allowed(line: str, allowed: bool) -> None:
+    assert bool(entry_check.LIVE_SKIP.match(line)) is allowed
+
+
+def test_secret_pattern_catches_the_json_form() -> None:
+    assert entry_check.SECRET.search('{"MODEL_API_KEY": "abcdefghijklmnopqrstuvwxyz012345"}')  # gate-allow: test data
