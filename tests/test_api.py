@@ -8,7 +8,6 @@ so these tests exercise the API, the pipeline, the real WP3 review fold and the 
 from __future__ import annotations
 
 import json
-import shutil
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -26,38 +25,15 @@ from safecut.config import AccessCode, CodeWindow, ServiceKey, Settings
 from safecut.contracts import CostLine, Job, append_cost_line, load
 from safecut.meta.budget import CapLimit
 from safecut.stages import REDACTED, Stage
+from tests.fake_stages import CLIP
+from tests.fake_stages import fake_runner as _fake_runner
 
 ROOT = Path(__file__).resolve().parent.parent
-EXAMPLE = ROOT / "fixtures" / "contracts" / "j_example"
-CLIP = ROOT / "fixtures" / "clips" / "counter_24fps.mp4"
 JUDGE = "judge-code-1234"
 PILOT = "pilot-code-5678"
 SERVICE_KEY = "sigmora-service-key-0123456789"
 OPEN = CodeWindow(start=None, until=None)
 WEB = "https://safecut.sigmora.org"
-
-
-def _fake_runner(stage: Stage) -> Callable[..., Path]:
-    def run(job_dir: Path, *, replay: bool = False) -> Path:
-        out = job_dir / stage.output
-        if stage.name == "prepare":
-            data = json.loads((EXAMPLE / "job.json").read_text())
-            data["job_id"] = job_dir.name
-            out.write_text(json.dumps(data))
-            shutil.copyfile(CLIP, job_dir / data["prepared"])
-        elif stage.name == "render":
-            shutil.copyfile(CLIP, out)
-        elif stage.name == "decide":
-            from safecut.decide import run as decide  # noqa: PLC0415 -- the real WP3 stage, on the example inputs
-
-            return decide(job_dir, replay=replay)
-        else:
-            shutil.copyfile(EXAMPLE / stage.output, out)
-            if stage.name == "receipt":
-                (job_dir / "receipt.html").write_text("<!doctype html><title>receipt</title>")
-        return out
-
-    return run
 
 
 @pytest.fixture(autouse=True)

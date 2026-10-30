@@ -15,6 +15,7 @@ from hypothesis import HealthCheck
 from hypothesis import settings as hypothesis_settings
 from pydantic import SecretStr
 
+from safecut import netguard
 from safecut.config import Settings
 from safecut.contracts import CostLine, read_cost_lines
 from safecut.meta.budget import Caller, LocalLedger
@@ -32,6 +33,15 @@ hypothesis_settings.register_profile(
 hypothesis_settings.load_profile(os.environ.get("HYPOTHESIS_PROFILE", "dev"))
 
 pytest_plugins = ("tests.entry_report",)
+
+
+@pytest.fixture(autouse=True)
+def _reset_network_guard() -> Iterator[None]:
+    """The CLI and eval/run.py block the network for the whole process in replay, by design; between tests that
+    process is pytest's, so each test starts with the guard off."""
+    yield
+    netguard.unblock()
+
 
 BASE = "https://api.meta.ai/v1"
 FAKE_KEY = "sk-test-not-a-real-key"

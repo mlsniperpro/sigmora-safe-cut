@@ -1,0 +1,25 @@
+# Owner inputs (the whole entry)
+
+Every lane's list merged into one, with the exact steps for each input. None of these blocks the code: the entry
+runs end to end on the synthetic demo job (`fixtures/jobs/demo/`, labelled synthetic everywhere) until they arrive.
+Tick an item only once it is done; done items are then removed from this list (`scripts/entry-check.sh` E12).
+
+## Keys and accounts
+
+- [ ] **`MODEL_API_KEY`** (the Meta Model API key with the hackathon credits): add it as a secret in this repo's cloud environment, with `api.meta.ai` allowed by its network policy, and in the Modal secret below. Then a session runs `bash scripts/go-live.sh fixtures/clips/SC-A-91-synthetic-20261030.mp4` (records a full job's raw responses under its USD cap), `uv run pytest -m live` (every Meta call's live test) and the WP0 probes (`uv run python -m scripts.probes.probes a b c d e f g`, ≤ $6).
+- [ ] **Modal tokens** for the deploy: create a token at modal.com (Settings → API tokens), then add `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` as GitHub repository secrets (Settings → Secrets and variables → Actions). Also create the Modal secret `safecut-secrets` (Modal dashboard → Secrets → Custom) holding `MODEL_API_KEY`, `SAFECUT_ACCESS_CODES`, `SAFECUT_SERVICE_KEYS`, `SAFECUT_URL_SECRET` (any 32+ random characters), `SAFECUT_PUBLIC_URL` (the API URL Modal prints) and `SAFECUT_CORS_ORIGINS` (`["https://safecut.sigmora.org"]`). The next push to `main` deploys (`.github/workflows/deploy.yml`); `bash scripts/deploy-check.sh <api-url> <web-url>` then checks it.
+- [ ] **The judge access codes** in `SAFECUT_ACCESS_CODES` (a JSON list in the Modal secret, never in the repo), for example `[{"code": "<12+ random characters>", "kind": "judge"}]`, plus the owner code (`"kind": "owner", "cap_usd": 6.0`) for the live smoke run. Put the judge code in the submission form's testing instructions (`docs/SUBMISSION.md`).
+- [ ] **The Vercel project and the domain**: import this repo in Vercel with root directory `web/`, add the domain `safecut.sigmora.org` (a CNAME to `cname.vercel-dns.com` at the DNS host), and set `NEXT_PUBLIC_SAFECUT_API` (the Modal API URL), `NEXT_PUBLIC_SAFECUT_HERO_ID` (`demo`, or `hero1` once recorded), `NEXT_PUBLIC_SIGMORA_URL`, `NEXT_PUBLIC_REPO_URL` and `NEXT_PUBLIC_PRIVACY_CONTACT` (the owner's privacy email for `/privacy`). Details in `web/README.md`.
+- [ ] **`BASETEN_API_KEY`** (Baseten credits, for the Best Build on Meta Open-Weight Models bonus): add it to the cloud environment and the Modal secret, with `inference.baseten.co` allowed; then run probe h (`uv run python -m scripts.probes.probes h`, about $0.06) and set `SAFECUT_OPEN_WEIGHT_PRICE` and `SAFECUT_OPEN_WEIGHT_GRID_OK` from its summary. Before `SAFECUT_OPEN_WEIGHT_CODE_KINDS` gets `owner` or `recording`, the hero cast signs the Baseten release addendum (PRE-A §3.8).
+- [ ] **EgoBlur Gen 2 weights** (a gated download from Meta's EgoBlur page): put the face and plate `.jit` files in the Modal Volume at `/models/egoblur` (`modal volume put safecut-models <file> /egoblur/`) and keep `SAFECUT_EGOBLUR_MODEL=egoblur-gen2`. Until then the auditor falls back to `SAFECUT_EGOBLUR_MODEL=yunet-face` (OpenCV YuNet, no plate detector), and the receipt and README say so.
+
+## Footage
+
+- [ ] **Hero clips with signed releases** (`docs/SHOTLIST.md`): film them, upload to the private consented-clips bucket and give the cloud environment read access with `SAFECUT_CLIPS_URL` and `SAFECUT_CLIPS_TOKEN`. A session then records hero clip 1 with `scripts/go-live.sh` into `fixtures/jobs/hero1/` (consented clips only), labels it (`eval/labels/`), and the landing page switches to it with `NEXT_PUBLIC_SAFECUT_HERO_ID=hero1`.
+- [ ] **The test split for the reported numbers**: on the owner's Mac (never in the cloud), label the real-public clips per `docs/EVAL.md` §1, freeze them (`uv run python eval/run.py freeze --split test`), and run `uv run python eval/run.py --split test --variant full` (at most 3 runs); commit only the metrics it writes (`eval/results/<run-id>/`).
+
+## Publishing
+
+- [ ] **Make `mlsniperpro/sigmora-safe-cut` public** before submission (the official rules require a public repository). It also gives GitHub Actions free runners: CI jobs on this private repo get no runner today.
+- [ ] **The demo video**: record the screens listed in `docs/VIDEO-SCRIPT.md`, add the voice-over (≤ 3:00), and upload it (YouTube, unlisted is fine) for the submission form.
+- [ ] **The submission click and the posts**: paste the fields from `docs/SUBMISSION.md` into the Cerebral Valley form and submit (target Nov 4 02:00 UTC, a day before the Nov 5 02:00 UTC deadline); post the X thread and LinkedIn post from `docs/LAUNCH.md` from the owner's accounts.
