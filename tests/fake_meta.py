@@ -49,6 +49,9 @@ class FakeMeta:
         return demo.Responder(job, Settings(sam_fps=8))
 
     def upload(self, request: httpx.Request) -> httpx.Response:
+        if "upload" in self.fail:
+            self.calls.append("files:upload")
+            return self.error(500)
         file_id = f"file-{len(self.files) + 1}"
         self.files[file_id] = True
         self.calls.append("files:upload")

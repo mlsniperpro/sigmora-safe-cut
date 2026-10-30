@@ -65,6 +65,19 @@ class ObjectResult:
     frames: tuple[int, ...]
 
 
+def merge_track_votes(a: TrackVote, b: TrackVote) -> TrackVote:
+    """One answer naming a label twice, merged fail closed: a child entry wins; two different roles are ``unsure``."""
+    frames = tuple(sorted({*a.frames, *b.frames}))
+    if "child" in (a.role, b.role):
+        child = a if a.role == "child" else b
+        return TrackVote("child", child.evidence, frames, None)
+    if a.role != b.role:
+        return TrackVote("unsure", a.evidence or b.evidence, frames, None)
+    return TrackVote(
+        a.role, a.evidence, frames, a.matches_participant if a.matches_participant == b.matches_participant else None
+    )
+
+
 def _valid(frames: Sequence[int], present: frozenset[int]) -> bool:
     """Every cited frame was sent with the track on it, and at least one was cited (rule 5)."""
     return bool(frames) and all(f in present for f in frames)
@@ -222,6 +235,8 @@ NO_ESCALATION = Escalation(role="unsure", escalated=False, suggested_role=None, 
 def check_ruling(ruling: Ruling | None, present: frozenset[int]) -> Ruling | None:
     """A ruling counts only if it cites frames shown with the track on them; a ``participant`` ruling needs two
     (the escalation prompt's own bar), else it is read as ``unsure``. ``None``: failed, skipped or invalid."""
+    if ruling is not None and ruling.role == "child" and not _valid(ruling.frames, present):
+        return Ruling(role="child", evidence=ruling.evidence, frames=())  # a child ruling locks, citations or not
     if ruling is None or not _valid(ruling.frames, present):
         return None
     if ruling.role == "participant" and len(set(ruling.frames)) < 2:

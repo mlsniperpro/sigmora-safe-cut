@@ -105,6 +105,10 @@ def completed_response(events: Sequence[Mapping[str, Any]]) -> Mapping[str, Any]
 
 def _replayed[M: BaseModel](ctx: Context, stage: str, key: str, out: type[M]) -> Outcome[M]:
     raw = replay.load_call(ctx.job_dir, stage, key)
+    recorded = raw.request.get("prompt_version")
+    if recorded is not None and recorded != VERSION:
+        log.warning("replaying an answer recorded with other prompts", extra={"key": f"{stage}/{key}",
+                                                                               "recorded": recorded})  # fmt: skip
     failure = raw.failure()
     if failure is not None:
         status: Status = "skipped" if failure[0] == "budget" else "failed"

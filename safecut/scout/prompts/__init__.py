@@ -16,6 +16,13 @@ def text(name: str) -> str:
     return resources.files(__package__).joinpath(f"{name}.txt").read_text(encoding="utf-8").rstrip("\n")
 
 
+def inline(text: str, limit: int = 300) -> str:
+    """Model or transcript text quoted inside a later prompt: one line (so it can't forge the prompt's own lines
+    or labels) and bounded (so a long sign or speech can't crowd out the instructions)."""
+    flat = " ".join(text.split())
+    return flat if len(flat) <= limit else flat[: limit - 1] + "…"
+
+
 def render(name: str, **values: str) -> str:
     """Fill ``{slot}``s with ``values``. Only the template's own slots are replaced, once each, so braces or
     slot-like text inside a value (a transcript, a label) are never interpreted. A missing value is an error."""

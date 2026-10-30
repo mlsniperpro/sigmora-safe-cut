@@ -141,3 +141,12 @@ def test_a_failed_miss_loop_request_leaves_a_static_box(tracked: Path) -> None:
     assert [t.track_id for t in static] == result.missed[0].track_ids
     assert static[0].boxes[result.missed[0].frame] == result.missed[0].box
     valid(tracked)
+
+
+def test_a_failed_proxy_upload_in_the_miss_loop_leaves_a_static_box(tracked: Path) -> None:
+    run(tracked, FakeMeta(tracked, fail={"upload"}), "transcribe", "scene", "roles")
+    result = load(tracked / "roles.json", Roles)
+    assert result.status == "ok"
+    assert [m.sam_phrase for m in result.missed] == ["envelope"]
+    tracks = load(tracked / "tracks.json", demo.Tracks)
+    assert {t.origin for t in tracks.tracks if t.track_id in result.missed[0].track_ids} == {"static"}

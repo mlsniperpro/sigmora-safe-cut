@@ -32,13 +32,29 @@ REDTEAM_PASSES = 3
 AUDIT_RESERVE_FACTOR = 1.2
 
 
-def audit_reserve(job: Job, model: str) -> float:
-    """What the audit may still need (PRE-A §9.1 A8): 1.2 × red-team passes 1–3 at 1 fps. The miss loop never
-    spends it: an audit that can't run blocks publishing."""
-    frames = -(-job.frames // job.fps)
-    per_pass = cost.responses_usd(model, input_tokens=frames * REDTEAM_TOKENS_PER_FRAME, cached_tokens=0,
-                                  output_tokens=REDTEAM_OUTPUT_TOKENS)  # fmt: skip
-    return AUDIT_RESERVE_FACTOR * REDTEAM_PASSES * per_pass
+#: Red-team frames per pass beyond pass 1's sample (redteam.md: follow-up passes re-check far fewer frames).
+LATER_PASS_FRAMES = (10, 5)
+
+
+def audit_reserve(job: Job, model: str, tracks: int) -> float:
+    """What the audit may still need (PRE-A §9.1 A8): 1.2 × red-team passes 1–3 at redteam.md's sampling (1 fps,
+    4 frames around each track's covered span, the middle frame, then 10 and 5 frames). The miss loop never spends
+    it: an audit that can't run blocks publishing."""
+    first = -(-job.frames // job.fps) + 4 * tracks + 2
+    total = 0.0
+    for frames in (first, *LATER_PASS_FRAMES):
+        total += cost.responses_usd(model, input_tokens=frames * REDTEAM_TOKENS_PER_FRAME, cached_tokens=0,
+                                    output_tokens=REDTEAM_OUTPUT_TOKENS)  # fmt: skip
+    return AUDIT_RESERVE_FACTOR * total
+
+
+def covers(track: Track, miss: Miss, *, reach: int) -> bool:
+    """Whether ``track`` has a box holding the miss's point within ``reach`` frames of the miss's frame."""
+    x, y = miss.point
+    return any(
+        (box := track.boxes.get(f)) is not None and box[0] <= x < box[2] and box[1] <= y < box[3]
+        for f in range(miss.frame - reach, miss.frame + reach + 1)
+    )
 
 
 @dataclass
@@ -83,7 +99,14 @@ async def _send(
         raise ValueError("a live miss loop needs the job's client and file store")
     client, store = ctx.client, ctx.store
     responses = sam.ResponseLog(ctx.job_dir) if ctx.settings.delete_sam_responses else None
-    file_id = await store.upload(proxy.path, track_stage.PROXY)
+    upload_lock = asyncio.Lock()
+    uploaded: list[str] = []
+
+    async def file_id() -> str:
+        async with upload_lock:
+            if not uploaded:
+                uploaded.append(await store.upload(proxy.path, track_stage.PROXY))
+            return uploaded[0]
 
     async def one(c: track_stage.SamCall) -> sam.Segmentation | None:
         async def send(fid: str) -> sam.StreamResult:
@@ -94,7 +117,7 @@ async def _send(
             )
 
         try:
-            result = await store.call_with_reupload(proxy.path, track_stage.PROXY, file_id, send)
+            result = await store.call_with_reupload(proxy.path, track_stage.PROXY, await file_id(), send)
             c.events, c.usd = result.events, result.usd
             replay.save(ctx.job_dir, track_stage.RAW_STAGE, c.key,
                         track_stage.recording(c, model=ctx.settings.sam_model, frames=proxy.frames))  # fmt: skip
@@ -116,14 +139,15 @@ async def _send(
             await responses.delete_pending(client)
 
 
-async def affordable(ctx: calls.Context, proxy: track_stage.Proxy, requests: int) -> bool:
+async def affordable(ctx: calls.Context, proxy: track_stage.Proxy, requests: int, ctx_tracks: Tracks) -> bool:
     """Step 6: the loop's SAM requests plus the audit reserve must fit the remaining budget, checked before any
     request is sent (replay never spends)."""
     if ctx.replay or ctx.responder is not None or ctx.client is None or requests == 0:
         return True
     spec = CallSpec(stage="miss_loop", model=ctx.settings.sam_model, estimate_usd=0.0, estimate_units={},
                     policy=RetryPolicy.for_sam(), timeout=sam.delete_spec().timeout)  # fmt: skip
-    need = requests * cost.sam_video_estimate(proxy.frames) + audit_reserve(ctx.job, ctx.settings.role_model)
+    reserve = audit_reserve(ctx.job, ctx.settings.redteam_model, len(ctx_tracks.tracks))
+    need = requests * cost.sam_video_estimate(proxy.frames) + reserve
     try:
         await ctx.client.preflight(spec, need)
     except BudgetExceeded:
@@ -145,7 +169,7 @@ async def _sam_for(
     for m in sweeps:
         calls_.append(track_stage.SamCall(kind="phrase", concept=m.concept.concept, text=m.phrase,
                                           child_phrase=m.concept.child_phrase))  # fmt: skip
-    if not await affordable(ctx, proxy, len(calls_)):
+    if not await affordable(ctx, proxy, len(calls_), tracks):
         for m in prompts_:
             m.notes.append("budget")
         return tracks, [], static
@@ -164,7 +188,10 @@ async def _sam_for(
     for m in sweeps:
         call = next((c for c in calls_ if c.kind == "phrase" and c.text == m.phrase), None)
         if call is not None and id(call) in request_of:
-            m.track_ids += [t.track_id for t in new if t.sam_object and t.sam_object.request == request_of[id(call)]]
+            swept = [t for t in new if t.sam_object and t.sam_object.request == request_of[id(call)]]
+            # A sweep's track covers this miss only if it holds the reported point near the reported frame; one
+            # found elsewhere leaves the miss to its point prompt or a static box (M11: never dropped).
+            m.track_ids += [t.track_id for t in swept if covers(t, m, reach=job.fps)]
     return updated, new, static
 
 
