@@ -382,13 +382,14 @@ async def escalate(
             schema=ESCALATION, schema_name="escalation", out=EscalationOut,
             info={"frames": chunk, "disputed": here},
         )  # fmt: skip
-        answers = {r.track_id: r for r in outcome.value.rulings} if outcome.value is not None else {}
+        answers: dict[str, votes.Ruling] = {}
+        for got in outcome.value.rulings if outcome.value is not None else []:
+            ruling = votes.Ruling(got.role, got.evidence, tuple(got.frames))
+            seen = answers.get(got.track_id)
+            answers[got.track_id] = ruling if seen is None else votes.merge_rulings(seen, ruling)
+            log.info("escalation", extra={"track": got.track_id, "why_others_wrong": got.why_others_wrong[:200]})
         for d in here:
-            got = answers.get(d)
-            ruling = votes.Ruling(got.role, got.evidence, tuple(got.frames)) if got is not None else None
-            if got is not None:
-                log.info("escalation", extra={"track": d, "why_others_wrong": got.why_others_wrong[:200]})
-            rulings[d].append(votes.check_ruling(ruling, present[d]))
+            rulings[d].append(votes.check_ruling(answers.get(d), present[d]))
 
     await asyncio.gather(*(one(i, chunk) for i, chunk in enumerate(windows(frames, ctx.job.fps))))
     return {d: votes.apply_rulings(r) for d, r in rulings.items() if r}
@@ -464,6 +465,10 @@ async def miss_loops(ctx: calls.Context, state: State, first: PassResult, scene:
         reach = REPASS_REACH_S * job.fps
         keyframes = sorted(set(som.keyframe_numbers(job)) | set(som.extra_keyframes(job, new_judged)))
         near = [f for f in keyframes if any(t.first - reach <= f <= t.last + reach for t in new_judged)]
+        if not await missloop.repass_affordable(ctx, windows(near, job.fps), state.tracks):
+            log.warning("miss loop: no budget for the role re-pass beside the audit reserve; loop 1's tracks stay "
+                        "hidden", extra={"tracks": len(new_judged)})  # fmt: skip
+            return
         added = ", ".join(t.track_id for t in new_judged)
         context = context_text(job, scene, transcript, state.swept) + f"\nThese were added last round: {added}."
         again = await role_pass(
@@ -524,7 +529,8 @@ async def roles(ctx: calls.Context) -> Roles:
         status = "skipped" if first.budget_stops == first.calls else "failed"
     if status == "ok":
         await miss_loops(ctx, state, first, scene, transcript)
-    summary = scene.summary if scene is not None and scene.status == "ok" else "No scene context is available."
+    ok = scene is not None and scene.status == "ok"
+    summary = prompts.inline(scene.summary, 600) if ok and scene is not None else "No scene context is available."
     by_id = {t.track_id: t for t in state.tracks.tracks}
     # A child_phrase track is locked a child by WP3 rule 0 whatever any vote says: never in the disputed set.
     disputed = [

@@ -86,8 +86,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--replace", action="store_true", help="replace an earlier recording with the same id")
     parser.add_argument("--out-root", type=Path, default=ROOT, help="where jobs/ and fixtures/ are (default: repo)")
     args = parser.parse_args(argv)
-    root: Path = args.out_root
-    clip: Path = args.clip
+    # go-live.sh runs from the repo root; relative paths are the caller's, from where they ran it.
+    caller = Path(os.environ.get("GO_LIVE_CWD") or Path.cwd())
+    root: Path = caller / args.out_root
+    clip: Path = caller / args.clip
     if not clip.is_file():
         print(f"go-live: no such clip: {clip}", file=sys.stderr)
         return 2
@@ -111,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     job_dir = root / "jobs" / "live" / f"{name}-{stamp}"
     pipeline.create_job(clip, job_dir, mode="live", consented=args.consented)
-    status = 0
+    status, stopped = 0, False
     try:
         pipeline.analyse(job_dir, replay=False)
         if not args.analyse_only:
@@ -119,10 +121,18 @@ def main(argv: list[str] | None = None) -> int:
             pipeline.publish(job_dir, replay=False)
     except StageUnavailable as exc:
         print(f"go-live: stopped: {exc}", file=sys.stderr)
+        stopped = True
     except Exception as exc:  # report and keep what was recorded: every response so far is evidence
         print(f"go-live: the job failed: {type(exc).__name__}: {exc}", file=sys.stderr)
         status = 1
-    out = keep(job_dir, root / "fixtures" / "jobs" / name, clip)
+    out = root / "fixtures" / "jobs" / name
+    recorded = (job_dir / "raw").is_dir() and any((job_dir / "raw").rglob("*.json"))
+    if not recorded or (out.exists() and (status or stopped)):
+        # A run that recorded nothing, or an unfinished one, never replaces an earlier (paid-for) recording.
+        print(f"go-live: kept {out if out.exists() else 'nothing'}; this run's responses stay in {job_dir}",
+              file=sys.stderr)  # fmt: skip
+        return status or 1
+    out = keep(job_dir, out, clip)
     data = json.loads((out / "raw" / "manifest.json").read_text())
     print(f"go-live: recorded {data['calls']} call(s), ${data['usd']:.4f} measured "
           f"(+${data['usd_estimated']:.4f} possibly billed) into {out}")  # fmt: skip

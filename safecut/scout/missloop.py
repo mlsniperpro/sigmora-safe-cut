@@ -12,6 +12,7 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from safecut import config
 from safecut.contracts import Job, Track, Tracks
 from safecut.meta import cost, replay, sam
 from safecut.meta.client import CallSpec
@@ -139,20 +140,44 @@ async def _send(
             await responses.delete_pending(client)
 
 
-async def affordable(ctx: calls.Context, proxy: track_stage.Proxy, requests: int, ctx_tracks: Tracks) -> bool:
-    """Step 6: the loop's SAM requests plus the audit reserve must fit the remaining budget, checked before any
-    request is sent (replay never spends)."""
-    if ctx.replay or ctx.responder is not None or ctx.client is None or requests == 0:
+async def _fits(ctx: calls.Context, usd: float, ctx_tracks: Tracks) -> bool:
+    """``usd`` plus the audit reserve fit the remaining budget (replay never spends)."""
+    if ctx.replay or ctx.responder is not None or ctx.client is None:
         return True
     spec = CallSpec(stage="miss_loop", model=ctx.settings.sam_model, estimate_usd=0.0, estimate_units={},
                     policy=RetryPolicy.for_sam(), timeout=sam.delete_spec().timeout)  # fmt: skip
     reserve = audit_reserve(ctx.job, ctx.settings.redteam_model, len(ctx_tracks.tracks))
-    need = requests * cost.sam_video_estimate(proxy.frames) + reserve
     try:
-        await ctx.client.preflight(spec, need)
+        await ctx.client.preflight(spec, usd + reserve)
     except BudgetExceeded:
         return False
     return True
+
+
+async def affordable(ctx: calls.Context, proxy: track_stage.Proxy, requests: int, ctx_tracks: Tracks) -> bool:
+    """Step 6: the loop's SAM requests plus the audit reserve must fit the remaining budget, checked before any
+    request is sent."""
+    return requests == 0 or await _fits(ctx, requests * cost.sam_video_estimate(proxy.frames), ctx_tracks)
+
+
+#: The text of a role-pass call (instructions, context, labels) in bytes, for its pre-call estimate.
+ROLE_TEXT_BYTES = 24_000
+
+
+async def repass_affordable(ctx: calls.Context, windows: Sequence[Sequence[int]], ctx_tracks: Tracks) -> bool:
+    """Step 6 for the loop-1 role re-pass: its three votes per window, at their worst case, plus the audit reserve
+    must fit the remaining budget; otherwise the re-pass is skipped and loop 1's tracks stay hidden."""
+    model, effort = ctx.settings.role_model, ctx.settings.role_effort
+    per_window = [
+        cost.responses_estimate(
+            model,
+            counted=None,
+            max_output_tokens=config.max_output_tokens(model, effort),
+            fallback=cost.fallback_input_tokens(text_bytes=ROLE_TEXT_BYTES, images=len(w), video_seconds=0),
+        )
+        for w in windows
+    ]
+    return await _fits(ctx, 3 * sum(per_window), ctx_tracks)
 
 
 async def _sam_for(
@@ -177,8 +202,16 @@ async def _sam_for(
     done = [(c, r) for c, r in zip(calls_, results, strict=True) if r is not None]
     if not done:
         return tracks, [], static
-    updated = track_stage.build(job, proxy, [c for c, _ in done], [r for _, r in done], model=ctx.settings.sam_model,
-                                existing=tracks)  # fmt: skip
+    try:
+        updated = track_stage.build(job, proxy, [c for c, _ in done], [r for _, r in done],
+                                    model=ctx.settings.sam_model, existing=tracks)  # fmt: skip
+    except track_stage.TrackError as err:
+        # An answer that can't be placed on the clip (a frame past the proxy, an unnamed object) is no answer:
+        # every miss of this loop falls back to a static box (M11: never dropped).
+        log.warning("miss loop: SAM's answers can't be used", extra={"loop": loop, "error": str(err)})
+        for m in prompts_:
+            m.notes.append("sam_unusable")
+        return tracks, [], static
     new = updated.tracks[len(tracks.tracks) :]
     request_of = {id(c): len(tracks.requests) + i for i, (c, _) in enumerate(done)}
     prompt_request = request_of.get(id(calls_[0])) if prompts_ else None

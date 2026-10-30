@@ -150,3 +150,44 @@ def test_a_failed_proxy_upload_in_the_miss_loop_leaves_a_static_box(tracked: Pat
     assert [m.sam_phrase for m in result.missed] == ["envelope"]
     tracks = load(tracked / "tracks.json", demo.Tracks)
     assert {t.origin for t in tracks.tracks if t.track_id in result.missed[0].track_ids} == {"static"}
+
+
+def test_an_unusable_miss_loop_answer_leaves_a_static_box(tracked: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A SAM answer the linker rejects (e.g. a frame past the proxy) never crashes ``roles``: static boxes instead."""
+    from safecut.scout import missloop  # noqa: PLC0415 -- patched only here
+
+    def reject(*_args: object, **_kwargs: object) -> None:
+        raise track_stage.TrackError("SAM answered frame 10064, past the proxy's 96 frames (objects-loop1)")
+
+    monkeypatch.setattr(missloop.track_stage, "build", reject)
+    run(tracked, FakeMeta(tracked), "transcribe", "scene", "roles")
+    result = load(tracked / "roles.json", Roles)
+    assert result.status == "ok"
+    assert [m.sam_phrase for m in result.missed] == ["envelope"]
+    tracks = load(tracked / "tracks.json", demo.Tracks)
+    assert {t.origin for t in tracks.tracks if t.track_id in result.missed[0].track_ids} == {"static"}
+    valid(tracked)
+
+
+def test_the_role_re_pass_never_spends_the_audit_reserve(tracked: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Step 6: the loop-1 re-pass runs only if its worst case plus the audit reserve fits; else it is skipped and
+    loop 1's tracks stay hidden (no role for them), and roles.json is still written."""
+    from safecut.scout import missloop  # noqa: PLC0415 -- patched only here
+
+    run(tracked, FakeMeta(tracked), "transcribe", "scene")
+    twin = tracked.parent / "twin" / tracked.name
+    shutil.copytree(tracked, twin)
+    full = FakeMeta(twin)
+    run(twin, full, "roles")
+    assert full.calls.count("role_pass") == 6  # pass 1 and the loop-1 re-pass, three votes each
+    monkeypatch.setattr(missloop, "ROLE_TEXT_BYTES", 10**9)  # a re-pass far over any job cap
+    short = FakeMeta(tracked)
+    run(tracked, short, "roles")
+    assert short.calls.count("role_pass") == 3
+    assert "sam" in short.calls  # loop 1's SAM request still fitted
+    result = load(tracked / "roles.json", Roles)
+    assert result.status == "ok"
+    assert [m.sam_phrase for m in result.missed] == ["envelope"]
+    assert result.missed[0].track_ids
+    assert not {o.track_id for o in result.objects} & set(result.missed[0].track_ids)  # unjudged: stays hidden
+    valid(tracked)

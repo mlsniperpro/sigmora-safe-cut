@@ -441,3 +441,23 @@ def test_a_child_miss_inside_an_adults_box_is_still_a_miss() -> None:
     corner = (x1 + (x2 - x1) * 2 // 5, y1 + (y2 - y1) * 2 // 5, x2 + 50, y2 + 50)  # holds the point, ~36 % of the box
     assert miss.untracked([boxed], [tracked("envelope", box=corner)]) == [boxed]
     assert miss.untracked([boxed], [tracked("envelope", box=(x1, y1, x2, y2))]) == []
+
+
+@given(a=st.sampled_from(["participant", "bystander", "child", "unsure"]),
+       b=st.sampled_from(["participant", "bystander", "child", "unsure"]))  # fmt: skip
+def test_a_label_ruled_on_twice_merges_fail_closed(a: str, b: str) -> None:
+    merged = votes.merge_rulings(r(a, (90,)), r(b, (120,)))
+    assert merged.frames == (90, 120)
+    if "child" in (a, b):
+        assert merged.role == "child"
+    else:
+        assert merged.role == (a if a == b else "unsure")
+
+
+def test_a_long_phrase_makes_a_bounded_concept() -> None:
+    phrase = miss.normalise("handwritten note with a home address and phone number and a bank account")
+    got = miss.concept_for(phrase).concept
+    assert len(got) <= miss.CONCEPT_CHARS
+    assert phrase.startswith(got)
+    assert got == got.strip()
+    assert miss.concept_for("x" * 90).concept == "x" * miss.CONCEPT_CHARS

@@ -71,3 +71,32 @@ def test_an_existing_recording_is_kept_unless_replaced(tmp_path: Path, capsys: p
     (tmp_path / "fixtures" / "jobs" / "taken").mkdir(parents=True)
     assert go_live.main([str(CLIP), "--id", "taken", "--out-root", str(tmp_path)]) == 2
     assert "--replace" in capsys.readouterr().err
+
+
+def test_a_failed_run_never_replaces_an_earlier_recording(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                                          capsys: pytest.CaptureFixture[str]) -> None:  # fmt: skip
+    earlier = tmp_path / "fixtures" / "jobs" / "taken" / "raw"
+    earlier.mkdir(parents=True)
+    (earlier / "a.json").write_text("{}")
+    monkeypatch.setenv("MODEL_API_KEY", "sk-test-not-a-real-key")
+
+    def broken(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("the network went away before any call")
+
+    monkeypatch.setattr(pipeline, "analyse", broken)
+    assert go_live.main([str(CLIP), "--id", "taken", "--replace", "--out-root", str(tmp_path)]) == 1
+    assert (earlier / "a.json").read_text() == "{}"
+    assert not (earlier / "manifest.json").exists()
+    assert "kept" in capsys.readouterr().err
+
+
+def test_relative_paths_are_the_callers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                        capsys: pytest.CaptureFixture[str]) -> None:  # fmt: skip
+    """go-live.sh changes to the repo root; a clip path relative to where it was run still resolves."""
+    repo = Path.cwd()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GO_LIVE_CWD", str(repo))
+    assert go_live.main([str(CLIP), "--usd-cap", "40"]) == 2
+    err = capsys.readouterr().err
+    assert "no such clip" not in err
+    assert "--usd-cap" in err

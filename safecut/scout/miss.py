@@ -88,6 +88,10 @@ class Concept:
     child_phrase: bool
 
 
+#: An object concept is at most 40 characters, cut at a word boundary.
+CONCEPT_CHARS = 40
+
+
 def concept_for(phrase: str) -> Concept:
     """A normalised phrase → its track concept (M12, M13): any child-set token → ``person`` + ``child_phrase``;
     a person-set head noun → ``person`` (``face`` for a face); anything else is an object named by the phrase."""
@@ -98,7 +102,9 @@ def concept_for(phrase: str) -> Concept:
         return Concept("person", child_phrase=True)
     if tokens[-1] in PERSON_SET:
         return Concept("face" if tokens[-1] == "face" else "person", child_phrase=False)
-    return Concept(phrase, child_phrase=False)
+    # A model-written phrase names the track (labels, Set-of-Mark tags): bounded like a sweep's phrase.
+    short = phrase if len(phrase) <= CONCEPT_CHARS else phrase[: CONCEPT_CHARS + 1].rsplit(" ", 1)[0]
+    return Concept(short[:CONCEPT_CHARS].strip(), child_phrase=False)
 
 
 @dataclass(frozen=True)
