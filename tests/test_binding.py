@@ -154,9 +154,16 @@ def test_a_face_that_leaves_the_body_too_often_stays_apart() -> None:
     assert inside_share(face, track("person:2", 20, 29)) == 0.0
 
 
-def test_a_face_equally_inside_two_bodies_pairs_with_neither() -> None:
+def test_a_face_equally_inside_two_bodies_pairs_with_the_one_it_fills_most() -> None:
+    """A face inside two bodies on every frame (a child carried by an adult): the tighter body is its own."""
     face = track("face:1", 0, 9, (20, 10, 40, 30))
     bodies = [track("person:1", 0, 9, (10, 5, 60, 100)), track("person:2", 0, 9, (15, 0, 70, 110))]
+    assert [t.track_id for t in group_tracks([face, *bodies])[0]] == ["face:1", "person:1"]
+
+
+def test_a_face_inside_two_identical_bodies_pairs_with_neither() -> None:
+    face = track("face:1", 0, 9, (20, 10, 40, 30))
+    bodies = [track("person:1", 0, 9, (10, 5, 60, 100)), track("person:2", 0, 9, (10, 5, 60, 100))]
     assert len(group_tracks([face, *bodies])) == 3
 
 

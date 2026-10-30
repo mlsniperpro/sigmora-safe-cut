@@ -128,33 +128,51 @@ RECORD = Path("raw/audit/opinion.json")
 ATTEMPTED = Path("raw/audit/opinion_attempted")
 
 
+def _marker(job_dir: Path) -> list[str]:
+    path = job_dir / ATTEMPTED
+    return path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+
+
 def attempted(job_dir: Path, job: Job) -> bool:
-    path = job_dir / ATTEMPTED
-    return job.open_weight_attempted or (path.exists() and path.read_text(encoding="utf-8").strip() == job.job_id)
+    lines = _marker(job_dir)
+    return job.open_weight_attempted or (bool(lines) and lines[0].strip() == job.job_id)
 
 
-def mark_attempted(job_dir: Path, job: Job) -> None:
-    path = job_dir / ATTEMPTED
+def mark_attempted(job_dir: Path, job: Job, model: str) -> None:
+    """The job and the model asked, written before the first call (so a crash during it is still on record)."""
+    _write(job_dir / ATTEMPTED, f"{job.job_id}\n{model}\n")
+
+
+def _write(path: Path, text: str) -> None:
+    """Whole or not at all: a crash mid-write never leaves a truncated record."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(job.job_id + "\n", encoding="utf-8")
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
 
 
 def save(job_dir: Path, job: Job, opinion: Opinion) -> None:
-    path = job_dir / RECORD
-    path.parent.mkdir(parents=True, exist_ok=True)
     entries = [e.model_dump(mode="json") for e in opinion.entries]
     data = {"job_id": job.job_id, "summary": opinion.summary.model_dump(mode="json"), "entries": entries}
-    path.write_text(json.dumps(data))
+    _write(job_dir / RECORD, json.dumps(data))
 
 
 def recorded(job_dir: Path, job: Job) -> Opinion | None:
     """The saved opinion of this job's earlier run (its leaks were patched then; nothing to patch again). One another
-    job recorded (a replayed recording's) never counts: that job's frames went to Baseten, not this one's."""
+    job recorded (a replayed recording's) never counts: that job's frames went to Baseten, not this one's. When this
+    job attempted it but its answer was never saved (a crash during the call) or can't be read, the honest record is
+    ``failed``: frames may have been sent, and nothing it said is known."""
     path = job_dir / RECORD
-    if not path.exists():
-        return None
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if data.get("job_id") != job.job_id:
-        return None
-    entries = TypeAdapter(list[RedteamNone | RedteamHit]).validate_python(data["entries"])
-    return Opinion(summary=OpenWeightSummary.model_validate(data["summary"]), entries=entries)
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if data.get("job_id") == job.job_id:
+                entries = TypeAdapter(list[RedteamNone | RedteamHit]).validate_python(data["entries"])
+                return Opinion(summary=OpenWeightSummary.model_validate(data["summary"]), entries=entries)
+        except (ValueError, KeyError, TypeError):
+            log.warning("the saved second opinion can't be read; it is recorded as failed")
+    lines = _marker(job_dir)
+    if lines and lines[0].strip() == job.job_id:
+        model = lines[1].strip() if len(lines) > 1 and lines[1].strip() else "unknown"
+        return Opinion(summary=OpenWeightSummary(model=model, status="failed"))
+    return None

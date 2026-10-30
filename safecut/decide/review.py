@@ -322,10 +322,13 @@ def apply_review(
         if last.reverts not in {e.edit_id for e in unique[:-1]}:
             raise ReviewError("unknown_edit", last.edit_id, f"no earlier edit {last.reverts} to undo")
     reverted = _reverted(unique)
-    for edit in unique:
-        if isinstance(edit, CoverSpotEdit) and edit.edit_id in reverted:
-            fold.uncover(edit.spot_id)
     active = effective(unique)
+    # A spot an undone cover opened stays covered when a later cover still in force covers it again: its patch (and
+    # A-number, which never changes once given) is that cover's, replayed as a no-op.
+    still_covered = {edit.spot_id for edit in active if isinstance(edit, CoverSpotEdit)}
+    for edit in unique:
+        if isinstance(edit, CoverSpotEdit) and edit.edit_id in reverted and edit.spot_id not in still_covered:
+            fold.uncover(edit.spot_id)
     skipped: list[str] = []
     for index, edit in enumerate(active):
         try:

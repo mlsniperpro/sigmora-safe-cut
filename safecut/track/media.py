@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import re
 import subprocess
+import tempfile
+import threading
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
@@ -89,21 +91,50 @@ def run(args: list[str], *, timeout: float = FFMPEG_TIMEOUT_S) -> str:
     return done.stdout
 
 
-def packets(path: Path, stream: str = "v:0") -> Packets:
-    """``-map 0:<stream> -c copy -f framemd5``: one line per packet (decode order), sorted here by ``pts``."""
-    out = run([*SAFE_INPUT, "-i", str(path), "-map", f"0:{stream}", "-c", "copy", "-f", "framemd5", "-"])
+#: The most packets a stream may have (read incrementally, so a hostile upload of millions of tiny frames is
+#: refused before it fills memory): 60 s of 240 fps video is 14,400; audio packets are bigger (AAC: 47 a second).
+MAX_PACKETS = 20_000
+
+
+def _read_packets(proc: subprocess.Popen[str], limit: int) -> tuple[Fraction | None, list[tuple[int, int]]]:
+    """framemd5 lines as (pts, duration), stopping as soon as there are more than ``limit``."""
     time_base: Fraction | None = None
     rows: list[tuple[int, int]] = []
-    for line in out.splitlines():
+    assert proc.stdout is not None  # noqa: S101 -- stdout=PIPE always sets it
+    for line in proc.stdout:
         if line.startswith("#"):
-            match = _TB.match(line)
+            match = _TB.match(line.strip())
             if match:
                 time_base = Fraction(int(match.group(2)), int(match.group(3)))
             continue
         fields = [f.strip() for f in line.split(",")]
-        if len(fields) < 6:
-            continue
-        rows.append((int(fields[2]), int(fields[3])))
+        if len(fields) >= 6:
+            rows.append((int(fields[2]), int(fields[3])))
+            if len(rows) > limit:
+                break
+    return time_base, rows
+
+
+def packets(path: Path, stream: str = "v:0", *, limit: int = MAX_PACKETS) -> Packets:
+    """``-map 0:<stream> -c copy -f framemd5``: one line per packet (decode order), sorted here by ``pts``.
+    More than ``limit`` packets is a ``MediaError`` (ffmpeg is stopped as soon as the count passes it)."""
+    cmd = [ffmpeg(), "-nostdin", "-hide_banner", "-loglevel", "error", *SAFE_INPUT, "-i", str(path), "-map",
+           f"0:{stream}", "-c", "copy", "-f", "framemd5", "-"]  # fmt: skip
+    with tempfile.TemporaryFile() as err, subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=err, text=True) as proc:  # noqa: S603 -- bundled ffmpeg, list argv
+        watchdog = threading.Timer(FFMPEG_TIMEOUT_S, proc.kill)  # ffmpeg may stall without printing a line
+        watchdog.start()
+        try:
+            time_base, rows = _read_packets(proc, limit)
+        finally:
+            watchdog.cancel()
+        if len(rows) > limit:
+            proc.kill()
+            proc.wait()
+            raise MediaError(f"{stream} of {path.name}: more than {limit} packets")
+        if proc.wait() != 0:
+            err.seek(0)
+            tail = err.read().decode("utf-8", "replace").strip()[-400:]
+            raise MediaError(f"ffmpeg failed ({proc.returncode}): {tail or 'killed after the timeout'}")
     if time_base is None or not rows:
         raise MediaError(f"no {stream} packets in {path.name}")
     rows.sort()

@@ -23,7 +23,8 @@ _KEEP = 4
 _LOCK = threading.Lock()
 
 
-def _cache_for(job_dir: Path) -> RegionCache:
+def region_cache(job_dir: Path) -> RegionCache:
+    """The region cache for ``job_dir``'s current ``job.json`` and ``tracks.json`` (a new one when either changed)."""
     with _LOCK:  # the API's worker pool plans several jobs at once
         return _cache_locked(job_dir)
 
@@ -47,6 +48,7 @@ def _cache_locked(job_dir: Path) -> RegionCache:
 def run(job_dir: Path, *, replay: bool = False) -> Path:
     """Write ``plan.json`` and return its path."""
     del replay  # no API call in this stage
+    cache = region_cache(job_dir)  # keyed on the files' state before they are read
     audit_path = job_dir / "audit.json"
     flagged = load(audit_path, Audit).leaks if audit_path.exists() else []
     built = plan(
@@ -54,9 +56,9 @@ def run(job_dir: Path, *, replay: bool = False) -> Path:
         load(job_dir / "tracks.json", Tracks),
         load(job_dir / "decisions.json", Decisions),
         solid=read_through(flagged),
-        cache=_cache_for(job_dir),
+        cache=cache,
     )
     return dump(built, job_dir / PLAN)
 
 
-__all__ = ["PLAN", "plan", "run"]
+__all__ = ["PLAN", "plan", "region_cache", "run"]

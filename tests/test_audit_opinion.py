@@ -8,6 +8,8 @@ import shutil
 from collections.abc import Sequence
 from pathlib import Path
 
+import pytest
+
 from safecut import contracts, open_weight
 from safecut.audit.detectors import YuNet
 from safecut.audit.leaks import bar_height
@@ -174,3 +176,24 @@ def test_a_replayed_recording_never_brings_its_opinion_into_another_job(tmp_path
     assert got.redteam_open == []
     assert not load(replay_dir / "job.json", Job).open_weight_attempted
     contracts.validate_job_dir(replay_dir)
+
+
+def test_a_crash_during_the_opinion_is_recorded_as_failed_not_off(tmp_path: Path) -> None:
+    """The attempt is on record before the call; if its answer was never saved, or can't be read, the job says the
+    opinion failed (frames may have gone to Baseten), never that it was off, and it never runs again."""
+    job_dir = consented_job(tmp_path)
+
+    class Crash(Opinion):
+        async def __call__(self, frames: Sequence[tuple[int, str]], words: str) -> open_weight.SecondOpinion:
+            raise SystemExit("killed mid-call")  # not an Exception: consult() can't catch it
+
+    with pytest.raises(SystemExit):
+        audit(job_dir, Crash())
+    assert not (job_dir / "raw/audit/opinion.json").exists()
+    opinion = Opinion(hit_on=30)
+    got = audit(job_dir, opinion)
+    assert opinion.calls == 0
+    assert (got.open_weight.status, got.open_weight.model) == ("failed", MODEL)
+    contracts.validate_job_dir(job_dir)
+    (job_dir / "raw/audit/opinion.json").write_text('{"job_id": "j_synth", "summ')  # a torn file, say
+    assert audit(job_dir, opinion).open_weight.status == "failed"

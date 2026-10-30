@@ -105,3 +105,33 @@ def test_fallback_turns_respect_has_speech_and_never_reuse_u() -> None:
     assert [x.speaker for x in speech.fallback_turns(said, 10)] == ["U1", "U2", "U3"]
     silent = SpeechOut(has_speech=False, turns=[turn("S1", 0)])
     assert speech.fallback_turns(silent, 10) == []
+
+
+def test_a_turn_after_the_clip_ends_is_dropped_not_clamped() -> None:
+    turns = [Turn(speaker="S1", start=1.0, end=13.0, text="ok"), Turn(speaker="S2", start=14.0, end=15.0, text="late")]
+    got = speech.clamp_turns(turns, 12.0)
+    assert [(t.speaker, t.start, t.end) for t in got] == [("S1", 1.0, 12.0)]
+
+
+def test_a_vote_that_raises_cancels_its_siblings() -> None:
+    import asyncio  # noqa: PLC0415 -- only this test runs the vote scheduler
+
+    cancelled: list[int] = []
+
+    async def make(k: int) -> object:
+        if k == 2:
+            raise RuntimeError("vote 2 broke")
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            cancelled.append(k)
+            raise
+        return None
+
+    async def go() -> None:
+        with pytest.raises(RuntimeError, match="vote 2"):
+            await roles.three_votes(make, stagger=False)  # pyright: ignore[reportArgumentType] -- a stub vote maker
+        await asyncio.sleep(0)
+
+    asyncio.run(go())
+    assert sorted(cancelled) == [1, 3]  # no paid call left running unwatched

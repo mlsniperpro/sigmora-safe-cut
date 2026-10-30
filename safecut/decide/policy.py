@@ -27,7 +27,7 @@ from safecut.contracts import (
     Tracks,
     Transcript,
 )
-from safecut.decide.group import group_tracks
+from safecut.decide.group import SHARED_FRAMES, group_tracks, inside_share
 
 Decision = Literal["hide", "keep", "needs_you"]
 DecidedBy = Literal["policy", "model"]
@@ -278,6 +278,23 @@ def _child_reentries(tracks: Sequence[Track], judged: Mapping[str, Verdict]) -> 
     }
 
 
+def _bodies_of_unpaired_children(
+    tracks: Sequence[Track], groups: Sequence[Sequence[Track]], judged: Mapping[str, Verdict]
+) -> dict[str, Verdict]:
+    """A child's face that grouping couldn't pair (an exact tie between bodies) still has a body somewhere: every
+    person track that holds it on 80 % of their shared frames is locked hidden, so the child's body is never kept."""
+    alone = {g[0].track_id for g in groups if len(g) == 1}
+    faces = [t for t in tracks if t.concept == "face" and t.track_id in alone and judged[t.track_id].child]
+    reason = "child: a child's face is inside this body, so it is always hidden"
+    return {
+        p.track_id: Verdict("hide", "policy", reason, child=True)
+        for p in tracks
+        if p.concept == "person"
+        and not judged[p.track_id].child
+        and any(inside_share(face, p) >= SHARED_FRAMES for face in faces)
+    }
+
+
 def style_for(kind: Kind, group: Sequence[Track], job: Job) -> Style:
     """DESIGN §2.7/§2.7b: objects solid; a child or a prominent person gets a whole-person solid mask; other
     people a locked-grid mosaic sized from the face (or solid with no face to size it)."""
@@ -309,6 +326,7 @@ def decide(inputs: Inputs) -> Decisions:
         for t in inputs.tracks.tracks
     }
     judged.update(_child_reentries(inputs.tracks.tracks, judged))
+    judged.update(_bodies_of_unpaired_children(inputs.tracks.tracks, groups, judged))
     items: list[DecisionItem] = []
     for number, group in enumerate(groups, start=1):
         person = all(t.concept in PERSON_CONCEPTS for t in group)

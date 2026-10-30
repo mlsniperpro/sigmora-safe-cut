@@ -283,3 +283,18 @@ def test_a_playlist_upload_is_refused_before_ffmpeg_opens_what_it_names(tmp_path
         prepare.prepare(playlist, tmp_path / "j")
     assert err.value.reason == "bad_media"
     assert not (tmp_path / "j" / prepare.PREPARED).exists()
+
+
+def test_millions_of_tiny_frames_are_refused_without_reading_them_all(tmp_path: Path) -> None:
+    """A small upload made of a huge number of tiny frames is refused once the packet count passes the cap, before
+    any limit that needs the whole list (re-audit 4, M1)."""
+    swarm = tmp_path / "swarm.mp4"
+    media.run(["-y", "-f", "lavfi", "-i", "testsrc=size=16x16:rate=2000:duration=11", "-c:v", "libx264", "-preset",
+               "ultrafast", "-pix_fmt", "yuv420p", str(swarm)])  # fmt: skip
+    assert swarm.stat().st_size < 2_000_000
+    with pytest.raises(media.MediaError, match="more than 20000 packets"):
+        media.packets(swarm)
+    with pytest.raises(prepare.PrepareError) as err:
+        prepare.prepare(swarm, tmp_path / "j")
+    assert err.value.reason == "bad_media"
+    assert media.packets(swarm, limit=30_000).count == 22_000

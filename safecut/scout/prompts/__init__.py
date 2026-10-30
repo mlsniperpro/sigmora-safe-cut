@@ -16,6 +16,11 @@ def text(name: str) -> str:
     return resources.files(__package__).joinpath(f"{name}.txt").read_text(encoding="utf-8").rstrip("\n")
 
 
+#: A transcript turn quoted in a prompt: one diarized turn can be a whole monologue, and a mid-turn introduction or
+#: a mention of a child must survive the cut.
+TURN_CHARS = 1500
+
+
 def inline(text: str, limit: int = 300) -> str:
     """Model or transcript text quoted inside a later prompt: one line (so it can't forge the prompt's own lines
     or labels) and bounded (so a long sign or speech can't crowd out the instructions)."""

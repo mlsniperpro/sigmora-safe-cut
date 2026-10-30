@@ -105,9 +105,8 @@ def test_roles_match_the_scene(replayed: Path) -> None:
     tracks = {t.track_id: t for t in load(replayed / "tracks.json", Tracks).tracks}
     assert all(t.escalated and tracks[t.track_id].reentry_of is not None for t in reentered)
     suggested = {_entity(t.track_id, replayed): t.suggested_role for t in reentered}
-    # The passer-by's escalation suggests bystander; the guest's return is on one keyframe only, so a ruling of
-    # "participant" can't cite the two frames it needs and suggests nothing (the reviewer decides, SHIP's E6 case).
-    assert suggested == {"e3": "bystander", "e2": None}
+    # Escalation suggests each one's real role; neither is kept until the creator decides (SHIP's E6 merge case).
+    assert suggested == {"e3": "bystander", "e2": "participant"}
     returned = [tracks[t.track_id] for t in reentered if _entity(t.track_id, replayed) == "e2"]
     assert {result_role(result, tracks[t.reentry_of or ""].track_id) for t in returned} == {"participant"}
     assert {o.track_id: o.sensitive for o in result.objects} == {

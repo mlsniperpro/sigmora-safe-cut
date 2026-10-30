@@ -13,7 +13,7 @@ from typing import Any, cast
 import numpy as np
 import pytest
 
-from safecut import contracts
+from safecut import contracts, pipeline
 from safecut.audit import NoRedTeam, replay_redteam
 from safecut.audit import leaks as rules
 from safecut.audit import redteam as rt
@@ -25,6 +25,7 @@ from safecut.contracts import Audit, Decisions, Plan, dump, load
 from safecut.decide import run as decide_run
 from safecut.guard import run as guard_run
 from safecut.meta.errors import BudgetExceeded, MetaRefusal, MetaUnavailable
+from safecut.receipt import run as receipt_run
 from safecut.render import render
 from safecut.render.draw import Frame
 from safecut.render.video import read_frames
@@ -464,3 +465,29 @@ def test_a_malformed_box_keeps_its_finding_as_a_whole_frame_leak() -> None:
     boxes = [f.box for f in got.frames[0].findings]
     assert boxes == [[], [], [10, 20, 30, 40]]
     assert rules.grid_box(boxes[0], width=320, height=240, bar=40) is None  # → the whole frame
+
+
+class RaisesOnSecondAsk(Scripted):
+    """A red team whose second ask dies with an error nothing in the loop catches (a bug, a lost worker)."""
+
+    async def ask(self, frames: Sequence[tuple[int, Frame]], approved: Sequence[str], *, bar: int) -> Answer:
+        if self.asked:
+            raise RuntimeError("worker lost")
+        return await super().ask(frames, approved, bar=bar)
+
+
+def test_a_crash_part_way_never_leaves_the_old_clean_verdict(tmp_path: Path) -> None:
+    """redteam.md "Never default to clean": the audit retires the receipt and blocks audit.json before it changes
+    anything, so a crash after patching leaves a blocked audit and no receipt, never the old clean ones."""
+    job_dir = prepared(tmp_path)
+    audit_run(job_dir, replay=True, settings=SETTINGS)
+    pipeline.approve(job_dir, how="auto_policy")
+    receipt_run(job_dir, settings=SETTINGS)
+    drop(job_dir, "i_2", {30, 31, 32})
+    with pytest.raises(RuntimeError, match="worker lost"):
+        audit_run(job_dir, replay=True, settings=SETTINGS, redteam=RaisesOnSecondAsk({}))
+    audit = audit_of(job_dir)
+    assert (audit.blocked_reason, audit.unresolved) == ("audit_failed", 60)
+    assert not (job_dir / "receipt.json").exists()
+    sealed = load(receipt_run(job_dir, settings=SETTINGS), contracts.Receipt)  # a receipt now says it's blocked
+    assert (sealed.audit.unresolved, sealed.audit.blocked_reason) == (60, "audit_failed")

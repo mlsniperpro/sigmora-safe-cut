@@ -123,6 +123,25 @@ def _replayed[M: BaseModel](ctx: Context, stage: str, key: str, out: type[M]) ->
     return Outcome(status="ok", value=value, response=response)
 
 
+def _checkpoint[M: BaseModel](
+    ctx: Context, stage: str, key: str, *, model: str, request: Mapping[str, Any], out: type[M]
+) -> Outcome[M] | None:
+    """This job's earlier live answer to exactly this request (same model, same body hash), never re-billed (PRE-A
+    §10.4 checkpoints): a resumed ``roles`` re-asks nothing it already paid for, so it writes the same files."""
+    if not replay.exists(ctx.job_dir, stage, key):
+        return None
+    raw = replay.load_call(ctx.job_dir, stage, key)
+    if raw.synthetic or raw.failure() is not None or raw.events is None or raw.model != model:
+        return None
+    if raw.request.get("body_sha256") != request["body_sha256"]:
+        return None
+    outcome = _replayed(ctx, stage, key, out)
+    if outcome.status != "ok":
+        return None  # an answer that doesn't validate is asked again
+    log.info("call reused from this job's recording", extra={"key": f"{stage}/{key}"})
+    return outcome
+
+
 async def call_json[M: BaseModel](
     ctx: Context,
     *,
@@ -149,6 +168,11 @@ async def call_json[M: BaseModel](
         raise ValueError("a live scout call needs the job's client and file store")
     client, store = ctx.client, ctx.store
     holder: dict[str, Any] = {}
+    if not video:  # the whole request is known up front (images inline): a resumed stage reuses its own answer
+        body = responses.build_body(model, messages(None), effort=effort, schema=schema, schema_name=schema_name)
+        reused = _checkpoint(ctx, stage, key, model=model, request=_descriptor(body, schema_name, effort), out=out)
+        if reused is not None:
+            return reused
 
     async def send(file_id: str | None) -> tuple[M, StreamResult]:
         body = responses.build_body(model, messages(file_id), effort=effort, schema=schema, schema_name=schema_name)

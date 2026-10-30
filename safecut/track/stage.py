@@ -53,6 +53,8 @@ class Proxy:
     frames: int
     width: int
     height: int
+    #: The upload this proxy was made from: a recorded answer is reused only for the same clip.
+    source_sha256: str = ""
 
 
 @dataclass
@@ -110,12 +112,17 @@ def make_proxy(job_dir: Path, job: Job, settings: Settings) -> Proxy:
         partial.unlink(missing_ok=True)
         raise TrackError(f"proxy is {size}, not the prepared {job.width}x{job.height}")
     partial.replace(out)
-    return Proxy(path=out, fps=fps, frames=media.frame_count(out), width=size[0], height=size[1])
+    return Proxy(path=out, fps=fps, frames=media.frame_count(out), width=size[0], height=size[1],
+                 source_sha256=job.source_sha256)  # fmt: skip
 
 
-def recording(call: SamCall, *, model: str, frames: int, synthetic: bool = False) -> replay.RawCall:
+def recording(
+    call: SamCall, *, model: str, frames: int, synthetic: bool = False, source_sha256: str = ""
+) -> replay.RawCall:
     request: dict[str, Any] = {"kind": call.kind, "concept": call.concept, "text": call.text,
                                "file_id": call.file_id, "sam_frames": frames}  # fmt: skip
+    if source_sha256:
+        request["source_sha256"] = source_sha256
     if call.labels:
         request["labels"] = {k: vars(v) for k, v in call.labels.items()}
     return replay.RawCall(synthetic=synthetic, stage="track", model=model, request=request, events=call.events,
@@ -133,6 +140,9 @@ def replayed(job_dir: Path, call: SamCall, proxy: Proxy) -> SamCall:
         # Recorded against another proxy: its frame numbers would land on the wrong prepared frames.
         recorded = raw.request.get("sam_frames")
         raise replay.ReplayMissing(f"replay: {call.key} was recorded for a {recorded}-frame proxy, not {proxy.frames}")
+    recorded_source = raw.request.get("source_sha256")
+    if recorded_source is not None and proxy.source_sha256 and recorded_source != proxy.source_sha256:
+        raise replay.ReplayMissing(f"replay: {call.key} was recorded for another clip")
     call.events = raw.events
     call.file_id = str(raw.request.get("file_id") or "")
     return call
@@ -150,8 +160,9 @@ async def sweep(
     """Run ``calls`` live against the uploaded proxy, in parallel; record each before parsing it.
 
     A request this job already answered live for the same proxy is reused from its recording, never re-billed
-    (PRE-A §10.4 checkpoints: a stage re-run after one failed concept re-pays only that one). If any request fails,
-    the others are cancelled before the caller deletes the uploads (``TaskGroup``)."""
+    (PRE-A §10.4 checkpoints). If any request fails, the others are cancelled before the caller deletes the
+    uploads (``TaskGroup``): a re-run re-pays the failed request and any that were still streaming then (finished
+    ones were recorded), never one that had already been answered."""
     upload_lock = asyncio.Lock()
     uploaded: list[str] = []
 
@@ -180,7 +191,8 @@ async def sweep(
 
         result = await store.call_with_reupload(proxy.path, PROXY, await file_id(), send)
         call.events, call.usd = result.events, result.usd
-        replay.save(job_dir, RAW_STAGE, call.key, recording(call, model=client.settings.sam_model, frames=proxy.frames))
+        replay.save(job_dir, RAW_STAGE, call.key, recording(call, model=client.settings.sam_model, frames=proxy.frames,
+                                                            source_sha256=proxy.source_sha256))  # fmt: skip
         return await sam.parse_video_events(result.events, size=(proxy.width, proxy.height))
 
     try:
@@ -204,11 +216,12 @@ def checkpoint(job_dir: Path, call: SamCall, proxy: Proxy, *, model: str) -> Sam
     raw = replay.load_call(job_dir, RAW_STAGE, call.key)
     if raw.synthetic or raw.failure() is not None or raw.events is None:
         return None
-    if raw.request.get("text") != call.text or raw.request.get("sam_frames") != proxy.frames or raw.model != model:
+    same = (raw.request.get("text"), raw.request.get("sam_frames"), raw.model, raw.request.get("source_sha256"))
+    if not proxy.source_sha256 or same != (call.text, proxy.frames, model, proxy.source_sha256):
         return None
     call.events = raw.events
     call.file_id = str(raw.request.get("file_id") or "")
-    call.usd = 0.0  # spent by the earlier run, already in cost.jsonl
+    call.usd = raw.usd or 0.0  # what the request cost (spent by the earlier run, in cost.jsonl, not again)
     log.info("SAM request reused from this job's recording", extra={"key": call.key})
     return call
 

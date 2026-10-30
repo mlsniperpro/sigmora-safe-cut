@@ -169,3 +169,10 @@ def test_a_repeated_object_on_a_frame_is_joined_never_dropped() -> None:
     assert got["0"].mask is None
     assert got["1"].box == (40, 30, 50, 40)
     assert got["1"].mask is not None
+
+
+def test_a_mask_larger_than_the_proxy_is_refused_before_decoding() -> None:
+    text = stream_text({"0": {3: (10, 10, 20, 20)}}, (W, H)).replace("data=10,10,", f"data={H + 1},10,", 1)
+    assert f"data={H + 1},10," in text
+    with pytest.raises(MetaIncomplete, match="larger than"):
+        asyncio.run(sam.parse_video_events(chunked(text, []), size=(W, H)))

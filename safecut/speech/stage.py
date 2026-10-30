@@ -57,9 +57,12 @@ def extract_wav(job_dir: Path, job: Job) -> Path:
 
 
 def clamp_turns(turns: list[Turn], seconds: float) -> list[Turn]:
-    """Clamp to the clip, drop reversed turns, sort by start (``speech-fallback.md`` post-processing)."""
+    """Clamp to the clip, drop reversed turns and turns wholly outside it, sort by start (``speech-fallback.md``
+    post-processing): speech placed after the clip ends never becomes evidence at its last frame."""
     out: list[Turn] = []
     for t in turns:
+        if t.start > seconds or t.end < 0:
+            continue
         start, end = min(max(t.start, 0.0), seconds), min(max(t.end, 0.0), seconds)
         if end >= start:
             out.append(t.model_copy(update={"start": start, "end": end}))

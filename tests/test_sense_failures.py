@@ -191,3 +191,86 @@ def test_the_role_re_pass_never_spends_the_audit_reserve(tracked: Path, monkeypa
     assert result.missed[0].track_ids
     assert not {o.track_id for o in result.objects} & set(result.missed[0].track_ids)  # unjudged: stays hidden
     valid(tracked)
+
+
+def test_a_proxy_that_cannot_be_rebuilt_leaves_static_boxes(tracked: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failure outside any Meta call in the miss loop (the proxy can't be rebuilt or doesn't match) never crashes
+    ``roles``: the paid votes are kept and every miss gets a static box (re-audit 4, M1)."""
+    from safecut.scout import missloop  # noqa: PLC0415 -- patched only here
+
+    def broken(*_args: object, **_kwargs: object) -> None:
+        raise track_stage.TrackError("proxy is 97 frames at 8 fps; tracks.json was made from 96 at 8")
+
+    monkeypatch.setattr(missloop.track_stage, "proxy_for", broken)
+    run(tracked, FakeMeta(tracked), "transcribe", "scene", "roles")
+    result = load(tracked / "roles.json", Roles)
+    assert result.status == "ok"
+    tracks = load(tracked / "tracks.json", demo.Tracks)
+    assert {t.origin for t in tracks.tracks if t.track_id in result.missed[0].track_ids} == {"static"}
+    valid(tracked)
+
+
+def test_a_ledger_that_cannot_answer_refuses_the_spend(tracked: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from safecut.meta.client import MetaClient  # noqa: PLC0415 -- patched only here
+    from safecut.meta.errors import MetaUnavailable  # noqa: PLC0415
+
+    async def down(*_args: object, **_kwargs: object) -> None:
+        raise MetaUnavailable("ledger unreachable")
+
+    monkeypatch.setattr(MetaClient, "preflight", down)
+    fake = FakeMeta(tracked)
+    run(tracked, fake, "transcribe", "scene", "roles")
+    result = load(tracked / "roles.json", Roles)
+    assert result.status == "ok"
+    assert "sam" not in fake.calls  # no budget answer, no miss-loop spend
+    assert "escalation" not in fake.calls  # nor escalation
+    tracks = load(tracked / "tracks.json", demo.Tracks)
+    assert {t.origin for t in tracks.tracks if t.track_id in result.missed[0].track_ids} == {"static"}
+
+
+def test_a_prompt_track_away_from_the_miss_does_not_cover_it(tracked: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An object-prompt answer that doesn't hold the reported point near its frame keeps its SAM track, but the miss
+    gets a static box too (re-audit 4, M3)."""
+    from safecut.scout import missloop  # noqa: PLC0415 -- patched only here
+
+    monkeypatch.setattr(missloop, "covers", lambda *_a, **_k: False)
+    run(tracked, FakeMeta(tracked), "transcribe", "scene", "roles")
+    result = load(tracked / "roles.json", Roles)
+    tracks = {t.track_id: t for t in load(tracked / "tracks.json", demo.Tracks).tracks}
+    assert [tracks[i].origin for i in result.missed[0].track_ids] == ["static"]
+    assert any(t.origin == "sam" and t.concept == "envelope" for t in tracks.values())  # SAM's track is kept
+
+
+def test_a_resumed_roles_stage_re_bills_nothing_and_writes_the_same_files(tracked: Path) -> None:
+    """``roles`` appends the miss loop's tracks to tracks.json, so a resumed ``analyse`` re-runs ``track`` and
+    ``roles``. Both reuse this job's own live answers: no call is re-billed and every file comes out the same
+    (re-audit 4, M2)."""
+    fake = FakeMeta(tracked)
+    settings = live()
+    with serving(fake):
+        asyncio.run(track_stage.run_async(tracked, settings=settings))  # live answers (the fixture's are synthetic)
+    run(tracked, fake, "transcribe", "scene", "roles")
+    first = {name: (tracked / name).read_bytes() for name in ("tracks.json", "roles.json")}
+    paid = list(fake.calls)
+    with serving(fake):
+        asyncio.run(track_stage.run_async(tracked, settings=settings))
+        asyncio.run(roles.run_async(tracked, settings=settings))
+    assert fake.calls[len(paid) :] == []
+    assert {name: (tracked / name).read_bytes() for name in first} == first
+
+
+def test_only_sweeps_that_ran_count_as_searched(tracked: Path) -> None:
+    from safecut.contracts import Job, Tracks  # noqa: PLC0415 -- only this test builds a loop by hand
+    from safecut.scout import calls, miss, missloop  # noqa: PLC0415
+
+    job = load(tracked / "job.json", Job)
+    ctx = calls.Context(job_dir=tracked, job=job, settings=Settings(replay=True, miss_sam="stub"), replay=True)
+    raw = miss.RawMiss(what="a laptop", sam_phrase="laptop", frame=0, point=(500, 500), box=None, recurs=True)
+    item = miss.validate(raw, sent=frozenset({0}), width=job.width, height=job.height)
+    assert item is not None
+    planned = miss.plan([item], swept=[])
+    assert planned.sweeps
+    tracks = load(tracked / "tracks.json", Tracks)
+    out = asyncio.run(missloop.run_loop(ctx, tracks, prompts_=planned.prompts, sweeps=planned.sweeps,
+                                        static=planned.static, loop=1))  # fmt: skip
+    assert out.swept == []  # stubbed: nothing was searched, so loop 2 may still sweep "laptop"
