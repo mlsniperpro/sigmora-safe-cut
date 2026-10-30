@@ -1,16 +1,20 @@
 {
- "run_id": "20261030T175100Z-dev-detector_only-ef66bc3",
+ "run_id": "20261030T175418Z-dev-no_audit-0369c33",
  "split": "dev",
- "variant": "detector_only",
+ "variant": "no_audit",
  "replay": true,
  "synthetic": true,
- "git_sha": "ef66bc34e3790ebca751e7d547f6e53bfebeaf24",
+ "git_sha": "0369c339e88add683a429584ed5192c72d562065",
  "split_hash": "077fb6caa9f0f0b655d4d15e187c7bd5f051e9e4781b93188a3920fcffb28939",
- "created_at": "2026-10-30T17:51:00.017339Z",
+ "created_at": "2026-10-30T17:54:18.975910Z",
  "clips": [
   "fixtures/clips/SC-A-91-synthetic-20261030.mp4"
  ],
  "models": {
+  "asr": "muse-voice-transcribe-1.0",
+  "escalate": "muse-spark-1.3",
+  "roles": "muse-spark-1.3",
+  "scene": "muse-spark-1.3",
   "tracks": "sam-3.1"
  },
  "models_note": "synthetic recordings replayed: no Meta model was called",
