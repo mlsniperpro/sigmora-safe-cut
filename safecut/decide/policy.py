@@ -161,7 +161,8 @@ def judge_person(track: Track, row: RoleTrack | None, inputs: Inputs, gates: _Ga
         suggestion = f"; a closer look suggests {row.suggested_role}" if row.suggested_role else ""
         hold: Hold | None = None if row.escalated else "no_roles"
         return Verdict("needs_you", "policy", f"checks didn't all agree{suggestion}", hold=hold)
-    if row.votes != ["participant"] * 3 or row.failed_votes or len(set(row.frames)) < 2:
+    seen = {f for f in row.frames if track.first <= f <= track.last}  # cited frames the track is actually on
+    if row.votes != ["participant"] * 3 or row.failed_votes or len(seen) < 2:
         return Verdict("needs_you", "policy", "participant, but not on 3/3 votes over 2 keyframes")
     if track.reentry_of is not None:
         return Verdict("needs_you", "policy", "came back into view as a new ID: hidden until you merge it")

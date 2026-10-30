@@ -166,3 +166,9 @@ def test_static_tracks_never_group() -> None:
     face = track("face:1", 3, 3, (20, 10, 40, 30), origin="static")
     body = track("person:1", 0, 9, (10, 5, 60, 100))
     assert len(group_tracks([face, body])) == 2
+
+
+def test_two_keys_that_want_one_track_equally_bind_neither() -> None:
+    a = track("face:1", 0, 30, (10, 10, 30, 30))
+    got = bind([Sighting("badge", 1, 20, 20), Sighting("envelope", 2, 20, 20)], [a], width=W, height=H)
+    assert got == {"badge": None, "envelope": None}

@@ -183,7 +183,9 @@ class _Fold:
         if dst.decision != "keep" or dst.kind != "person" or src.kind != "person":
             raise ReviewError("invalid_edit", edit.edit_id, "only a person merges, and only into a kept person")
         frames = sorted({*dst.evidence_frames, *src.evidence_frames})
-        update = {"track_ids": [*dst.track_ids, *src.track_ids], "evidence_frames": frames, "decided_by": "creator"}
+        origin = "static" if src.origin == dst.origin == "static" else "sam"  # static exactly when all tracks are
+        update = {"track_ids": [*dst.track_ids, *src.track_ids], "evidence_frames": frames, "decided_by": "creator",
+                  "origin": origin}  # fmt: skip
         self.put(dst.model_copy(update=update))
         del self.items[src.item_id]
         self.order.remove(src.item_id)

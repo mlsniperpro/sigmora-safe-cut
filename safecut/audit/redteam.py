@@ -199,21 +199,25 @@ class LiveRedTeam:
         self._client = client
         self._settings = settings
         self._job_dir = job_dir
-        self._answered: dict[int, list[Finding]] = {}
+        self._answered: dict[int, list[list[Finding]]] = {}
 
     def _record(self, frames: list[int], output: RedteamOutput | None, note: str) -> None:
         """Keep each answer in the job directory (redteam.md "Private text": job-dir only, deleted with the job):
-        ``redteam_raw.jsonl`` call by call, and ``raw/redteam/frames.json`` frame by frame for replay."""
+        ``redteam_raw.jsonl`` call by call, and ``raw/redteam/frames.json`` with every answer per frame **in the order
+        it was asked** (pass 1, then each re-check), so a replay sees each pass exactly as the live run did."""
         line = {"frames": frames, "note": note, "output": output.model_dump() if output is not None else None}
         with (self._job_dir / "redteam_raw.jsonl").open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(line) + "\n")
         if output is None:
             return
-        self._answered.update(merge_frames(output, set(frames)))
+        for frame, found in merge_frames(output, set(frames)).items():
+            self._answered.setdefault(frame, []).append(found)
         recorded = self._job_dir / "raw" / "redteam" / "frames.json"
         recorded.parent.mkdir(parents=True, exist_ok=True)
-        frames_json = {str(f): [x.model_dump() for x in found] for f, found in sorted(self._answered.items())}
-        recorded.write_text(json.dumps({"model": self._settings.redteam_model, "frames": frames_json}))
+        answers = {
+            str(f): [[x.model_dump() for x in found] for found in asks] for f, asks in sorted(self._answered.items())
+        }
+        recorded.write_text(json.dumps({"model": self._settings.redteam_model, "answers": answers}))
 
     def _body(self, frames: Sequence[tuple[int, Frame]], approved: Sequence[str], bar: int, soft: bool) -> Any:
         text = (SOFTER if soft else "") + ASK.format(approved="; ".join(approved) or "nobody")
@@ -226,26 +230,31 @@ class LiveRedTeam:
         )  # fmt: skip
 
     async def _call(self, frames: Sequence[tuple[int, Frame]], approved: Sequence[str], bar: int) -> RedteamOutput:
-        effort = self._settings.redteam_effort
-        try:
-            out, _ = await responses.create_json(
-                self._client, RedteamOutput, self._body(frames, approved, bar, soft=False), stage="redteam",
-                effort=effort,
+        """One call and at most **one** re-ask in total (redteam.md): the softer wording after a refusal, the same
+        request after an invalid answer. A second refusal or invalid answer raises (its frames stay unresolved)."""
+        soft = False
+        for attempt in range(2):
+            result = await responses.create(
+                self._client, self._body(frames, approved, bar, soft=soft), stage="redteam",
+                effort=self._settings.redteam_effort,
             )  # fmt: skip
-        except MetaRefusal:
-            self._record([f for f, _ in frames], None, "refused; one re-ask with the softer wording")
-        else:
-            return out
-        result = await responses.create(
-            self._client, self._body(frames, approved, bar, soft=True), stage="redteam", effort=effort
-        )
-        try:
-            return RedteamOutput.model_validate_json(responses.output_text(result.response))
-        except ValidationError as exc:
-            raise responses.InvalidOutputError(f"redteam: re-ask invalid ({exc.error_count()} error(s))") from None
+            try:
+                return RedteamOutput.model_validate_json(responses.output_text(result.response))
+            except MetaRefusal:
+                if attempt:
+                    raise
+                self._record([f for f, _ in frames], None, "refused; one re-ask with the softer wording")
+                soft = True
+            except ValidationError as exc:
+                if attempt:
+                    raise responses.InvalidOutputError(
+                        f"redteam: invalid twice ({exc.error_count()} error(s))"
+                    ) from None
+                self._record([f for f, _ in frames], None, "invalid; one re-ask")
+        raise responses.InvalidOutputError("redteam: no answer")  # the loop always returns or raises first
 
     async def ask(self, frames: Sequence[tuple[int, Frame]], approved: Sequence[str], *, bar: int) -> Answer:
-        answer = Answer(model=self._settings.redteam_model)
+        answer = Answer()
         for start in range(0, len(frames), MAX_FRAMES_PER_CALL):
             batch = list(frames[start : start + MAX_FRAMES_PER_CALL])
             todo = batch
@@ -260,6 +269,7 @@ class LiveRedTeam:
                     self._record(sorted(sent), None, f"failed: {type(exc).__name__}")
                     break
                 self._record(sorted(sent), output, "ok")
+                answer.model = self._settings.redteam_model  # named only once it has actually answered
                 answer.findings.update(merge_frames(output, sent))
                 todo = [(f, img) for f, img in todo if f not in answer.findings]
                 if not todo:
@@ -269,26 +279,38 @@ class LiveRedTeam:
 
 
 class ReplayRedTeam:
-    """Answers recorded from a live run (``raw/redteam/frames.json``: frame → findings), served frame by frame."""
+    """Answers recorded from a live run (``raw/redteam/frames.json``: frame → its answers in the order asked). The
+    n-th time a frame is asked it gets the n-th recorded answer; a frame asked more often than recorded, or never
+    recorded, is missing (unresolved)."""
 
-    def __init__(self, recorded: Mapping[int, list[Finding]], model: str | None) -> None:
+    def __init__(self, recorded: Mapping[int, list[list[Finding]]], model: str | None) -> None:
         self._recorded = recorded
         self._model = model
+        self._asked: dict[int, int] = {}
 
     @classmethod
     def load(cls, path: Path) -> ReplayRedTeam:
         data = json.loads(path.read_text(encoding="utf-8"))
-        frames = {int(f): [Finding.model_validate(x) for x in found] for f, found in data["frames"].items()}
-        return cls(frames, data.get("model"))
+        answers = {
+            int(f): [[Finding.model_validate(x) for x in found] for found in asks]
+            for f, asks in data["answers"].items()
+        }
+        return cls(answers, data.get("model"))
 
     async def ask(self, frames: Sequence[tuple[int, Frame]], approved: Sequence[str], *, bar: int) -> Answer:
         del approved, bar  # the recording already answered them
-        sent = [f for f, _ in frames]
-        return Answer(
-            findings={f: list(self._recorded[f]) for f in sent if f in self._recorded},
-            missing=[f for f in sent if f not in self._recorded],
-            model=self._model,
-        )
+        answer = Answer(model=self._model)
+        for f, _ in frames:
+            n = self._asked.get(f, 0)
+            self._asked[f] = n + 1
+            asks = self._recorded.get(f, [])
+            if n < len(asks):
+                answer.findings[f] = list(asks[n])
+            else:
+                answer.missing.append(f)
+        if not answer.findings:
+            answer.model = None
+        return answer
 
 
 class TruthObject(BaseModel):
