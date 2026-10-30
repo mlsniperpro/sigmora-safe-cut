@@ -104,8 +104,8 @@ def web_server(csp: bool) -> tuple[ThreadingHTTPServer, str]:
             self.end_headers()
             self.wfile.write(b"<!doctype html><title>Safe Cut</title>")
 
-        def log_message(self, *args: object) -> None:
-            return
+        def log_message(self, format: str, *args: object) -> None:  # the base class's own parameter name
+            del format, args
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
