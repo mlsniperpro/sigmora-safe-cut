@@ -9,7 +9,7 @@ Posted by the owner from their own accounts after submission (`BLOCKED.md`). Pla
 3. Muse Spark sees numbered keyframes and votes three separate times on each person. A participant is kept clear only if every vote agrees and there's evidence: an introduction, or speech. Anything uncertain stays hidden. Children are always hidden.
 4. It reads context, not just objects. A laptop showing an inbox gets hidden. A laptop showing a menu goes to "needs you", so you confirm it before it's shown.
 5. Before anything is published, a second pass audits the rendered video: an independent detector on every frame, plus a Muse Spark red team. Leaks get patched automatically. Then you get a privacy receipt of every decision and who made it.
-6. It's open source (MIT), and it runs as a service with spend caps, signed uploads and 24-hour deletion. Try it: safecut.sigmora.org · code: github.com/mlsniperpro/sigmora-safe-cut · #MetaAIHackathon
+6. It's open source (MIT), and it runs as a service with spend caps, signed uploads and 24-hour deletion. Watch the demo: safecut.sigmora.org (trying it needs an access code) · code: github.com/mlsniperpro/sigmora-safe-cut · #MetaAIHackathon
 
 ## LinkedIn
 
@@ -22,7 +22,7 @@ For the Meta Global AI Developer Hackathon I built **Sigmora Safe Cut**. It deci
 
 Everything uncertain stays hidden, children always are, and the creator approves each decision with the reason in front of them. A final audit checks the rendered video frame by frame before it goes live, and a privacy receipt records what was hidden, why, and who approved it.
 
-It's open source, and it plugs into Sigmora, our creator platform. Live demo: safecut.sigmora.org. Code: github.com/mlsniperpro/sigmora-safe-cut.
+It's open source, and it's built to be called by Sigmora, our creator platform. Live demo: safecut.sigmora.org. Code: github.com/mlsniperpro/sigmora-safe-cut.
 
 ## 20-second vertical (9:16), side by side
 

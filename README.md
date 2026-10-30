@@ -102,7 +102,7 @@ uv run python eval/run.py --split dev --variant full --replay
 ```
 <!-- fresh-clone:end -->
 
-`safecut run` prints each stage and writes `redacted.mp4`, `audit.json`, `receipt.json` and `receipt.html` to the job folder. Without `--auto-approve-policy` it stops for review (`safecut approve --job <dir> && safecut publish --job <dir>`). Single stages run with `safecut <stage> --job <dir> --replay`. With `MODEL_API_KEY` set and without `--replay`, the same commands call Meta.
+`safecut run` prints each stage and writes `redacted.mp4`, `audit.json`, `receipt.json` and `receipt.html` to the job folder. Without `--auto-approve-policy` it stops for review (`safecut approve --job <dir> && safecut publish --job <dir> --replay`; leave out `--replay` for a live job). Single stages run with `safecut <stage> --job <dir> --replay`. With `MODEL_API_KEY` set and without `--replay`, the same commands call Meta.
 
 The API runs with `uv run uvicorn --factory safecut.api.app:create_app --no-proxy-headers` (set `SAFECUT_REPLAY=1` for demo mode). Behind a proxy, drop `--no-proxy-headers` only if that proxy overwrites `X-Forwarded-For`, or set `SAFECUT_TRUST_PROXY=1` as the Modal deploy does; `scripts/deploy-check.sh` tests that forged headers can't dodge the rate limit. The web app is documented in [`web/README.md`](web/README.md), and the routes are in `docs/UI-SPEC.md` §8.
 
