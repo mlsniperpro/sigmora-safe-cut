@@ -656,3 +656,17 @@ def test_a_duplicate_object_ruling_fails_closed() -> None:
     harmless = {"track_id": "screen:1", "frames": [2], "sensitive": False, "content": "a menu"}
     got = only(run(track("screen:1", 0, 5), objects=[sensitive, harmless]), "screen:1")
     assert got["decision"] == "hide"
+
+
+def test_a_duplicate_track_of_a_child_is_locked_and_counted_once() -> None:
+    """SAM follows one child twice (two masklets a pixel apart): the duplicate is never kept, and the pair counts as
+    one child, so a scene with two children still holds the participant."""
+    a = track("face:1", 0, 20, (100, 20, 120, 40))
+    b = track("face:2", 0, 50, (101, 20, 121, 40))
+    got = run(a, b, rs=[row("face:1", "child", "child", "participant"), matched("face:2")], scene=scene(children=1))
+    item = only(got, "face:2")
+    assert (item["decision"], item["kind"], item["locked"]) == ("hide", "child", True)
+    kid = ("child", "child", "child")
+    host = track("face:3", 0, 50, (250, 20, 270, 40))
+    got = run(a, b, host, rs=[row("face:1", *kid), row("face:2", *kid), matched("face:3")], scene=scene(children=2))
+    assert only(got, "face:3")["hold"] == "unmatched_child"

@@ -27,6 +27,7 @@ from safecut.contracts import (
     Tracks,
     Transcript,
 )
+from safecut.decide.geometry import iou
 from safecut.decide.group import group_tracks, inside_share
 
 Decision = Literal["hide", "keep", "needs_you"]
@@ -44,6 +45,8 @@ HOLD_ORDER: tuple[Hold, ...] = ("no_scene", "no_speech", "no_roles", "unmatched_
 #: A face and a body grouping couldn't pair are still linked for the child lock when the face is inside the body on at
 #: least this share of their shared frames (fail closed: lower than grouping's 80 %).
 CHILD_LINK = 0.5
+#: Two tracks of one concept whose boxes overlap at least this much on a frame are the same object there.
+DUPLICATE_IOU = 0.5
 #: UI-SPEC §8 request 4: a reason is at most this long, lowercase-first, with no trailing full stop.
 REASON_MAX = 90
 
@@ -267,7 +270,9 @@ def child_links(tracks: Sequence[Track], groups: Sequence[Sequence[Track]]) -> d
     """Which tracks are one person for the child lock: tracks sharing a review item; tracks linked by ``reentry_of``
     (either way); and a face inside a body on half their shared frames or more when either of the two is unpaired
     (grouping, which needs 80 %, didn't make them one item: a tie, a face partly outside its body, or the face paired
-    with someone holding the child). Two paired items never link this way (an adult carrying their child)."""
+    with someone holding the child); and two tracks of one concept that overlap at IoU ≥ 0.5 on half their shared
+    frames or more (SAM following one object twice). Two paired items never link by containment (an adult carrying
+    their child)."""
     by_id = {t.track_id: t for t in tracks}
     group_of = {t.track_id: tuple(x.track_id for x in g) for g in groups for t in g}
     alone = {g[0].track_id for g in groups if len(g) == 1}
@@ -283,7 +288,21 @@ def child_links(tracks: Sequence[Track], groups: Sequence[Sequence[Track]]) -> d
             if (f.track_id in alone or b.track_id in alone) and inside_share(f, b) >= CHILD_LINK:
                 links[f.track_id].add(b.track_id)
                 links[b.track_id].add(f.track_id)
+    for same in (faces, bodies):  # duplicates: SAM following one object twice at once (two masklets)
+        for i, a in enumerate(same):
+            for b in same[i + 1 :]:
+                if duplicate_share(a, b) >= CHILD_LINK:
+                    links[a.track_id].add(b.track_id)
+                    links[b.track_id].add(a.track_id)
     return links
+
+
+def duplicate_share(a: Track, b: Track) -> float:
+    """The share of the frames both tracks have boxes on where their boxes overlap at IoU ≥ 0.5 (0 if none)."""
+    shared = set(a.boxes) & set(b.boxes)
+    if not shared:
+        return 0.0
+    return sum(iou(a.boxes[f], b.boxes[f]) >= DUPLICATE_IOU for f in shared) / len(shared)
 
 
 def _components(tracks: Sequence[Track], links: Mapping[str, set[str]]) -> dict[str, str]:
