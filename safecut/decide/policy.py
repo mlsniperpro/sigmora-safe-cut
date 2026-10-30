@@ -27,7 +27,7 @@ from safecut.contracts import (
     Tracks,
     Transcript,
 )
-from safecut.decide.group import SHARED_FRAMES, group_tracks, inside_share
+from safecut.decide.group import group_tracks, inside_share
 
 Decision = Literal["hide", "keep", "needs_you"]
 DecidedBy = Literal["policy", "model"]
@@ -41,6 +41,9 @@ DOCUMENT_CONCEPTS = frozenset({"document", "name badge"})
 PROMINENT_HEIGHT = 0.25
 #: API-NOTES §12: when several holds apply, the first in this order is written.
 HOLD_ORDER: tuple[Hold, ...] = ("no_scene", "no_speech", "no_roles", "unmatched_child", "no_speech_link")
+#: A face and a body grouping couldn't pair are still linked for the child lock when the face is inside the body on at
+#: least this share of their shared frames (fail closed: lower than grouping's 80 %).
+CHILD_LINK = 0.5
 #: UI-SPEC §8 request 4: a reason is at most this long, lowercase-first, with no trailing full stop.
 REASON_MAX = 90
 
@@ -256,43 +259,45 @@ def _combine(verdicts: Sequence[Verdict]) -> Verdict:
     return Verdict("needs_you", "policy", reason, hold=hold)
 
 
-def _child_reentries(tracks: Sequence[Track], judged: Mapping[str, Verdict]) -> dict[str, Verdict]:
-    """A re-entry is the same object under a new ID: when any track linked by ``reentry_of`` (either way, along
-    the whole chain) is a child, every linked track is locked hidden too, so no ID of a child can be kept."""
-    root = {t.track_id: t.track_id for t in tracks}
-
-    def find(track_id: str) -> str:
-        while root[track_id] != track_id:
-            track_id = root[track_id]
-        return track_id
-
-    for t in tracks:
-        if t.reentry_of is not None and t.reentry_of in root:
-            root[find(t.track_id)] = find(t.reentry_of)
-    child_roots = {find(t.track_id) for t in tracks if judged[t.track_id].child}
-    reason = "child: came back into view as a new ID of a child, so always hidden"
-    return {
-        t.track_id: Verdict("hide", "policy", reason, child=True)
-        for t in tracks
-        if not judged[t.track_id].child and find(t.track_id) in child_roots
-    }
-
-
-def _bodies_of_unpaired_children(
+def _child_closure(
     tracks: Sequence[Track], groups: Sequence[Sequence[Track]], judged: Mapping[str, Verdict]
 ) -> dict[str, Verdict]:
-    """A child's face that grouping couldn't pair (an exact tie between bodies) still has a body somewhere: every
-    person track that holds it on 80 % of their shared frames is locked hidden, so the child's body is never kept."""
+    """No ID of a child can be kept. A track is locked as a child when any of these links it to one, repeated until
+    nothing changes (so a link found one way is followed every other way):
+
+    * it shares a review item with a child track (a body grouped with a child's face, and the reverse);
+    * it is linked to one by ``reentry_of``, either way along the whole chain (the same object under a new ID);
+    * it is a body that holds an unpaired child face, or a face inside an unpaired child body, on half their shared
+      frames or more (grouping, which needs 80 %, couldn't pair them: an exact tie, or a face partly outside its body).
+    """
+    by_id = {t.track_id: t for t in tracks}
+    group_of = {t.track_id: tuple(x.track_id for x in g) for g in groups for t in g}
     alone = {g[0].track_id for g in groups if len(g) == 1}
-    faces = [t for t in tracks if t.concept == "face" and t.track_id in alone and judged[t.track_id].child]
-    reason = "child: a child's face is inside this body, so it is always hidden"
-    return {
-        p.track_id: Verdict("hide", "policy", reason, child=True)
-        for p in tracks
-        if p.concept == "person"
-        and not judged[p.track_id].child
-        and any(inside_share(face, p) >= SHARED_FRAMES for face in faces)
-    }
+    children = {tid for tid, v in judged.items() if v.child}
+    links: dict[str, set[str]] = {t.track_id: set(group_of[t.track_id]) - {t.track_id} for t in tracks}
+    for t in tracks:
+        if t.reentry_of is not None and t.reentry_of in by_id:
+            links[t.track_id].add(t.reentry_of)
+            links[t.reentry_of].add(t.track_id)
+    faces = [t for t in tracks if t.concept == "face" and t.track_id in alone]
+    bodies = [t for t in tracks if t.concept == "person" and t.track_id in alone]
+    changed = True
+    while changed:
+        changed = False
+        found = {other for tid in children for other in links[tid]}
+        found |= {
+            b.track_id for b in tracks if b.concept == "person"
+            for f in faces if f.track_id in children and inside_share(f, b) >= CHILD_LINK
+        }  # fmt: skip
+        found |= {
+            f.track_id for f in tracks if f.concept == "face"
+            for b in bodies if b.track_id in children and inside_share(f, b) >= CHILD_LINK
+        }  # fmt: skip
+        if found - children:
+            children |= found
+            changed = True
+    reason = "child: linked to a child (same item, a re-entry, or face and body), so always hidden"
+    return {tid: Verdict("hide", "policy", reason, child=True) for tid in children if not judged[tid].child}
 
 
 def style_for(kind: Kind, group: Sequence[Track], job: Job) -> Style:
@@ -308,14 +313,36 @@ def style_for(kind: Kind, group: Sequence[Track], job: Job) -> Style:
         t.concept == "person" and max(b[3] - b[1] for b in t.boxes.values()) > PROMINENT_HEIGHT * job.height
         for t in group
     )
-    if prominent and has_person:
+    # A face alone taller than that share is a close-up whose body SAM missed: the guard covers a body under it.
+    close_up = not has_person and any(
+        t.concept == "face" and max(b[3] - b[1] for b in t.boxes.values()) > PROMINENT_HEIGHT * job.height
+        for t in group
+    )
+    if (prominent and has_person) or close_up:
         return "person_solid"
     return "pixelate" if has_face else "solid"
 
 
+def _rows(tracks: Sequence[RoleTrack]) -> dict[str, RoleTrack]:
+    """One row per track. Should a track appear twice, the row that keeps more hidden wins (fail closed): a child
+    vote first, then anything but a participant ruling."""
+    rows: dict[str, RoleTrack] = {}
+    for row in tracks:
+        held = rows.get(row.track_id)
+        if held is None or _hides_more(row, held):
+            rows[row.track_id] = row
+    return rows
+
+
+def _hides_more(row: RoleTrack, than: RoleTrack) -> bool:
+    if is_child_vote(row) != is_child_vote(than):
+        return is_child_vote(row)
+    return than.role == "participant" and row.role != "participant"
+
+
 def decide(inputs: Inputs) -> Decisions:
     """``decisions.json`` for every track: one item per group, ``i_1`` … in order of first frame."""
-    rows = {r.track_id: r for r in inputs.roles.tracks} if inputs.roles is not None else {}
+    rows = _rows(inputs.roles.tracks) if inputs.roles is not None else {}
     objects = {o.track_id: o for o in inputs.roles.objects} if inputs.roles is not None else {}
     groups = group_tracks(inputs.tracks.tracks)
     gates = _gates(inputs, groups, rows)
@@ -325,8 +352,7 @@ def decide(inputs: Inputs) -> Decisions:
         else judge_object(t, rows.get(t.track_id), objects.get(t.track_id))
         for t in inputs.tracks.tracks
     }
-    judged.update(_child_reentries(inputs.tracks.tracks, judged))
-    judged.update(_bodies_of_unpaired_children(inputs.tracks.tracks, groups, judged))
+    judged.update(_child_closure(inputs.tracks.tracks, groups, judged))
     items: list[DecisionItem] = []
     for number, group in enumerate(groups, start=1):
         person = all(t.concept in PERSON_CONCEPTS for t in group)

@@ -132,6 +132,34 @@ def _patch_entries(item: DecisionItem, job: Job) -> Iterable[tuple[int, PlanEntr
 RegionCache = MutableMapping[tuple[str, int, int], list[Region]]
 
 
+def _regions(
+    track: Track, start: int, end: int, *, job: Job, interp_gap: int, cache: RegionCache | None
+) -> list[Region]:
+    """The track's region on each frame ``start … end - 1`` (from the cache when it has them)."""
+    key = (track.track_id, start, end)
+    found = cache.get(key) if cache is not None else None
+    if found is None:
+        regions = TrackRegions(track, ratio=ratio_for(track.concept, PADDING.face, PADDING.default), px=PADDING.px,
+                               width=job.width, height=job.height, interp_gap=interp_gap)  # fmt: skip
+        found = [regions.at(frame) for frame in range(start, end)]
+        if cache is not None:
+            cache[key] = found
+    return found
+
+
+def _with_body(
+    face: Track, start: int, regions: list[Region], *, bodied: set[int], job: Job, interp_gap: int
+) -> list[Region]:
+    """A whole-person item's face regions, with an estimated body under the face on every frame no body track of
+    the item covers. The body grows from the padded face *box* (a mask region's outline can sit inside it)."""
+    boxed = TrackRegions(face.model_copy(update={"masks": {}}), ratio=PADDING.face, px=PADDING.px, width=job.width,
+                         height=job.height, interp_gap=interp_gap)  # fmt: skip
+    return [
+        held if frame in bodied else Region(body_below(union([held.box, boxed.at(frame).box]), job.width, job.height))
+        for frame, held in enumerate(regions, start=start)
+    ]
+
+
 def plan(
     job: Job,
     tracks: Tracks,
@@ -169,24 +197,10 @@ def plan(
         for track_id in item.track_ids:
             track = by_id[track_id]
             start, end = max(0, track.first - backfill), min(job.frames, hold_until(track, by_id, job) + 1)
-            key = (track_id, start, end)
-            found = cache.get(key) if cache is not None else None
-            if found is None:
-                regions = TrackRegions(
-                    track,
-                    ratio=ratio_for(track.concept, PADDING.face, PADDING.default),
-                    px=PADDING.px,
-                    width=job.width,
-                    height=job.height,
-                    interp_gap=interp_gap,
-                )
-                found = [regions.at(frame) for frame in range(start, end)]
-                if cache is not None:
-                    cache[key] = found
-            body = item.style == "person_solid" and track.concept == "face"
-            for frame, held in zip(range(start, end), found, strict=True):
-                bare = body and frame not in bodied
-                region = Region(body_below(held.box, job.width, job.height)) if bare else held
+            regions = _regions(track, start, end, job=job, interp_gap=interp_gap, cache=cache)
+            if item.style == "person_solid" and track.concept == "face":
+                regions = _with_body(track, start, regions, bodied=bodied, job=job, interp_gap=interp_gap)
+            for frame, region in zip(range(start, end), regions, strict=True):
                 # Built unvalidated (thousands per clip): every field comes from validated inputs or the round-trip
                 # tested encoder, and every reader of plan.json validates it on load.
                 entry = PlanEntry.model_construct(

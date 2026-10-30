@@ -39,6 +39,7 @@ from safecut.contracts import (
     read_cost_lines,
     receipt_hash,
 )
+from safecut.render import file_sha256
 
 RUN = Path("raw/audit/run.json")
 APPROVAL = "approval.json"
@@ -170,12 +171,22 @@ def data_handling(job_dir: Path, models: dict[str, str], audit: Audit) -> DataHa
     )
 
 
+def audited_current_video(job_dir: Path) -> bool:
+    """The audit on record checked exactly the ``redacted.mp4`` in the job (its run record names the video's sha256)."""
+    run, video = job_dir / RUN, job_dir / "redacted.mp4"
+    if not run.exists() or not video.exists():
+        return False
+    return json.loads(run.read_text(encoding="utf-8")).get("video_sha256") == file_sha256(video)
+
+
 def build(
     job_dir: Path, settings: Settings, *, prev_hash: str | None = None, approved_at: datetime | None = None
 ) -> Receipt:
     """Seal the receipt for ``job_dir``."""
     if not (job_dir / "audit.json").exists() or not (job_dir / "decisions.json").exists():
         raise ReceiptError("a receipt needs decisions.json and audit.json (run decide … audit first)")
+    if not audited_current_video(job_dir):
+        raise ReceiptError("audit.json doesn't describe the current redacted.mp4 (re-rendered since): run the audit")
     job = load(job_dir / "job.json", Job)
     decisions = load(job_dir / "decisions.json", Decisions)
     audit = load(job_dir / "audit.json", Audit)

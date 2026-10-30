@@ -45,7 +45,7 @@ from safecut.guard import region_cache
 from safecut.guard.plan import plan as make_plan
 from safecut.guard.plan import read_through
 from safecut.receipt import retire
-from safecut.render import REDACTED, render
+from safecut.render import REDACTED, file_sha256, render, rendered_from_plan
 from safecut.render.draw import Frame
 from safecut.render.video import read_frames
 
@@ -114,8 +114,6 @@ def scan(state: State, job_dir: Path, detector: Detector, wanted: set[int], *, c
         for index, frame in frames_of(job_dir, state.job, wanted):
             detections: list[Detection] = detector.detect(frame)
             state.detector_calls += 1
-            state.scanned.add(index)
-            done.add(index)
             for d in detections:
                 if count and d.kind == "face":
                     state.faces += 1
@@ -123,6 +121,9 @@ def scan(state: State, job_dir: Path, detector: Detector, wanted: set[int], *, c
                     state.plates += 1
                 if rules.excluded_by(d.kind, d.box, index, state.decisions, by_track) is None:
                     found.append(Leak(frame=index, box=d.box, kind=d.kind, detector="egoblur", patched_item=None))
+            # Scanned only once its detections are all judged: a crash part-way leaves the frame unscanned.
+            state.scanned.add(index)
+            done.add(index)
     except Exception:
         log.exception("audit: the detector stopped after %d of %d frames", len(done), len(wanted))
     if not count:
@@ -343,7 +344,7 @@ async def audit_job(
     # never the previous clean verdict beside a changed video.
     retire(job_dir)
     dump(summary(state, 0, detector, previous), job_dir / "audit.json")
-    if not (job_dir / REDACTED).exists():
+    if not rendered_from_plan(job_dir):  # no video, or one drawn from another plan (a crash, an edit): draw it now
         render(job_dir)
     words = approved(decisions, roles, scene)
     everything = set(range(job.frames))
@@ -389,6 +390,8 @@ def write_run(job_dir: Path, audit: Audit, state: State, detector: Detector) -> 
     path = job_dir / RUN
     path.parent.mkdir(parents=True, exist_ok=True)
     per_frame = state.seconds.get("detector", 0.0) / max(1, state.detector_calls)
+    # The video this audit checked: a receipt only seals an audit that describes the video in the job now.
     record = {"detector": detector.model, "redteam_model": state.redteam_model, "seconds": state.seconds,
-              "detector_s_per_frame": per_frame, "frames_scanned": audit.frames_scanned}  # fmt: skip
+              "detector_s_per_frame": per_frame, "frames_scanned": audit.frames_scanned,
+              "video_sha256": file_sha256(job_dir / REDACTED)}  # fmt: skip
     path.write_text(json.dumps(record, indent=1))
