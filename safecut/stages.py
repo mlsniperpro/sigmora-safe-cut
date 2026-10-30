@@ -65,6 +65,12 @@ class Stage:
     phase: Phase
     #: Calls a paid API outside replay, so the job's USD cap is checked before it runs.
     paid: bool
+    #: Contract files the stage rewrites besides its output (roles appends the miss loop's tracks to
+    #: ``tracks.json``, WP2 step 5): their new digests are logged, so the stage that wrote them first stays fresh.
+    also_writes: tuple[str, ...] = ()
+    #: The stage enforces the job's cap itself and records the stop in its output (the audit ends
+    #: ``blocked_reason: "over_budget"``, so [Run the audit again] works), instead of the pipeline refusing first.
+    caps_itself: bool = False
 
     def runner(self) -> StageRunner:
         """Import the stage's ``run``; raise :class:`StageUnavailable` when its module isn't built yet."""
@@ -105,6 +111,7 @@ STAGES: tuple[Stage, ...] = (
         "SAFECUT-SENSE",
         "analyse",
         paid=True,
+        also_writes=("tracks.json",),
     ),
     Stage(
         "decide",
@@ -141,6 +148,7 @@ STAGES: tuple[Stage, ...] = (
         "SAFECUT-SAFETY",
         "publish",
         paid=True,
+        caps_itself=True,
     ),
     Stage(
         "receipt",

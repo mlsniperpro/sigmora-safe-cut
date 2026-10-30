@@ -16,6 +16,7 @@ Secrets come only from the Modal secret ``safecut-secrets`` (``MODEL_API_KEY``, 
 
 from __future__ import annotations
 
+import os
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -26,12 +27,15 @@ ROOT = Path(__file__).resolve().parent.parent
 JOBS = "/data/jobs"
 APP_NAME = "safecut"
 
+#: ``SAFECUT_DEPLOY_AUDIT=1`` at deploy time builds the image with the ``audit`` group (EgoBlur + torch), once the
+#: gated weights are on the ``safecut-models`` Volume (BLOCKED.md). Without it the audit runs the bundled YuNet
+#: face detector on OpenCV (the main dependencies ship it), and audit.json and the receipt say so.
+AUDIT_GROUPS = ["audit"] if os.environ.get("SAFECUT_DEPLOY_AUDIT") == "1" else []
+
 image = (
     modal.Image.debian_slim(python_version="3.12")
     .env({"SAFECUT_JOBS_DIR": JOBS, "SAFECUT_TRUST_PROXY": "1"})
-    # The audit group (EgoBlur + torch) installs only once its gated weights exist (BLOCKED.md); YuNet runs on
-    # OpenCV, which the main dependencies already ship.
-    .uv_sync(str(ROOT), groups=[], frozen=True)
+    .uv_sync(str(ROOT), groups=AUDIT_GROUPS, frozen=True)
     .add_local_python_source("safecut", "eval")
     .add_local_dir(str(ROOT / "fixtures" / "jobs"), "/root/fixtures/jobs")
     .add_local_dir(str(ROOT / "fixtures" / "clips"), "/root/fixtures/clips")
@@ -55,9 +59,14 @@ secrets = [modal.Secret.from_name("safecut-secrets")]
 @modal.concurrent(max_inputs=64)
 @modal.asgi_app(label="safecut-api")
 def api() -> Any:
-    from safecut.api.app import create_app  # noqa: PLC0415 -- imported inside the container, after the image build
+    from safecut.api.app import create_app, production_problems  # noqa: PLC0415 -- inside the container
+    from safecut.config import load_settings  # noqa: PLC0415 -- inside the container
 
-    return create_app()
+    settings = load_settings()
+    problems = production_problems(settings)
+    if problems:  # a weak judge code or URL key is refused at startup, never served
+        raise RuntimeError("safecut-secrets isn't fit for production: " + "; ".join(problems))
+    return create_app(settings)
 
 
 @app.function(volumes={"/data": jobs}, secrets=secrets, schedule=modal.Period(minutes=15), timeout=10 * 60)

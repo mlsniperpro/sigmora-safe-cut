@@ -22,12 +22,21 @@ jobs:
   modal:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # `branches: [main]` matches a PR's head branch name too, so a fork's PR from its own `main` would pass it:
+    # deploy only a push to this repository's main (the secrets never run a fork's code).
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
       SAFECUT_API_URL: ${{ vars.SAFECUT_API_URL }}
       SAFECUT_WEB_URL: ${{ vars.SAFECUT_WEB_URL }}
+      # "1" once the EgoBlur weights are on the safecut-models Volume: the image then installs the audit group.
+      SAFECUT_DEPLOY_AUDIT: ${{ vars.SAFECUT_DEPLOY_AUDIT }}
     steps:
       - name: Check for the Modal secrets
         id: gate

@@ -6,7 +6,7 @@ const nav = vi.hoisted(() => ({ path: "/" }));
 vi.mock("next/navigation", () => ({ usePathname: () => nav.path }));
 
 function Reporter() {
-  useReportMode("replay");
+  useReportMode("replay", false); // a replay of a real consented run (the API says synthetic: false)
   return null;
 }
 
@@ -41,6 +41,22 @@ describe("a synthetic replay says so", () => {
     render(
       <ModeProvider>
         <SyntheticReporter />
+        <ModeBanners />
+      </ModeProvider>,
+    );
+    expect(await screen.findByText(/saved results for a synthetic test clip/)).toBeInTheDocument();
+    expect(screen.queryByText(/from a real run/)).toBeNull();
+  });
+
+  it("labels a replay synthetic when the response doesn't say (never a real run by default)", async () => {
+    nav.path = "/jobs/job-unsaid";
+    function Unsaid() {
+      useReportMode("replay", undefined);
+      return null;
+    }
+    render(
+      <ModeProvider>
+        <Unsaid />
         <ModeBanners />
       </ModeProvider>,
     );

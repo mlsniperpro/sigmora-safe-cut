@@ -7,7 +7,10 @@ so these tests exercise the API, the pipeline, the real WP3 review fold and the 
 
 from __future__ import annotations
 
+import contextlib
 import json
+import threading
+import time
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -19,10 +22,11 @@ from pydantic import SecretStr
 
 from safecut import pipeline
 from safecut.api.access import RateLimiter
-from safecut.api.app import Service, create_app, hero_job_id, safe_name
-from safecut.api.store import JobStore
+from safecut.api.app import Service, create_app, hero_job_id, production_problems, safe_name
+from safecut.api.store import JobNotFound, JobStore
+from safecut.api.views import public_audit
 from safecut.config import AccessCode, CodeWindow, ServiceKey, Settings
-from safecut.contracts import CostLine, Job, append_cost_line, load
+from safecut.contracts import Audit, CostLine, Job, RedteamHit, append_cost_line, load
 from safecut.meta.budget import CapLimit
 from safecut.stages import REDACTED, Stage
 from tests.fake_stages import CLIP
@@ -874,3 +878,128 @@ def test_a_clip_over_60_s_fails_in_prepare_with_its_duration(
     assert job["failure"]["stage"] == "prepare"
     assert job["failure"]["reason"] == "too_long"
     assert job["failure"]["duration_s"] == pytest.approx(61, abs=0.1)
+
+
+# ---------------------------------------------------------------------------
+# Audit round 2 (SHIP) and the SAFETY lane's findings in the API
+# ---------------------------------------------------------------------------
+
+
+def test_red_team_text_never_leaves_the_job_dir(make_client: Callable[..., tuple[TestClient, Service]]) -> None:
+    """redteam.md "Private text": a hit's ``text`` and ``detail`` stay in audit.json; clients see the kind, the frame,
+    the box and "text read (n characters)"."""
+    client, svc = make_client()
+    job_id = upload_clip(client)
+    run_to(client, svc, job_id, "start", "review")
+    run_to(client, svc, job_id, "render", "done")
+    on_disk = (svc.store.path(job_id) / "audit.json").read_text()
+    assert "a face at the left edge" in on_disk  # the example audit's red-team hit
+    for path in (f"/v1/jobs/{job_id}", f"/v1/jobs/{job_id}/result"):
+        body = client.get(path).text
+        assert "a face at the left edge" not in body
+        hits = [e for e in json.loads(body)["audit"]["redteam"] if e["finding"] == "hit"]
+        assert hits
+        assert all("detail" not in h and h["text"] is None for h in hits)
+    audit = load(svc.store.path(job_id) / "audit.json", Audit)
+    hit = next(e for e in audit.redteam if isinstance(e, RedteamHit))
+    read = audit.model_copy(update={"redteam": [hit.model_copy(update={"text": "Amina 0712 345 678"})]})
+    shown = public_audit(read)["redteam"][0]
+    assert shown["text"] == "text read (18 characters)"
+    assert "detail" not in shown
+    assert "0712" not in json.dumps(public_audit(read))
+
+
+def test_a_restart_refuses_jobs_whose_code_was_revoked_and_keeps_retry_delays(
+    make_client: Callable[..., tuple[TestClient, Service]],
+) -> None:
+    client, svc = make_client()
+    revoked = upload_clip(client, code=PILOT)
+    waiting = upload_clip(client)
+    with svc.store.update(revoked) as state:
+        state.status, state.stage = "processing", "track"
+    with svc.store.update(waiting) as state:
+        state.status, state.stage = "retry_later", "track"
+        state.retry_at = datetime.now(UTC) + timedelta(minutes=4)
+    later: list[tuple[str, str, float]] = []
+    svc.worker.submit_later = lambda job_id, action, delay: later.append((job_id, action, delay))  # type: ignore[method-assign] -- record, don't wait
+    svc.access.settings = svc.settings.model_copy(
+        update={"access_codes": tuple(c for c in svc.settings.access_codes if c.kind != "pilot")}
+    )
+    assert svc.recover() == [waiting]
+    failed = client.get(f"/v1/jobs/{revoked}").json()
+    assert failed["status"] == "failed"
+    assert failed["failure"]["reason"] == "code_not_active"
+    assert later
+    assert later[0][0] == waiting
+    assert 200 < later[0][2] <= 240
+    assert client.get(f"/v1/jobs/{waiting}").json()["status"] == "retry_later"
+
+
+def test_a_job_deleted_mid_request_is_a_404_not_a_500(
+    make_client: Callable[..., tuple[TestClient, Service]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, svc = make_client()
+    job_id = upload_clip(client)
+    looked_up = Service.job
+
+    def then_deleted(self: Service, jid: str) -> Any:
+        state = looked_up(self, jid)
+        self.store.delete(jid)  # deleted (or expired) between the first look and the transition
+        return state
+
+    monkeypatch.setattr(Service, "job", then_deleted)
+    for path in ("start", "render", "audit"):
+        response = client.post(f"/v1/jobs/{job_id}/{path}")
+        assert response.status_code == 404, (path, response.text)
+        assert response.json()["error"]["code"] == "not_found"
+    edit = {"type": "hide", "edit_id": "e1", "item_id": "i_1"}
+    assert client.post(f"/v1/jobs/{job_id}/review", json=edit).status_code == 404
+    with pytest.raises(JobNotFound):
+        svc.store.get(job_id)
+
+
+def test_delete_succeeds_while_a_stage_is_still_writing(tmp_path: Path) -> None:
+    """A stage thread writing into the job dir must not make DELETE fail (a 500 that leaves the data): the dir is
+    renamed away first, and what the writer re-creates under the old path has no state and is reaped."""
+    store = JobStore(tmp_path / "jobs", ttl=timedelta(hours=24), cleanup_every=timedelta(minutes=15))
+    for _ in range(20):
+        state = store.create(mode="live")
+        job_dir = store.path(state.job_id)
+        stop = threading.Event()
+
+        def write(job_dir: Path = job_dir, stop: threading.Event = stop) -> None:
+            n = 0
+            while not stop.is_set():
+                with contextlib.suppress(OSError):
+                    (job_dir / "raw").mkdir(parents=True, exist_ok=True)
+                    (job_dir / "raw" / f"r{n}.json").write_text("{}")
+                    n += 1
+
+        writer = threading.Thread(target=write)
+        writer.start()
+        time.sleep(0.005)
+        try:
+            assert store.delete(state.job_id)
+            with pytest.raises(JobNotFound):
+                store.get(state.job_id)
+        finally:
+            stop.set()
+            writer.join()
+    # What the writers re-created after their deletes has no state: the sweep reaps it once it's a minute old.
+    store.sweep(now=datetime.now(UTC) + timedelta(minutes=2))
+    assert not any(p for p in (tmp_path / "jobs").iterdir())
+
+
+def test_production_refuses_weak_secrets(tmp_path: Path) -> None:
+    weak = settings_for(tmp_path, access_codes=(AccessCode(code=SecretStr("abcd"), kind="judge"),), url_secret=None)
+    problems = production_problems(weak)
+    assert any("judge access code" in p for p in problems)
+    assert any("SAFECUT_URL_SECRET" in p for p in problems)
+    assert any("SAFECUT_PUBLIC_URL" in p for p in problems)
+    strong = settings_for(
+        tmp_path,
+        access_codes=(AccessCode(code=SecretStr("j" * 12), kind="judge"),),
+        url_secret=SecretStr("s" * 32),
+        public_url="https://safecut--api.modal.run",
+    )
+    assert production_problems(strong) == []

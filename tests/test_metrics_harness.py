@@ -262,6 +262,7 @@ def test_an_egoblur_run_records_the_detector_that_ran_and_the_report_names_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.undo()  # the real prepare stage and the real audit detector, on the committed dev split
+    monkeypatch.setattr(runner, "git_sha", lambda: "0123456789abcdef")  # the report refuses a dirty tree's runs
     root = Path(__file__).resolve().parent.parent
     run_dir = runner.run("dev", "egoblur", replay=True, out=tmp_path / "results")
     config = json.loads((run_dir / "config.json").read_text())
@@ -284,3 +285,26 @@ def test_a_test_run_that_crashes_still_counts(base: Path, monkeypatch: pytest.Mo
     with pytest.raises(RuntimeError):
         runner.run("test", "full", replay=False, out=base / "results", splits=splits, base=base)
     assert len(runner.runs_made(splits)) == 1
+
+
+def test_a_live_run_needs_committed_code_and_stops_at_its_ceiling(base: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(runner, "git_sha", lambda: "0123456789abcdef-dirty")
+    with pytest.raises(runner.EvalError, match="uncommitted"):
+        runner.run("dev", "full", replay=False, out=base / "results", splits=base / "splits", base=base)
+    runner.run("dev", "full", replay=True, out=base / "results", splits=base / "splits", base=base)  # replay may
+    monkeypatch.setattr(runner, "git_sha", lambda: "0123456789abcdef")
+    split = json.loads((base / "splits" / "dev.json").read_text())
+    split["clips"] *= 2
+    (base / "splits" / "dev.json").write_text(json.dumps(split))
+    monkeypatch.setattr(pipeline, "job_spend", lambda job_dir: 2.0)
+    with pytest.raises(runner.EvalError, match=r"reached --max-usd \$1\.50 after 1 clip"):
+        runner.run("dev", "full", replay=False, out=base / "results2", splits=base / "splits", base=base, max_usd=1.5)
+
+
+def test_the_report_refuses_a_run_made_from_uncommitted_code(base: Path) -> None:
+    run_dir = runner.run("dev", "full", replay=True, out=base / "results", splits=base / "splits", base=base)
+    config = json.loads((run_dir / "config.json").read_text())
+    config["git_sha"] += "-dirty"
+    (run_dir / "config.json").write_text(json.dumps(config))
+    with pytest.raises(ValueError, match="uncommitted code"):
+        report.load_runs(base / "results")

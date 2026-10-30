@@ -46,6 +46,21 @@ def _json(model: BaseModel) -> Any:
     return model.model_dump(mode="json")
 
 
+def public_audit(audit: Audit) -> dict[str, Any]:
+    """``audit.json`` as clients see it: the red team's ``text`` and ``detail`` stay in the job dir (redteam.md
+    "Private text"); a hit shows its kind, frame and box, and "text read (n characters)" when it read text."""
+    body: dict[str, Any] = _json(audit)
+    for key in ("redteam", "redteam_open"):
+        entries: list[dict[str, Any]] = body.get(key) or []
+        for entry in entries:
+            if entry.get("finding") != "hit":
+                continue
+            text = entry.get("text")
+            entry["text"] = f"text read ({len(text)} characters)" if text else None
+            entry.pop("detail", None)
+    return body
+
+
 def _optional[M: BaseModel](path: Path, model: type[M]) -> M | None:
     return load(path, model) if path.is_file() else None
 
@@ -178,7 +193,7 @@ class Views:
                 body[key] = _json(loaded)
         audit = _optional(job_dir / "audit.json", Audit)
         if audit is not None:
-            body["audit"] = _json(audit)
+            body["audit"] = public_audit(audit)
             body["audit_budget_cause"] = audit.audit_budget_cause
         if (job_dir / REDACTED).is_file():
             body["result"] = self.result_urls(state.job_id, job_dir)
@@ -204,7 +219,7 @@ class Views:
             "frames": job.frames,
             **self.result_urls(state.job_id, job_dir),
             "captions_url": self.media_url(state.job_id, "captions.vtt") if self.has_captions(job_dir) else None,
-            "audit": _json(audit),
+            "audit": public_audit(audit),
             "code_valid_until": self.code_valid_until(state),
         }
         return body

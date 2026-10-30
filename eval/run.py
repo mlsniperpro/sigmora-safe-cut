@@ -46,6 +46,10 @@ RESULTS = ROOT / "eval" / "results"
 TEST_RUN_LIMIT = 3
 
 
+#: A live run's ceiling across all its clips (the whole event has $150 of Meta credits, AGENTS rule 10).
+DEFAULT_MAX_USD = 15.0
+
+
 class EvalError(RuntimeError):
     """The run can't go ahead; the message says why."""
 
@@ -148,8 +152,10 @@ def run(
     now: datetime | None = None,
     splits: Path = SPLIT_DIR,
     base: Path = ROOT,
+    max_usd: float = DEFAULT_MAX_USD,
 ) -> Path:
-    """Run ``variant`` on every clip of the split; return the run directory."""
+    """Run ``variant`` on every clip of the split; return the run directory. A live run stops before the next
+    clip once its Meta spend reaches ``max_usd`` (each job also keeps its own ``SAFECUT_JOB_USD_CAP``)."""
     split = load_split(split_name, splits)
     now = now or datetime.now(UTC)
     if split_name == "test":
@@ -160,13 +166,19 @@ def run(
         counter = RunCounter(runs=[*runs_made(splits), f"{now_id(now)}-test-{variant}"])
         (splits / "test.runs.json").write_text(counter.model_dump_json(indent=1) + "\n", encoding="utf-8")
     sha = git_sha()
+    if not replay and sha.endswith("-dirty"):
+        # A live run costs credits (and a test run one of its 3): only committed code can back a reported number.
+        raise EvalError("the working tree has uncommitted changes; commit them before a live run")
     run_id = f"{now_id(now)}-{split_name}-{variant}-{sha[:7]}"
     scores: list[JobScore] = []
     detail: dict[str, str] = {}
     synthetic = False
     work = Path(tempfile.mkdtemp(prefix=f"eval-{run_id}-"))
     try:
+        spent = 0.0
         for n, entry in enumerate(split.clips):
+            if not replay and spent >= max_usd:
+                raise EvalError(f"the run's Meta spend ${spent:.2f} reached --max-usd ${max_usd:.2f} after {n} clip(s)")
             clip = base / entry.clip
             job_dir = work / f"j_{n:03d}_{re.sub(r'[^A-Za-z0-9_-]', '_', clip.stem)[:40]}"
             pipeline.create_job(
@@ -184,6 +196,7 @@ def run(
             result = run_variant(variant, job_dir, replay=replay)
             detail.update(result.detail)
             scores.append(score_job(job_dir, load_labels(base / entry.labels), result.regions))
+            spent += pipeline.job_spend(job_dir)
     finally:
         shutil.rmtree(work, ignore_errors=True)
     run_dir = out / run_id
@@ -301,6 +314,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--split", choices=SPLITS, required=True, help="hero | dev | public | test")
     parser.add_argument("--variant", choices=VARIANTS, help="which pipeline variant (run only)")
     parser.add_argument("--replay", action="store_true", help="replay recorded responses; nothing is sent to Meta")
+    parser.add_argument(
+        "--max-usd", type=float, default=DEFAULT_MAX_USD, help="a live run stops once its Meta spend reaches this"
+    )
     args = parser.parse_args(argv)
     try:
         if args.command == "freeze":
@@ -310,7 +326,7 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--variant is required")
         if args.replay:
             netguard.block()  # a replay run never reaches the network, in any thread
-        run_dir = run(args.split, args.variant, replay=args.replay)
+        run_dir = run(args.split, args.variant, replay=args.replay, max_usd=args.max_usd)
     except (EvalError, VariantUnavailable, pipeline.PipelineError) as exc:
         print(f"eval: {exc}", file=sys.stderr)
         return 1

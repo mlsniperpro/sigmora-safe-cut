@@ -33,12 +33,12 @@ from starlette.concurrency import run_in_threadpool
 
 from safecut import netguard, pipeline
 from safecut.api.access import MAX_UPLOAD_BYTES, Access, ApiRefusal, Grant, RateLimiter, check_caps, estimate_usd
-from safecut.api.store import JobNotFound, JobState, JobStore, UploadSpec
+from safecut.api.store import Failure, JobNotFound, JobState, JobStore, UploadSpec
 from safecut.api.urls import UPLOAD_TTL_S, Signer, expiry
 from safecut.api.views import Views, iso
 from safecut.api.worker import Worker
 from safecut.config import Settings, load_settings
-from safecut.contracts import Audit, ContractError, Decisions, Intake, Job, Plan, dump, load
+from safecut.contracts import Audit, ContractError, Decisions, Intake, Job, Plan, Tracks, dump, load
 from safecut.decide import REVIEW, policy_decisions
 from safecut.decide.review import ReviewEdit, ReviewError, ReviewLog, apply_review
 from safecut.meta.status import StatusUnavailableError, fetch_status
@@ -176,9 +176,21 @@ class Service:
                         if state.stage == "audit" and (self.store.path(job_id) / "redacted.mp4").is_file()
                         else "publish"
                     )
-                    state.status = "processing" if analysing else "rendering"
-                    state.retry_at = None
-                    self.worker.submit(job_id, action)
+                    try:
+                        self.paid_grant(state)  # a code revoked or expired over the restart stops paid work here
+                    except ApiRefusal:
+                        state.status = "failed"
+                        state.failure = Failure(stage=state.stage, reason="code_not_active")
+                        state.retry_at = None
+                        continue
+                    wait = (state.retry_at - datetime.now(UTC)).total_seconds() if state.retry_at else 0.0
+                    if state.status == "retry_later" and wait > 0:
+                        # The one re-queue keeps its delay (and re-checks the code when it fires).
+                        self.worker.submit_later(job_id, action, wait)
+                    else:
+                        state.status = "processing" if analysing else "rendering"
+                        state.retry_at = None
+                        self.worker.submit(job_id, action)
                     resumed.append(job_id)
             except (JobNotFound, ContractError):
                 continue
@@ -420,7 +432,10 @@ async def upload(svc: Svc, job_id: str, request: Request, exp: str | None = None
     if received != spec.size_bytes:
         partial.unlink(missing_ok=True)
         raise ApiRefusal(400, "upload_incomplete", "The upload ended before the declared size.")
-    partial.replace(folder / spec.file_name)
+    try:
+        partial.replace(folder / spec.file_name)
+    except FileNotFoundError:
+        raise JobNotFound(job_id) from None  # the job was deleted during the upload
     with svc.store.update(job_id) as current:
         if current.upload is not None:
             current.upload.received = True
@@ -541,7 +556,13 @@ def _apply_edit(svc: Service, job_dir: Path, current: JobState, edits: list[Revi
     audit = load(job_dir / "audit.json", Audit) if (job_dir / "audit.json").is_file() else None
     try:
         result = apply_review(
-            policy_decisions(job_dir), [*edits, edit], audit=audit, frames=job.frames, extend=plan.temporal.extend
+            policy_decisions(job_dir),
+            [*edits, edit],
+            audit=audit,
+            frames=job.frames,
+            extend=plan.temporal.extend,
+            tracks=load(job_dir / "tracks.json", Tracks),  # a re-hidden person gets exactly the policy's style
+            job=job,
         )
     except ReviewError as exc:
         raise ApiRefusal(409, exc.code, str(exc)) from None
@@ -675,6 +696,25 @@ async def healthz(svc: Svc) -> JSONResponse:
     return JSONResponse(body, status_code=200 if writable else 503)
 
 
+#: BLOCKED.md's minimums for the deployed service: an access code is guessed across IPs only if it's short.
+MIN_CODE_CHARS = 12
+MIN_URL_SECRET_CHARS = 32
+
+
+def production_problems(settings: Settings) -> list[str]:
+    """What makes these settings unfit to serve the public (the Modal entry point refuses to start on any)."""
+    problems: list[str] = []
+    for code in settings.access_codes:
+        if len(code.code.get_secret_value()) < MIN_CODE_CHARS:
+            problems.append(f"a {code.kind} access code is shorter than {MIN_CODE_CHARS} characters")
+    secret = settings.url_secret.get_secret_value() if settings.url_secret else ""
+    if len(secret) < MIN_URL_SECRET_CHARS:
+        problems.append(f"SAFECUT_URL_SECRET is unset or shorter than {MIN_URL_SECRET_CHARS} characters")
+    if settings.public_url is None or not settings.public_url.startswith("https://"):
+        problems.append("SAFECUT_PUBLIC_URL is not an https URL")
+    return problems
+
+
 def create_app(settings: Settings | None = None, *, service: Service | None = None, background: bool = True) -> FastAPI:
     """``background`` starts the deletion loop and builds the demo jobs at startup (off in unit tests)."""
     svc = service or Service(settings or load_settings())
@@ -714,6 +754,17 @@ def create_app(settings: Settings | None = None, *, service: Service | None = No
     async def refusal(_: Request, exc: ApiRefusal) -> JSONResponse:
         headers = {"Retry-After": str(int(exc.retry_after_s))} if exc.retry_after_s is not None else None
         return JSONResponse(exc.body(), status_code=exc.status, headers=headers)
+
+    @app.exception_handler(JobNotFound)
+    async def gone(_: Request, exc: JobNotFound) -> JSONResponse:
+        # A job deleted or expired between a handler's first look and its update (``Service.job`` answers the
+        # first look itself): the same 404 as an unknown job, never a 500.
+        refused = (
+            ApiRefusal(404, "expired", "This clip has been deleted.")
+            if exc.expired
+            else ApiRefusal(404, "not_found", "We couldn't find that clip.")
+        )
+        return JSONResponse(refused.body(), status_code=404)
 
     @app.exception_handler(RequestValidationError)
     async def invalid(_: Request, exc: RequestValidationError) -> JSONResponse:

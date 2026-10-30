@@ -221,6 +221,11 @@ def score_against_truth(job: Path, truth: Path) -> None:
         elif entity.visible_frames and entity.frames_hidden / entity.visible_frames > 0.10:
             problems.append(f"{entity.id} (keep): hidden on {entity.frames_hidden}/{entity.visible_frames} frames")
     print(f"  scored {len(score.entities)} entities against {truth.name}")
+    # Never a vacuous pass: the truth must hold something to hide that is actually on screen, and someone to keep.
+    if not any(e.should_hide and e.visible_frames for e in score.entities):
+        problems.append("the truth file has no visible entity that should be hidden")
+    if not any(not e.should_hide and e.visible_frames for e in score.entities):
+        problems.append("the truth file has no visible entity that should be kept clear")
     if problems:
         raise CheckFailed(
             f"ground truth: {problems[0]}" + (f" (+{len(problems) - 1} more)" if len(problems) > 1 else "")
@@ -430,7 +435,10 @@ def e7() -> None:
         raise CheckFailed("scripts/deploy-check.sh is missing or not valid bash")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     blocked = (ROOT / "BLOCKED.md").read_text(encoding="utf-8") if (ROOT / "BLOCKED.md").is_file() else ""
-    deployed = re.search(r"https://[\w.-]+\.modal\.run", readme) and "safecut.sigmora.org" in readme
+    urls = re.findall(r"https://([\w.-]+)\.modal\.run", readme)
+    # A placeholder (`your-app.modal.run`, `example`) never counts as deployed.
+    real = [u for u in urls if not re.search(r"your|example|placeholder|xxx|<|changeme", u, re.IGNORECASE)]
+    deployed = bool(real) and "safecut.sigmora.org" in readme
     if not deployed and not re.search(r"^- \[ \].*Modal", blocked, re.MULTILINE):
         raise CheckFailed("no deployed URLs in README.md and no open Modal line in BLOCKED.md")
 
@@ -478,10 +486,21 @@ SUBMISSION_DOCS = ("README.md", "docs/SUBMISSION.md", "docs/VIDEO-SCRIPT.md", "d
 FIGURE = re.compile(r"(?<![\w.\-/])(\$?\d+(?:\.\d+)?%|\$\d+(?:\.\d+)?|\d+\.\d+)(?![\w\-/%]|\.\d)")
 
 
+#: A count reported as a result ("47 leaks", "20 clips"): checked like a figure, whatever its size.
+COUNT = re.compile(
+    r"(?<![\w.\-/])(\d+)(?=\s+(?:leaks?|leak bursts?|bursts?|clips|entities|labelled clips|missed|over-blurred)\b)"
+)
+#: Fences that hold commands or data a reader runs, not results; any other fence is read like prose.
+CODE_FENCE = re.compile(
+    r"```(?:bash|sh|shell|console|json|jsonc|python|py|ts|tsx|js|yaml|yml|toml|text|diff)\b.*?```", re.DOTALL
+)
+
+
 def prose(text: str) -> str:
-    """The text a reader sees as prose: fenced code blocks, link targets and HTML comments removed. Inline code is
-    kept, so a figure can't hide in backticks (model IDs like ``sam-3.1`` never match :data:`FIGURE`)."""
-    text = re.sub(r"```.*?```", " ", text, flags=re.DOTALL)
+    """The text a reader sees: command and data fences, link targets and HTML comments removed. Inline code and
+    untagged fences are kept, so a figure can't hide in backticks or a bare fence (model IDs like ``sam-3.1``
+    never match :data:`FIGURE`)."""
+    text = CODE_FENCE.sub(" ", text)
     text = re.sub(r"<!--.*?-->", " ", text, flags=re.DOTALL)
     return re.sub(r"\]\([^)]*\)", "]", text)
 
@@ -505,7 +524,8 @@ def e10() -> None:
         raise CheckFailed("eval/RESULTS.md is missing")
     results = results_path.read_text(encoding="utf-8")
     for doc in SUBMISSION_DOCS:
-        for figure in FIGURE.findall(prose((ROOT / doc).read_text(encoding="utf-8"))):
+        seen = prose((ROOT / doc).read_text(encoding="utf-8"))
+        for figure in [*FIGURE.findall(seen), *COUNT.findall(seen)]:
             if not re.search(rf"(?<![\w.]){re.escape(figure)}(?![\w%]|\.\d)", results):
                 raise CheckFailed(f"{doc}: the figure {figure} is not in eval/RESULTS.md")
 
@@ -614,8 +634,8 @@ OWNER_INPUTS = {
     "hero footage": r"hero (footage|clips?)",
     "Modal tokens": r"MODAL_TOKEN_ID",
     "the domain and Vercel project": r"Vercel",
-    "making the repo public": r"public",
-    "EgoBlur weights": r"EgoBlur",
+    "making the repo public": r"[Mm]ak(e|ing) `?[\w/-]*`? ?(the )?(repo|repository)?\s*`?[\w/-]*`?\s*public",
+    "EgoBlur weights": r"EgoBlur Gen ?2 weights",
     "BASETEN_API_KEY": r"BASETEN_API_KEY",
     "the voice-over and the submit click": r"voice-?over",
 }

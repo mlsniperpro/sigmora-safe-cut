@@ -163,6 +163,14 @@ class Worker:
             self._running[job_id] = future
             return future
 
+    def submit_later(self, job_id: str, action: Action, delay_s: float) -> None:
+        """The one re-queue, ``delay_s`` from now; it re-checks the job's code when it fires (``_requeue``)."""
+        timer = threading.Timer(delay_s, self._requeue, (job_id, action))
+        timer.daemon = True
+        with self._lock:
+            self._timers[job_id] = timer
+        timer.start()
+
     def wait(self, job_id: str, timeout: float = 120) -> None:
         """Block until the job's current action finishes (tests and the CLI's ``serve --once``)."""
         with self._lock:
@@ -260,11 +268,7 @@ class Worker:
         if transient and state.requeues == 0:
             retry_at = self._now() + RETRY_DELAY
             self._set(job_id, status="retry_later", retry_at=retry_at, requeues=1, failure=None)
-            timer = threading.Timer(RETRY_DELAY.total_seconds(), self._requeue, (job_id, action))
-            timer.daemon = True
-            with self._lock:
-                self._timers[job_id] = timer
-            timer.start()
+            self.submit_later(job_id, action, RETRY_DELAY.total_seconds())
             return
         retry_at = next_midnight(self._now()) if failure.reason == "daily_cap" else None
         self._set(job_id, status="failed", failure=failure, retry_at=retry_at)

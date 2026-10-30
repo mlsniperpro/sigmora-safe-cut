@@ -1,6 +1,6 @@
 # Demo video script (final structure; ends at 2:50)
 
-The beats of `docs/DEMO.md`, shot by shot in `docs/STORYBOARD.md`, timed here to **2:50** at about 150 words a minute. The VO totals about 330 words.
+The beats of `docs/DEMO.md`, shot by shot in `docs/STORYBOARD.md`, timed here to **2:50**. The VO is about 235 words (counting one of the two 2:00 lines), about 1:35 at 150 words a minute, so every beat has room for its screen.
 
 The rules carry over from the storyboard:
 - every screen is a recording of the deployed app;

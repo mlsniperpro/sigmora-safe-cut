@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
@@ -10,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from scripts import entry_check
+from tests.fake_stages import EXAMPLE
 
 ROOT = Path(__file__).resolve().parent.parent
 LIB = ROOT / "scripts" / "entry_check_lib.sh"
@@ -88,8 +90,10 @@ def test_the_script_rejects_unknown_arguments() -> None:
 
 
 def test_figures_in_prose_are_found_and_code_is_ignored() -> None:
-    text = "Recall 97.5% at $0.91 per clip; κ 0.82. `sam-3.1` and muse-spark-1.3 aren't figures.\n```\n12.5%\n```"
+    text = "Recall 97.5% at $0.91 per clip; κ 0.82. `sam-3.1` and muse-spark-1.3 aren't figures.\n```bash\n12.5%\n```"
     assert entry_check.FIGURE.findall(entry_check.prose(text)) == ["97.5%", "$0.91", "0.82"]
+    # A results table can't hide in an untagged fence: only command and data fences are skipped.
+    assert entry_check.FIGURE.findall(entry_check.prose("```\n| full | 12.5% |\n```")) == ["12.5%"]
     assert entry_check.FIGURE.findall(entry_check.prose("Oct 26, 60 s, 150 MB, v1.2.3, 1/3")) == []
     assert entry_check.FIGURE.findall(entry_check.prose("see [run](eval/results/r1.2/x) <!-- 5.5% -->")) == []
 
@@ -162,3 +166,46 @@ def test_only_key_gated_live_skips_are_allowed(line: str, allowed: bool) -> None
 
 def test_secret_pattern_catches_the_json_form() -> None:
     assert entry_check.SECRET.search('{"MODEL_API_KEY": "abcdefghijklmnopqrstuvwxyz012345"}')  # gate-allow: test data
+
+
+def test_counts_reported_as_results_are_checked_too() -> None:
+    seen = entry_check.prose("We fixed 47 leaks on 20 clips with 3 bursts; the clip runs 60 s at 30 fps.")
+    assert entry_check.COUNT.findall(seen) == ["47", "20", "3"]
+
+
+def test_owner_inputs_need_their_real_lines_not_a_bare_word() -> None:
+    patterns = {k: re.compile(v) for k, v in entry_check.OWNER_INPUTS.items()}
+    assert not patterns["making the repo public"].search("the public split, CC BY 4.0")
+    assert patterns["making the repo public"].search("**Make `mlsniperpro/sigmora-safe-cut` public** before")
+    assert not patterns["EgoBlur weights"].search("the audit runs YuNet until EgoBlur is installed")
+    assert patterns["EgoBlur weights"].search("**EgoBlur Gen 2 weights** (a gated download)")
+
+
+def test_e3_never_passes_on_a_truth_file_with_nothing_to_check(tmp_path: Path) -> None:
+    """A truth file with no visible should-hide entity (or no one to keep) can't vouch for anything."""
+    truth = tmp_path / "t.json"
+    truth.write_text(
+        json.dumps(
+            {
+                "clip": "a.mp4",
+                "fps": 30,
+                "frames": 12,
+                "width": 1280,
+                "height": 720,
+                "split": "dev",
+                "entities": [
+                    {
+                        "id": "e1",
+                        "category": "participant",
+                        "should_hide": False,
+                        "frames": {"first": 0, "last": 0},
+                        "boxes": {"0": [1200, 650, 1210, 660]},
+                    }
+                ],
+            }
+        )
+    )
+    job = tmp_path / "job"
+    shutil.copytree(EXAMPLE, job)
+    with pytest.raises(entry_check.CheckFailed, match="no visible entity that should be hidden"):
+        entry_check.score_against_truth(job, truth)

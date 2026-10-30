@@ -64,16 +64,16 @@ The honest failures on this clip: the YuNet baseline finds no drawn face at all 
 ## Production notes
 
 - **Service:** FastAPI on Modal (`deploy/modal_app.py`). It runs one API container, because the per-IP rate limits and the spend ledger are in-process; the pipeline runs in that container's worker threads. Job folders live on a Volume.
-- **Access:** judge and public access codes, plus pilot, recording and owner codes, each with its own validity window, and Bearer service keys for Sigmora. A code is bound to its job by a non-secret ID, so revoking it stops paid work at once.
+- **Access:** judge and public access codes, plus pilot, recording and owner codes, each with its own validity window, and Bearer service keys for Sigmora. A code is bound to its job by a non-secret ID, so revoking it stops paid work at the next paid step (and a restart re-checks every resumed job's code).
 - **Spend caps,** checked before any paid work. The values are in `eval/RESULTS.md`'s service limits:
   - a per-clip cap;
   - a daily cap for judge and public codes, reset at 00:00 UTC;
   - per-code caps and a shared pilot pool;
   - a worst-case estimate refused up front.
 - **Uploads:** signed `PUT` URLs, valid 15 minutes, for the exact size and type declared; up to 60 s and 150 MB.
-- **Deletion:** every job is deleted 24 hours after it is created, by a cron and an in-process sweep, and any job past its deletion time is refused and deleted on sight. `DELETE /v1/jobs/{id}` works in every state.
+- **Deletion:** every job is deleted 24 hours after it is created, by a cron and an in-process sweep, and any job past its deletion time is refused and deleted on sight. `DELETE /v1/jobs/{id}` works in every state of a creator's job (the pinned demo job is read-only); a stage still running stops at its next step.
 - **Replay mode:**
-  - it reads the saved responses in `raw/` and refuses every outbound connection: process-wide for the CLI, per thread inside a live server;
+  - it reads the saved responses in `raw/` and refuses every outbound connection: process-wide for the CLI and for a demo-mode server, and per stage, in a child process, when a live server precomputes the demo job;
   - every response says `mode: "replay"`, and `synthetic: true` when the recordings are synthetic;
   - the web app labels both.
 - **The receipt:** every decision, why it was made and who made it, the audit's counts, which model did what, and how data was handled. It is hash-chained (`sha256(prev_hash + canonical body)`) and is also rendered as self-contained HTML.

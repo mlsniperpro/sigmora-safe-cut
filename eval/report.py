@@ -52,6 +52,8 @@ def load_runs(root: Path = RESULTS_DIR) -> list[dict[str, Any]]:
         if not metrics_path.is_file():
             continue
         config = json.loads(config_path.read_text(encoding="utf-8"))
+        if str(config.get("git_sha", "")).endswith("-dirty"):
+            raise ValueError(f"{config_path.parent.name} ran on uncommitted code; only committed code backs a number")
         metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
         runs.append({"dir": config_path.parent.name, "config": config, "metrics": metrics})
     return runs

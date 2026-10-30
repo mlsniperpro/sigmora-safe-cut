@@ -172,3 +172,18 @@ def test_deploy_workflow_skips_without_secrets() -> None:
     assert "::notice title=Deploy skipped::" in workflow
     assert workflow.count("if: steps.gate.outputs.run == 'true'") >= 5
     assert "modal deploy deploy/modal_app.py" in workflow
+
+
+def test_deploy_never_runs_a_forks_code_with_the_secrets() -> None:
+    """`workflow_run`'s `branches: [main]` also matches a fork PR whose head branch is called main; the job must
+    require a push to this repository's own main before the Modal secrets meet the checked-out code."""
+    workflow = (ROOT / ".github" / "workflows" / "deploy.yml").read_text()
+    block = workflow.split("\n    if: >-\n", 1)[1].split("\n    env:\n", 1)[0]
+    condition = " ".join(block.split())
+    for clause in (
+        "github.event.workflow_run.conclusion == 'success'",
+        "github.event.workflow_run.event == 'push'",
+        "github.event.workflow_run.head_branch == 'main'",
+        "github.event.workflow_run.head_repository.full_name == github.repository",
+    ):
+        assert clause in condition
