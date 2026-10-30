@@ -410,7 +410,7 @@ PARALLEL_MIN_PIXELS = 1_500_000
 MAX_OBJECT_ID_DIGITS = 9
 #: A number of 10+ digits where the grammar puts one (a frame index, an object id, a token field, a mask size),
 #: delimited by characters the base85 payload alphabet doesn't use, so a digit run inside a payload never matches.
-_HUGE_NUMBER = re.compile(r"<-?[0-9]{10,}f|[>,]-?[0-9]{10,}<\||[;=,]-?[0-9]{10,}[;|,]")
+_HUGE_NUMBER = re.compile(r"<\s*-?[0-9]{10,}\s*f|[>,]\s*-?[0-9]{10,}\s*<\||[;=,]\s*-?[0-9]{10,}\s*[;|,]")
 _MASK_SIZE = re.compile(r"data=([0-9]+),([0-9]+),")
 #: A box token's fields: its ``w``/``h`` name the pixel space every coordinate is in (the parser drops them).
 _BOX_TOKEN = re.compile(r"<\|box;([^|]*)\|>")
@@ -437,7 +437,8 @@ def parse_lines(chunk: tuple[str, int]) -> tuple[list[_Record], list[_Diagnostic
             mask = ("mask", r.frame.frame_index, r.object_id, r.revision, m.encoding, m.payload, m.width, m.height)
             records.append(mask)
     for fields in _BOX_TOKEN.findall(text):
-        keys = dict(part.split("=", 1) for part in fields.split(";") if "=" in part)
+        # Trimmed like Meta's parser trims them: " w=640" names the same field as "w=640".
+        keys = {k.strip(): v.strip() for k, v in (part.split("=", 1) for part in fields.split(";") if "=" in part)}
         records.append(("space", keys.get("w"), keys.get("h")))
     diagnostics = [(d.severity, d.code, d.line + first - 1) for d in result.diagnostics]
     return records, diagnostics
@@ -499,8 +500,8 @@ def _detections(
     spaces = {(r[1], r[2]) for records, _ in results for r in records if r[0] == "space"}
     if size is not None and spaces - {(str(size[0]), str(size[1]))}:
         # Every coordinate is in the box tokens' w x h space; any other space than the proxy's would misplace them.
-        raise MetaIncomplete(f"SAM answered in a {sorted(spaces)[0]} space, not the proxy's {size[0]}x{size[1]}",
-                             eof=False)  # fmt: skip
+        other = sorted(spaces, key=str)[0]
+        raise MetaIncomplete(f"SAM answered in a {other} space, not the proxy's {size[0]}x{size[1]}", eof=False)
     masks, boxes, repeated = _collect([r for records, _ in results for r in records if r[0] != "space"])
     if repeated:
         log.warning("SAM repeated an object on a frame; boxes joined", extra={"count": len(repeated)})
@@ -548,7 +549,10 @@ async def parse_video_events(
     parts = parallel.workers() * 2 if pixels >= PARALLEL_MIN_PIXELS else 1
     # In a worker thread: parsing a long stream takes seconds, and other SAM streams of the job are still being
     # read on this event loop meanwhile.
-    results = await asyncio.to_thread(parallel.map_in_pool, parse_lines, _chunks(text, parts), parallel=parts > 1)
+    try:
+        results = await asyncio.to_thread(parallel.map_in_pool, parse_lines, _chunks(text, parts), parallel=parts > 1)
+    except ValueError as exc:  # whatever Meta's parser can't read (e.g. a 4,300+ digit number) is no answer
+        raise MetaIncomplete(f"SAM stream unreadable: {str(exc)[:200]}", eof=False) from exc
     detections = _detections(results, size)
     completed = next((e for e in reversed(events) if e.get("type") == "response.completed"), None)
     response: Any = completed.get("response") if completed else None

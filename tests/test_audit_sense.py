@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -143,3 +144,22 @@ def test_a_speaker_label_that_is_a_huge_number_is_relabelled() -> None:
     ])  # fmt: skip
     turns = speech.fallback_turns(answer, 5.0)
     assert [t.speaker for t in turns] == ["U1"]
+
+
+def test_the_fallback_keeps_a_bounded_number_of_turns() -> None:
+    many = [SpeechTurnOut(speaker="S1", start=i / 100, end=i / 100, text="x", self_intro=None, addresses=None)
+            for i in range(2000)]  # fmt: skip
+    turns = speech.fallback_turns(SpeechOut(has_speech=True, turns=many), 60.0)
+    assert len(turns) == speech.MAX_TURNS
+    assert turns == sorted(turns, key=lambda t: (t.start, t.end))
+
+
+def test_a_failed_wav_extract_leaves_no_partial_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def dies_mid_write(args: list[str], **_kwargs: object) -> str:
+        Path(args[-1]).write_bytes(b"RIFF half")  # ffmpeg had started writing
+        raise speech.media.MediaError("ffmpeg failed (1): disk full")
+
+    monkeypatch.setattr(speech.media, "run", dies_mid_write)
+    with pytest.raises(speech.media.MediaError):
+        speech.extract_wav(tmp_path, JOB)
+    assert not (tmp_path / speech.WAV).exists()

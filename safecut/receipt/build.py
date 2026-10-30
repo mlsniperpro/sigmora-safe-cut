@@ -85,6 +85,18 @@ class ReceiptError(ValueError):
     """The job can't be receipted yet (no audit, no decisions)."""
 
 
+def _recorded_model(folder: Path) -> str | None:
+    """The model a stage's recorded calls name (``raw/<stage>/*.json``), when one was recorded."""
+    for path in sorted(folder.glob("*.json")):
+        try:
+            model: object = json.loads(path.read_text(encoding="utf-8")).get("model")
+        except (ValueError, AttributeError):
+            continue
+        if isinstance(model, str) and model:
+            return model
+    return None
+
+
 def models_ran(job_dir: Path, settings: Settings, audit: Audit) -> dict[str, str]:
     """The model behind each stage that ran, from the files that recorded it (AGENTS rule 9)."""
     out: dict[str, str] = {}
@@ -97,7 +109,7 @@ def models_ran(job_dir: Path, settings: Settings, audit: Audit) -> dict[str, str
     if roles is not None and roles.model is not None:
         out["roles"] = roles.model
         if roles.status == "ok" and any(t.escalated for t in roles.tracks):
-            out["escalate"] = settings.escalate_model
+            out["escalate"] = _recorded_model(job_dir / "raw" / "escalate") or settings.escalate_model
     if tracks is not None and any(t.source for t in tracks.tracks):
         out["sam"] = next(t.source for t in tracks.tracks if t.source)
     if transcript is not None and transcript.source is not None:
