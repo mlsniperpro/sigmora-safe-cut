@@ -84,3 +84,17 @@ Round 3 was not clean (one high, decided; six medium, fixed), so the clean count
 Also from SAFETY's round 6, in SHIP's files (d52980b): `safecut run`/`publish` exit 6 on a blocked audit (`test_cli_never_reports_a_blocked_audit_as_done`); an edit to a done job retires its receipt (`test_edits_after_done_move_back_to_review_and_needs_a_new_render`).
 
 Round 4 was not clean (three medium), so the clean count stays at 0.
+
+## Round 5 (on 5fa2f33, main merged): 0 critical, 0 high, 3 medium, 6 low. Closed in c8c08fb / e2d30e9.
+
+| # | Sev | Finding | Resolution | Test |
+|---|---|---|---|---|
+| M1 | medium | E11 knew only Meta/Modal key shapes; BLOCKED said to put the judge code in `docs/SUBMISSION.md` (public) | Pattern adds `hf_…`, the URL key, the clips token and real-length access codes/service keys (0 hits in history and tree); BLOCKED and SUBMISSION: the code goes in the form only | `test_secret_pattern_knows_this_projects_own_secrets` |
+| M2 | medium | deploy-check passed a deployment in demo mode or without `MODEL_API_KEY`; `modal deploy` ran before the smoke | deploy-check requires `mode: live` and `key: true` unless `DEPLOY_REPLAY_OK=1`; the smoke runs before the deploy | `test_deploy_check_fails_a_deployment_judges_cant_use` |
+| M3 | medium | Run configs listed configured models (`auditor: egoblur-gen2`) though YuNet ran and a replay called none | `models_used` (shared with the API) reads each job's files; a synthetic replay is noted; all six runs regenerated | `test_a_replay_run_writes_every_result_file` |
+| L1 | low | E3 passed an 80 % dim (recoverable by contrast stretch) | Also requires the render to stop following the source (\|r\| < 0.5; the demo's covers ≤ 0.12, a dim 1.00) | the `dim` case in `test_e3_checks_the_rendered_pixels_not_only_the_plan` |
+| L2 | low | E7's "deployed" branch is satisfied by any real-looking URL | **Kept**: while undeployed the BLOCKED Modal line is required; once deployed, the deploy workflow's `deploy-check` (now strict, M2) is the live proof | n/a |
+| L3 | low | The busy ceiling raced across jobs, skipped `retry_later`, and came before the idempotent 409 | Counts `retry_later`, runs after the status checks; documented as best-effort (the ledger bounds money) | `test_a_busy_service_asks_new_work_to_wait` |
+| L4 | low | BLOCKED: `SAFECUT_PUBLIC_URL` "printed by Modal" though the API won't start without it | BLOCKED gives its predictable form | review |
+| L5 | low | README "deleted 24 hours after" vs 24 h + one sweep | Reworded | review |
+| L6 | low | DELETE doesn't stop a running paid call | Reworded: the current call finishes (under the per-clip cap), then it stops | review |

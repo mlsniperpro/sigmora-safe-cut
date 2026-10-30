@@ -83,6 +83,14 @@ Every E-line SHIP owns, every brief requirement, and the judging criteria, each 
 - [x] R4 lows: E11 merges and tree, E7 worker, service-key minimum, max active jobs (`test_a_busy_service_asks_new_work_to_wait`).
 - [x] SAFETY R6: blocked audit exits 6; an edit retires the receipt.
 
+## Audit round 5 (`reaudit.md`)
+
+- [x] R5 M1 project secrets in E11; the judge code never in the repo: `test_secret_pattern_knows_this_projects_own_secrets`.
+- [x] R5 M2 deploy-check requires a live API with its key; smoke before deploy: `test_deploy_check_fails_a_deployment_judges_cant_use`.
+- [x] R5 M3 run configs name the models that ran; runs regenerated.
+- [x] R5 lows: E3 correlation guard, busy ceiling order, BLOCKED URL, README wording.
+- [-] R5 L2 kept: E7's deployed branch (the strict deploy-check is the live proof).
+
 ## Judging criteria
 
 - [P] Impact (30): real numbers need `MODEL_API_KEY`, the consented hero clips and the test split (BLOCKED.md); until then every run is synthetic and labelled so, and the docs quote no numbers.
