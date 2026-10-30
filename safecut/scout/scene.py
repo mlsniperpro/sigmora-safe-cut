@@ -54,7 +54,7 @@ def transcript_text(job: Job, transcript: Transcript | None) -> str:
     if not transcript.turns:
         return "none (no speech was recognised)"
     return "\n".join(
-        f"[#{i} {t.speaker} {t.start:.1f}–{t.end:.1f} s] {prompts.inline(t.text)}"
+        f"[#{i} {t.speaker} {t.start:.1f}–{t.end:.1f} s] {prompts.inline(t.text, prompts.TURN_CHARS)}"
         for i, t in enumerate(transcript.turns)
     )
 

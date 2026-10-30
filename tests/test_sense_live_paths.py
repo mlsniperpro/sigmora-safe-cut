@@ -143,3 +143,17 @@ def test_a_checkpoint_from_another_model_is_not_reused(live_job: tuple[Path, Fak
     replay.save(job, track_stage.RAW_STAGE, key, older.model_copy(update={"model": "sam-3.0"}))
     asyncio.run(track_stage.run_async(job, settings=settings))
     assert fake.calls.count("sam") == first + 1  # only the other model's answer is asked again
+
+
+def test_a_recording_for_another_clip_is_never_reused(live_job: tuple[Path, FakeMeta]) -> None:
+    job, fake = live_job
+    settings = Settings(model_api_key=SecretStr("sk-test-not-a-real-key"), sam_fps=8)
+    asyncio.run(track_stage.run_async(job, settings=settings))
+    first = fake.calls.count("sam")
+    key = track_stage.SamCall(kind="phrase", concept="face", text="face").key
+    other = replay.load_call(job, track_stage.RAW_STAGE, key)
+    assert other.request["source_sha256"]
+    replay.save(job, track_stage.RAW_STAGE, key,
+                other.model_copy(update={"request": {**other.request, "source_sha256": "0" * 64}}))  # fmt: skip
+    asyncio.run(track_stage.run_async(job, settings=settings))
+    assert fake.calls.count("sam") == first + 1
