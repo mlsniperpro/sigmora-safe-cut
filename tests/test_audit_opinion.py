@@ -197,3 +197,30 @@ def test_a_crash_during_the_opinion_is_recorded_as_failed_not_off(tmp_path: Path
     contracts.validate_job_dir(job_dir)
     (job_dir / "raw/audit/opinion.json").write_text('{"job_id": "j_synth", "summ')  # a torn file, say
     assert audit(job_dir, opinion).open_weight.status == "failed"
+
+
+def test_a_copied_opinion_leak_is_rejudged_when_the_creator_hides_what_it_lies_on(tmp_path: Path) -> None:
+    """The opinion's text leak lay on the kept host (patched, unflagged). The creator then hides the host: on the
+    re-run the copied leak reads through a hidden item, so it is flagged and the host renders solid, and the job
+    still validates and seals."""
+    job_dir = consented_job(tmp_path)
+    job = load(job_dir / "job.json", Job)
+    host = next(i for i in load(job_dir / "decisions.json", Decisions).items if i.decision == "keep")
+    tracks = {t.track_id: t for t in load(job_dir / "tracks.json", contracts.Tracks).tracks}
+    x1, y1, x2, y2 = tracks[host.track_ids[0]].boxes[30]
+    bar = bar_height(job.height)
+    grid = (x1 * 1000 // job.width + 1, (y1 + bar) * 1000 // (job.height + bar) + 1,
+            x2 * 1000 // job.width - 1, (y2 + bar) * 1000 // (job.height + bar) - 1)  # fmt: skip
+    audit(job_dir, Opinion(hit_on=30, box=grid), grid_ok=True)
+    decided = load(job_dir / "decisions.json", Decisions)
+    hidden = [i.model_copy(update={"decision": "hide", "style": "pixelate", "decided_by": "creator"})
+              if i.item_id == host.item_id else i for i in decided.items]  # fmt: skip
+    dump(Decisions(items=hidden), job_dir / "decisions.json")
+    guard_run(job_dir)
+    render(job_dir)
+    again = audit(job_dir, None)
+    (leak,) = [x for x in again.leaks if x.detector == "redteam_open"]
+    assert (leak.flag, leak.through_item) == ("redaction_too_weak", host.item_id)
+    assert all(e.style == "solid" for es in load(job_dir / "plan.json", Plan).frames.values() for e in es
+               if e.item_id == host.item_id)  # fmt: skip
+    contracts.validate_job_dir(job_dir)
