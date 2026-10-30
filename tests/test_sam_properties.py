@@ -136,3 +136,21 @@ def test_interpolation_rounds_outward_and_stays_in_frame(a: Any, b: Any, t: floa
     assert got[1] <= raw[1] + 1e-9
     assert got[2] >= min(raw[2], W) - 1e-9
     assert got[3] >= min(raw[3], H) - 1e-9
+
+
+async def test_parsing_never_blocks_the_event_loop() -> None:
+    """Other SAM streams of the job keep being read while a long one is parsed (the parse runs off the loop)."""
+    text = stream_text({str(k): dict.fromkeys(range(40), (0, 0, 40, 30)) for k in range(4)}, (W, H))
+    ticks = 0
+
+    async def ticker() -> None:
+        nonlocal ticks
+        while True:
+            ticks += 1
+            await asyncio.sleep(0)
+
+    task = asyncio.create_task(ticker())
+    seg = await sam.parse_video_events(chunked(text, []))
+    task.cancel()
+    assert len(seg.detections) == 160
+    assert ticks > 10

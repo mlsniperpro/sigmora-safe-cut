@@ -7,6 +7,7 @@ closed: an incomplete stream or a dropped line is ``MetaIncomplete``, never a pa
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
@@ -460,7 +461,9 @@ async def parse_video_events(events: Sequence[Mapping[str, Any]]) -> Segmentatio
         raise MetaIncomplete(f"SAM stream incomplete ({reason})", eof=reason == "eof")
     pixels = sum(int(h) * int(w) for h, w in _MASK_SIZE.findall(text))
     parts = parallel.workers() * 2 if pixels >= PARALLEL_MIN_PIXELS else 1
-    results = parallel.map_in_pool(parse_lines, _chunks(text, parts), parallel=parts > 1)
+    # In a worker thread: parsing a long stream takes seconds, and other SAM streams of the job are still being
+    # read on this event loop meanwhile.
+    results = await asyncio.to_thread(parallel.map_in_pool, parse_lines, _chunks(text, parts), parallel=parts > 1)
     errors = [d for _, ds in results for d in ds if d[0] == "error"]
     if errors:
         raise MetaIncomplete(f"SAM parser dropped {len(errors)} line(s): {errors[0][1]} at line {errors[0][2]}",
