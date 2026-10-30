@@ -671,3 +671,26 @@ def test_a_mask_entry_covers_only_its_mask_not_its_box() -> None:
     inside = corner.model_copy(update={"box": (230, 70, 250, 90)})
     got = loop.reopened([corner, inside], plan, Decisions(items=[]), height=240, width=320)
     assert [x.box for x in got] == [(270, 50, 280, 60)]
+
+
+def test_faces_are_counted_on_the_pass_that_first_scans_a_frame(tmp_path: Path) -> None:
+    """Pass 1's detector dies at once; pass 2 (after a patch) scans every frame: the faces are counted there."""
+    job_dir = prepared(tmp_path)
+    clean = prepared(tmp_path / "clean")
+    audit_run(clean, replay=True, settings=SETTINGS)
+    faces = audit_of(clean).egoblur.faces
+    assert faces
+
+    class DiesFirst(CrashOnRecheck):
+        def detect(self, frame: Frame) -> list[Detection]:
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("GPU lost")
+            return self.inner.detect(frame)
+
+    leak = finding("text", grid((100, 60, 140, 80)), "AMINA K.")
+    audit_run(job_dir, replay=True, settings=SETTINGS, detector=DiesFirst(0), redteam=Scripted({30: [leak]}, once=True))
+    audit = audit_of(job_dir)
+    assert audit.frames_scanned == 60
+    assert audit.egoblur.faces is not None
+    assert audit.egoblur.faces > 0
