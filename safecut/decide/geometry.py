@@ -115,24 +115,50 @@ def decode(rle: Rle) -> BoolMask:
 def encode(mask: BoolMask) -> Rle:
     """An ``(H, W)`` bool array as a COCO compressed RLE (``rleToString``)."""
     height, width = mask.shape
-    flat = mask.T.reshape(-1)
-    change = np.flatnonzero(flat[1:] != flat[:-1]) + 1
-    bounds = np.concatenate(([0], change, [flat.size]))
-    runs = np.diff(bounds).tolist()
-    if flat.size and flat[0]:
-        runs = [0, *runs]  # COCO runs start with background
+    cols = np.flatnonzero(mask.any(axis=0))
+    if cols.size == 0:
+        return encode_crop(np.zeros((0, 0), dtype=np.bool_), 0, 0, height=height, width=width)
+    c1, c2 = int(cols[0]), int(cols[-1]) + 1
+    return encode_crop(mask[:, c1:c2], c1, 0, height=height, width=width)
+
+
+def encode_crop(crop: BoolMask, x: int, y: int, *, height: int, width: int) -> Rle:
+    """A frame-sized COCO RLE of ``crop`` placed at ``(x, y)`` (inside the frame), everything else background.
+
+    Only the crop's columns are walked, so a mask costs its own area, not the frame's. The result is built without
+    re-validating it: this encoder's output is round-trip property-tested, and the guard writes thousands of masks
+    per clip (every later reader of ``plan.json`` validates them on load)."""
+    ch, cw = crop.shape
+    if not ch or not cw or not bool(crop.any()):
+        runs = [height * width]
+    else:
+        block = np.zeros((cw, height), dtype=np.bool_)
+        block[:, y : y + ch] = crop.T
+        flat = block.reshape(-1)
+        change = np.flatnonzero(flat[1:] != flat[:-1]) + 1
+        runs = np.diff(np.concatenate(([0], change, [flat.size]))).tolist()
+        lead, tail = x * height, (width - x - cw) * height
+        if flat[0]:
+            runs = [lead, *runs]  # COCO runs start with background
+        else:
+            runs[0] += lead
+        if flat[-1]:
+            if tail:
+                runs.append(tail)
+        else:
+            runs[-1] += tail
     chars: list[str] = []
     for i, run in enumerate(runs):
-        x = int(run) - (int(runs[i - 2]) if i > 2 else 0)
+        v = int(run) - (int(runs[i - 2]) if i > 2 else 0)
         more = True
         while more:
-            c = x & 0x1F
-            x >>= 5
-            more = x != -1 if c & 0x10 else x != 0
+            c = v & 0x1F
+            v >>= 5
+            more = v != -1 if c & 0x10 else v != 0
             if more:
                 c |= 0x20
             chars.append(chr(c + 48))
-    return Rle(size=(height, width), counts="".join(chars))
+    return Rle.model_construct(size=(height, width), counts="".join(chars))
 
 
 def mask_bbox(mask: BoolMask) -> BoxT | None:
@@ -144,53 +170,23 @@ def mask_bbox(mask: BoolMask) -> BoxT | None:
     return (int(cols[0]), int(rows[0]), int(cols[-1]) + 1, int(rows[-1]) + 1)
 
 
-#: Above this radius, dilation runs on a block-pooled crop (cost falls with the square of the block size).
-COARSE_RADIUS = 12
-
-
 def dilate(mask: BoolMask, rx: int, ry: int) -> BoolMask:
-    """Grow a mask by an ``rx`` x ``ry`` elliptical radius (work done on the foreground's crop only).
+    """Grow a mask by ``rx`` x ``ry`` pixels each way (work done on the foreground's crop only).
 
-    Large radii run on a crop pooled into blocks (a block is foreground if any pixel in it is), dilated by the radius
-    in blocks plus one, then expanded back: always a superset of the exact dilation (the guard pads outward, never
-    inward), at a fraction of the cost of a 100-pixel elliptical kernel."""
+    The kernel is a rectangle: it contains the ``rx`` x ``ry`` ellipse, so the result is a superset of the elliptical
+    dilation (the guard pads outward, never inward), and OpenCV runs rectangular dilation in near-constant time per
+    pixel, whatever the radius (an elliptical kernel the size of a person's padding costs milliseconds a frame)."""
     box = mask_bbox(mask)
     if box is None or (rx <= 0 and ry <= 0):
         return mask.copy()
     height, width = mask.shape
     x1, y1 = max(0, box[0] - rx), max(0, box[1] - ry)
     x2, y2 = min(width, box[2] + rx), min(height, box[3] + ry)
-    crop = mask[y1:y2, x1:x2]
-    k = max(1, min(rx, ry) // COARSE_RADIUS) if min(rx, ry) > COARSE_RADIUS else 1
-    if k > 1:
-        ch, cw = crop.shape
-        pad = np.zeros((-(-ch // k) * k, -(-cw // k) * k), dtype=np.bool_)
-        pad[:ch, :cw] = crop
-        pooled = pad.reshape(pad.shape[0] // k, k, pad.shape[1] // k, k).any(axis=(1, 3)).astype(np.uint8)
-        kx, ky = -(-rx // k) + 1, -(-ry // k) + 1
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * kx + 1, 2 * ky + 1))
-        grown_blocks = cv2.dilate(pooled, kernel, borderType=cv2.BORDER_CONSTANT, borderValue=0).astype(np.bool_)
-        grown = np.repeat(np.repeat(grown_blocks, k, axis=0), k, axis=1)[:ch, :cw]
-    else:
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * rx + 1, 2 * ry + 1))
-        grown = cv2.dilate(crop.astype(np.uint8), kernel, borderType=cv2.BORDER_CONSTANT, borderValue=0).astype(
-            np.bool_
-        )
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2 * max(0, rx) + 1, 2 * max(0, ry) + 1))
+    grown = cv2.dilate(mask[y1:y2, x1:x2].astype(np.uint8), kernel, borderType=cv2.BORDER_CONSTANT, borderValue=0)
     out = np.zeros_like(mask)
-    out[y1:y2, x1:x2] = grown
+    out[y1:y2, x1:x2] = grown.astype(np.bool_)
     return out | mask
-
-
-def shift(mask: BoolMask, dx: int, dy: int) -> BoolMask:
-    """Translate a mask by whole pixels; what leaves the frame is dropped."""
-    height, width = mask.shape
-    out = np.zeros_like(mask)
-    src_x1, src_x2 = max(0, -dx), min(width, width - dx)
-    src_y1, src_y2 = max(0, -dy), min(height, height - dy)
-    if src_x2 <= src_x1 or src_y2 <= src_y1:
-        return out
-    out[src_y1 + dy : src_y2 + dy, src_x1 + dx : src_x2 + dx] = mask[src_y1:src_y2, src_x1:src_x2]
-    return out
 
 
 __all__ = [
@@ -204,11 +200,11 @@ __all__ = [
     "decode",
     "dilate",
     "encode",
+    "encode_crop",
     "grow",
     "intersection",
     "iou",
     "mask_bbox",
     "point_box_distance",
-    "shift",
     "union",
 ]

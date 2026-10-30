@@ -15,6 +15,7 @@ import pytest
 
 from safecut import contracts
 from safecut.audit import NoRedTeam, replay_redteam
+from safecut.audit import leaks as rules
 from safecut.audit import redteam as rt
 from safecut.audit import run as audit_run
 from safecut.audit.detectors import AuditorModel, Detection, YuNet
@@ -23,7 +24,7 @@ from safecut.config import Settings
 from safecut.contracts import Audit, Decisions, Plan, dump, load
 from safecut.decide import run as decide_run
 from safecut.guard import run as guard_run
-from safecut.meta.errors import BudgetExceeded, MetaUnavailable
+from safecut.meta.errors import BudgetExceeded, MetaRefusal, MetaUnavailable
 from safecut.render import render
 from safecut.render.draw import Frame
 from safecut.render.video import read_frames
@@ -184,6 +185,23 @@ def test_our_frame_label_is_dropped_but_anything_else_in_the_bar_is_a_whole_fram
     contracts.validate_job_dir(job_dir)
 
 
+def test_a_finding_that_cannot_be_placed_is_never_excused_by_the_host(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A face reported in the bar (or with a malformed box) becomes a whole-frame leak, which no kept item excuses
+    (fail closed), even a host who fills the frame (stood in for by an exclusion that excuses everything)."""
+    job_dir = prepared(tmp_path)
+    monkeypatch.setattr(rules, "excluded_by", lambda *_: "i_1")
+    script = {0: [finding("face", [1, 2, 3])], 30: [finding("face", [10, 0, 300, 50])]}
+    audit_run(job_dir, replay=True, settings=SETTINGS, redteam=Scripted(script))
+    audit = audit_of(job_dir)
+    hits = [e for e in audit.redteam if isinstance(e, contracts.RedteamHit) and e.frame in (0, 30)]
+    assert hits
+    assert all(h.excluded_by is None for h in hits)
+    assert {leak.frame for leak in audit.leaks if leak.box == (0, 0, 320, 240)} >= {0, 30}
+    contracts.validate_job_dir(job_dir)
+
+
 def test_unanswered_frames_block_as_audit_failed(tmp_path: Path) -> None:
     job_dir = prepared(tmp_path)
     audit_run(job_dir, replay=True, settings=SETTINGS, redteam=NoRedTeam())
@@ -329,6 +347,14 @@ def test_live_follows_up_once_on_missing_frames(tmp_path: Path, monkeypatch: pyt
 
 def test_live_reasks_a_refusal_once_with_the_softer_wording(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     calls = FakeCalls([REFUSED, output(0)])
+    got = asyncio.run(live(tmp_path, calls, monkeypatch).ask(frames(0), [], bar=24))
+    assert sorted(got.findings) == [0]
+    assert calls.bodies[1]["input"][1]["content"][0]["text"].startswith(rt.SOFTER)
+
+
+def test_live_reasks_a_refusal_the_client_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The client raises a refusal it meets while streaming, before any text: re-asked like one in the message."""
+    calls = FakeCalls([MetaRefusal("refused (2 chars)"), output(0)])
     got = asyncio.run(live(tmp_path, calls, monkeypatch).ask(frames(0), [], bar=24))
     assert sorted(got.findings) == [0]
     assert calls.bodies[1]["input"][1]["content"][0]["text"].startswith(rt.SOFTER)

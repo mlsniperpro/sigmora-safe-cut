@@ -5,6 +5,7 @@ red-team's private text never reaches the receipt (``redteam.md`` "Private text"
 from __future__ import annotations
 
 import base64
+import json
 from html import escape
 from pathlib import Path
 
@@ -68,10 +69,18 @@ def _item(job_dir: Path, item: ReceiptItem) -> str:
 
 def render_html(receipt: Receipt, job_dir: Path) -> str:
     a, d = receipt.audit, receipt.data_handling
+    approval_file = job_dir / "approval.json"
+    how = json.loads(approval_file.read_text(encoding="utf-8")).get("how") if approval_file.exists() else None
+    approval = (
+        "the policy's decisions accepted without review (auto-approve)"
+        if how == "auto_policy"
+        else "approved by the creator"
+    )
     publishable = a.unresolved == 0
     verdict = (
         '<span class="badge ok">Audit passed</span>'
-        "<span>Every output frame was checked; nothing is left exposed.</span>"
+        "<span>The detector scanned every output frame and the red team checked sampled frames: no leak is left"
+        " that they found.</span>"
         if publishable
         else f'<span class="badge bad">Publishing blocked</span><span>{a.unresolved} unresolved'
         f" ({escape(a.blocked_reason or 'unresolved')}).</span>"
@@ -116,7 +125,7 @@ def render_html(receipt: Receipt, job_dir: Path) -> str:
 <title>Privacy receipt · {escape(receipt.job_id)}</title><style>{_STYLE}</style></head>
 <body><main>
 <h1>Privacy receipt</h1>
-<div class="muted">Sigmora Safe Cut · job <code>{escape(receipt.job_id)}</code> · approved by the creator at
+<div class="muted">Sigmora Safe Cut · job <code>{escape(receipt.job_id)}</code> · {escape(approval)} at
 {escape(receipt.approved_at.isoformat())}</div>
 <div class="verdict">{verdict}</div>
 <div class="stats">{stat_html}</div>

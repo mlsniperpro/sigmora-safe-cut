@@ -29,7 +29,7 @@ Evidence is a test name, a command run in this session, or a commit. Owner input
 - [x] Receipt: §3.9 JSON cross-validated with every job file, self-contained HTML, hash chain + verifier + tamper test, synthetic and YuNet notes (`tests/test_receipt.py`).
 - [x] CPU timing recorded per job (`raw/audit/run.json`; YuNet ≈ 2–3 ms/frame); GPU hook for EgoBlur (`audit/gpu.py`, `tests/test_audit_gpu.py`).
 - [x] GT scoring shared with eval (`render/coverage.py`, `audit/truth.py`; E3 OK with SHIP's `eval/metrics.py`).
-- [x] E8 live tests exist for the SAFETY calls (`tests/test_live_safety.py` `E8:muse_redteam`, `tests/test_live_opinion.py` `E8:open_weight`).
+- [x] E8 live tests exist for the SAFETY calls (`tests/test_live_safety.py` `E8:muse_redteam`; `E8:open_weight` is covered by `tests/test_live_audit_calls.py`).
 - [P] EgoBlur Gen 2 weights (gated download, owner step O8): the audit records `yunet-face` until they're installed.
 - [P] Live runs with `MODEL_API_KEY` / `BASETEN_API_KEY`: `unresolved == 0` on hero clip 1, red-team recordings.
 - [P] Consented hero footage for the before/after frames and the reversibility check on real faces.

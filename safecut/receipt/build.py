@@ -43,6 +43,10 @@ APPROVAL = "approval.json"
 SYNTHETIC_MARKER = "synthetic.json"
 SYNTHETIC_TRUTH = Path("raw/redteam/synthetic_truth.json")
 SYNTHETIC_NOTE = "Synthetic job: every model answer was replayed from synthetic data; no model was called."
+BASETEN_NOTE = (
+    "Sampled output frames (already redacted) went to Muse Spark Open on Baseten for a second opinion: this job was"
+    " consented, and Baseten's terms, not Meta's store setting, govern that copy."
+)
 YUNET_NOTE = "Audited with YuNet (faces only): EgoBlur weights weren't installed; the red team checked plates."
 
 
@@ -107,8 +111,13 @@ def data_handling(job_dir: Path, models: dict[str, str], audit: Audit) -> DataHa
     no_store = sorted({m for m in (asr, opinion, sam if unstored_sam else None) if m is not None})
     store_by_model = {m: False for stage, m in models.items() if stage != "auditor" and m not in no_store}
     notes: list[str] = []
-    if is_synthetic(job_dir):
+    billed = (job_dir / "cost.jsonl").exists() and any(
+        line.usd > 0 or line.estimated for line in read_cost_lines(job_dir / "cost.jsonl")
+    )
+    if is_synthetic(job_dir) and not billed:  # a job any model was paid for isn't "no model was called"
         notes.append(SYNTHETIC_NOTE)
+    if opinion is not None:
+        notes.append(BASETEN_NOTE)
     if audit.egoblur.model == "yunet-face":
         notes.append(YUNET_NOTE)
     if responses is not None and responses.pending:
