@@ -45,7 +45,7 @@ def policy_decisions(job_dir: Path) -> Decisions:
 
 def run(job_dir: Path, *, replay: bool = False) -> Path:
     """Write ``decisions.json`` and return its path."""
-    from safecut.contracts import dump, load  # noqa: PLC0415 -- see above
+    from safecut.contracts import Job, Tracks, dump, load  # noqa: PLC0415 -- see above
     from safecut.decide.review import CoverSpotEdit, ReviewLog, apply_review  # noqa: PLC0415 -- see above
 
     del replay  # no API call in this stage
@@ -55,7 +55,8 @@ def run(job_dir: Path, *, replay: bool = False) -> Path:
         edits = [edit for edit in load(job_dir / REVIEW, ReviewLog).root if not isinstance(edit, CoverSpotEdit)]
         # A re-run replays the creator's log on fresh policy decisions: an edit that no longer applies (a re-analysis
         # locked that item, say) is skipped, never fatal to the stage.
-        decisions = apply_review(decisions, edits, strict=False).decisions
+        decisions = apply_review(decisions, edits, strict=False, tracks=load(job_dir / "tracks.json", Tracks),
+                                 job=load(job_dir / "job.json", Job)).decisions  # fmt: skip
     return dump(decisions, job_dir / DECISIONS)
 
 

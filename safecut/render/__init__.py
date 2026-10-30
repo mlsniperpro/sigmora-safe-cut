@@ -57,8 +57,12 @@ def render(job_dir: Path) -> Path:
 
 
 def run(job_dir: Path, *, replay: bool = False) -> Path:
-    """The render stage: returns ``redacted.mp4``."""
+    """The render stage: returns ``redacted.mp4``. A receipt from an earlier render is retired first: it sealed the
+    old video, and the new one has no verdict until its own audit and receipt run."""
+    from safecut.receipt import retire  # noqa: PLC0415 -- the receipt stage reads this package's thumbnails
+
     del replay  # no API call in this stage
+    retire(job_dir)
     return render(job_dir)
 
 

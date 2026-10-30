@@ -77,7 +77,7 @@ def finding(kind: Any, box: list[int], text: str | None = None) -> Finding:
     return Finding(kind=kind, detail="scripted", text=text, box=box, confidence="high")
 
 
-def grid(box: tuple[int, int, int, int], bar: int = 24, w: int = 320, h: int = 240) -> list[int]:
+def grid(box: tuple[int, int, int, int], bar: int = 40, w: int = 320, h: int = 240) -> list[int]:
     return [round(box[0] * 1000 / w), round((box[1] + bar) * 1000 / (h + bar)),
             round(box[2] * 1000 / w), round((box[3] + bar) * 1000 / (h + bar))]  # fmt: skip
 
@@ -109,6 +109,9 @@ def test_an_injected_3_frame_leak_is_found_and_patched(tmp_path: Path) -> None:
     audit = audit_of(job_dir)
     leak_frames = {leak.frame for leak in audit.leaks}
     assert {30, 31, 32} <= leak_frames
+    flagged = {leak.frame for leak in audit.leaks if leak.detector == "egoblur"}
+    asked = {e.frame for e in audit.redteam}
+    assert flagged <= asked  # redteam.md Inputs: "and every frame EgoBlur flagged"
     assert {leak.detector for leak in audit.leaks if leak.frame in (30, 31, 32)} == {"egoblur", "redteam"}
     assert all(leak.patched_item is not None and leak.patched_item.startswith("p_") for leak in audit.leaks)
     assert audit.unresolved == 0

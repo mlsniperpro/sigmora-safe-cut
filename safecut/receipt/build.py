@@ -17,6 +17,7 @@ from pathlib import Path
 
 from safecut.config import Settings
 from safecut.contracts import (
+    Approval,
     Audit,
     DataHandling,
     Decisions,
@@ -48,6 +49,8 @@ BASETEN_NOTE = (
     " consented, and Baseten's terms, not Meta's store setting, govern that copy."
 )
 YUNET_NOTE = "Audited with YuNet (faces only): EgoBlur weights weren't installed; the red team checked plates."
+AUTO_APPROVE_NOTE = "Approved without review: the policy's decisions were accepted as they stood (auto-approve)."
+AUDIO_NOTE = "The audio is kept as recorded: Safe Cut redacts the picture only, so anything said aloud stays audible."
 
 
 def is_synthetic(job_dir: Path) -> bool:
@@ -120,6 +123,11 @@ def data_handling(job_dir: Path, models: dict[str, str], audit: Audit) -> DataHa
         notes.append(BASETEN_NOTE)
     if audit.egoblur.model == "yunet-face":
         notes.append(YUNET_NOTE)
+    approval = job_dir / APPROVAL
+    if approval.exists() and load(approval, Approval).how == "auto_policy":
+        notes.append(AUTO_APPROVE_NOTE)
+    if load(job_dir / "job.json", Job).audio:
+        notes.append(AUDIO_NOTE)
     if responses is not None and responses.pending:
         notes.append(f"{len(responses.pending)} SAM response(s) still awaiting deletion at Meta.")
     return DataHandling(

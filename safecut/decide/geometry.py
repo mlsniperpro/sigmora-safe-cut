@@ -112,6 +112,25 @@ def decode(rle: Rle) -> BoolMask:
     return flat.reshape(width, height).T
 
 
+def decode_crop(rle: Rle) -> tuple[BoolMask, int, int] | None:
+    """A COCO RLE mask as its foreground's crop and the crop's top-left ``(x, y)``, or None when it is empty; only
+    the foreground's columns are ever laid out as a 2-D array."""
+    height = rle.size[0]
+    runs = rle.runs()
+    ends = np.cumsum(runs)
+    fg = np.flatnonzero(runs[1::2]) * 2 + 1  # non-empty foreground runs
+    if fg.size == 0:
+        return None
+    start, stop = int(ends[fg[0]] - runs[fg[0]]), int(ends[fg[-1]])
+    c1, c2 = start // height, (stop - 1) // height + 1
+    values = np.zeros(runs.size, dtype=np.bool_)
+    values[1::2] = True
+    cols = np.repeat(values, runs)[c1 * height : c2 * height].reshape(c2 - c1, height).T
+    rows = np.flatnonzero(cols.any(axis=1))
+    y1, y2 = int(rows[0]), int(rows[-1]) + 1
+    return cols[y1:y2], c1, y1
+
+
 def encode(mask: BoolMask) -> Rle:
     """An ``(H, W)`` bool array as a COCO compressed RLE (``rleToString``)."""
     height, width = mask.shape
@@ -147,18 +166,30 @@ def encode_crop(crop: BoolMask, x: int, y: int, *, height: int, width: int) -> R
                 runs.append(tail)
         else:
             runs[-1] += tail
-    chars: list[str] = []
-    for i, run in enumerate(runs):
-        v = int(run) - (int(runs[i - 2]) if i > 2 else 0)
-        more = True
-        while more:
-            c = v & 0x1F
-            v >>= 5
-            more = v != -1 if c & 0x10 else v != 0
-            if more:
-                c |= 0x20
-            chars.append(chr(c + 48))
-    return Rle.model_construct(size=(height, width), counts="".join(chars))
+    return Rle.model_construct(size=(height, width), counts=_counts(np.asarray(runs, dtype=np.int64)))
+
+
+#: Enough 5-bit chunks for any run count of a frame up to 8192 x 8192 (and its difference to the run two back).
+_CHUNKS = 8
+
+
+def _counts(runs: NDArray[np.int64]) -> str:
+    """COCO's ``rleToString`` for every run at once: each run (minus the run two back, from the fourth on) as
+    little-endian 5-bit chunks, bit 0x20 marking "more follows", offset by 48."""
+    values = runs.copy()
+    values[3:] -= runs[1:-2]
+    chars = np.zeros((values.size, _CHUNKS), dtype=np.uint8)
+    valid = np.zeros((values.size, _CHUNKS), dtype=np.bool_)
+    active = np.ones(values.size, dtype=np.bool_)
+    for k in range(_CHUNKS):
+        c = values & 0x1F
+        values = values >> 5  # arithmetic: a negative difference ends at -1
+        negative = (c & 0x10) != 0
+        more = (negative & (values != -1)) | (~negative & (values != 0))
+        chars[:, k] = (c + 0x20 * more + 48).astype(np.uint8)
+        valid[:, k] = active
+        active = active & more
+    return chars[valid].tobytes().decode("ascii")
 
 
 def mask_bbox(mask: BoolMask) -> BoxT | None:
@@ -198,6 +229,7 @@ __all__ = [
     "clamp",
     "contains",
     "decode",
+    "decode_crop",
     "dilate",
     "encode",
     "encode_crop",

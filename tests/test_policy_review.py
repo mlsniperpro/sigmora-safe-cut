@@ -280,3 +280,28 @@ def test_a_stale_last_edit_never_aborts_the_decide_stage(tmp_path: Path) -> None
     (dst / "review.json").write_text(json.dumps([{"type": "keep", "edit_id": "a", "item_id": "i_99"}]))
     decide_run(dst)
     contracts.validate_job_dir(dst)
+
+
+def test_a_kept_prominent_person_hidden_again_is_covered_whole() -> None:
+    """DESIGN §2.7b: a hidden person whose body is over 25 % of the frame height gets the whole-person mask; the
+    creator re-hiding a policy-kept one gets the same style the policy would have given it."""
+    face = track("face:1", 0, 20, (20, 10, 40, 30))
+    body = track("person:1", 0, 20, (10, 5, 60, 170))
+    ts = tracks(face, body)
+    p = ("participant",) * 3
+    rs = roles(row("face:1", *p, matches_participant=0), row("person:1", *p, matches_participant=0))
+    inputs = Inputs(job=job(), tracks=ts, roles=rs, scene=scene(), transcript=transcript())
+    decided = decide(inputs)
+    assert decided.items[0].decision == "keep"
+    hide = edits({"type": "hide", "edit_id": "h", "item_id": "i_1"})
+    exact = apply_review(decided, hide, tracks=ts, job=job()).decisions.items[0]
+    assert exact.style == "person_solid"
+    assert apply_review(decided, hide).decisions.items[0].style == "person_solid"  # no tracks: the body is covered
+    small = tracks(face, track("person:1", 0, 20, (10, 5, 60, 40)))
+    decided_small = decide(Inputs(job=job(), tracks=small, roles=inputs.roles, scene=scene(), transcript=transcript()))
+    assert apply_review(decided_small, hide, tracks=small, job=job()).decisions.items[0].style == "pixelate"
+
+
+def test_a_creator_hide_clears_the_hold() -> None:
+    got = by_id(apply_review(base(), edits({"type": "hide", "edit_id": "h", "item_id": "i_4"})).decisions)
+    assert (got["i_4"].decision, got["i_4"].hold, got["i_4"].decided_by) == ("hide", None, "creator")

@@ -12,18 +12,21 @@ import numpy as np
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
+from pydantic import TypeAdapter
 
 from safecut import contracts
 from safecut.contracts import Audit, DecisionItem, Decisions, Plan, PlanEntry, Track, Tracks
 from safecut.decide import geometry as g
 from safecut.decide.policy import Inputs, decide
+from safecut.decide.review import ReviewEdit, apply_review
 from safecut.guard import run as guard_run
-from safecut.guard.plan import EXTEND, PADDING, backfill_frames, plan, read_through
+from safecut.guard.plan import EXTEND, PADDING, backfill_frames, body_below, plan, read_through
 from safecut.guard.regions import held_box, mask_ok
 from tests.safety_factories import FPS, FRAMES, H, W, job, roles, row, track, track_sets, tracks
 from tests.test_policy import E4
 
 JOB = job()
+EDIT: TypeAdapter[ReviewEdit] = TypeAdapter(ReviewEdit)
 
 
 def hide_all(ts: Tracks) -> Decisions:
@@ -358,3 +361,50 @@ def test_property_dilation_contains_the_exact_elliptical_one(cx: int, cy: int, r
     exact = cv2.dilate(mask.astype(np.uint8), kernel, borderType=cv2.BORDER_CONSTANT, borderValue=0).astype(bool)
     got = g.dilate(mask, rx, ry)
     assert (got | ~exact).all()
+
+
+def test_a_crowd_fill_covers_every_tracked_object_kept_ones_too() -> None:
+    """DESIGN §2.6 "fill the whole crowded region": SAM's cap dropped objects somewhere among the ones it kept, so the
+    fill spans every track on the crowded frames, a kept participant's too, never just the hidden ones."""
+    host = track("face:1", 0, 20, (10, 10, 30, 30))
+    other = track("face:2", 0, 20, (200, 100, 230, 130))
+    ts = tracks(host, other, crowded=[10, 11])
+    decided = hide_all(ts)
+    kept = Decisions(items=[decided.items[0].model_copy(update={"decision": "keep", "style": None}), decided.items[1]])
+    (fill,) = plan(JOB, ts, kept).crowd_fills
+    assert g.contains(fill.box, (10, 10, 30, 30))
+    assert g.contains(fill.box, (200, 100, 230, 130))
+
+
+def test_removing_a_face_only_person_covers_a_body_under_the_face() -> None:
+    ts = tracks(track("face:1", 0, 20, (100, 20, 120, 40)))
+    removed = apply_review(hide_all(ts), [EDIT.validate_python({"type": "remove_person", "edit_id": "r",
+                                                                 "item_id": "i_1"})]).decisions  # fmt: skip
+    p = plan(JOB, ts, removed)
+    (e,) = entries(p, 10, "i_1")
+    assert e.style == "person_solid"
+    assert g.contains(e.box, (70, 20, 150, H))  # a face width out each side, down to the frame's bottom here
+    assert body_below((100, 20, 120, 40), W, H) == (80, 20, 140, 180)
+
+
+def test_cached_regions_plan_exactly_as_fresh_ones() -> None:
+    t1 = track("face:1", 10, 14, (70, 60, 131, 121), masks={10: disk(100, 90, 30), 14: disk(100, 90, 30)})
+    t2 = track("face:2", 0, 40, (200, 100, 230, 130), step=(1, 0), anchors=[0, 1, 2, 30, 31, 40])
+    ts = tracks(t1, t2)
+    decided = hide_all(ts)
+    cache: dict[Any, Any] = {}
+    first = plan(JOB, ts, decided, cache=cache)
+    assert cache
+    edited = Decisions(items=[decided.items[0].model_copy(update={"style": "solid"}), decided.items[1]])
+    assert plan(JOB, ts, edited, cache=cache) == plan(JOB, ts, edited)
+    assert plan(JOB, ts, decided, cache=cache) == first
+
+
+def test_the_guard_stage_reuses_regions_until_the_tracks_change(tmp_path: Path) -> None:
+    job_dir = tmp_path / "j_example"
+    shutil.copytree(Path("fixtures/contracts/j_example"), job_dir)
+    first = guard_run(job_dir).read_text()
+    assert guard_run(job_dir).read_text() == first
+    contracts.validate_job_dir(job_dir)
+    (job_dir / "tracks.json").write_text((job_dir / "tracks.json").read_text() + "\n")  # a new tracks.json
+    assert guard_run(job_dir).read_text() == first

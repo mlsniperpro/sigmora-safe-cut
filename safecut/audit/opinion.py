@@ -122,6 +122,19 @@ async def consult(
 
 #: The opinion as it came back, saved at once: it runs once per job, so a later crash must not lose it.
 RECORD = Path("raw/audit/opinion.json")
+#: Written before the first call, beside ``job.open_weight_attempted``: a stage that rewrites ``job.json`` from the
+#: source (a re-run of prepare) can't make the job eligible again.
+ATTEMPTED = Path("raw/audit/opinion_attempted")
+
+
+def attempted(job_dir: Path, job: Job) -> bool:
+    return job.open_weight_attempted or (job_dir / ATTEMPTED).exists()
+
+
+def mark_attempted(job_dir: Path) -> None:
+    path = job_dir / ATTEMPTED
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("open-weight second opinion attempted\n", encoding="utf-8")
 
 
 def save(job_dir: Path, opinion: Opinion) -> None:
