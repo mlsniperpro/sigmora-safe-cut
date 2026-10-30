@@ -229,7 +229,7 @@ export function WhyDrawer({
                 </p>
               )}
               {frames.length > 1 && (
-                <div className="mt-2 flex items-center gap-2 text-sm">
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
                   <button type="button" className="min-h-11 min-w-11 rounded-lg border border-border px-3 aria-disabled:opacity-40 lg:min-h-8 lg:min-w-8" aria-disabled={safeIndex === 0} onClick={() => safeIndex > 0 && setIndex(safeIndex - 1)} aria-label="Previous evidence frame">
                     ◀
                   </button>

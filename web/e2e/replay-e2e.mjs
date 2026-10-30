@@ -543,6 +543,13 @@ try {
     check("200% text, 320 px: a failed keyframe's message isn't cut off", fit);
     const title = await narrow.locator("#why-title").evaluate((h) => Math.round(h.getBoundingClientRect().width));
     check("200% text, 320 px: the Why sheet's title has room", title >= 150, `${title}px`);
+    // Two evidence frames: the ◀ frames ▶ row wraps instead of widening the sheet.
+    await narrow.goto(`${BASE}/jobs/job-review-sample`, { waitUntil: "networkidle" });
+    await narrow.getByText(/hidden · /).waitFor();
+    await narrow.getByRole("button", { name: /^Why\? / }).first().click();
+    await narrow.getByRole("button", { name: "Next evidence frame" }).waitFor();
+    const sideways = await narrow.getByRole("dialog").evaluate((d) => d.scrollWidth - d.clientWidth);
+    check("200% text, 320 px: the evidence-frame row fits the sheet", sideways <= 1, `${sideways}px`);
     await big.close();
     // 125% text on a 1100 px screen: the layout JS and CSS agree, so the columns keep their names (headings or tabs).
     const mid = await chromium.launch({ args: ["--blink-settings=defaultFontSize=20,minimumFontSize=0"] });
@@ -579,6 +586,12 @@ try {
     await page.waitForTimeout(300);
     const narrow = await page.evaluate(() => document.activeElement?.getAttribute("data-chip-id"));
     check("crossing the desktop breakpoint keeps focus on the chip", wide === first && narrow === first, `${first} → ${wide} → ${narrow}`);
+    // Once the viewer clicks away (blank page, nothing focused), a later flip leaves focus alone.
+    await page.mouse.click(5, 450);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.waitForTimeout(300);
+    const after = await page.evaluate(() => document.activeElement?.getAttribute("data-chip-id") ?? null);
+    check("after a click away, crossing the breakpoint doesn't pull focus back", after === null, String(after));
     await context.close();
   }
 

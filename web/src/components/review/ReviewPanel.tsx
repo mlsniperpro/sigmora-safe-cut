@@ -297,8 +297,16 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
     const onFocusIn = (e: FocusEvent) => {
       focusedChip.current = (e.target instanceof Element && e.target.closest("[data-chip-id]")?.getAttribute("data-chip-id")) || null;
     };
+    // A click or tap outside the chips moves on, even where nothing takes focus (blank page).
+    const onPointerDown = (e: PointerEvent) => {
+      if (!(e.target instanceof Element && e.target.closest("[data-chip-id]"))) focusedChip.current = null;
+    };
     document.addEventListener("focusin", onFocusIn);
-    return () => document.removeEventListener("focusin", onFocusIn);
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("pointerdown", onPointerDown);
+    };
   }, []);
   const layoutWas = useRef(desktop);
   useEffect(() => {

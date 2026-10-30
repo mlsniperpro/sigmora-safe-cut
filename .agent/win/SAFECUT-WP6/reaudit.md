@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 89e6512
+AUDITED_COMMIT: f01e64d
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -432,3 +432,12 @@ Noted, not counted: at 320 px with 200% text the landing figure scrolls 31 px si
 |---|---|---|---|
 | 1 | low | Crossing the desktop breakpoint (a tablet turning, a window resized) swapped tabs and columns and remounted every chip, dropping keyboard focus to the page | fixed: the panel remembers the last focused chip and, after the layout flips, gives it focus back in its tab (unless focus moved elsewhere). e2e focuses a chip at 800 px and resizes to 1280 and back (fails on 89e6512: focus to null) |
 | 2 | low | At 175–200% text on a ≤360 px phone, a failed keyframe's message was cut off by its aspect-ratio box, and the Why sheet's title was squeezed to ~65–98 px beside Close ("Scr/een") | fixed: a failed keyframe drops the aspect ratio so the message sizes the box, and the sheet header wraps so Close goes below a long title. e2e at 200% text and 320 px (both fail on 89e6512: cut off; title 69 px) |
+
+## Round 34 (audited f01e64d by a Sonnet reviewer: breakpoint refocus with chips, menus, the drawer and dialogs open; the sheet header at 5 text sizes × 320–1600 px; failed keyframes against a fake live API; 66 routes × 3 widths × light/dark with axe; Tab sweeps on 13 routes incl. forced colours; live /try failures; region rewrite; fixes in the next commit)
+
+0 critical, 0 high, 0 medium, 2 low.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| 1 | low | Round 33's breakpoint refocus kept a stale chip after the viewer clicked blank page (no focusin fires there), so a later flip pulled focus and scroll back to it | fixed: a pointerdown outside any chip forgets the remembered chip. e2e clicks away and flips the layout (fails on f01e64d: focus back on i_5) |
+| 2 | low | At 200% text on a 320 px phone, the Why sheet's ◀ frames ▶ row overflowed by 22 px | fixed: the row wraps. e2e at 200% text and 320 px (fails on f01e64d: 22 px) |
