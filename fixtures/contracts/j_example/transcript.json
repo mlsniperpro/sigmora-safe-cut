@@ -1,0 +1,20 @@
+{
+ "status": "ok",
+ "source": "muse-voice-transcribe-1.0",
+ "source_kind": "primary",
+ "degraded": false,
+ "turns": [
+  {
+   "speaker": "S1",
+   "start": 0.0,
+   "end": 0.2,
+   "text": "Hi, I'm Amina, and today we're at the market."
+  },
+  {
+   "speaker": "S2",
+   "start": 0.25,
+   "end": 0.38,
+   "text": "Thanks for having me."
+  }
+ ]
+}

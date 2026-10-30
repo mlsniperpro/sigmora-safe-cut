@@ -1,0 +1,27 @@
+{
+ "sessionId": "fixture",
+ "transcript": "Hi, I'm Amina, and today we're at the market. Thanks for having me.",
+ "audioDurationMs": 30000,
+ "turns": [
+  {
+   "turnId": "t1",
+   "speaker": "A",
+   "startMs": 400,
+   "endMs": 3100,
+   "transcript": "Hi, I'm Amina, and today we're at the market."
+  },
+  {
+   "turnId": "t2",
+   "speaker": "B",
+   "startMs": 3300,
+   "endMs": 4600,
+   "transcript": "Thanks for having me."
+  },
+  {
+   "turnId": "t3",
+   "startMs": 5000,
+   "endMs": 5600,
+   "transcript": "(inaudible)"
+  }
+ ]
+}

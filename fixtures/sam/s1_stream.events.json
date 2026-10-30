@@ -1,0 +1,36 @@
+[
+ {
+  "type": "response.created",
+  "response": {
+   "id": "resp_sam_fixture",
+   "status": "in_progress"
+  }
+ },
+ {
+  "type": "response.output_text.delta",
+  "delta": "<7f>0<|box;x1=10;y1=20;x2=14;y2=24;w=100;h=80|><|mask;x=0;y=0;data=5,5,!!!!!(QO(0lu8?|>\n",
+  "item_id": "msg_1",
+  "output_index": 0,
+  "content_index": 0
+ },
+ {
+  "type": "response.content_part.done",
+  "item_id": "msg_1",
+  "output_index": 0,
+  "content_index": 0,
+  "part": {
+   "type": "output_text",
+   "text": "<7f>0<|box;x1=10;y1=20;x2=14;y2=24;w=100;h=80|><|mask;x=0;y=0;data=5,5,!!!!!(QO(0lu8?|>\n"
+  }
+ },
+ {
+  "type": "response.completed",
+  "response": {
+   "id": "resp_sam_fixture",
+   "status": "completed",
+   "usage": {
+    "video_frames_processed": 240
+   }
+  }
+ }
+]

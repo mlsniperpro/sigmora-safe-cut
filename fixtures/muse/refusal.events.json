@@ -1,0 +1,25 @@
+[
+ {
+  "type": "response.completed",
+  "response": {
+   "id": "resp_refusal_fixture",
+   "status": "completed",
+   "output": [
+    {
+     "type": "message",
+     "role": "assistant",
+     "content": [
+      {
+       "type": "refusal",
+       "refusal": "I can't help with that."
+      }
+     ]
+    }
+   ],
+   "usage": {
+    "input_tokens": 1200,
+    "output_tokens": 12
+   }
+  }
+ }
+]

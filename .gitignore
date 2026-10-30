@@ -8,7 +8,7 @@
 *.mkv
 *.webm
 !fixtures/hero/**/*.mp4
-jobs/
+/jobs/
 data/raw/
 data/private/
 eval/private/
@@ -24,9 +24,21 @@ __pycache__/
 node_modules/
 .next/
 .vercel/
-# models
+# models (PRE-A §12: EgoBlur Gen 2 weights are .jit; O8 archives)
 weights/
+/models/
+*.jit
+*.zip
+*.tar.gz
 *.pt
 *.pth
 *.onnx
 .DS_Store
+# synthetic test clips (tiny, generated with ffmpeg)
+!fixtures/clips/*.mp4
+.coverage
+htmlcov/
+
+# Probe runs stage raw files here until their summary is accepted (scripts/probes/probes.py save_summary).
+.run-*/
+.summary.json.tmp
