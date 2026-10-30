@@ -280,9 +280,42 @@ def test_secret_pattern_knows_this_projects_own_secrets() -> None:
     # Any 12+ character code or key is a real one (BLOCKED's minimum), whatever it looks like…
     assert entry_check.secret_hit('"code": "k3J9xQ2mP7vL4tR8"')
     assert entry_check.secret_hit('"code": "mango-tiger-lamp-river-4821"')
+    assert entry_check.secret_hit('"code": "correcthorsebattery"')
     assert entry_check.secret_hit('SAFECUT_ACCESS_CODES=\'[{"code": "k3J9xQ2mP7vL4tR8"}]\'')
     # …except the tests' exact named stand-ins and the API's error codes.
     assert not entry_check.secret_hit('"key": "sigmora-service-key-0123456789"')
     assert not entry_check.secret_hit('"code": "code_not_active"')
     assert not entry_check.secret_hit('"code": "unauthorized"')
     assert not entry_check.secret_hit('SAFECUT_URL_SECRET: "e2e-url-secret"')
+
+
+def test_history_scan_attributes_lines_to_their_files() -> None:
+    """The scanner's own files may hold key shapes (its patterns, its test data); any other file may not, whatever
+    the line says, including what a merge commit introduced (``--cc``)."""
+    key = "k3J9xQ2" + "mP7vL4tR8"  # spelt in pieces: this file is exempt anyway, but the point is the attribution
+    log = "\n".join(
+        [
+            "commit 1",
+            "+++ b/tests/test_entry_check.py",
+            f'+    assert entry_check.secret_hit(\'"code": "{key}"\')',
+            "commit 2",
+            "diff --cc web/e2e/api-e2e.mjs",
+            "+++ b/web/e2e/api-e2e.mjs",
+            f'++  const codes = [{{"code": "{key}"}}];',
+        ]
+    )
+    hits = entry_check.history_hits(log)
+    assert len(hits) == 1
+    assert hits[0].startswith("web/e2e/api-e2e.mjs: ")
+
+
+def test_e11_history_scan_passes_on_this_repo() -> None:
+    """The real history, as E11 reads it: the scanner's own test data must never make ENTRY: PASS impossible."""
+    log = subprocess.run(
+        ["git", "log", "-p", "--cc", "--all", "--no-color", "--format=commit %H"],  # noqa: S607 -- git from PATH
+        cwd=entry_check.ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert entry_check.history_hits(log) == []

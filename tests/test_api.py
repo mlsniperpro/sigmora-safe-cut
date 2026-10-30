@@ -141,7 +141,10 @@ def test_full_flow_in_replay(make_client: Callable[..., tuple[TestClient, Servic
     assert job["job"]["frames"] == 12
     assert job["job"]["prepared_url"].startswith("/v1/jobs/")
     assert {"items", "tracks", "roles", "plan", "transcript", "scene"} <= job.keys()
-    assert job["models"]["sam"] == "sam-3.1"
+    # What ran so far, from the job's files: the tracker, but no auditor or red team before the render.
+    assert job["models"]["tracks"] == "sam-3.1"
+    assert "auditor" not in job["models"]
+    assert "redteam" not in job["models"]
     item = next(i for i in job["items"] if i["decision"] == "needs_you")
     edit = {"type": "hide", "edit_id": "e-1", "item_id": item["item_id"]}
     acked = client.post(f"/v1/jobs/{job_id}/review", json=edit)

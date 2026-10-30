@@ -641,14 +641,16 @@ SECRET = re.compile(
     # code or service key long enough to be a real one (the tests' stand-ins are shorter, or named so).
     r"|\bhf_[A-Za-z0-9]{30,}"
     r"|[\"']?(SAFECUT_URL_SECRET|SAFECUT_CLIPS_TOKEN|HF_TOKEN)[\"']?\s*[=:]\s*['\"]?[A-Za-z0-9_\-+/]{24,}"
-    # Any access code or service key value of BLOCKED's 12+ characters, except an error code (a lowercase
-    # identifier like "code_not_active") and the tests' own named stand-ins (STAND_INS, checked by `secret_hit`).
-    r"|[\"'](code|key)[\"']\s*:\s*[\"'](?![a-z]+(_[a-z]+)*[\"'])(?P<credential>[A-Za-z0-9_\-+/=.]{12,})[\"']"
+    # Any access code or service key value of BLOCKED's 12+ characters, except an error code (a snake_case
+    # identifier like "code_not_active") and the named stand-ins (STAND_INS, checked by `secret_hit`).
+    r"|[\"'](code|key)[\"']\s*:\s*[\"'](?![a-z]+(_[a-z]+)+[\"'])(?P<credential>[A-Za-z0-9_\-+/=.]{12,})[\"']"
 )
 #: The exact access codes and service keys the tests and docs use as stand-ins; any other 12+ character value in a
 #: "code" or "key" field is treated as a real one.
 STAND_INS = frozenset(
     {"deploy-check-not-a-code", "judge-secret-7", "local-judge-code", "sigmora-service-key-0123456789"}
+    # The API's one error code without an underscore (every other error code is a snake_case identifier).
+    | {"unauthorized"}
 )
 
 
@@ -662,25 +664,35 @@ SHIPPED = ("safecut", "eval", "deploy", "scripts", "web/src", "web/e2e", "web/sc
 MARKER = re.compile(r"\b(" + "|".join(("TO" + "DO", "FIX" + "ME", "X" + "XX")) + r")\b")
 
 
+#: The scanner and its own tests are the only files allowed to hold key shapes (its patterns, its test data).
+SCANNER_FILES = frozenset({"scripts/entry_check.py", "tests/test_entry_check.py"})
+
+
+def history_hits(log: str) -> list[str]:
+    """Every added line in ``git log -p --cc`` output that holds a secret, as ``<file>: <line>``, attributed to its
+    file by the ``+++ b/<path>`` header before it (``--cc`` merges print ``+++ b/<path>`` too), so the scanner's own
+    files are skipped by name, the same rule as the tree scan."""
+    hits: list[str] = []
+    current = ""
+    for line in log.splitlines():
+        if line.startswith("+++ "):
+            current = line[6:] if line.startswith("+++ b/") else ""
+            continue
+        if line.startswith("+") and current not in SCANNER_FILES and secret_hit(line):
+            hits.append(f"{current}: {line}")
+    return hits
+
+
 def e11() -> None:
     # --cc adds what a merge commit itself introduced (a conflict resolution), which plain -p never shows.
     history = sh(["git", "log", "-p", "--cc", "--all", "--no-color", "--format=commit %H"], timeout=600)
-    hits = [
-        line
-        for line in history.stdout.splitlines()
-        if line.startswith("+")
-        and secret_hit(line)
-        and "SECRET_RE" not in line
-        and "SECRET = re.compile" not in line
-        and "SECRET.search(" not in line  # the scanner's own tests feed it key-shaped strings
-    ]
+    hits = history_hits(history.stdout)
     if hits:
-        raise CheckFailed(f"secret-shaped text in git history: {hits[0][:80]}…")
+        raise CheckFailed(f"secret-shaped text in git history: {hits[0][:100]}…")
     # And the tree as it stands, every tracked text file; only the scanner and its own tests may hold key shapes.
-    scanner = {"scripts/entry_check.py", "tests/test_entry_check.py"}
     for name in sh(["git", "ls-files"]).stdout.split():
         path = ROOT / name
-        if name in scanner or not path.is_file() or path.stat().st_size > 5_000_000:
+        if name in SCANNER_FILES or not path.is_file() or path.stat().st_size > 5_000_000:
             continue
         data = path.read_bytes()
         if b"\x00" in data:

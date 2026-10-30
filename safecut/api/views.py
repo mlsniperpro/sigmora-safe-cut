@@ -65,37 +65,11 @@ def _optional[M: BaseModel](path: Path, model: type[M]) -> M | None:
     return load(path, model) if path.is_file() else None
 
 
-def models_used(job_dir: Path, s: Settings) -> dict[str, str]:
-    """Which model did which job, from the job's own files where they recorded it, else the config (the API's job
-    body and the eval's run config both say this, so neither claims a model that didn't run)."""
-    models = {
-        "sam": s.sam_model,
-        "scene": s.scene_model,
-        "roles": s.role_model,
-        "escalate": s.escalate_model,
-        "asr": s.asr_model,
-        "redteam": s.redteam_model,
-        "auditor": s.egoblur_model,
-    }
-    scene = _optional(job_dir / "scene.json", Scene)
-    if scene is not None and scene.model:
-        models["scene"] = scene.model
-    roles = _optional(job_dir / "roles.json", Roles)
-    if roles is not None and roles.model:
-        models["roles"] = roles.model
-    transcript = _optional(job_dir / "transcript.json", Transcript)
-    if transcript is not None and transcript.source:
-        models["asr"] = transcript.source
-    audit = _optional(job_dir / "audit.json", Audit)
-    if audit is not None:
-        models["auditor"] = audit.egoblur.model
-    return models
-
-
 def models_recorded(job_dir: Path, s: Settings) -> dict[str, str]:
     """Only what the job's files show ran: the trackers named on its tracks, the scene, roles and speech models
     their files record, the escalation when a ruling exists, the auditor ``audit.json`` names and the red team when
-    it answered. A stage that never ran is absent (the eval's run configs; the API's job body shows the plan)."""
+    it answered. A stage that never ran (yet) is absent: the eval's run configs and the API's job body both use it.
+    """
     ran: dict[str, str] = {}
     tracks = _optional(job_dir / "tracks.json", Tracks)
     if tracks is not None:
@@ -299,7 +273,7 @@ class Views:
         }
 
     def models(self, job_dir: Path) -> dict[str, str]:
-        return models_used(job_dir, self.settings)
+        return models_recorded(job_dir, self.settings)  # what ran so far; the Why drawer lists them as fact
 
     @staticmethod
     def keyframe_geometry(job_dir: Path, roles: Roles, job: Job | None) -> dict[str, int] | None:
