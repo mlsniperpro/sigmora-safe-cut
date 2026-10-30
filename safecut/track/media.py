@@ -169,12 +169,22 @@ def packets(path: Path, stream: str = "v:0", *, limit: int = MAX_PACKETS) -> Pac
     return Packets(time_base=time_base, pts=tuple(p for p, _ in rows), last_duration=rows[-1][1])
 
 
-def decoded_start(path: Path, stream: str = "a:0") -> Fraction:
-    """The first *decoded* frame's time, in seconds. It can differ from the first packet's: AAC's priming samples
-    and an MP4 edit list's hidden video frames (packets at a negative pts) are discarded by the decoder."""
+@dataclass(frozen=True)
+class FirstFrame:
+    """A stream's first *decoded* frame: its time (seconds) and its decoded size in bytes (for video, decoded as
+    one byte a pixel, so ``size`` is width × height whatever the header claims)."""
+
+    start: Fraction
+    size: int
+
+
+def first_frame(path: Path, stream: str = "a:0") -> FirstFrame:
+    """The first decoded frame. Its time can differ from the first packet's: AAC's priming samples and an MP4 edit
+    list's hidden video frames (packets at a negative pts) are discarded by the decoder."""
     # ``demux``: the stream's own time base, so the time is exact (a decoder's default, 1/fps, would round it).
+    gray = ["-pix_fmt", "gray"] if stream.startswith("v") else []
     out = run([*SAFE_INPUT, *PROBE_THREADS, "-i", str(path), "-map", f"0:{stream}", "-frames:" + stream[0], "1",
-               "-enc_time_base:" + stream[0], "demux", "-f", "framemd5", "-"], probe=True)  # fmt: skip
+               *gray, "-enc_time_base:" + stream[0], "demux", "-f", "framemd5", "-"], probe=True)  # fmt: skip
     time_base: Fraction | None = None
     for line in out.splitlines():
         if line.startswith("#"):
@@ -184,8 +194,13 @@ def decoded_start(path: Path, stream: str = "a:0") -> Fraction:
             continue
         fields = [f.strip() for f in line.split(",")]
         if time_base is not None and len(fields) >= 6:
-            return int(fields[2]) * time_base
+            return FirstFrame(start=int(fields[2]) * time_base, size=int(fields[4]))
     raise MediaError(f"no decodable {stream} frame in {path.name}")
+
+
+def decoded_start(path: Path, stream: str = "a:0") -> Fraction:
+    """The first decoded frame's time, in seconds (see :func:`first_frame`)."""
+    return first_frame(path, stream).start
 
 
 def frame_count(path: Path) -> int:

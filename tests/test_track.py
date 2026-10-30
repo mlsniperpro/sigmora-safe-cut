@@ -262,3 +262,18 @@ def test_a_huge_negative_number_fails_closed() -> None:
     assert "x1=-12345678901;" in text
     with pytest.raises(MetaIncomplete, match="10 or more digits"):
         asyncio.run(sam.parse_video_events(events(text, response_id="r", frames_billed=4), size=(64, 48)))
+
+
+@pytest.mark.parametrize("swap", [("x1=10;", "x1= 12345678901 ;"), ("data=10,10,", "data= 12345678901,10,")])
+def test_a_huge_number_with_spaces_fails_closed(swap: tuple[str, str]) -> None:
+    text = stream_text({"1": {3: (10, 10, 20, 20)}}, (64, 48)).replace(*swap, 1)
+    assert swap[1] in text
+    with pytest.raises(MetaIncomplete):
+        asyncio.run(sam.parse_video_events(events(text, response_id="r", frames_billed=4), size=(64, 48)))
+
+
+def test_a_space_key_with_whitespace_is_read_like_metas_parser() -> None:
+    text = stream_text({"1": {3: (10, 10, 20, 20)}, "2": {4: (30, 10, 40, 20)}}, (64, 48))
+    text = text.replace("w=64;", " w=64;", 1)
+    seg = asyncio.run(sam.parse_video_events(events(text, response_id="r", frames_billed=4), size=(64, 48)))
+    assert {d.object_id for d in seg.detections} == {"1", "2"}

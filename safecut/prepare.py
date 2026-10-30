@@ -111,17 +111,21 @@ def probe(source: Path) -> SourceProbe:
         facts = media.facts(source)
     except media.MediaError as exc:
         raise PrepareError("bad_media", f"can't read the video stream: {exc}", size_bytes=size) from exc
-    width, height = facts.size
-    if width * height > MAX_SOURCE_PIXELS:  # before any full decode (8K is 33 Mpx)
-        raise PrepareError("bad_media", f"{width}x{height} is over the {MAX_SOURCE_PIXELS // 1_000_000} Mpx limit",
-                           size_bytes=size)  # fmt: skip
-    # The header's duration first, so an over-long upload is refused as too_long before its packets are read.
+    # The header is a hint only (metadata can forge lines in it): every limit is enforced again below from what
+    # ffmpeg decodes and demuxes. Its duration first, so an honest over-long upload is too_long before packets.
     if facts.duration > config.MAX_CLIP_SECONDS:
         raise PrepareError("too_long", f"{facts.duration:.2f} s is over the {config.MAX_CLIP_SECONDS} s limit",
                            duration_s=facts.duration, size_bytes=size)  # fmt: skip
     try:
+        first = media.first_frame(source, "v:0")  # decoded under the probe memory limit, one byte a pixel
+    except media.MediaError as exc:
+        raise PrepareError("bad_media", f"can't read the video stream: {exc}", size_bytes=size) from exc
+    if first.size > MAX_SOURCE_PIXELS:  # the decoded frame's own size, before any full decode (8K is 33 Mpx)
+        raise PrepareError("bad_media", f"{first.size} pixels a frame is over the {MAX_SOURCE_PIXELS // 1_000_000} "
+                           "Mpx limit", size_bytes=size)  # fmt: skip
+    try:
         # The video clock starts at the first *decoded* frame (§5b steps 2–3): hidden edit-list frames are dropped.
-        video = media.packets(source, "v:0").from_time(media.decoded_start(source, "v:0"))
+        video = media.packets(source, "v:0").from_time(first.start)
     except media.MediaError as exc:
         raise PrepareError("bad_media", f"can't read the video stream: {exc}", size_bytes=size) from exc
     if video.count < MIN_FRAMES:
@@ -136,7 +140,9 @@ def probe(source: Path) -> SourceProbe:
         except media.MediaError:
             audio = None
             log.warning("audio stream announced but unreadable; prepared without audio", extra={"source": source.name})
-    duration = max(video.span, Fraction(facts.duration).limit_denominator(1_000_000))
+    # The streams' own spans (demuxed packets), never only the header's word: a long soundtrack is too long too.
+    spans = [video.span, *([audio.span] if audio is not None else [])]
+    duration = max(*spans, Fraction(facts.duration).limit_denominator(1_000_000))
     if duration > Fraction(str(config.MAX_CLIP_SECONDS)):
         raise PrepareError("too_long", f"{float(duration):.2f} s is over the {config.MAX_CLIP_SECONDS} s limit",
                            duration_s=float(duration), size_bytes=size)  # fmt: skip
@@ -171,6 +177,8 @@ def transcode(source: Path, out: Path, probe_result: SourceProbe) -> None:
                  "-b:a", "128k"]  # fmt: skip
     else:
         args += ["-an"]
+    # Never longer than the video: a soundtrack past its last frame is cut, not delivered.
+    args += ["-t", f"{float(probe_result.video.span):.6f}"]
     args += ["-c:v", "libx264", *media.ENCODE_THREADS, "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
              "-g", str(2 * probe_result.fps), "-movflags", "+faststart", "-map_metadata", "-1", str(out)]  # fmt: skip
     media.run(args, memory=media.TRANSCODE_MEMORY_BYTES)

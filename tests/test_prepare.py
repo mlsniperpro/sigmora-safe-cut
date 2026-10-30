@@ -380,3 +380,46 @@ def test_a_stream_line_the_parser_cannot_read_is_bad_media(tmp_path: Path, monke
     with pytest.raises(prepare.PrepareError) as err:
         prepare.probe(Path("fixtures/clips/counter_30fps_audio.mp4"))
     assert err.value.reason == "bad_media"
+
+
+FORGED_KEY = ("k\n  Stream #0:0: Video: h264, yuv420p, 100x100, 30 fps\n"
+              "  Duration: 00:00:01.00, start: 0.000000, bitrate: 1 kb/s")  # fmt: skip
+
+
+def _forged(source: list[str], out: Path, *extra: str) -> Path:
+    """A clip whose metadata key holds raw newlines that ffmpeg prints unescaped, forging header lines."""
+    media.run(["-y", *source, *extra, "-metadata", f"{FORGED_KEY}=v", "-movflags", "use_metadata_tags", str(out)])
+    return out
+
+
+def test_a_forged_header_cannot_hide_a_long_soundtrack(tmp_path: Path) -> None:
+    """3 s of video with 90 s of audio, its header forged to say 1 s: the streams' own spans decide (re-audit 8)."""
+    clip = _forged(["-f", "lavfi", "-i", "testsrc=size=160x120:rate=30:duration=3", "-f", "lavfi", "-i",
+                    "sine=duration=90"], tmp_path / "long.mp4", "-c:v", "libx264", "-preset", "ultrafast",
+                   "-pix_fmt", "yuv420p", "-c:a", "aac")  # fmt: skip
+    assert media.facts(clip).duration < 2  # the header lies...
+    with pytest.raises(prepare.PrepareError) as err:
+        prepare.probe(clip)
+    assert err.value.reason == "too_long"  # ...the packets don't
+    assert err.value.duration_s is not None
+    assert err.value.duration_s > 80
+
+
+def test_a_forged_header_cannot_hide_a_huge_frame(tmp_path: Path) -> None:
+    clip = _forged(["-f", "lavfi", "-i", "color=c=gray:size=8192x8192:rate=30"], tmp_path / "huge.mp4", "-frames:v",
+                   "2", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p")  # fmt: skip
+    assert media.facts(clip).size == (100, 100)  # the header lies...
+    with pytest.raises(prepare.PrepareError, match="Mpx limit") as err:
+        prepare.probe(clip)
+    assert err.value.reason == "bad_media"  # ...the decoded frame doesn't
+
+
+def test_the_prepared_clip_never_runs_past_its_video(tmp_path: Path) -> None:
+    clip = tmp_path / "tail.mp4"
+    media.run(["-y", "-f", "lavfi", "-i", "testsrc=size=160x120:rate=30:duration=3", "-f", "lavfi", "-i",
+               "sine=duration=5", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac",
+               str(clip)])  # fmt: skip
+    job = load(prepare.prepare(clip, tmp_path / "j"), Job)
+    audio = media.packets(tmp_path / "j" / prepare.PREPARED, "a:0")
+    assert job.frames == 90
+    assert float(audio.span) <= 3.1  # the 2 s of sound after the last frame is cut
