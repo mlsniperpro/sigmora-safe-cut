@@ -330,8 +330,9 @@ def style_for(kind: Kind, group: Sequence[Track], job: Job) -> Style:
         t.concept == "person" and max(b[3] - b[1] for b in t.boxes.values()) > PROMINENT_HEIGHT * job.height
         for t in group
     )
-    # A face alone taller than that share is a close-up whose body SAM missed: the guard covers a body under it.
-    close_up = not has_person and any(
+    # A face taller than that share is a close-up: whole person, with a body under the face wherever no body track
+    # holds it (SAM missed the body, or lost it early; the guard estimates one per frame).
+    close_up = any(
         t.concept == "face" and max(b[3] - b[1] for b in t.boxes.values()) > PROMINENT_HEIGHT * job.height
         for t in group
     )
@@ -360,7 +361,10 @@ def _hides_more(row: RoleTrack, than: RoleTrack) -> bool:
 def decide(inputs: Inputs) -> Decisions:
     """``decisions.json`` for every track: one item per group, ``i_1`` … in order of first frame."""
     rows = _rows(inputs.roles.tracks) if inputs.roles is not None else {}
-    objects = {o.track_id: o for o in inputs.roles.objects} if inputs.roles is not None else {}
+    objects: dict[str, RoleObject] = {}
+    for obj in inputs.roles.objects if inputs.roles is not None else []:
+        if obj.track_id not in objects or obj.sensitive:  # a duplicate ruling fails closed: sensitive wins
+            objects[obj.track_id] = obj
     groups = group_tracks(inputs.tracks.tracks)
     gates = _gates(inputs, groups, rows)
     judged = {

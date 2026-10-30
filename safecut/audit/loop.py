@@ -304,18 +304,29 @@ def earlier_leaks(job_dir: Path, previous: Audit | None) -> list[Leak]:
     return leaks
 
 
-def reopened(leaks: list[Leak], plan: Plan) -> list[Leak]:
-    """Leaks an earlier run left unresolved that nothing in the current plan covers: found again before this run's
-    first pass, so a re-run never forgets them (redteam.md "Never default to clean")."""
+def reopened(leaks: list[Leak], plan: Plan, decisions: Decisions) -> list[Leak]:
+    """Leaks an earlier run left unresolved (or whose patch never landed) that nothing solid in the current plan
+    covers: found again before this
+    run's first pass, so a re-run never forgets them (redteam.md "Never default to clean"). A mosaic never counts
+    as cover: a model that read through one can read through it again (it is the leak's own ``through_item``)."""
+    hidden = {i.item_id for i in decisions.items if i.decision != "keep"}
     out: list[Leak] = []
     for leak in leaks:
-        if not leak.unresolved:
+        # Unresolved, or patched by an item that never landed (a crash between the pending record and the patch).
+        if not leak.unresolved and (leak.patched_item is None or leak.patched_item in hidden):
             continue
-        boxes = [e.box for e in plan.frames.get(leak.frame, [])]
+        boxes = [e.box for e in plan.frames.get(leak.frame, []) if e.style != "pixelate"]
         boxes += [f.box for f in plan.crowd_fills if leak.frame in f.frames]
         if not any(contains(b, leak.box) for b in boxes):
             out.append(leak.model_copy(update={"unresolved": False, "patched_item": None}))
     return out
+
+
+def planned_in_full(decisions: Decisions, plan: Plan) -> bool:
+    """Every hidden item of ``decisions`` has entries in ``plan``, and the plan names no item ``decisions`` lacks."""
+    hidden = {i.item_id for i in decisions.items if i.decision != "keep"}
+    planned = {e.item_id for entries in plan.frames.values() for e in entries}
+    return planned <= {i.item_id for i in decisions.items} and hidden <= planned
 
 
 def carried(previous: Audit | list[Leak] | None, decisions: Decisions, detector: Detector) -> list[Leak]:
@@ -358,8 +369,10 @@ async def settle(
         state.plan = make_plan(job, tracks, state.decisions, solid=read_through(state.leaks),
                                cache=region_cache(job_dir))  # fmt: skip
         save_pending(job_dir, state.leaks)  # before the patches land: a crash from here on keeps them on record
-        dump(state.decisions, job_dir / "decisions.json")
+        # The plan first: a crash before the decisions land leaves a plan that hides more, never one that hides less
+        # than decisions.json says (and the next audit re-plans; see ``planned_in_full``).
         dump(state.plan, job_dir / "plan.json")
+        dump(state.decisions, job_dir / "decisions.json")
         render(job_dir)
         passes += 1
         # Every frame of the new render, not just the patched ones: a re-encode shifts pixels on frames it didn't
@@ -393,13 +406,17 @@ async def audit_job(
     state = State(job=job, tracks=tracks, decisions=decisions, plan=load(job_dir / "plan.json", Plan))
     earlier = earlier_leaks(job_dir, previous)
     state.leaks = carried(earlier, decisions, detector)
-    reopen = reopened(earlier, state.plan)
-    save_pending(job_dir, state.leaks + [leak.model_copy(update={"unresolved": True}) for leak in reopen])
     # Never default to clean (redteam.md): before this audit changes anything (patches, plan, video), the job's
     # receipt is retired and audit.json says nothing was checked yet, so a crash part-way leaves a blocked audit,
     # never the previous clean verdict beside a changed video.
     retire(job_dir)
     dump(summary(state, 0, detector, previous), job_dir / "audit.json")
+    if not planned_in_full(state.decisions, state.plan):  # a crash between the two files: re-plan from decisions
+        state.plan = make_plan(job, tracks, state.decisions, solid=read_through(state.leaks),
+                               cache=region_cache(job_dir))  # fmt: skip
+        dump(state.plan, job_dir / "plan.json")
+    reopen = reopened(earlier, state.plan, state.decisions)
+    save_pending(job_dir, state.leaks + [leak.model_copy(update={"unresolved": True}) for leak in reopen])
     if not rendered_from_plan(job_dir):  # no video, or one drawn from another plan (a crash, an edit): draw it now
         render(job_dir)
     words = approved(decisions, roles, scene)

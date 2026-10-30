@@ -103,3 +103,8 @@ Evidence is a test name, a command run in this session, or a commit. Owner input
 - [x] Renders stamped with their plan; audits with their video; receipts refuse a mismatch (`test_the_audit_redraws_a_video_drawn_from_another_plan`, `test_a_receipt_never_seals_an_audit_of_another_video`).
 - [x] Receipt for `.`; scanned only after judging (`test_a_receipt_for_the_current_directory_by_its_dot`, `test_a_frame_whose_detections_were_not_all_judged_is_unscanned`).
 - [-] CLI "done" on a blocked audit; `_review` and a standing receipt: SHIP's files, filed with SHIP.
+
+## Audit findings (round 7, fixed with tests at a6702a7, merged 9047b78; details in reaudit.md)
+- [x] Child links across pairings drive the lock and the scene count (`tests/test_policy.py`).
+- [x] Whole-person covers: re-hide fallback, face-only child, per-face body (`tests/test_policy_review.py`, `tests/test_guard.py`).
+- [x] Receipt needs the current render; leaks survive re-runs and crashes; atomic records (`tests/test_receipt.py`, `tests/test_audit_loop.py`).
