@@ -1,0 +1,43 @@
+{
+ "synthetic": true,
+ "stage": "scene",
+ "model": "muse-spark-1.3",
+ "request": {},
+ "events": [
+  {
+   "type": "response.created",
+   "response": {
+    "id": "resp_synthetic_scene",
+    "status": "in_progress"
+   }
+  },
+  {
+   "type": "response.completed",
+   "response": {
+    "id": "resp_synthetic_scene",
+    "status": "completed",
+    "output": [
+     {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+       {
+        "type": "output_text",
+        "text": "{\"summary\":\"A street-market vlog: the host talks to camera and introduces her friend, who joins her.\",\"participants\":[{\"description\":\"woman in an orange top on the left, talking to camera\",\"evidence\":\"introduces herself: \\\"Hi, I'm Amina, welcome back to the channel\\\"\",\"speaker\":\"S1\",\"introduced_in_turn\":0,\"introduction_quote\":\"I'm Amina\",\"is_creator\":true},{\"description\":\"man in a green top who joins from the right\",\"evidence\":\"introduced by the host as \\\"my friend Kev\\\" and greets the viewers\",\"speaker\":\"S2\",\"introduced_in_turn\":1,\"introduction_quote\":\"my friend Kev\",\"is_creator\":false}],\"children\":[{\"description\":\"a small figure in purple who crosses the middle\"}],\"others_present\":\"a passer-by in blue walks behind them\",\"candidate_objects\":[{\"what\":\"wall screen showing an email inbox\",\"approx_time\":\"throughout\"},{\"what\":\"a parked car's licence plate\",\"approx_time\":\"middle\"},{\"what\":\"an addressed envelope on the table\",\"approx_time\":\"end\"}]}"
+       }
+      ]
+     }
+    ],
+    "usage": {
+     "input_tokens": 0,
+     "output_tokens": 0,
+     "input_tokens_details": {
+      "cached_tokens": 0
+     }
+    }
+   }
+  }
+ ],
+ "response": null,
+ "usd": 0.0
+}

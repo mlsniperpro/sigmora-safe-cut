@@ -111,6 +111,29 @@ ESCALATION = _object(
     }
 )
 
+BOX_KINDS = ["face", "person", "license plate", "screen", "document", "phone", "name badge"]
+BOXES = _object(
+    {
+        "frames": {
+            "type": "array",
+            "items": _object(
+                {
+                    "frame": {"type": "integer"},
+                    "objects": {
+                        "type": "array",
+                        "items": _object(
+                            {
+                                "kind": {"type": "string", "enum": BOX_KINDS},
+                                "box": {"type": "array", "items": {"type": "integer"}},
+                            }
+                        ),
+                    },
+                }
+            ),
+        }
+    }
+)
+
 SPEECH = _object(
     {
         "has_speech": {"type": "boolean"},
@@ -234,3 +257,19 @@ class SpeechTurnOut(_Out):
 class SpeechOut(_Out):
     has_speech: bool
     turns: list[SpeechTurnOut]
+
+
+class KeyframeObject(_Out):
+    kind: Literal["face", "person", "license plate", "screen", "document", "phone", "name badge"]
+    box: list[int]
+
+
+class KeyframeBoxes(_Out):
+    frame: int
+    objects: list[KeyframeObject]
+
+
+class BoxesOut(_Out):
+    """The ``muse_no_track`` baseline's detector answer (a box that isn't 4 integers is dropped when mapped)."""
+
+    frames: list[KeyframeBoxes]

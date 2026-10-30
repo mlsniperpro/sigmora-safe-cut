@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,7 @@ from safecut import pipeline, prepare
 from safecut.config import Settings
 from safecut.contracts import Roles, Scene, Tracks, Transcript, load, validate_job_dir
 from safecut.meta import replay, sam
+from safecut.scout import boxes as keyframe_boxes
 from safecut.scout import roles, scene
 from safecut.speech import stage as speech
 from safecut.track import stage as track_stage
@@ -155,3 +157,55 @@ def test_every_hidden_entity_is_covered_on_every_visible_frame(replayed: Path) -
 
 def overlap(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> int:
     return max(0, min(a[2], b[2]) - max(a[0], b[0])) * max(0, min(a[3], b[3]) - max(a[1], b[1]))
+
+
+@pytest.fixture(scope="module")
+def no_track(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    job = tmp_path_factory.mktemp("variant") / "demo"
+    pipeline.create_job(Path(MANIFEST["source"]), job, mode="replay")
+    shutil.copytree(DEMO / "variants" / "muse_no_track" / replay.RAW, job / replay.RAW)
+    settings = Settings(replay=True, miss_sam="stub")
+    prepare.run(job)
+    asyncio.run(keyframe_boxes.run_async(job, replay_mode=True, settings=settings))
+    asyncio.run(speech.run_async(job, replay_mode=True, settings=settings))
+    asyncio.run(scene.run_async(job, replay_mode=True, settings=settings))
+    asyncio.run(roles.run_async(job, replay_mode=True, settings=settings))
+    return job
+
+
+def test_muse_no_track_holds_keyframe_boxes_and_cannot_keep_anyone(no_track: Path) -> None:
+    validate_job_dir(no_track)
+    tracks = load(no_track / "tracks.json", Tracks)
+    assert tracks.requests == []  # no SAM at all
+    held = [t for t in tracks.tracks if t.origin == "sam"]  # (a stubbed miss adds one static box)
+    assert held
+    assert all(t.last - t.first < 30 for t in held)  # each box is held only until the next keyframe
+    assert not (no_track / replay.RAW / "sam").exists()
+    result = load(no_track / "roles.json", Roles)
+    # One keyframe per track can never carry the two cited frames a participant needs: nobody is kept.
+    assert "participant" not in {t.role for t in result.tracks}
+    passer = [t for t in tracks.tracks if t.concept == "face" and demo.entity_of(t) == "e3"]
+    assert passer
+    # Between keyframes a held box falls behind a moving face: the leak the baseline exists to show.
+    assert any(
+        (truth := demo.face_box("e3", f)) is not None and overlap(t.boxes[f], truth) < 0.9 * area(truth)
+        for t in passer
+        for f in t.boxes
+    )
+
+
+def test_detector_only_and_blur_all_replay_from_the_main_recordings(tmp_path: Path) -> None:
+    for name, concepts in (("detector_only", ("face", "license plate", "screen")), ("blur_all", ("face",))):
+        job = tmp_path / name / "demo"
+        pipeline.create_job(Path(MANIFEST["source"]), job, mode="replay")
+        pipeline.attach_recording(job, DEMO)
+        prepare.run(job)
+        asyncio.run(track_stage.run_async(job, replay_mode=True, concepts=concepts, settings=Settings(replay=True)))
+        tracks = load(job / "tracks.json", Tracks)
+        assert tracks.concepts == list(concepts)
+        assert {t.concept for t in tracks.tracks} <= set(concepts)
+        validate_job_dir(job)
+
+
+def area(box: tuple[int, int, int, int]) -> int:
+    return (box[2] - box[0]) * (box[3] - box[1])

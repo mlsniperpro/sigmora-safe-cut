@@ -372,3 +372,25 @@ def test_a_miss_already_tracked_is_dropped_but_another_concepts_box_does_not_cou
     assert item.point == (640, 340)
     assert miss.untracked([item], [tracked("envelope")]) == []
     assert miss.untracked([item], [tracked("screen")]) == [item]
+
+
+def test_held_tracks_skip_unsent_frames_bad_boxes_and_repeats() -> None:
+    from datetime import UTC, datetime  # noqa: PLC0415 -- only this test builds a Job
+
+    from safecut.contracts import Job  # noqa: PLC0415
+    from safecut.scout import boxes  # noqa: PLC0415
+    from safecut.scout.schemas import BoxesOut  # noqa: PLC0415
+
+    job = Job(job_id="j", source="c.mp4", source_sha256="a" * 64, prepared="prepared.mp4", fps=30, width=1280,
+              height=720, frames=90, times=[i / 30 for i in range(90)], audio=False,
+              created_at=datetime(2026, 10, 30, tzinfo=UTC))  # fmt: skip
+    face = {"kind": "face", "box": [100, 100, 200, 300]}
+    answer = BoxesOut.model_validate({"frames": [
+        {"frame": 0, "objects": [face, {"kind": "person", "box": [1, 2, 3]}]},
+        {"frame": 30, "objects": [face]},
+        {"frame": 45, "objects": [face]},  # not a frame that was sent
+    ]})  # fmt: skip
+    repeat = BoxesOut.model_validate({"frames": [{"frame": 30, "objects": [face, face]}]})
+    tracks = boxes.held_tracks(job, [([0, 30], answer), ([30, 60], repeat)], "muse-spark-1.3")
+    assert [(t.track_id, t.first, t.last) for t in tracks] == [("face:1", 0, 29), ("face:2", 30, 59)]
+    assert tracks[0].boxes[0] == (128, 36, 256, 188)

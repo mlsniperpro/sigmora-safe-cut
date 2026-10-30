@@ -143,6 +143,11 @@ async def run_loop(
     for m in sweeps:
         calls_.append(track_stage.SamCall(kind="phrase", concept=m.concept.concept, text=m.phrase,
                                           child_phrase=m.concept.child_phrase))  # fmt: skip
+    if ctx.settings.miss_sam == "stub" and calls_:
+        for m in prompts_:
+            m.notes.append("miss_sam_stub")
+        static = [*static, *prompts_]
+        calls_, prompts_ = [], []
     if not await affordable(ctx, proxy, len(calls_)):
         for m in [*prompts_]:
             m.notes.append("budget")
