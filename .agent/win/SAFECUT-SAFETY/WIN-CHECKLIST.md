@@ -116,3 +116,8 @@ Evidence is a test name, a command run in this session, or a commit. Owner input
 
 ## Audit findings (round 9, fixed with tests at b29ce28, merged aa5773c; details in reaudit.md)
 - [x] Unresolved leaks on the pending record before the placeholder; mask entries cover only their mask (`tests/test_audit_loop.py`).
+
+## Audit findings (round 10, fixed with tests at e6d4071, merged e8fee36; details in reaudit.md)
+- [x] Duplicate tracks of a child linked (`test_a_duplicate_track_of_a_child_is_locked_and_counted_once`).
+- [x] Faces counted on the first pass that scans a frame; reopened leaks de-duplicated (`test_faces_are_counted_on_the_pass_that_first_scans_a_frame`).
+- [x] Approval vs audit patches and private red-team text: fixed by SHIP, on main (ff997a6).
