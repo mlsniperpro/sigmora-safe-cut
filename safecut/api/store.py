@@ -7,10 +7,12 @@ a job (UI-SPEC §8 request 17), so it must be unguessable.
 
 from __future__ import annotations
 
+import json
 import re
 import secrets
 import shutil
 import threading
+import time
 from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
@@ -202,8 +204,27 @@ class JobStore:
             target = self.path(job_id)
             if not target.exists():
                 return False
-            shutil.rmtree(target)
-            return True
+            # Renamed first, atomically: the job is gone for every reader at once, a stage still writing into it
+            # can't make the removal fail, and anything it re-creates under the old path has no state (a 404,
+            # reaped by the sweep).
+            doomed = self.root / f"{DELETING}{job_id}-{secrets.token_hex(4)}"
+            target.rename(doomed)
+        _reap(doomed)
+        return True
+
+    def reap_orphan(self, job_id: str) -> bool:
+        """Remove ``job_id``'s directory if it has no state: what a stage still running wrote after the job was
+        deleted (``dump`` re-creates parent folders). True if something was removed."""
+        if not _valid_id(job_id):
+            return False
+        with self._lock(job_id):
+            target = self.path(job_id)
+            if not target.is_dir() or (target / STATE).exists():
+                return False
+            doomed = self.root / f"{DELETING}{job_id}-{secrets.token_hex(4)}"
+            target.rename(doomed)
+        _reap(doomed)
+        return True
 
     def ids(self) -> list[str]:
         return sorted(p.name for p in self.root.iterdir() if p.is_dir() and _valid_id(p.name))
@@ -217,12 +238,52 @@ class JobStore:
             try:
                 state = load(self.path(job_id) / STATE, JobState)
             except ContractError:
-                expired = True
+                if (self.path(job_id) / STATE).exists():
+                    # Present but not valid (a deploy whose schema moved on, a torn write): its own created_at
+                    # still decides, so a schema change never deletes live jobs early nor keeps one past its TTL.
+                    created = _created_at(self.path(job_id) / STATE)
+                    expired = (now - created if created else _age(self.path(job_id), now)) >= self.ttl
+                else:
+                    # No state at all: what a stage re-created after its job was deleted. A job is created with
+                    # its state in the same breath, so only one older than a minute is reaped.
+                    expired = _age(self.path(job_id), now) > STATELESS_GRACE
             else:
                 expired = not state.pinned and now >= state.created_at + self.ttl
             if expired and self.delete(job_id):
                 removed.append(job_id)
+        for leftover in self.root.glob(f"{DELETING}*"):
+            _reap(leftover)  # a deletion a crash or a busy writer left half done
         return removed
+
+
+#: A deleted job's directory while it's removed (never a valid job ID, so nothing serves it).
+DELETING = ".deleting-"
+STATELESS_GRACE = timedelta(minutes=1)
+
+
+def _reap(path: Path) -> None:
+    """Remove a renamed job directory; a writer that still has a file open there can make one pass fail."""
+    for _ in range(5):
+        shutil.rmtree(path, ignore_errors=True)
+        if not path.exists():
+            return
+        time.sleep(0.05)
+
+
+def _created_at(path: Path) -> datetime | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))["created_at"]
+        created = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return created if created.tzinfo else created.replace(tzinfo=UTC)
+
+
+def _age(path: Path, now: datetime) -> timedelta:
+    try:
+        return now - datetime.fromtimestamp(path.stat().st_mtime, UTC)
+    except OSError:
+        return timedelta(0)
 
 
 def _valid_id(job_id: str) -> bool:

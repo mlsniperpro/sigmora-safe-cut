@@ -92,7 +92,11 @@ def test_a_replay_run_writes_every_result_file(base: Path) -> None:
     config = json.loads((run_dir / "config.json").read_text())
     assert config["synthetic"] is True
     assert config["variant"] == "full"
-    assert config["models"]["sam"] == "sam-3.1"
+    assert config["models"]["tracks"] == "sam-3.1"  # the model the tracks themselves name
+    # The detector the job's own audit.json names, never the configured default; a synthetic replay says no model ran.
+    audit = json.loads((EXAMPLE / "audit.json").read_text())
+    assert config["models"]["auditor"] == audit["egoblur"]["model"]
+    assert config["models_note"] == "synthetic recordings replayed: no Meta model was called"
     assert config["detail"] == {}
     assert len(config["split_hash"]) == 64
     metrics = json.loads((run_dir / "metrics.json").read_text())
@@ -262,6 +266,7 @@ def test_an_egoblur_run_records_the_detector_that_ran_and_the_report_names_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.undo()  # the real prepare stage and the real audit detector, on the committed dev split
+    monkeypatch.setattr(runner, "git_sha", lambda: "0123456789abcdef")  # the report refuses a dirty tree's runs
     root = Path(__file__).resolve().parent.parent
     run_dir = runner.run("dev", "egoblur", replay=True, out=tmp_path / "results")
     config = json.loads((run_dir / "config.json").read_text())
@@ -284,3 +289,74 @@ def test_a_test_run_that_crashes_still_counts(base: Path, monkeypatch: pytest.Mo
     with pytest.raises(RuntimeError):
         runner.run("test", "full", replay=False, out=base / "results", splits=splits, base=base)
     assert len(runner.runs_made(splits)) == 1
+
+
+def test_a_live_run_needs_committed_code_and_stops_at_its_ceiling(base: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(runner, "git_sha", lambda: "0123456789abcdef-dirty")
+    with pytest.raises(runner.EvalError, match="uncommitted"):
+        runner.run("dev", "full", replay=False, out=base / "results", splits=base / "splits", base=base)
+    runner.run("dev", "full", replay=True, out=base / "results", splits=base / "splits", base=base)  # replay may
+    monkeypatch.setattr(runner, "git_sha", lambda: "0123456789abcdef")
+    split = json.loads((base / "splits" / "dev.json").read_text())
+    split["clips"] *= 2
+    (base / "splits" / "dev.json").write_text(json.dumps(split))
+    monkeypatch.setattr(pipeline, "job_spend", lambda job_dir: 2.0)
+    with pytest.raises(runner.EvalError, match=r"reached --max-usd \$1\.50 after 1 clip"):
+        runner.run("dev", "full", replay=False, out=base / "results2", splits=base / "splits", base=base, max_usd=1.5)
+
+
+def test_the_report_refuses_a_run_made_from_uncommitted_code(base: Path) -> None:
+    run_dir = runner.run("dev", "full", replay=True, out=base / "results", splits=base / "splits", base=base)
+    config = json.loads((run_dir / "config.json").read_text())
+    config["git_sha"] += "-dirty"
+    (run_dir / "config.json").write_text(json.dumps(config))
+    with pytest.raises(ValueError, match="uncommitted code"):
+        report.load_runs(base / "results")
+
+
+def test_a_refused_test_run_is_never_counted(base: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only a run that starts paid work uses one of the test split's 3: a dirty tree or a missing hook refuses
+    before the counter is written."""
+    splits = base / "splits"
+    runner.freeze("test", splits, base)
+    monkeypatch.setattr(runner, "git_sha", lambda: "0123456789abcdef-dirty")
+    with pytest.raises(runner.EvalError, match="uncommitted"):
+        runner.run("test", "full", replay=False, out=base / "results", splits=splits, base=base)
+    monkeypatch.setattr(runner, "git_sha", lambda: "0123456789abcdef")
+
+    def missing(variant: str) -> None:
+        raise VariantUnavailable("safecut.scout.baselines.muse_keyframe_boxes isn't in this build")
+
+    monkeypatch.setattr(runner, "preflight", missing)
+    with pytest.raises(VariantUnavailable):
+        runner.run("test", "muse_no_track", replay=False, out=base / "results", splits=splits, base=base)
+    assert runner.runs_made(splits) == []
+
+
+@pytest.mark.parametrize(
+    ("variant", "absent"),
+    [
+        ("full", set()),
+        ("no_audit", {"auditor", "redteam"}),
+        ("blur_all", {"auditor", "redteam", "roles", "scene", "asr", "escalate"}),
+        ("detector_only", {"auditor", "redteam", "roles", "scene", "asr", "escalate"}),
+    ],
+)
+def test_a_run_config_names_only_the_models_that_ran(base: Path, variant: str, absent: set[str]) -> None:
+    """AGENTS rule 9: a baseline that skips a stage never claims that stage's model."""
+    run_dir = runner.run(
+        "dev", cast(Variant, variant), replay=True, out=base / "results", splits=base / "splits", base=base
+    )
+    models = json.loads((run_dir / "config.json").read_text())["models"]
+    assert not absent & set(models), models
+    assert "tracks" in models
+
+
+def test_muse_no_track_never_runs_the_tracker(base: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The keyframe-boxes baseline needs only prepare: SAM (paid, live) is never called, and the config says so."""
+    from eval import variants  # noqa: PLC0415 -- the module whose hook loader is stubbed
+
+    monkeypatch.setattr(variants, "_hook", lambda module, name: lambda job_dir, *, replay: {0: [(0, 0, 4, 4)]})
+    run_dir = runner.run("dev", "muse_no_track", replay=True, out=base / "results", splits=base / "splits", base=base)
+    models = json.loads((run_dir / "config.json").read_text())["models"]
+    assert models == {"keyframe_boxes": "muse-spark-1.3"}

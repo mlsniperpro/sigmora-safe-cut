@@ -22,12 +22,21 @@ jobs:
   modal:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # `branches: [main]` matches a PR's head branch name too, so a fork's PR from its own `main` would pass it:
+    # deploy only a push to this repository's main (the secrets never run a fork's code).
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
       SAFECUT_API_URL: ${{ vars.SAFECUT_API_URL }}
       SAFECUT_WEB_URL: ${{ vars.SAFECUT_WEB_URL }}
+      # "1" once the EgoBlur weights are on the safecut-models Volume: the image then installs the audit group.
+      SAFECUT_DEPLOY_AUDIT: ${{ vars.SAFECUT_DEPLOY_AUDIT }}
     steps:
       - name: Check for the Modal secrets
         id: gate
@@ -50,17 +59,18 @@ jobs:
       - name: Install the deploy tools
         if: steps.gate.outputs.run == 'true'
         run: uv sync --locked --python 3.12 --group deploy
-      - name: Deploy the API, worker smoke and deletion cron
-        if: steps.gate.outputs.run == 'true'
-        run: uv run modal deploy deploy/modal_app.py
-      - name: Smoke-test the deployed image (the synthetic demo job, replayed)
+      - name: Smoke-test the image before it goes live (the synthetic demo job replayed, and the ledger on the Volume)
         if: steps.gate.outputs.run == 'true'
         run: uv run modal run deploy/modal_app.py
+      - name: Deploy the API, worker smoke and deletion cron (only after the smoke passed)
+        if: steps.gate.outputs.run == 'true'
+        run: uv run modal deploy deploy/modal_app.py
       - name: Check the live URLs
         if: steps.gate.outputs.run == 'true'
         run: |
-          if [ -z "$SAFECUT_API_URL" ]; then
-            echo "::notice title=URL check skipped::set the SAFECUT_API_URL (and SAFECUT_WEB_URL) repository variables to check the deployment"
-          else
-            bash scripts/deploy-check.sh "$SAFECUT_API_URL" "${SAFECUT_WEB_URL:--}"
+          # A deploy is green only once its live URLs pass: the variables are an owner step (BLOCKED.md).
+          if [ -z "$SAFECUT_API_URL" ] || [ -z "$SAFECUT_WEB_URL" ]; then
+            echo "::error title=Deploy not checked::set the SAFECUT_API_URL and SAFECUT_WEB_URL repository variables (BLOCKED.md); the deployment was not health-checked"
+            exit 1
           fi
+          bash scripts/deploy-check.sh "$SAFECUT_API_URL" "$SAFECUT_WEB_URL"

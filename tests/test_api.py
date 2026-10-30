@@ -7,7 +7,10 @@ so these tests exercise the API, the pipeline, the real WP3 review fold and the 
 
 from __future__ import annotations
 
+import contextlib
 import json
+import threading
+import time
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -19,10 +22,11 @@ from pydantic import SecretStr
 
 from safecut import pipeline
 from safecut.api.access import RateLimiter
-from safecut.api.app import Service, create_app, hero_job_id, safe_name
-from safecut.api.store import JobStore
+from safecut.api.app import Service, create_app, hero_job_id, production_problems, safe_name
+from safecut.api.store import JobNotFound, JobStore
+from safecut.api.views import public_audit
 from safecut.config import AccessCode, CodeWindow, ServiceKey, Settings
-from safecut.contracts import CostLine, Job, append_cost_line, load
+from safecut.contracts import Audit, CostLine, Job, RedteamHit, append_cost_line, load
 from safecut.meta.budget import CapLimit
 from safecut.stages import REDACTED, Stage
 from tests.fake_stages import CLIP
@@ -137,7 +141,10 @@ def test_full_flow_in_replay(make_client: Callable[..., tuple[TestClient, Servic
     assert job["job"]["frames"] == 12
     assert job["job"]["prepared_url"].startswith("/v1/jobs/")
     assert {"items", "tracks", "roles", "plan", "transcript", "scene"} <= job.keys()
-    assert job["models"]["sam"] == "sam-3.1"
+    # What ran so far, from the job's files: the tracker, but no auditor or red team before the render.
+    assert job["models"]["tracks"] == "sam-3.1"
+    assert "auditor" not in job["models"]
+    assert "redteam" not in job["models"]
     item = next(i for i in job["items"] if i["decision"] == "needs_you")
     edit = {"type": "hide", "edit_id": "e-1", "item_id": item["item_id"]}
     acked = client.post(f"/v1/jobs/{job_id}/review", json=edit)
@@ -180,10 +187,16 @@ def test_edits_after_done_move_back_to_review_and_needs_a_new_render(
     run_to(client, svc, job_id, "start", "review")
     job = run_to(client, svc, job_id, "render", "done")
     item = next(i for i in job["items"] if i["decision"] == "needs_you")
+    assert (svc.store.path(job_id) / "receipt.json").is_file()
     ack = client.post(f"/v1/jobs/{job_id}/review", json={"type": "hide", "edit_id": "late", "item_id": item["item_id"]})
     assert ack.json()["status"] == "review"
     assert ack.json()["has_render"] is True
+    # The old receipt sealed the old decisions: archived, never served beside the edited ones.
+    assert not (svc.store.path(job_id) / "receipt.json").exists()
+    assert list((svc.store.path(job_id) / "receipts").glob("*.json"))
+    assert "receipt_json_url" not in client.get(f"/v1/jobs/{job_id}").json().get("result", {})
     run_to(client, svc, job_id, "render", "done")
+    assert (svc.store.path(job_id) / "receipt.json").is_file()
 
 
 def test_review_refusals(make_client: Callable[..., tuple[TestClient, Service]]) -> None:
@@ -874,3 +887,232 @@ def test_a_clip_over_60_s_fails_in_prepare_with_its_duration(
     assert job["failure"]["stage"] == "prepare"
     assert job["failure"]["reason"] == "too_long"
     assert job["failure"]["duration_s"] == pytest.approx(61, abs=0.1)
+
+
+# ---------------------------------------------------------------------------
+# Audit round 2 (SHIP) and the SAFETY lane's findings in the API
+# ---------------------------------------------------------------------------
+
+
+def test_red_team_text_never_leaves_the_job_dir(make_client: Callable[..., tuple[TestClient, Service]]) -> None:
+    """redteam.md "Private text": a hit's ``text`` and ``detail`` stay in audit.json; clients see the kind, the frame,
+    the box and "text read (n characters)"."""
+    client, svc = make_client()
+    job_id = upload_clip(client)
+    run_to(client, svc, job_id, "start", "review")
+    run_to(client, svc, job_id, "render", "done")
+    on_disk = (svc.store.path(job_id) / "audit.json").read_text()
+    assert "a face at the left edge" in on_disk  # the example audit's red-team hit
+    for path in (f"/v1/jobs/{job_id}", f"/v1/jobs/{job_id}/result"):
+        body = client.get(path).text
+        assert "a face at the left edge" not in body
+        hits = [e for e in json.loads(body)["audit"]["redteam"] if e["finding"] == "hit"]
+        assert hits
+        assert all("detail" not in h and h["text"] is None for h in hits)
+    audit = load(svc.store.path(job_id) / "audit.json", Audit)
+    hit = next(e for e in audit.redteam if isinstance(e, RedteamHit))
+    read = audit.model_copy(update={"redteam": [hit.model_copy(update={"text": "Amina 0712 345 678"})]})
+    shown = public_audit(read)["redteam"][0]
+    assert shown["text"] == "text read (18 characters)"
+    assert "detail" not in shown
+    assert "0712" not in json.dumps(public_audit(read))
+
+
+def test_a_restart_refuses_jobs_whose_code_was_revoked_and_keeps_retry_delays(
+    make_client: Callable[..., tuple[TestClient, Service]],
+) -> None:
+    client, svc = make_client()
+    revoked = upload_clip(client, code=PILOT)
+    waiting = upload_clip(client)
+    with svc.store.update(revoked) as state:
+        state.status, state.stage = "processing", "track"
+    with svc.store.update(waiting) as state:
+        state.status, state.stage = "retry_later", "track"
+        state.retry_at = datetime.now(UTC) + timedelta(minutes=4)
+    later: list[tuple[str, str, float]] = []
+    svc.worker.submit_later = lambda job_id, action, delay: later.append((job_id, action, delay))  # type: ignore[method-assign] -- record, don't wait
+    svc.access.settings = svc.settings.model_copy(
+        update={"access_codes": tuple(c for c in svc.settings.access_codes if c.kind != "pilot")}
+    )
+    assert svc.recover() == [waiting]
+    failed = client.get(f"/v1/jobs/{revoked}").json()
+    assert failed["status"] == "failed"
+    assert failed["failure"]["reason"] == "code_not_active"
+    assert later
+    assert later[0][0] == waiting
+    assert 200 < later[0][2] <= 240
+    assert client.get(f"/v1/jobs/{waiting}").json()["status"] == "retry_later"
+
+
+def test_a_job_deleted_mid_request_is_a_404_not_a_500(
+    make_client: Callable[..., tuple[TestClient, Service]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, svc = make_client()
+    job_id = upload_clip(client)
+    looked_up = Service.job
+
+    def then_deleted(self: Service, jid: str) -> Any:
+        state = looked_up(self, jid)
+        self.store.delete(jid)  # deleted (or expired) between the first look and the transition
+        return state
+
+    monkeypatch.setattr(Service, "job", then_deleted)
+    for path in ("start", "render", "audit"):
+        response = client.post(f"/v1/jobs/{job_id}/{path}")
+        assert response.status_code == 404, (path, response.text)
+        assert response.json()["error"]["code"] == "not_found"
+    edit = {"type": "hide", "edit_id": "e1", "item_id": "i_1"}
+    assert client.post(f"/v1/jobs/{job_id}/review", json=edit).status_code == 404
+    with pytest.raises(JobNotFound):
+        svc.store.get(job_id)
+
+
+def test_delete_succeeds_while_a_stage_is_still_writing(tmp_path: Path) -> None:
+    """A stage thread writing into the job dir must not make DELETE fail (a 500 that leaves the data): the dir is
+    renamed away first, and what the writer re-creates under the old path has no state and is reaped."""
+    store = JobStore(tmp_path / "jobs", ttl=timedelta(hours=24), cleanup_every=timedelta(minutes=15))
+    for _ in range(20):
+        state = store.create(mode="live")
+        job_dir = store.path(state.job_id)
+        stop = threading.Event()
+
+        def write(job_dir: Path = job_dir, stop: threading.Event = stop) -> None:
+            n = 0
+            while not stop.is_set():
+                with contextlib.suppress(OSError):
+                    (job_dir / "raw").mkdir(parents=True, exist_ok=True)
+                    (job_dir / "raw" / f"r{n}.json").write_text("{}")
+                    n += 1
+
+        writer = threading.Thread(target=write)
+        writer.start()
+        time.sleep(0.005)
+        try:
+            assert store.delete(state.job_id)
+            with pytest.raises(JobNotFound):
+                store.get(state.job_id)
+        finally:
+            stop.set()
+            writer.join()
+    # What the writers re-created after their deletes has no state: the sweep reaps it once it's a minute old.
+    store.sweep(now=datetime.now(UTC) + timedelta(minutes=2))
+    assert not any(p for p in (tmp_path / "jobs").iterdir())
+
+
+def test_production_refuses_weak_secrets(tmp_path: Path) -> None:
+    weak = settings_for(tmp_path, access_codes=(AccessCode(code=SecretStr("abcd"), kind="judge"),), url_secret=None)
+    problems = production_problems(weak)
+    assert any("judge access code" in p for p in problems)
+    assert any("SAFECUT_URL_SECRET" in p for p in problems)
+    assert any("SAFECUT_PUBLIC_URL" in p for p in problems)
+    weak_key = settings_for(tmp_path, service_keys=(ServiceKey(key=SecretStr("k" * 16), name="sigmora"),))
+    assert any("service key 'sigmora'" in p for p in production_problems(weak_key))
+    strong = settings_for(
+        tmp_path,
+        access_codes=(AccessCode(code=SecretStr("j" * 12), kind="judge"),),
+        service_keys=(ServiceKey(key=SecretStr("k" * 32), name="sigmora"),),
+        url_secret=SecretStr("s" * 32),
+        public_url="https://safecut--api.modal.run",
+    )
+    assert production_problems(strong) == []
+
+
+# ---------------------------------------------------------------------------
+# Audit round 3
+# ---------------------------------------------------------------------------
+
+
+def test_a_non_ascii_digit_in_a_signed_url_is_a_refusal_not_a_500(
+    make_client: Callable[..., tuple[TestClient, Service]],
+) -> None:
+    client, svc = make_client()
+    assert not svc.signer.verify("/p", "²", "ab")
+    job_id = upload_clip(client)
+    response = client.get(f"/v1/jobs/{job_id}/media/redacted.mp4", params={"exp": "²", "sig": "ab"})
+    assert response.status_code == 403
+
+
+def test_the_api_publishes_no_docs_or_schema(make_client: Callable[..., tuple[TestClient, Service]]) -> None:
+    client, _ = make_client()
+    for path in ("/docs", "/redoc", "/openapi.json"):
+        assert client.get(path).status_code == 404
+
+
+def test_a_second_upload_on_the_same_job_waits_its_turn(
+    make_client: Callable[..., tuple[TestClient, Service]],
+) -> None:
+    client, svc = make_client()
+    body = {"code": JUDGE, "size_bytes": CLIP.stat().st_size, "content_type": "video/mp4", "file_name": "a.mp4"}
+    created = client.post("/v1/jobs", json=body).json()
+    svc.uploading.add(created["job_id"])  # another PUT is streaming into this job's .part file
+    put = client.put(created["upload_url"], content=CLIP.read_bytes(), headers={"Content-Type": "video/mp4"})
+    assert put.status_code == 409
+    assert put.json()["error"]["code"] == "already_uploading"
+    svc.uploading.clear()
+    put = client.put(created["upload_url"], content=CLIP.read_bytes(), headers={"Content-Type": "video/mp4"})
+    assert put.status_code == 200
+
+
+def test_what_a_stage_writes_after_delete_is_removed_when_it_returns(
+    make_client: Callable[..., tuple[TestClient, Service]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, svc = make_client()
+    job_id = upload_clip(client)
+    job_dir = svc.store.path(job_id)
+    real = pipeline.analyse
+
+    def deleted_mid_stage(path: Path, **kwargs: Any) -> Any:
+        svc.store.delete(job_id)  # DELETE arrives while a stage is running
+        (path / "raw").mkdir(parents=True)  # the stage finishes and writes its output after it
+        (path / "raw" / "late.json").write_text("{}")
+        return real(path, **kwargs)
+
+    monkeypatch.setattr(pipeline, "analyse", deleted_mid_stage)
+    assert client.post(f"/v1/jobs/{job_id}/start").status_code == 202
+    svc.worker.wait(job_id)
+    assert not job_dir.exists()
+
+
+def test_the_sweep_trusts_a_valid_created_at_in_an_unreadable_state(tmp_path: Path) -> None:
+    """A deploy whose JobState schema moved on can't read old state files: they still expire by their own
+    created_at, never a minute after the deploy."""
+    store = JobStore(tmp_path / "jobs", ttl=timedelta(hours=24), cleanup_every=timedelta(minutes=15))
+    young = store.create(mode="live")
+    old = store.create(mode="live", now=datetime.now(UTC) - timedelta(hours=25))
+    for state in (young, old):
+        path = store.path(state.job_id) / "state.json"
+        path.write_text(path.read_text().replace('"status"', '"a_field_from_the_future": 1, "status"'))
+    assert store.sweep(now=datetime.now(UTC) + timedelta(minutes=5)) == [old.job_id]
+    assert store.path(young.job_id).is_dir()
+
+
+def test_a_non_ascii_signature_is_a_refusal_not_a_500(make_client: Callable[..., tuple[TestClient, Service]]) -> None:
+    client, svc = make_client()
+    assert not svc.signer.verify("/p", "9999999999", "é")
+    job_id = upload_clip(client)
+    media = client.get(f"/v1/jobs/{job_id}/media/redacted.mp4", params={"exp": "9999999999", "sig": "é"})
+    assert media.status_code == 403
+    body = {"code": JUDGE, "size_bytes": CLIP.stat().st_size, "content_type": "video/mp4", "file_name": "a.mp4"}
+    created = client.post("/v1/jobs", json=body).json()
+    put = client.put(
+        f"/v1/uploads/{created['job_id']}",
+        params={"exp": "9999999999", "sig": "é"},
+        content=CLIP.read_bytes(),
+        headers={"Content-Type": "video/mp4"},
+    )
+    assert put.status_code == 403
+
+
+def test_a_busy_service_asks_new_work_to_wait(make_client: Callable[..., tuple[TestClient, Service]]) -> None:
+    client, svc = make_client(max_active_jobs=1)
+    running = upload_clip(client)
+    waiting = upload_clip(client)
+    with svc.store.update(running) as state:
+        state.status, state.stage = "processing", "track"
+    refused = client.post(f"/v1/jobs/{waiting}/start")
+    assert refused.status_code == 429
+    assert refused.json()["error"]["code"] == "rate_limited"
+    assert refused.headers["Retry-After"] == "60"
+    with svc.store.update(running) as state:
+        state.status, state.stage = "review", "review"
+    assert client.post(f"/v1/jobs/{waiting}/start").status_code == 202

@@ -31,9 +31,11 @@ class Signer:
     def verify(
         self, path: str, exp: str | None, sig: str | None, *, extra: str = "", now: datetime | None = None
     ) -> bool:
-        if not exp or not sig or not exp.isdigit() or len(exp) > 12:
+        if not exp or not sig or not (exp.isascii() and exp.isdigit()) or len(exp) > 12:
             return False
         if int(exp) < int((now or datetime.now(UTC)).timestamp()):
+            return False
+        if not sig.isascii():  # compare_digest raises on non-ASCII str: a forged link is a refusal, never a 500
             return False
         return hmac.compare_digest(self._mac(path, int(exp), extra), sig)
 

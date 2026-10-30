@@ -22,6 +22,7 @@ from typing import Literal
 
 from eval.metrics import IntBox, Region, frame_regions
 from safecut import pipeline
+from safecut.config import load_settings
 from safecut.contracts import DecisionItem, Decisions, Job, Plan, Tracks, dump, load
 from safecut.stages import stage
 
@@ -113,7 +114,6 @@ def detector_boxes(job_dir: Path) -> tuple[str, dict[int, list[IntBox]]]:
     """WP4's audit detector (EgoBlur Gen 2, or the bundled YuNet when its weights are missing) on every frame of
     the prepared clip: ``(the model that actually ran, boxes per frame)``."""
     from safecut.audit.detectors import load_detector  # noqa: PLC0415 -- heavy (OpenCV nets); this variant only
-    from safecut.config import load_settings  # noqa: PLC0415 -- with the line above
     from safecut.render.video import read_frames  # noqa: PLC0415 -- with the line above
 
     job = load(job_dir / "job.json", Job)
@@ -131,6 +131,12 @@ class VariantResult:
     regions: dict[int, list[Region]]
     #: What the run actually used where it can differ from the config (the egoblur baseline's detector).
     detail: dict[str, str] = field(default_factory=dict[str, str])
+
+
+def preflight(variant: Variant) -> None:
+    """Raise :class:`VariantUnavailable` now, before anything is counted or spent, if the variant can't run here."""
+    if variant == "muse_no_track":
+        _hook("safecut.scout.baselines", "muse_keyframe_boxes")
 
 
 def run_variant(variant: Variant, job_dir: Path, *, replay: bool) -> VariantResult:
@@ -155,6 +161,6 @@ def run_variant(variant: Variant, job_dir: Path, *, replay: bool) -> VariantResu
         model, detections = detector_boxes(job_dir)
         grown = {f: [scaled(b, EGOBLUR_SCALE, job) for b in boxes] for f, boxes in detections.items()}
         return VariantResult(held_boxes(grown, job.frames, hold=False), {"detector": model})
-    analyse(job_dir, replay=replay, until="track")
+    # Muse Spark's own boxes on the keyframes, no tracker: the hook needs only prepare, so SAM is never called.
     keyframes = _hook("safecut.scout.baselines", "muse_keyframe_boxes")(job_dir, replay=replay)
-    return VariantResult(held_boxes(keyframes, job.frames, hold=True))
+    return VariantResult(held_boxes(keyframes, job.frames, hold=True), {"keyframe_boxes": load_settings().role_model})

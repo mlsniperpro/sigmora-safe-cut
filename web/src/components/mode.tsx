@@ -41,7 +41,9 @@ export function useMode(): ModeContextValue {
 }
 
 /** Reports a response's mode (and whether its replay is synthetic) once it's known. */
-export function useReportMode(mode: Mode | null | undefined, synthetic = false): void {
+export function useReportMode(mode: Mode | null | undefined, reported?: boolean): void {
+  // Fail labelled: a replay whose response didn't say is shown as synthetic, never as a real consented run.
+  const synthetic = reported ?? mode === "replay";
   const { report } = useMode();
   useEffect(() => {
     if (mode) report(mode, synthetic);

@@ -1,6 +1,6 @@
 # Launch posts (Most Viral and Community Vote bonuses)
 
-Posted by the owner from their own accounts after submission (`BLOCKED.md`). Plain, specific claims, no hype words. Any result quoted must appear in `eval/RESULTS.md` with its run ID. Until a test-split run is committed, the posts quote no numbers.
+Posted by the owner from their own accounts after submission (`BLOCKED.md`). Plain, specific claims, no hype words. Each line is posted only once it's true: the live URL after the deploy check passes, "everyone on screen signed a release" once the hero clips with releases are the ones shown, and the repo link once it's public (MIT, `LICENSE`). Any result quoted must appear in `eval/RESULTS.md` with its run ID. Until a test-split run is committed, the posts quote no numbers.
 
 ## X thread (6 posts, @algocracked)
 

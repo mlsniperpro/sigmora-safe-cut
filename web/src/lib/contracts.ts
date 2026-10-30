@@ -303,8 +303,9 @@ export type JobMeta = z.infer<typeof jobMetaSchema>;
 export const jobResponseSchema = z.object({
   job_id: z.string().min(1),
   mode: modeSchema,
-  /** A replay of synthetic recordings (the drawn test clip), labelled as such (AGENTS rule 9). */
-  synthetic: z.boolean().default(false),
+  /** A replay of synthetic recordings (the drawn test clip), labelled as such (AGENTS rule 9). Missing on a replay
+   * means synthetic (`useReportMode`): a replay is never bannered as a real run unless the API says so. */
+  synthetic: z.boolean().optional(),
   status: jobStatusSchema,
   stage: stageSchema.nullable().optional(),
   stage_reason: z.literal("audit_patch").nullable().optional(),
@@ -343,7 +344,7 @@ export const resultResponseSchema = z.object({
   // §8 doesn't give /result its job ID either: the page has it from the route.
   job_id: z.string().optional(),
   mode: modeSchema,
-  synthetic: z.boolean().default(false),
+  synthetic: z.boolean().optional(),
   // §8/§5.6 don't give /result these; the page reads the job's own status and frames first.
   status: jobStatusSchema.optional(),
   deletes_at: isoTime,
@@ -360,7 +361,7 @@ export type ResultResponse = z.infer<typeof resultResponseSchema>;
 // Request 19: the result shape plus `job` and `audit`; nothing here reads a hero ID.
 export const demoResponseSchema = z.object({
   mode: z.literal("replay"),
-  synthetic: z.boolean().default(false),
+  synthetic: z.boolean().optional(),
   job: z.object({
     prepared_url: mediaUrl,
     fps: z.number(),

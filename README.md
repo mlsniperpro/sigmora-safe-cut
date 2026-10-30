@@ -55,25 +55,25 @@ From [`eval/RESULTS.md`](eval/RESULTS.md), which `eval/report.py` builds from th
 | OpenCV YuNet face detector on every frame (EgoBlur weights not installed) | 0.0% | 100.0% | 5 | 0.0% |
 | Detector only (SAM 3.1 classes, no Muse Spark) | 80.0% | 10.1% | 1 | 100.0% |
 | Muse Spark keyframe boxes, no tracking | 60.0% | 37.5% | 12 | 100.0% |
-| **Safe Cut (full)** | 100.0% | 0.0% | 0 | 50.0% |
-| Safe Cut without the audit pass | 100.0% | 0.0% | 0 | 50.0% |
+| **Safe Cut (full)** | 100.0% | 0.0% | 0 | 0.0% |
+| Safe Cut without the audit pass | 100.0% | 0.0% | 0 | 0.0% |
 <!-- results:end -->
 
-The honest failures on this clip: the YuNet baseline finds no drawn face at all (they aren't faces), so it exposes everything. Blur-every-face hides both participants. Safe Cut's own over-blur comes from deny-by-default: the guest leaves and comes back, the tracker gives the return a new ID, and with the policy auto-approved that span stays hidden until a creator merges it (one tap in review). Recall, exposure, leak bursts and over-blur are defined in `eval/RESULTS.md` and tested in `tests/test_metrics.py`.
+The honest failures on this clip: the YuNet baseline finds no drawn face at all (they aren't faces), so it exposes everything. Blur-every-face hides both participants. Safe Cut's over-blur reads zero here, but deny-by-default still costs the guest a moment: he leaves and comes back, the tracker gives the return a new ID, and with the policy auto-approved that span stays hidden until a creator merges it (one tap in review). It is too short to count under the over-blur threshold, and `per_clip.csv` in each run shows the guest's hidden frames. Recall, exposure, leak bursts and over-blur are defined in `eval/RESULTS.md` and tested in `tests/test_metrics.py`.
 
 ## Production notes
 
 - **Service:** FastAPI on Modal (`deploy/modal_app.py`). It runs one API container, because the per-IP rate limits and the spend ledger are in-process; the pipeline runs in that container's worker threads. Job folders live on a Volume.
-- **Access:** judge and public access codes, plus pilot, recording and owner codes, each with its own validity window, and Bearer service keys for Sigmora. A code is bound to its job by a non-secret ID, so revoking it stops paid work at once.
+- **Access:** judge and public access codes, plus pilot, recording and owner codes, each with its own validity window, and Bearer service keys for Sigmora. A code is bound to its job by a non-secret ID, so revoking it (removing it from `SAFECUT_ACCESS_CODES` and redeploying) stops its jobs' paid work at their next paid step: every start, render, audit and re-queue re-checks the code, and so does the restart.
 - **Spend caps,** checked before any paid work. The values are in `eval/RESULTS.md`'s service limits:
   - a per-clip cap;
   - a daily cap for judge and public codes, reset at 00:00 UTC;
   - per-code caps and a shared pilot pool;
   - a worst-case estimate refused up front.
 - **Uploads:** signed `PUT` URLs, valid 15 minutes, for the exact size and type declared; up to 60 s and 150 MB.
-- **Deletion:** every job is deleted 24 hours after it is created, by a cron and an in-process sweep, and any job past its deletion time is refused and deleted on sight. `DELETE /v1/jobs/{id}` works in every state.
+- **Deletion:** every job is deleted within a day of being created (its 24-hour lifetime plus at most one 15-minute sweep), by a cron and an in-process sweep, and any job past its deletion time is refused and deleted on sight. `DELETE /v1/jobs/{id}` works in every state of a creator's job (the pinned demo job is read-only); a stage still running finishes its current call (still under the per-clip cap) and stops before the next one, and anything it wrote after the delete is removed as soon as it returns.
 - **Replay mode:**
-  - it reads the saved responses in `raw/` and refuses every outbound connection: process-wide for the CLI, per thread inside a live server;
+  - it reads the saved responses in `raw/` and refuses every outbound connection: process-wide for the CLI and for a demo-mode server, and per stage, in a child process, when a live server precomputes the demo job;
   - every response says `mode: "replay"`, and `synthetic: true` when the recordings are synthetic;
   - the web app labels both.
 - **The receipt:** every decision, why it was made and who made it, the audit's counts, which model did what, and how data was handled. It is hash-chained (`sha256(prev_hash + canonical body)`) and is also rendered as self-contained HTML.
@@ -111,7 +111,7 @@ Safe Cut is a new, standalone codebase, written during the event. It plugs into 
 - A redaction layer (blur, pixelate or solid boxes on source-anchored tracks) and a renderer.
 - An agent action with priced approval cards, an editor tracking UI, and a publishing queue.
 
-None of that code is copied here. Sigmora calls Safe Cut's API as its host app (`docs/DESIGN.md` §3). Before the kickoff this repo held design documents only.
+None of that code is copied here. Safe Cut is built to be called by Sigmora as its host app, through service keys (`docs/DESIGN.md` §3). Before the kickoff this repo held design documents only.
 
 ## Docs
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import shutil
 import socket
@@ -17,7 +18,18 @@ from typer.testing import CliRunner
 from safecut import netguard, pipeline
 from safecut.cli import app
 from safecut.config import Settings
-from safecut.contracts import JOB_FILES, Approval, CostLine, Intake, Job, append_cost_line, load
+from safecut.contracts import (
+    JOB_FILES,
+    Approval,
+    CostLine,
+    DecisionItem,
+    Decisions,
+    Intake,
+    Job,
+    append_cost_line,
+    dump,
+    load,
+)
 from safecut.stages import APPROVAL, INTAKE, REDACTED, STAGES, Stage, StageError, StageUnavailable, phase, stage
 
 EXAMPLE = Path(__file__).resolve().parent.parent / "fixtures" / "contracts" / "j_example"
@@ -278,9 +290,78 @@ def test_approval_pins_the_decisions_it_approved(job: Path) -> None:
     assert load(job / APPROVAL, Approval) == approval
     assert pipeline.check_approval(job).how == "auto_policy"
     assert pipeline.status(job) == "publishing"
-    (job / "decisions.json").write_text((job / "decisions.json").read_text() + "\n")
+    decisions = load(job / "decisions.json", Decisions)
+    flipped = next(i for i in decisions.items if i.decision == "hide" and not i.locked)
+    edited = flipped.model_copy(update={"decision": "keep", "style": None, "decided_by": "creator"})
+    dump(Decisions(items=[edited if i is flipped else i for i in decisions.items]), job / "decisions.json")
     with pytest.raises(pipeline.NotApproved, match="changed after approval"):
         pipeline.publish(job, replay=True)
+
+
+def _patch(n: int) -> DecisionItem:
+    return DecisionItem(
+        item_id=f"p_{n}",
+        track_ids=[],
+        kind="other",
+        decision="hide",
+        reason="Added by the audit: the final check found this after rendering and covered it.",
+        evidence_frames=[3],
+        style="solid",
+        decided_by="policy",
+        locked=True,
+        origin="audit_patch",
+        audit_label=f"A{n}",
+        box=(0, 0, 10, 10),
+        first=2,
+        last=4,
+    )
+
+
+def test_an_audit_patch_after_approval_keeps_the_approval(job: Path) -> None:
+    """The audit appends locked ``p_<n>`` hides after approval (API-NOTES §12): a re-run of the audit, or a
+    publish resumed after a crash, must still find the plan approved; any other change still needs approving."""
+    shutil.copy(EXAMPLE / "decisions.json", job / "decisions.json")
+    shutil.copy(EXAMPLE / "plan.json", job / "plan.json")
+    pipeline.approve(job, how="review")
+    decisions = load(job / "decisions.json", Decisions)
+    dump(Decisions(items=[*decisions.items, _patch(2), _patch(3)]), job / "decisions.json")
+    assert pipeline.check_approval(job).how == "review"
+    first = decisions.items[0]
+    reworded = first.model_copy(update={"reason": first.reason + " (edited)"})
+    dump(Decisions(items=[reworded, *decisions.items[1:], _patch(2)]), job / "decisions.json")
+    with pytest.raises(pipeline.NotApproved, match="changed after approval"):
+        pipeline.check_approval(job)
+
+
+def test_a_stage_that_rewrites_an_earlier_output_keeps_that_stage_fresh(job: Path, fakes: FakeStages) -> None:
+    """roles appends the miss loop's tracks to tracks.json (WP2 step 5): track must not read as stale afterwards,
+    or a resume would re-run SAM (paid) and drop the miss-loop tracks."""
+    track = fakes.make("tracks.json", write=lambda d: shutil.copy(EXAMPLE / "tracks.json", d / "tracks.json"))
+
+    def roles_writes(d: Path) -> None:
+        shutil.copy(EXAMPLE / "roles.json", d / "roles.json")
+        (d / "tracks.json").write_text((d / "tracks.json").read_text() + " ")  # the appended tracks
+
+    roles = fakes.make("roles.json", inputs=("tracks.json",), write=roles_writes)
+    roles = dataclasses.replace(roles, also_writes=("tracks.json",))
+    pipeline.run_stage(job, track, replay=False)
+    pipeline.run_stage(job, roles, replay=False)
+    assert pipeline.is_fresh(job, track)
+    assert pipeline.is_fresh(job, roles)
+    assert pipeline.run_stage(job, track, replay=False).event == "skipped"
+    (job / "tracks.json").write_text((job / "tracks.json").read_text() + "  ")  # anything else still counts
+    assert not pipeline.is_fresh(job, track)
+
+
+def test_the_audit_is_never_refused_by_the_cap_it_reports_itself(job: Path, fakes: FakeStages) -> None:
+    """redteam.md: a cap that stops the audit ends ``blocked_reason: over_budget`` (needs_you, [Run the audit
+    again]), so the pipeline lets a ``caps_itself`` stage run and record it instead of refusing up front."""
+    audit = dataclasses.replace(fakes.make("job.json", paid=True), caps_itself=True)
+    _cost(job, 5.0)
+    assert pipeline.run_stage(job, audit, replay=False, settings=Settings(job_usd_cap=1.0)).event == "done"
+    assert stage("audit").caps_itself
+    assert not any(s.caps_itself for s in STAGES if s.name != "audit")
+    assert stage("roles").also_writes == ("tracks.json",)
 
 
 def test_status_follows_the_files(job: Path) -> None:
@@ -428,6 +509,17 @@ def test_cli_approve_and_publish_report_typed_errors(tmp_path: Path) -> None:
     result = runner.invoke(app, ["publish", "--job", str(tmp_path), "--live"])
     assert result.exit_code == 1
     assert "not been approved" in result.output
+
+
+def test_cli_never_reports_a_blocked_audit_as_done(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(pipeline, "publish", lambda job, replay: [])
+    blocked = types.SimpleNamespace(blocked_reason="unresolved_leaks", unresolved=4)
+    monkeypatch.setattr("safecut.cli.load", lambda path, model: blocked)
+    result = runner.invoke(app, ["publish", "--job", str(tmp_path), "--replay"])
+    assert result.exit_code == 6
+    assert "unresolved_leaks, 4 unresolved" in result.output
+    monkeypatch.setattr("safecut.cli.load", lambda path, model: types.SimpleNamespace(blocked_reason=None))
+    assert runner.invoke(app, ["publish", "--job", str(tmp_path), "--replay"]).exit_code == 0
 
 
 def test_cli_runs_a_registered_stage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fakes: FakeStages) -> None:

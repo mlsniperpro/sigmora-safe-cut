@@ -28,11 +28,11 @@ Safe Cut decides from context what shouldn't be published, and proves it:
 7. Before anything is published, an independent detector checks every rendered frame and a Muse Spark red team checks sampled frames. Leaks are patched automatically.
 8. A hash-chained privacy receipt records every decision, who made it, and how the data was handled.
 
-It is a production service: an API with access codes, service keys for Sigmora, per-clip and daily spend caps, signed uploads, 24-hour deletion and a labelled demo mode, a review web app, and a CLI. Sigmora, our existing creator platform, calls it as its host app. All of Safe Cut was built during the hackathon; what existed before is listed in the README.
+It is a production service: an API with access codes, service keys for Sigmora, per-clip and daily spend caps, signed uploads, 24-hour deletion and a labelled demo mode, a review web app, and a CLI. It is built to be called by Sigmora, our existing creator platform, as its host app (service keys). All of Safe Cut was built during the hackathon; what existed before is listed in the README.
 
 ## Meta models used
 
-SAM 3.1 · Muse Spark (`muse-spark-1.3`, and `muse-spark-1.2` as the speech fallback) · Muse Voice Transcribe · Muse Spark Open on Baseten (`meta-models/muse-spark-open-1026`, the optional open-weight audit opinion) · EgoBlur Gen 2 (Meta's open face and plate detector, as the auditor). What each one does: README, "What each Meta model does here".
+SAM 3.1 · Muse Spark (`muse-spark-1.3`, and `muse-spark-1.2` as the speech fallback) · Muse Voice Transcribe · Muse Spark Open on Baseten (`meta-models/muse-spark-open-1026`, the optional open-weight audit opinion) · EgoBlur Gen 2 (Meta's open face and plate detector, as the auditor once its gated weights are installed; until then the audit runs the bundled YuNet face detector, and `audit.json` and the receipt name the detector that ran). What each one does: README, "What each Meta model does here".
 
 ## Links
 
@@ -48,7 +48,7 @@ SAM 3.1 · Muse Spark (`muse-spark-1.3`, and `muse-spark-1.2` as the speech fall
 ## Testing instructions for judges
 
 1. Open https://safecut.sigmora.org. The landing page plays the demo job, labelled as a demo. The Raw / Safe Cut toggle compares the original and the result.
-2. Press **Try it** and enter the access code ⟨owner: judge code from `SAFECUT_ACCESS_CODES`⟩. It works from Nov 5 00:00 to Nov 10 23:59 UTC, within a daily spend cap.
+2. Press **Try it** and enter the access code ⟨owner: type the judge code here in the form itself, never in this file: the repo is public⟩. It works from Nov 5 00:00 to Nov 10 23:59 UTC, within a daily spend cap.
 3. Upload a clip of up to 60 seconds and 150 MB (MP4 or MOV), tick the rights box and press Start.
 4. When the review panel appears, open **Why?** on any item to see the numbered keyframe and the three votes. Try:
    - **Hide** or **Keep clear** on an item;

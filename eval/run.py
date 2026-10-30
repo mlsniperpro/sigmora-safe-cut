@@ -35,8 +35,9 @@ from pydantic import BaseModel, ConfigDict, Field  # noqa: E402 -- after the sys
 
 from eval.labels import load_labels  # noqa: E402 -- after the sys.path line above, on purpose
 from eval.metrics import JobScore, score_job, summarize  # noqa: E402 -- after the sys.path line above, on purpose
-from eval.variants import VARIANTS, Variant, VariantUnavailable, run_variant  # noqa: E402 -- as above
+from eval.variants import VARIANTS, Variant, VariantUnavailable, preflight, run_variant  # noqa: E402 -- as above
 from safecut import netguard, pipeline  # noqa: E402 -- after the sys.path line above, on purpose
+from safecut.api.views import models_recorded  # noqa: E402 -- after the sys.path line above, on purpose
 from safecut.config import load_settings  # noqa: E402 -- after the sys.path line above, on purpose
 
 SPLITS = ("hero", "dev", "public", "test")
@@ -44,6 +45,10 @@ Split = Literal["hero", "dev", "public", "test"]
 SPLIT_DIR = ROOT / "eval" / "splits"
 RESULTS = ROOT / "eval" / "results"
 TEST_RUN_LIMIT = 3
+
+
+#: A live run's ceiling across all its clips (the whole event has $150 of Meta credits, AGENTS rule 10).
+DEFAULT_MAX_USD = 15.0
 
 
 class EvalError(RuntimeError):
@@ -120,19 +125,21 @@ def check_test_split(split: SplitFile, root: Path = SPLIT_DIR, base: Path = ROOT
 
 
 def git_sha() -> str:
-    """HEAD's sha, with ``-dirty`` when tracked code differs from it (results and the report don't count), so a
-    run says whether the committed code produced it."""
+    """HEAD's sha, with ``-dirty`` when the code differs from it (a changed or untracked file outside the results
+    themselves), so a run says whether the committed code produced it. No git, no sha: ``unknown-dirty``."""
     proc = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=False)  # noqa: S607 -- git from PATH
-    sha = proc.stdout.strip() or "unknown"
+    sha = proc.stdout.strip()
+    if proc.returncode != 0 or not sha:
+        return "unknown-dirty"
     paths = [".", ":(exclude)eval/results", ":(exclude)eval/RESULTS.md", ":(exclude)eval/splits/test.runs.json"]
     status = subprocess.run(  # noqa: S603 -- a fixed argv of constants
-        ["git", "status", "--porcelain", "--untracked-files=no", "--", *paths],  # noqa: S607 -- git from PATH
+        ["git", "status", "--porcelain", "--untracked-files=normal", "--", *paths],  # noqa: S607 -- git from PATH
         cwd=ROOT,
         capture_output=True,
         text=True,
         check=False,
     )
-    return f"{sha}-dirty" if status.stdout.strip() else sha
+    return f"{sha}-dirty" if status.returncode != 0 or status.stdout.strip() else sha
 
 
 def now_id(now: datetime) -> str:
@@ -148,25 +155,37 @@ def run(
     now: datetime | None = None,
     splits: Path = SPLIT_DIR,
     base: Path = ROOT,
+    max_usd: float = DEFAULT_MAX_USD,
 ) -> Path:
-    """Run ``variant`` on every clip of the split; return the run directory."""
+    """Run ``variant`` on every clip of the split; return the run directory. A live run stops before the next
+    clip once its Meta spend reaches ``max_usd`` (each job also keeps its own ``SAFECUT_JOB_USD_CAP``)."""
     split = load_split(split_name, splits)
     now = now or datetime.now(UTC)
+    # Everything that can refuse the run is checked before a test run is counted: a refusal never costs one of
+    # the 3, while a run that crashes halfway (after paid calls) still does.
+    sha = git_sha()
+    if not replay and sha.endswith("-dirty"):
+        # A live run costs credits (and a test run one of its 3): only committed code can back a reported number.
+        raise EvalError("the working tree has uncommitted changes; commit them before a live run")
+    preflight(variant)
     if split_name == "test":
         if replay:
             raise EvalError("the test split is reported from live runs only")
         check_test_split(split, splits, base)
-        # Counted before any paid call: a run that crashes halfway still used one of the 3.
         counter = RunCounter(runs=[*runs_made(splits), f"{now_id(now)}-test-{variant}"])
         (splits / "test.runs.json").write_text(counter.model_dump_json(indent=1) + "\n", encoding="utf-8")
-    sha = git_sha()
     run_id = f"{now_id(now)}-{split_name}-{variant}-{sha[:7]}"
     scores: list[JobScore] = []
     detail: dict[str, str] = {}
     synthetic = False
+    settings = load_settings()
+    ran: dict[str, set[str]] = {}
     work = Path(tempfile.mkdtemp(prefix=f"eval-{run_id}-"))
     try:
+        spent = 0.0
         for n, entry in enumerate(split.clips):
+            if not replay and spent >= max_usd:
+                raise EvalError(f"the run's Meta spend ${spent:.2f} reached --max-usd ${max_usd:.2f} after {n} clip(s)")
             clip = base / entry.clip
             job_dir = work / f"j_{n:03d}_{re.sub(r'[^A-Za-z0-9_-]', '_', clip.stem)[:40]}"
             pipeline.create_job(
@@ -183,7 +202,15 @@ def run(
                 synthetic = synthetic or pipeline.recording_is_synthetic(job_dir)
             result = run_variant(variant, job_dir, replay=replay)
             detail.update(result.detail)
+            recorded = models_recorded(job_dir, settings)
+            if "detector" in result.detail:  # the egoblur baseline's detector, which writes no audit.json
+                recorded["auditor"] = result.detail["detector"]
+            if "keyframe_boxes" in result.detail:  # muse_no_track: Muse Spark's keyframe boxes, no tracks file
+                recorded["keyframe_boxes"] = result.detail["keyframe_boxes"]
+            for role, model in recorded.items():
+                ran.setdefault(role, set()).add(model)
             scores.append(score_job(job_dir, load_labels(base / entry.labels), result.regions))
+            spent += pipeline.job_spend(job_dir)
     finally:
         shutil.rmtree(work, ignore_errors=True)
     run_dir = out / run_id
@@ -201,24 +228,14 @@ def run(
             "split_hash": split_hash(split, base),
             "created_at": now.isoformat().replace("+00:00", "Z"),
             "clips": [e.clip for e in split.clips],
-            "models": models(),
+            # What each job's own files say ran (the audit's detector, the transcript's source…), never the
+            # configured defaults; a synthetic replay ran no model at all and says so.
+            "models": {role: " / ".join(sorted(names)) for role, names in sorted(ran.items())},
+            "models_note": "synthetic recordings replayed: no Meta model was called" if synthetic else None,
             "detail": detail,
         },
     )
     return run_dir
-
-
-def models() -> dict[str, str]:
-    s = load_settings()
-    return {
-        "sam": s.sam_model,
-        "scene": s.scene_model,
-        "roles": s.role_model,
-        "escalate": s.escalate_model,
-        "asr": s.asr_model,
-        "redteam": s.redteam_model,
-        "auditor": s.egoblur_model,
-    }
 
 
 def write_run(run_dir: Path, scores: list[JobScore], *, config: dict[str, Any]) -> None:
@@ -301,6 +318,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--split", choices=SPLITS, required=True, help="hero | dev | public | test")
     parser.add_argument("--variant", choices=VARIANTS, help="which pipeline variant (run only)")
     parser.add_argument("--replay", action="store_true", help="replay recorded responses; nothing is sent to Meta")
+    parser.add_argument(
+        "--max-usd", type=float, default=DEFAULT_MAX_USD, help="a live run stops once its Meta spend reaches this"
+    )
     args = parser.parse_args(argv)
     try:
         if args.command == "freeze":
@@ -310,7 +330,7 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--variant is required")
         if args.replay:
             netguard.block()  # a replay run never reaches the network, in any thread
-        run_dir = run(args.split, args.variant, replay=args.replay)
+        run_dir = run(args.split, args.variant, replay=args.replay, max_usd=args.max_usd)
     except (EvalError, VariantUnavailable, pipeline.PipelineError) as exc:
         print(f"eval: {exc}", file=sys.stderr)
         return 1

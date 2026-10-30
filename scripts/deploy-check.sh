@@ -2,7 +2,8 @@
 # scripts/deploy-check.sh <api-url> <web-url|-> [hero-id]: smoke-test a deployed Safe Cut.
 #
 # Checks the API (health, CORS for the web origin, the demo job, refusals) and the web app (pages, security
-# headers). Pass "-" as the web URL to check the API alone. Every request is bounded (curl -m 20). Prints one
+# headers). Pass "-" as the web URL to check the API alone. The API must run live with MODEL_API_KEY set, unless
+# DEPLOY_REPLAY_OK=1. Every request is bounded (curl -m 20). Prints one
 # "ok"/"FAIL" line per check and ends with DEPLOY: PASS or DEPLOY: FAIL (<n>); exits 0 only on PASS.
 set -uo pipefail
 
@@ -37,6 +38,15 @@ if [ "$code" = "200" ] && [ "$(json health "['status']")" = "ok" ]; then
 else
   fail "API /healthz answered $code: $(head -c 200 "$TMP/health.body" 2>/dev/null)"
 fi
+# A deployment the judges can use runs live with its Meta key; a demo-mode deployment passes only when asked to
+# (DEPLOY_REPLAY_OK=1, e.g. after the judging window, or this script's own tests).
+if [ "$(json health "['mode']")" = "live" ] && [ "$(json health "['key']")" = "True" ]; then
+  ok "API runs live, with MODEL_API_KEY set"
+elif [ "${DEPLOY_REPLAY_OK:-}" = "1" ]; then
+  ok "API in mode $(json health "['mode']") (key $(json health "['key']")), accepted by DEPLOY_REPLAY_OK=1"
+else
+  fail "API isn't live with a Meta key (mode $(json health "['mode']"), key $(json health "['key']")): every judge upload would fail"
+fi
 
 code="$(fetch missing "$API/v1/jobs/j_0000000000000000000000")"
 if [ "$code" = "404" ] && [ "$(json missing "['error']['code']")" = "not_found" ]; then ok "API: an unknown job is a 404 not_found"
@@ -45,7 +55,13 @@ else fail "API: an unknown job answered $code"; fi
 code="$(fetch badcode -X POST -H 'Content-Type: application/json' --data '{"code":"deploy-check-not-a-code"}' "$API/v1/codes/check")"
 if [ "$code" = "401" ]; then ok "API: a wrong access code is refused (401)"; else fail "API: a wrong access code answered $code"; fi
 
+# The demo job is precomputed in the background after a cold start (about a minute): wait for it before judging.
+deadline=$(( $(date +%s) + ${DEPLOY_DEMO_WAIT_S:-300} ))
 code="$(fetch demo "$API/v1/demo/$HERO")"
+while [ "$code" = "404" ] && [ "$(date +%s)" -lt "$deadline" ]; do
+  sleep 5
+  code="$(fetch demo "$API/v1/demo/$HERO")"
+done
 if [ "$code" = "200" ] && [ "$(json demo "['mode']")" = "replay" ]; then
   ok "API: the demo job '$HERO' replays (synthetic: $(json demo "['synthetic']"))"
   video="$(json demo "['video_url']")"

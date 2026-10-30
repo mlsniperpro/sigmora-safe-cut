@@ -31,18 +31,19 @@ from imageio_ffmpeg import get_ffmpeg_exe
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
-from safecut import netguard, pipeline
+from safecut import netguard, pipeline, receipt
 from safecut.api.access import MAX_UPLOAD_BYTES, Access, ApiRefusal, Grant, RateLimiter, check_caps, estimate_usd
-from safecut.api.store import JobNotFound, JobState, JobStore, UploadSpec
+from safecut.api.store import Failure, JobNotFound, JobState, JobStore, UploadSpec
 from safecut.api.urls import UPLOAD_TTL_S, Signer, expiry
 from safecut.api.views import Views, iso
 from safecut.api.worker import Worker
 from safecut.config import Settings, load_settings
-from safecut.contracts import Audit, ContractError, Decisions, Intake, Job, Plan, dump, load
+from safecut.contracts import Audit, ContractError, Decisions, Intake, Job, Plan, Tracks, dump, load
 from safecut.decide import REVIEW, policy_decisions
 from safecut.decide.review import ReviewEdit, ReviewError, ReviewLog, apply_review
 from safecut.meta.status import StatusUnavailableError, fetch_status
 from safecut.stages import INTAKE, RAW_DIR, SOURCE_DIR, stage
+from safecut.track.media import SAFE_INPUT
 
 log = logging.getLogger("safecut.api")
 
@@ -76,7 +77,11 @@ def hero_job_id(hero_id: str) -> str:
 def clip_duration(path: Path) -> float | None:
     """The container's duration from ffmpeg's header line (imageio-ffmpeg ships no ffprobe)."""
     proc = subprocess.run(  # noqa: S603 -- fixed argv, our own ffmpeg
-        [get_ffmpeg_exe(), "-hide_banner", "-i", str(path)], capture_output=True, text=True, timeout=30, check=False
+        [get_ffmpeg_exe(), "-hide_banner", *SAFE_INPUT, "-i", str(path)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
     )
     match = re.search(r"Duration: (\d+):(\d\d):(\d\d(?:\.\d+)?)", proc.stderr)
     if not match:
@@ -125,6 +130,9 @@ class Service:
             cleanup_every=timedelta(minutes=settings.cleanup_interval_min),
         )
         self.worker = worker or Worker(self.store, settings)
+        #: Jobs whose upload is streaming right now (one PUT per job at a time).
+        self.uploading: set[str] = set()
+        self.uploads_lock = threading.Lock()
         self.access = Access(settings)
         self.limiter = RateLimiter()
         self.ledger = pipeline.job_ledger(settings)
@@ -176,9 +184,21 @@ class Service:
                         if state.stage == "audit" and (self.store.path(job_id) / "redacted.mp4").is_file()
                         else "publish"
                     )
-                    state.status = "processing" if analysing else "rendering"
-                    state.retry_at = None
-                    self.worker.submit(job_id, action)
+                    try:
+                        self.paid_grant(state)  # a code revoked or expired over the restart stops paid work here
+                    except ApiRefusal:
+                        state.status = "failed"
+                        state.failure = Failure(stage=state.stage, reason="code_not_active")
+                        state.retry_at = None
+                        continue
+                    wait = (state.retry_at - datetime.now(UTC)).total_seconds() if state.retry_at else 0.0
+                    if state.status == "retry_later" and wait > 0:
+                        # The one re-queue keeps its delay (and re-checks the code when it fires).
+                        self.worker.submit_later(job_id, action, wait)
+                    else:
+                        state.status = "processing" if analysing else "rendering"
+                        state.retry_at = None
+                        self.worker.submit(job_id, action)
                     resumed.append(job_id)
             except (JobNotFound, ContractError):
                 continue
@@ -280,6 +300,25 @@ class Service:
             if exc.expired:
                 raise ApiRefusal(404, "expired", "This clip has been deleted.") from None
             raise ApiRefusal(404, "not_found", "We couldn't find that clip.") from None
+
+    def refuse_when_busy(self, job_id: str) -> None:
+        """``429`` once ``SAFECUT_MAX_ACTIVE_JOBS`` other jobs are processing, rendering or waiting to retry (the demo
+        excluded). Checked after the job's own status checks, so a retried start of a finished job still gets its
+        idempotent 409. A best-effort ceiling: two starts of different jobs racing can overshoot it by one each, and
+        the spend caps (reserved per call in the ledger) are what bound money."""
+        active = 0
+        for other in self.store.ids():
+            if other == job_id:
+                continue
+            try:
+                state = load(self.store.path(other) / "state.json", JobState)
+            except ContractError:
+                continue
+            active += not state.pinned and state.status in ("processing", "rendering", "retry_later")
+        if active >= self.settings.max_active_jobs:
+            raise ApiRefusal(
+                429, "rate_limited", "Safe Cut is busy right now. Try again in a minute.", retry_after_s=60
+            )
 
     def paid_grant(self, state: JobState) -> Grant | None:
         """Re-check the job's bound code before paid work: ``401`` when revoked, ``code_not_active`` outside its
@@ -403,8 +442,20 @@ async def upload(svc: Svc, job_id: str, request: Request, exp: str | None = None
     if request.headers.get("content-type", "").split(";")[0].strip() != spec.content_type:
         raise ApiRefusal(403, "bad_signature", "The upload's Content-Type isn't the one this link was made for.")
     length = request.headers.get("content-length")
-    if length is None or not length.isdigit() or int(length) != spec.size_bytes:
+    if length is None or not (length.isascii() and length.isdigit()) or int(length) != spec.size_bytes:
         raise ApiRefusal(403, "bad_signature", "The upload's Content-Length isn't the one this link was made for.")
+    with svc.uploads_lock:
+        if job_id in svc.uploading:  # two PUTs on one link would interleave in the same .part file
+            raise ApiRefusal(409, "already_uploading", "This clip is already being uploaded.")
+        svc.uploading.add(job_id)
+    try:
+        return await _receive(svc, job_id, spec, request)
+    finally:
+        with svc.uploads_lock:
+            svc.uploading.discard(job_id)
+
+
+async def _receive(svc: Service, job_id: str, spec: UploadSpec, request: Request) -> Response:
     folder = svc.store.path(job_id) / SOURCE_DIR
     folder.mkdir(exist_ok=True)
     partial = folder / f".{spec.file_name}.part"
@@ -420,7 +471,10 @@ async def upload(svc: Svc, job_id: str, request: Request, exp: str | None = None
     if received != spec.size_bytes:
         partial.unlink(missing_ok=True)
         raise ApiRefusal(400, "upload_incomplete", "The upload ended before the declared size.")
-    partial.replace(folder / spec.file_name)
+    try:
+        partial.replace(folder / spec.file_name)
+    except FileNotFoundError:
+        raise JobNotFound(job_id) from None  # the job was deleted during the upload
     with svc.store.update(job_id) as current:
         if current.upload is not None:
             current.upload.received = True
@@ -445,6 +499,7 @@ def start(svc: Svc, job_id: str) -> JSONResponse:
             raise ApiRefusal(409, "already_running", "This clip is already being processed.")
         if state.status not in ("created", "failed"):
             raise ApiRefusal(409, "already_started", "This clip has already been processed.")
+        svc.refuse_when_busy(job_id)
         job_dir = svc.store.path(job_id)
         spec = state.upload
         clip = job_dir / SOURCE_DIR / spec.file_name if spec else None
@@ -541,7 +596,13 @@ def _apply_edit(svc: Service, job_dir: Path, current: JobState, edits: list[Revi
     audit = load(job_dir / "audit.json", Audit) if (job_dir / "audit.json").is_file() else None
     try:
         result = apply_review(
-            policy_decisions(job_dir), [*edits, edit], audit=audit, frames=job.frames, extend=plan.temporal.extend
+            policy_decisions(job_dir),
+            [*edits, edit],
+            audit=audit,
+            frames=job.frames,
+            extend=plan.temporal.extend,
+            tracks=load(job_dir / "tracks.json", Tracks),  # a re-hidden person gets exactly the policy's style
+            job=job,
         )
     except ReviewError as exc:
         raise ApiRefusal(409, exc.code, str(exc)) from None
@@ -561,6 +622,10 @@ def _apply_edit(svc: Service, job_dir: Path, current: JobState, edits: list[Revi
         raise
     dump(ReviewLog([*edits, edit]), job_dir / REVIEW)
     if current.status == "done":
+        # The sealed receipt describes the decisions as they were: it's archived (receipts/, the next one chains
+        # from it), never served beside decisions it no longer matches. The previous render stays downloadable
+        # until a new one replaces it (UI-SPEC §8 request 5).
+        receipt.retire(job_dir)
         current.status, current.stage = "review", "review"
 
 
@@ -579,6 +644,7 @@ def render(svc: Svc, job_id: str) -> JSONResponse:
         )
         if state.status != "review" and not retry:
             raise ApiRefusal(409, "not_reviewable", "This clip isn't waiting for a render.")
+        svc.refuse_when_busy(job_id)
         if state.mode == "live" and grant is not None:
             check_caps(svc.settings, svc.ledger, grant, estimate=0.01)
         pipeline.approve(svc.store.path(job_id), how="review")
@@ -675,6 +741,28 @@ async def healthz(svc: Svc) -> JSONResponse:
     return JSONResponse(body, status_code=200 if writable else 503)
 
 
+#: BLOCKED.md's minimums for the deployed service: an access code is guessed across IPs only if it's short.
+MIN_CODE_CHARS = 12
+MIN_URL_SECRET_CHARS = 32
+
+
+def production_problems(settings: Settings) -> list[str]:
+    """What makes these settings unfit to serve the public (the Modal entry point refuses to start on any)."""
+    problems: list[str] = []
+    for code in settings.access_codes:
+        if len(code.code.get_secret_value()) < MIN_CODE_CHARS:
+            problems.append(f"a {code.kind} access code is shorter than {MIN_CODE_CHARS} characters")
+    for key in settings.service_keys:
+        if len(key.key.get_secret_value()) < MIN_URL_SECRET_CHARS:
+            problems.append(f"service key {key.name!r} is shorter than {MIN_URL_SECRET_CHARS} characters")
+    secret = settings.url_secret.get_secret_value() if settings.url_secret else ""
+    if len(secret) < MIN_URL_SECRET_CHARS:
+        problems.append(f"SAFECUT_URL_SECRET is unset or shorter than {MIN_URL_SECRET_CHARS} characters")
+    if settings.public_url is None or not settings.public_url.startswith("https://"):
+        problems.append("SAFECUT_PUBLIC_URL is not an https URL")
+    return problems
+
+
 def create_app(settings: Settings | None = None, *, service: Service | None = None, background: bool = True) -> FastAPI:
     """``background`` starts the deletion loop and builds the demo jobs at startup (off in unit tests)."""
     svc = service or Service(settings or load_settings())
@@ -698,7 +786,15 @@ def create_app(settings: Settings | None = None, *, service: Service | None = No
             if blocking:
                 netguard.unblock()
 
-    app = FastAPI(title="Sigmora Safe Cut API", version="0.1.0", lifespan=lifespan, docs_url="/docs", redoc_url=None)
+    # No public /docs or /openapi.json: the API's contract is UI-SPEC §8 and the web app's zod schemas.
+    app = FastAPI(
+        title="Sigmora Safe Cut API",
+        version="0.1.0",
+        lifespan=lifespan,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
     app.state.service = svc
     app.add_middleware(
         CORSMiddleware,
@@ -714,6 +810,17 @@ def create_app(settings: Settings | None = None, *, service: Service | None = No
     async def refusal(_: Request, exc: ApiRefusal) -> JSONResponse:
         headers = {"Retry-After": str(int(exc.retry_after_s))} if exc.retry_after_s is not None else None
         return JSONResponse(exc.body(), status_code=exc.status, headers=headers)
+
+    @app.exception_handler(JobNotFound)
+    async def gone(_: Request, exc: JobNotFound) -> JSONResponse:
+        # A job deleted or expired between a handler's first look and its update (``Service.job`` answers the
+        # first look itself): the same 404 as an unknown job, never a 500.
+        refused = (
+            ApiRefusal(404, "expired", "This clip has been deleted.")
+            if exc.expired
+            else ApiRefusal(404, "not_found", "We couldn't find that clip.")
+        )
+        return JSONResponse(refused.body(), status_code=404)
 
     @app.exception_handler(RequestValidationError)
     async def invalid(_: Request, exc: RequestValidationError) -> JSONResponse:

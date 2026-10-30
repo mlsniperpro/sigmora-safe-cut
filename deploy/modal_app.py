@@ -16,6 +16,7 @@ Secrets come only from the Modal secret ``safecut-secrets`` (``MODEL_API_KEY``, 
 
 from __future__ import annotations
 
+import os
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -26,12 +27,15 @@ ROOT = Path(__file__).resolve().parent.parent
 JOBS = "/data/jobs"
 APP_NAME = "safecut"
 
+#: ``SAFECUT_DEPLOY_AUDIT=1`` at deploy time builds the image with the ``audit`` group (EgoBlur + torch), once the
+#: gated weights are on the ``safecut-models`` Volume (BLOCKED.md). Without it the audit runs the bundled YuNet
+#: face detector on OpenCV (the main dependencies ship it), and audit.json and the receipt say so.
+AUDIT_GROUPS = ["audit"] if os.environ.get("SAFECUT_DEPLOY_AUDIT") == "1" else []
+
 image = (
     modal.Image.debian_slim(python_version="3.12")
     .env({"SAFECUT_JOBS_DIR": JOBS, "SAFECUT_TRUST_PROXY": "1"})
-    # The audit group (EgoBlur + torch) installs only once its gated weights exist (BLOCKED.md); YuNet runs on
-    # OpenCV, which the main dependencies already ship.
-    .uv_sync(str(ROOT), groups=[], frozen=True)
+    .uv_sync(str(ROOT), groups=AUDIT_GROUPS, frozen=True)
     .add_local_python_source("safecut", "eval")
     .add_local_dir(str(ROOT / "fixtures" / "jobs"), "/root/fixtures/jobs")
     .add_local_dir(str(ROOT / "fixtures" / "clips"), "/root/fixtures/clips")
@@ -46,8 +50,10 @@ secrets = [modal.Secret.from_name("safecut-secrets")]
 @app.function(
     volumes={"/data": jobs, "/models": models},
     secrets=secrets,
-    cpu=4.0,
-    memory=8192,
+    # Always on (min_containers=1) for the demo and the in-process sweep, so sized to what it runs: the models are
+    # remote; ffmpeg, the render and the YuNet audit are the local work, two worker threads at most.
+    cpu=2.0,
+    memory=4096,
     min_containers=1,
     max_containers=1,
     timeout=60 * 60,
@@ -55,9 +61,14 @@ secrets = [modal.Secret.from_name("safecut-secrets")]
 @modal.concurrent(max_inputs=64)
 @modal.asgi_app(label="safecut-api")
 def api() -> Any:
-    from safecut.api.app import create_app  # noqa: PLC0415 -- imported inside the container, after the image build
+    from safecut.api.app import create_app, production_problems  # noqa: PLC0415 -- inside the container
+    from safecut.config import load_settings  # noqa: PLC0415 -- inside the container
 
-    return create_app()
+    settings = load_settings()
+    problems = production_problems(settings)
+    if problems:  # a weak judge code or URL key is refused at startup, never served
+        raise RuntimeError("safecut-secrets isn't fit for production: " + "; ".join(problems))
+    return create_app(settings)
 
 
 @app.function(volumes={"/data": jobs}, secrets=secrets, schedule=modal.Period(minutes=15), timeout=10 * 60)
@@ -118,10 +129,40 @@ def pipeline_worker_smoke() -> dict[str, object]:
     }
 
 
+@app.function(volumes={"/data": jobs}, timeout=5 * 60)
+def ledger_smoke() -> dict[str, object]:
+    """The spend ledger is SQLite (WAL) on the jobs Volume: prove it reserves, settles and reads back there, from a
+    fresh connection, before the service relies on it (a ledger error would fail every live job closed)."""
+    import uuid  # noqa: PLC0415 -- inside the container
+
+    from safecut.meta.budget import CapLimit, LocalLedger  # noqa: PLC0415 -- inside the container
+
+    path = Path(JOBS) / f".ledger-smoke-{uuid.uuid4().hex}.sqlite"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        ledger = LocalLedger(path)
+        limit = CapLimit("daily", "daily:smoke", 1.0)
+        ledger.reserve("smoke-1", None, 0.25, [limit])
+        ledger.settle("smoke-1", 0.2)
+        ledger.reserve("smoke-2", None, 0.5, [limit])
+        ledger.release("smoke-2")
+        reread = LocalLedger(path).spent("daily:smoke")
+        return {"ok": abs(reread - 0.2) < 1e-9, "spent": reread}
+    except Exception as exc:  # reported to the local entrypoint, which fails the deploy
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    finally:
+        for leftover in path.parent.glob(f"{path.name}*"):
+            leftover.unlink(missing_ok=True)
+
+
 @app.local_entrypoint()
 def smoke() -> None:
-    """``modal run deploy/modal_app.py``: the smoke run, failing loudly."""
+    """``modal run deploy/modal_app.py``: the smoke runs, failing loudly."""
     result = pipeline_worker_smoke.remote()
     print(result)
     if result["exit"] != 0 or result["unresolved"] != 0 or not result["receipt"] or not result["redacted"]:
         raise SystemExit(f"smoke run failed: {result}")
+    ledger = ledger_smoke.remote()
+    print(ledger)
+    if not ledger.get("ok"):
+        raise SystemExit(f"the spend ledger doesn't work on the jobs Volume: {ledger}")
