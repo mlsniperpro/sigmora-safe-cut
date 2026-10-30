@@ -25,6 +25,8 @@ replayed once to prove idempotency) → render → poll → `/result` → GET ev
 An earlier 4 × 5 attempt (at f881924's parent) had 2 failures, both `no_recording`: the demo clip changed on disk
 mid-run when main was merged into the tree it ran from. That is why every later run uses a pinned worktree.
 
+An unexplained failure, recorded: the first soak at 2286b91 lost its API mid-run (4 of 9 flows: connection reset, then refused), with no server log kept at the time. The harness now keeps the API's own output (`API_LOG`) and prints it on any failure; the re-run on the same commit, with other heavy jobs and two auditors running alongside, passed 9/9, the fuzz and both kill -9 recoveries. No crash path was found in the code; an external kill (an auditor's repro on the same machine) is the likeliest cause, but it isn't proven.
+
 ## 2. Fuzz: malformed and hostile requests on every route
 
 1,500 random requests across `codes/check`, `jobs`, uploads, `start`, `review`, `render`, `audit`, `result`,

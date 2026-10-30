@@ -217,3 +217,23 @@ Round 13 (reviewer): 0 critical, 0 high, 2 medium, 6 low. Round 14 (judge): 0 cr
 | 13·L5 | low | README's revocation wording | Exact list of re-checks; a running analysis finishes within the caps | review |
 | 13·L6 | low | A judge code's `cap_usd` is ignored | Documented in BLOCKED (judge codes share the daily cap) | review |
 | 14·L1–L4 | low | Deploy order, SUBMISSION's synthetic demo, service-key format and owner-code capacity, VO count and LAUNCH wording | All fixed in the docs | review |
+
+## Rounds 15 and 16 (parallel, on 2286b91 = origin/main): neither clean.
+
+Round 15 (reviewer): 0 critical, 0 high, 1 medium, 4 low. Round 16 (judge): 0 critical, 0 high, 5 medium, 4 low. They ran E2, E3, E5, E7, E8, E9, E10 and E12 (all OK); the README's commands as written, with and without `--auto-approve-policy`; the demo replay against AGENTIC-LOOP; and every config default the docs quote. Closed in 5fe8d59:
+
+| # | Sev | Finding | Resolution | Test |
+|---|---|---|---|---|
+| 15·M1 | medium | Labels made on the source's frames (a 60 fps clip is prepared at 30 fps) failed only after the paid analysis and after the test run was counted; `ValueError` escaped `main` | `prepare_jobs` creates and prepares every clip (free) and compares frames and fps with the labels before counting or paying; `main` reports `ValueError`; BLOCKED says to label the prepared frames | `test_labels_made_on_other_frames_are_refused_before_anything_counts` |
+| 15·L1 | low | A `SAFECUT_REPLAY` shell could publish a live job (job mode won over the env) | Refused, exit 1 | `test_a_replay_shell_never_publishes_a_live_job` |
+| 15·L2 | low | IPv4-mapped addresses collapsed into one /64; ports rotated keys | Mapped → IPv4; ports dropped | `test_ipv4_clients_behind_a_dual_stack_hop_keep_their_own_limit` |
+| 15·L3 | low | Cache stamp (mtime, size) only | Adds inode and ctime (`dump` renames a new file every write) | `test_a_poll_reuses_parsed_files_until_they_change` |
+| 15·L4 | low | Non-atomic rollback writes; upload's received flag not re-checked under its lock; `--max-usd 0` counted | Atomic replace; re-checked; refused before counting | review, `test_a_second_upload_on_the_same_job_waits_its_turn` |
+| 16·M1 | medium | BLOCKED advised raising the owner code's `cap_usd` past $6 (config refuses it: the API wouldn't start) | Recordings use the recording code; the owner code stays at most $6 | review |
+| 16·M2 | medium | No way documented to pin a hero recording as the landing demo | BLOCKED: `"pinned": true` in its manifest and `NEXT_PUBLIC_SAFECUT_HERO_ID` | review |
+| 16·M3 | medium | BLOCKED never gave `eval/splits/test.json`'s format or what to commit | Format, `eval/private/` for clips and labels, commit `test.json` and `test.sha256` | review |
+| 16·M4 | medium | VIDEO-SCRIPT/LAUNCH needed a blur-every-face video the repo can't render | Shot as an editor illustration, labelled so on screen | review |
+| 16·M5 | medium | README's replay eval command left an untracked run that turned `report --check` and E9 red | `--results-dir`; README writes the try-out to a temp dir | `test_a_try_out_run_can_go_to_a_scratch_results_dir`; E11 runs the README block |
+| 16·rel | medium (borderline) | SUBMISSION listed Muse Spark Open as paste-ready | Owner-gated ⟨…⟩ (keep only if it ran) | review |
+| 16·L1 | low | The replay log says "owner step O8" | **Kept**: SAFETY's message; BLOCKED's EgoBlur step is the one it means | n/a |
+| 16·L2–L4 | low | Re-run the deploy workflow after setting URLs; judge window text; VO count | Docs fixed | review |
