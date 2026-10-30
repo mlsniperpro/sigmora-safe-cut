@@ -34,12 +34,15 @@ DecidedBy = Literal["policy", "model"]
 Kind = Literal["person", "child", "plate", "screen", "document", "other"]
 
 PERSON_CONCEPTS = frozenset({"face", "person"})
-SCREEN_CONCEPTS = frozenset({"screen", "phone", "monitor", "laptop", "tablet", "tv", "television"})
-DOCUMENT_CONCEPTS = frozenset({"document", "name badge", "badge", "id card", "letter", "envelope", "paper"})
+#: API-NOTES §12 (PR #2 UI-SPEC §0): exactly these concepts; anything else is ``other``.
+SCREEN_CONCEPTS = frozenset({"screen", "phone"})
+DOCUMENT_CONCEPTS = frozenset({"document", "name badge"})
 #: DESIGN §2.7b: a bystander whose box is taller than this share of the frame gets a whole-person mask.
 PROMINENT_HEIGHT = 0.25
 #: API-NOTES §12: when several holds apply, the first in this order is written.
 HOLD_ORDER: tuple[Hold, ...] = ("no_scene", "no_speech", "no_roles", "unmatched_child", "no_speech_link")
+#: UI-SPEC §8 request 4: a reason is at most this long, lowercase-first, with no trailing full stop.
+REASON_MAX = 90
 
 
 @dataclass(frozen=True)
@@ -140,6 +143,14 @@ def _gates(inputs: Inputs, groups: Sequence[Sequence[Track]], rows: dict[str, Ro
     )
 
 
+def short_reason(reason: str) -> str:
+    """UI-SPEC §8 request 4: at most :data:`REASON_MAX` characters, lowercase-first, no trailing full stop."""
+    text = " ".join(reason.split()).rstrip(" .")
+    if len(text) > REASON_MAX:
+        text = text[: REASON_MAX - 1].rstrip() + "…"
+    return text[:1].lower() + text[1:] if text else "hidden by default"
+
+
 def _evidence(row: RoleTrack) -> str:
     return row.evidence.strip() or "no evidence given"
 
@@ -167,6 +178,7 @@ def judge_person(track: Track, row: RoleTrack | None, inputs: Inputs, gates: _Ga
         return Verdict("needs_you", "policy", "participant, but not on 3/3 votes over 2 keyframes")
     if track.reentry_of is not None:
         return Verdict("needs_you", "policy", "came back into view as a new ID: hidden until you merge it")
+
     hold = _participant_hold(row, inputs, gates)
     if hold is not None:
         return Verdict("needs_you", "policy", _HOLD_REASONS[hold], hold=hold)
@@ -314,7 +326,7 @@ def decide(inputs: Inputs) -> Decisions:
                 track_ids=[t.track_id for t in group],
                 kind=kind,
                 decision=verdict.decision,
-                reason=verdict.reason,
+                reason=short_reason(verdict.reason),
                 evidence_frames=sorted(frames),
                 style=None if verdict.decision == "keep" else style_for(kind, group, inputs.job),
                 decided_by=verdict.decided_by,

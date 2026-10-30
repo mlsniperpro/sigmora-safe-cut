@@ -179,3 +179,41 @@ def test_property_encode_round_trips_and_validates(height: int, width: int, data
     mask = np.array(bits, dtype=np.bool_).reshape(height, width)
     rle = g.encode(mask)
     assert (g.decode(Rle.model_validate(rle.model_dump())) == mask).all()  # the full validator accepts it
+
+
+def coco_counts(mask: np.ndarray) -> str:
+    """COCO's own encoder (eval's dependency), the reference for ``g.encode``."""
+    from pycocotools import mask as coco  # noqa: PLC0415 -- only these tests need it
+
+    raw: object = coco.encode(np.asfortranarray(mask.astype(np.uint8)))["counts"]
+    return raw.decode("ascii") if isinstance(raw, bytes) else str(raw)
+
+
+@settings(max_examples=300, deadline=None)
+@given(st.integers(1, 300), st.integers(1, 300), st.data())
+def test_property_encode_matches_pycocotools(height: int, width: int, data: st.DataObject) -> None:
+    """Large frames and long runs: multi-chunk counts and negative differences, as COCO's own encoder writes them."""
+    boxes = data.draw(st.lists(st.tuples(st.integers(0, width), st.integers(0, height), st.integers(0, width),
+                                         st.integers(0, height)), max_size=4))  # fmt: skip
+    mask = np.zeros((height, width), dtype=np.bool_)
+    for x1, y1, x2, y2 in boxes:
+        mask[min(y1, y2) : max(y1, y2), min(x1, x2) : max(x1, x2)] = True
+    want = coco_counts(mask)
+    assert g.encode(mask).counts == want
+    found = g.decode_crop(g.encode(mask))
+    if not mask.any():
+        assert found is None
+    else:
+        assert found is not None
+        crop, x, y = found
+        box = g.mask_bbox(mask)
+        assert box is not None
+        assert (x, y, x + crop.shape[1], y + crop.shape[0]) == box
+        assert (crop == mask[box[1] : box[3], box[0] : box[2]]).all()
+
+
+def test_encode_matches_pycocotools_at_720p() -> None:
+    yy, xx = np.mgrid[0:720, 0:1280]
+    mask = ((xx - 640) ** 2 / 300**2 + (yy - 360) ** 2 / 200**2 <= 1) | ((xx < 40) & (yy > 700))
+    want = coco_counts(mask)
+    assert g.encode(mask).counts == want

@@ -18,8 +18,20 @@ from typing import Annotated, Literal
 
 from pydantic import Field, RootModel
 
-from safecut.contracts import Audit, Contract, DecisionItem, Decisions, Leak, LeakKind, Style, boxes_overlap
+from safecut.contracts import (
+    Audit,
+    Contract,
+    DecisionItem,
+    Decisions,
+    Job,
+    Leak,
+    LeakKind,
+    Style,
+    Tracks,
+    boxes_overlap,
+)
 from safecut.decide.geometry import union
+from safecut.decide.policy import style_for
 
 EditId = Annotated[str, Field(min_length=1, max_length=128)]
 ItemId = Annotated[str, Field(pattern=r"^[ip]_[0-9]+$")]
@@ -121,10 +133,18 @@ def _reverted(unique: list[ReviewEdit]) -> set[str]:
     return reverted
 
 
-def _default_style(item: DecisionItem) -> Style:
-    """A kept item hidden again: a person with a face gets the mosaic (DESIGN §2.7), everything else solid."""
-    has_face = any(t.startswith("face:") for t in item.track_ids)
-    return "pixelate" if item.kind == "person" and has_face else "solid"
+def _default_style(item: DecisionItem, tracks: Tracks | None, job: Job | None) -> Style:
+    """A kept item hidden again gets the style the policy gives a hidden person (DESIGN §2.7/§2.7b): with the tracks,
+    exactly (a prominent body whole-person solid, else the mosaic); without them, a body is covered whole (it may be
+    prominent) and a face alone gets the mosaic. Anything else is solid."""
+    if item.kind != "person":
+        return "solid"
+    if tracks is not None and job is not None:
+        by_id = {t.track_id: t for t in tracks.tracks}
+        return style_for("person", [by_id[t] for t in item.track_ids if t in by_id], job)
+    if any(t.startswith("person:") for t in item.track_ids):
+        return "person_solid"
+    return "pixelate" if any(t.startswith("face:") for t in item.track_ids) else "solid"
 
 
 def _patch_kind(leaks: list[Leak]) -> Literal["person", "plate", "other"]:
@@ -137,7 +157,15 @@ def _patch_kind(leaks: list[Leak]) -> Literal["person", "plate", "other"]:
 
 
 class _Fold:
-    def __init__(self, decisions: Decisions, audit: Audit | None, frames: int | None, extend: int) -> None:
+    def __init__(
+        self,
+        decisions: Decisions,
+        audit: Audit | None,
+        frames: int | None,
+        extend: int,
+        context: tuple[Tracks, Job] | None = None,
+    ) -> None:
+        self.tracks, self.job = context if context is not None else (None, None)
         self.items = {item.item_id: item for item in decisions.items}
         self.order = [item.item_id for item in decisions.items]
         self.audit = audit
@@ -174,8 +202,9 @@ class _Fold:
                 item = self.get(edit.edit_id, edit.item_id)
                 if item.locked:  # already hidden, and its decider (the policy) isn't the creator's to take over
                     raise ReviewError("locked", edit.edit_id, f"{item.item_id} is locked hidden ({item.kind})")
-                style = item.style or _default_style(item)
-                self.put(item.model_copy(update={"decision": "hide", "style": style, "decided_by": "creator"}))
+                style = item.style or _default_style(item, self.tracks, self.job)
+                update = {"decision": "hide", "style": style, "decided_by": "creator", "hold": None}
+                self.put(item.model_copy(update=update))
             case RemovePersonEdit():
                 item = self.get(edit.edit_id, edit.item_id)
                 if item.kind not in ("person", "child") or item.origin == "audit_patch":
@@ -274,16 +303,19 @@ def apply_review(
     frames: int | None = None,
     extend: int = 8,
     strict: bool = True,
+    tracks: Tracks | None = None,
+    job: Job | None = None,
 ) -> ReviewResult:
     """Fold the review log over ``decisions`` (the policy's, plus any audit patches).
 
-    ``frames`` (``job.frames``) and ``audit`` are needed only for ``cover_spot``; ``extend`` is the plan's
+    ``frames`` (``job.frames``) and ``audit`` are needed only for ``cover_spot``; ``tracks`` and ``job`` let a re-hidden
+    person get the policy's exact style (without them a body is covered whole); ``extend`` is the plan's
     ``temporal.extend``. A ``cover_spot`` already in force (its patch present) replays as a no-op, and an undone one
     removes its patch and reopens the spot. An edit that can't apply raises :class:`ReviewError` when it is the last
     entry of the log (the one just sent) and ``strict``; any other inapplicable edit (one an undo or a re-analysis
     left stale) is skipped and listed in ``skipped``.
     """
-    fold = _Fold(decisions, audit, frames, extend)
+    fold = _Fold(decisions, audit, frames, extend, (tracks, job) if tracks is not None and job is not None else None)
     unique = _unique(edits)
     if strict and unique and isinstance(unique[-1], UndoEdit):
         last = unique[-1]

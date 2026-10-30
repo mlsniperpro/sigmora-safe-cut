@@ -24,6 +24,7 @@ from safecut import open_weight, pipeline
 from safecut.audit.detectors import AuditorUnavailable, Detector, load_detector
 from safecut.audit.loop import audit_job
 from safecut.audit.opinion import Ask
+from safecut.audit.opinion import attempted as opinion_attempted
 from safecut.audit.redteam import Answer, LiveRedTeam, RedTeam, ReplayRedTeam, SyntheticRedTeam
 from safecut.audit.truth import load_labels, manifest_truth
 from safecut.config import Settings, load_settings
@@ -65,7 +66,7 @@ async def _live(job_dir: Path, settings: Settings, detector: Detector, client: M
     caller = pipeline.job_caller(job_dir, settings) if (job_dir / pipeline.INTAKE).exists() else Caller.local()
     # Eligible, and actually able to run: a missing Baseten key or price would fail every batch.
     eligible = (
-        not job.open_weight_attempted
+        not opinion_attempted(job_dir, job)
         and open_weight.enabled_for(settings, consented=job.consented, code_kind=caller.code_kind)
         and settings.baseten_api_key is not None
         and settings.open_weight_price is not None

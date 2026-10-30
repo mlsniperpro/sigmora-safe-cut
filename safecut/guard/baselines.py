@@ -5,6 +5,8 @@ exactly like the full system: each writes ``decisions.json`` and ``plan.json`` i
   as the real guard, but no temporal guard (no back-fill, extend or gap hold) and no policy (nothing else hidden,
   nobody kept). It isolates what the leak guard and the policy add.
 * :func:`detector_plan` (``audit/baselines.py`` feeds it): a per-frame detector's boxes, padded, nothing else.
+* :func:`no_audit_baseline`: the full system's policy and leak guard without the audit pass (EVAL.md §3 row 5): no
+  audit patches and no read-through re-render, so it isolates what the second-look loop adds.
 """
 
 from __future__ import annotations
@@ -14,8 +16,9 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from safecut.contracts import DecisionItem, Decisions, Job, Plan, PlanEntry, Temporal, Tracks, dump, load
+from safecut.decide import policy_decisions
 from safecut.decide.geometry import BoxT, grow
-from safecut.guard.plan import PADDING, backfill_frames
+from safecut.guard.plan import PADDING, backfill_frames, plan
 from safecut.guard.regions import ratio_for
 
 
@@ -65,3 +68,13 @@ def blur_all_baseline(job_dir: Path) -> Path:
     dump(decisions, job_dir / "decisions.json")
     (job_dir / "baseline.json").write_text(json.dumps({"variant": "blur_all", "detector": None}))
     return dump(plan, job_dir / "plan.json")
+
+
+def no_audit_baseline(job_dir: Path) -> Path:
+    """Write the ``no_audit`` baseline (the policy's own decisions, no creator edits, no audit patches) and its plan
+    (no item read through solid) into ``job_dir``; return the plan."""
+    decisions = Decisions(items=[i for i in policy_decisions(job_dir).items if i.origin != "audit_patch"])
+    built = plan(load(job_dir / "job.json", Job), load(job_dir / "tracks.json", Tracks), decisions)
+    dump(decisions, job_dir / "decisions.json")
+    (job_dir / "baseline.json").write_text(json.dumps({"variant": "no_audit", "detector": None}))
+    return dump(built, job_dir / "plan.json")

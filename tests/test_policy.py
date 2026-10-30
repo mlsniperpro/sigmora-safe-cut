@@ -15,10 +15,12 @@ from safecut.contracts import Decisions, Participant, StageStatus, Turn
 from safecut.decide import run as decide_run
 from safecut.decide.policy import (
     HOLD_ORDER,
+    REASON_MAX,
     Inputs,
     decide,
     kind_of,
     normal_words,
+    short_reason,
     speech_evidence,
 )
 from tests.safety_factories import (
@@ -180,7 +182,7 @@ def test_a_static_person_box_is_never_auto_kept() -> None:
 
 def test_a_static_object_box_needs_the_creator() -> None:
     got = only(run(track("envelope:1", 9, 9, origin="static")), "envelope:1")
-    assert (got["decision"], got["origin"], got["kind"]) == ("needs_you", "static", "document")
+    assert (got["decision"], got["origin"], got["kind"]) == ("needs_you", "static", "other")
 
 
 def test_plates_are_always_hidden() -> None:
@@ -416,7 +418,7 @@ def test_a_child_with_a_body_gets_a_whole_person_mask() -> None:
 @pytest.mark.parametrize(
     ("concept", "kind"),
     [("face", "person"), ("person", "person"), ("license plate", "plate"), ("phone", "screen"),
-     ("name badge", "document"), ("menu", "other")],
+     ("name badge", "document"), ("menu", "other"), ("envelope", "other"), ("monitor", "other")],
 )  # fmt: skip
 def test_kinds(concept: str, kind: str) -> None:
     assert kind_of(concept) == kind
@@ -528,3 +530,15 @@ def test_cited_frames_must_be_on_the_track() -> None:
     """Audit finding: two cited frames outside the track's own span are no evidence for it."""
     got = only(run(track("face:1", 40, 55), rs=[matched(frames=(2, 3))]), "face:1")
     assert got["decision"] == "needs_you"
+
+
+def test_reasons_are_short_lowercase_first_without_a_full_stop() -> None:
+    """UI-SPEC §8 request 4: ≤ 90 characters, lowercase-first, no trailing full stop (the UI capitalises)."""
+    long = "The man in the red jacket walks behind the host at the counter and never speaks or looks at the camera. "
+    r = row("face:1", "bystander", "bystander", "bystander", evidence=long * 2)
+    reason = only(run(track("face:1", 0, 20), rs=[r]), "face:1")["reason"]
+    assert len(reason) <= REASON_MAX
+    assert reason.startswith("bystander: The man")
+    assert reason.endswith("…")
+    assert short_reason("Hidden.") == "hidden"
+    assert short_reason("  ") == "hidden by default"

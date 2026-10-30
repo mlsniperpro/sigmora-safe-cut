@@ -143,3 +143,16 @@ def test_text_the_opinion_reads_through_a_mosaic_is_flagged_and_patched(tmp_path
     assert (leak.flag, leak.through_item) == ("redaction_too_weak", entry.item_id)
     assert leak.patched_item is not None
     contracts.validate_job_dir(job_dir)
+
+
+def test_a_rebuilt_job_json_never_makes_the_opinion_eligible_again(tmp_path: Path) -> None:
+    job_dir = consented_job(tmp_path)
+    opinion = Opinion(hit_on=30)
+    first = audit(job_dir, opinion)
+    job = load(job_dir / "job.json", Job)
+    dump(job.model_copy(update={"open_weight_attempted": False}), job_dir / "job.json")  # prepare re-ran, say
+    again = audit(job_dir, opinion)
+    assert opinion.calls == 1
+    assert load(job_dir / "job.json", Job).open_weight_attempted  # restored: the attempt happened
+    assert again.open_weight == first.open_weight
+    contracts.validate_job_dir(job_dir)
