@@ -15,6 +15,7 @@ from pathlib import Path
 from safecut import config
 from safecut.config import Settings
 from safecut.contracts import CandidateObject, Job, Participant, Scene, SceneChild, Transcript, dump, load
+from safecut.meta import replay
 from safecut.meta.client import MetaClient
 from safecut.meta.files import FileStore
 from safecut.meta.session import job_client
@@ -119,12 +120,18 @@ async def scene(ctx: calls.Context) -> Scene:
 
 
 async def run_async(
-    job_dir: Path, *, replay_mode: bool = False, settings: Settings | None = None, client: MetaClient | None = None
+    job_dir: Path,
+    *,
+    replay_mode: bool = False,
+    settings: Settings | None = None,
+    client: MetaClient | None = None,
+    responder: replay.Responder | None = None,
 ) -> Path:
     settings = settings or config.load_settings()
     job = load(job_dir / JOB, Job)
-    ctx = calls.Context(job_dir=job_dir, job=job, settings=settings, replay=replay_mode or settings.replay)
-    if ctx.replay:
+    ctx = calls.Context(job_dir=job_dir, job=job, settings=settings, replay=replay_mode or settings.replay,
+                        responder=responder)  # fmt: skip
+    if ctx.replay or ctx.responder is not None:
         return dump(await scene(ctx), job_dir / SCENE_FILE)
     if client is None:
         async with job_client(job_dir, settings) as own:

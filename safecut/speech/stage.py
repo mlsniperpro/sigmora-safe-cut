@@ -83,7 +83,9 @@ def fallback_turns(answer: SpeechOut, seconds: float) -> list[Turn]:
 async def primary(ctx: calls.Context) -> tuple[str, Any]:
     """Voice Transcribe: ``("ok", body)``, ``("failed", reason)`` or ``("skipped", reason)``; recorded either way."""
     settings = ctx.settings
-    if ctx.replay:
+    if ctx.responder is not None:
+        replay.save(ctx.job_dir, ASR_STAGE, ASR_KEY, ctx.responder(ASR_STAGE, ASR_KEY, {}))
+    if ctx.replay or ctx.responder is not None:
         raw = replay.load_call(ctx.job_dir, ASR_STAGE, ASR_KEY)
         failure = raw.failure()
         if failure is not None:
@@ -155,12 +157,18 @@ async def transcribe(ctx: calls.Context) -> Transcript:
 
 
 async def run_async(
-    job_dir: Path, *, replay_mode: bool = False, settings: Settings | None = None, client: MetaClient | None = None
+    job_dir: Path,
+    *,
+    replay_mode: bool = False,
+    settings: Settings | None = None,
+    client: MetaClient | None = None,
+    responder: replay.Responder | None = None,
 ) -> Path:
     settings = settings or config.load_settings()
     job = load(job_dir / JOB, Job)
-    ctx = calls.Context(job_dir=job_dir, job=job, settings=settings, replay=replay_mode or settings.replay)
-    if ctx.replay or not job.audio:
+    ctx = calls.Context(job_dir=job_dir, job=job, settings=settings, replay=replay_mode or settings.replay,
+                        responder=responder)  # fmt: skip
+    if ctx.replay or ctx.responder is not None or not job.audio:
         return dump(await transcribe(ctx), job_dir / TRANSCRIPT)
     if client is None:
         async with job_client(job_dir, settings) as own:

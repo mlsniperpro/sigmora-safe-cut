@@ -9,6 +9,7 @@ ground truth, never from a model) carry ``synthetic: true`` and are never presen
 from __future__ import annotations
 
 import re
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, cast
 
@@ -18,6 +19,11 @@ from safecut.contracts import dump, load
 
 RAW = "raw"
 _KEY = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,95}$")
+
+
+#: Answers one call without the network: ``(stage, key, info) -> RawCall``. The synthetic demo job is recorded by
+#: running the real stages with one (``scripts/make_demo_job.py``); ``info`` says what the stage asked.
+type Responder = Callable[[str, str, Mapping[str, Any]], "RawCall"]
 
 
 class ReplayMissing(FileNotFoundError):

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from datetime import UTC, datetime
 from fractions import Fraction
 from pathlib import Path
 
@@ -16,7 +17,7 @@ import numpy as np
 import pytest
 
 from safecut import config, prepare
-from safecut.contracts import Job, load
+from safecut.contracts import Intake, Job, dump, load
 from safecut.track import media
 
 W, H, BARS = 128, 64, 8
@@ -195,6 +196,21 @@ def test_run_finds_the_one_upload(tmp_path: Path) -> None:
     (job_dir / prepare.SOURCE_DIR / "clip.mp4").write_bytes(Path("fixtures/clips/counter_24fps.mp4").read_bytes())
     job = load(prepare.run(job_dir, replay=True), Job)
     assert job.source == "clip.mp4"
+    assert job.consented is False
+
+
+def test_run_copies_the_intake(tmp_path: Path) -> None:
+    job_dir = tmp_path / "j_intake"
+    (job_dir / prepare.SOURCE_DIR).mkdir(parents=True)
+    (job_dir / prepare.SOURCE_DIR / "clip.mp4").write_bytes(Path("fixtures/clips/counter_24fps.mp4").read_bytes())
+    when = datetime(2026, 10, 30, 9, 0, tzinfo=UTC)
+    dump(Intake(source="clip.mp4", created_at=when, consented=True), job_dir / prepare.INTAKE)
+    job = load(prepare.run(job_dir), Job)
+    assert (job.created_at, job.consented) == (when, True)
+    dump(Intake(source="other.mp4", created_at=when), job_dir / prepare.INTAKE)
+    with pytest.raises(prepare.PrepareError) as err:
+        prepare.run(job_dir)
+    assert err.value.reason == "no_source"
 
 
 def test_job_fps_rounds_half_up() -> None:

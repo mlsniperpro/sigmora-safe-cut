@@ -58,14 +58,19 @@ def _object_call(job: Job, proxy: track_stage.Proxy, items: Sequence[Miss], loop
         for k, m in enumerate(items, start=1)
     }
     text = sam.object_prompt_text((job.width, job.height), prompts)
-    return track_stage.SamCall(kind="object_prompt", concept=None, text=text, labels=labels, name=f"objects-loop{loop}")
+    name = f"objects-loop{loop}"
+    return track_stage.SamCall(kind="object_prompt", concept=None, text=text, labels=labels, name=name, prompts=prompts)
 
 
 async def _send(
     ctx: calls.Context, proxy: track_stage.Proxy, calls_: list[track_stage.SamCall]
 ) -> list[sam.Segmentation | None]:
     """Each request's segmentation, or ``None`` when it failed (live or as recorded)."""
-    if ctx.replay:
+    if ctx.responder is not None:
+        for c in calls_:
+            raw = ctx.responder(track_stage.RAW_STAGE, c.key, c.info(proxy.frames))
+            replay.save(ctx.job_dir, track_stage.RAW_STAGE, c.key, raw)
+    if ctx.replay or ctx.responder is not None:
         out: list[sam.Segmentation | None] = []
         for c in calls_:
             try:
@@ -113,7 +118,7 @@ async def _send(
 async def affordable(ctx: calls.Context, proxy: track_stage.Proxy, requests: int) -> bool:
     """Step 6: the loop's SAM requests plus the audit reserve must fit the remaining budget, checked before any
     request is sent (replay never spends)."""
-    if ctx.replay or ctx.client is None or requests == 0:
+    if ctx.replay or ctx.responder is not None or ctx.client is None or requests == 0:
         return True
     spec = CallSpec(stage="miss_loop", model=ctx.settings.sam_model, estimate_usd=0.0, estimate_units={},
                     policy=RetryPolicy.for_sam(), timeout=sam.delete_spec().timeout)  # fmt: skip

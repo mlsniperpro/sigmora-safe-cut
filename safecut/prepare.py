@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Literal
 
 from safecut import config
-from safecut.contracts import Job, dump, now_utc
+from safecut.contracts import Intake, Job, dump, load, now_utc
 from safecut.track import media
 from safecut.track.axes import round_half_up
 
@@ -26,6 +26,7 @@ log = logging.getLogger(__name__)
 
 PREPARED = "prepared.mp4"
 JOB = "job.json"
+INTAKE = "intake.json"
 KEYFRAMES = "keyframes"
 #: Where the upload sits in a job directory: exactly one file, under its own name.
 SOURCE_DIR = "source"
@@ -166,8 +167,9 @@ def find_source(job_dir: Path) -> Path:
     return files[0]
 
 
-def prepare(source: Path, job_dir: Path) -> Path:
-    """Prepare ``source`` into ``job_dir`` and write ``job.json``; returns its path."""
+def prepare(source: Path, job_dir: Path, intake: Intake | None = None) -> Path:
+    """Prepare ``source`` into ``job_dir`` and write ``job.json``; returns its path. ``intake`` (the pipeline's
+    ``intake.json``) supplies the upload's name, the job's creation time and its consent flag."""
     job_dir.mkdir(parents=True, exist_ok=True)
     found = probe(source)
     prepared = job_dir / PREPARED
@@ -183,7 +185,7 @@ def prepare(source: Path, job_dir: Path) -> Path:
     extract_keyframes(prepared, job_dir / KEYFRAMES, fps=found.fps, frames=frames)
     job = Job(
         job_id=job_dir.name,
-        source=source.name,
+        source=intake.source if intake is not None else source.name,
         source_sha256=sha256_file(source),
         prepared=PREPARED,
         fps=found.fps,
@@ -192,7 +194,8 @@ def prepare(source: Path, job_dir: Path) -> Path:
         frames=frames,
         times=frame_times(found.video, found.fps, frames),
         audio=found.audio is not None and out_facts.audio,
-        created_at=now_utc(),
+        created_at=intake.created_at if intake is not None else now_utc(),
+        consented=intake.consented if intake is not None else False,
     )
     log.info("prepared", extra={"job_id": job.job_id, "fps": job.fps, "frames": frames, "audio": job.audio})
     return dump(job, job_dir / JOB)
@@ -201,4 +204,8 @@ def prepare(source: Path, job_dir: Path) -> Path:
 def run(job_dir: Path, *, replay: bool = False) -> Path:
     """The stage entry point. ``replay`` changes nothing: prepare makes no model calls."""
     del replay
-    return prepare(find_source(job_dir), job_dir)
+    intake = load(job_dir / INTAKE, Intake) if (job_dir / INTAKE).exists() else None
+    source = find_source(job_dir)
+    if intake is not None and intake.source != source.name:
+        raise PrepareError("no_source", f"intake.json names {intake.source!r}, but source/ holds {source.name!r}")
+    return prepare(source, job_dir, intake)

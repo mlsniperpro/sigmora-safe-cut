@@ -44,6 +44,8 @@ class Context:
     replay: bool
     client: MetaClient | None = None
     store: FileStore | None = None
+    #: Answers calls in place of Meta (the synthetic demo job); its answers are recorded like live ones.
+    responder: replay.Responder | None = None
 
     @property
     def seconds(self) -> float:
@@ -129,10 +131,15 @@ async def call_json[M: BaseModel](
     schema_name: str,
     out: type[M],
     video: bool = False,
+    info: Mapping[str, Any] | None = None,
 ) -> Outcome[M]:
     """Run (or replay) one JSON call. ``messages(file_id)`` builds the input; ``file_id`` is the uploaded
-    ``prepared.mp4`` when ``video`` (re-uploaded once if Meta lost it), else ``None``."""
+    ``prepared.mp4`` when ``video`` (re-uploaded once if Meta lost it), else ``None``. ``info`` tells a responder
+    what was asked (frames, labels); it is never sent."""
     if ctx.replay:
+        return _replayed(ctx, stage, key, out)
+    if ctx.responder is not None:
+        replay.save(ctx.job_dir, stage, key, ctx.responder(stage, key, info or {}))
         return _replayed(ctx, stage, key, out)
     if ctx.client is None or ctx.store is None:
         raise ValueError("a live scout call needs the job's client and file store")

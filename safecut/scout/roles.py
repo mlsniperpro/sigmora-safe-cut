@@ -36,6 +36,7 @@ from safecut.contracts import (
     dump,
     load,
 )
+from safecut.meta import replay
 from safecut.meta.client import MetaClient
 from safecut.meta.files import FileStore
 from safecut.meta.session import job_client
@@ -213,7 +214,8 @@ async def role_pass(
 
         def make(k: int) -> Awaitable[calls.Outcome[RolePassOut]]:
             final = calls.text_part(vote_text(k, window.per_frame))
-            return calls.call_json(ctx, stage=VOTE_STAGE, key=f"{tag}-w{window.index}-v{k}",
+            info = {"vote": k, "frames": window.frames, "labels_per_frame": window.per_frame}
+            return calls.call_json(ctx, stage=VOTE_STAGE, key=f"{tag}-w{window.index}-v{k}", info=info,
                                    model=ctx.settings.role_model, effort=ctx.settings.role_effort,
                                    messages=lambda _fid: [system, calls.user(*prefix, final)], schema=ROLE_PASS,
                                    schema_name="role_pass", out=RolePassOut)  # fmt: skip
@@ -334,6 +336,7 @@ async def escalate(
             effort=ctx.settings.escalate_effort,
             messages=lambda _fid: [system, calls.user(calls.text_part(context), *images, calls.text_part(ask))],
             schema=ESCALATION, schema_name="escalation", out=EscalationOut,
+            info={"frames": chunk, "disputed": here},
         )  # fmt: skip
         answers = {r.track_id: r for r in outcome.value.rulings} if outcome.value is not None else {}
         for d in here:
@@ -486,12 +489,18 @@ async def roles(ctx: calls.Context) -> Roles:
 
 
 async def run_async(
-    job_dir: Path, *, replay_mode: bool = False, settings: Settings | None = None, client: MetaClient | None = None
+    job_dir: Path,
+    *,
+    replay_mode: bool = False,
+    settings: Settings | None = None,
+    client: MetaClient | None = None,
+    responder: replay.Responder | None = None,
 ) -> Path:
     settings = settings or config.load_settings()
     job = load(job_dir / JOB, Job)
-    ctx = calls.Context(job_dir=job_dir, job=job, settings=settings, replay=replay_mode or settings.replay)
-    if ctx.replay:
+    ctx = calls.Context(job_dir=job_dir, job=job, settings=settings, replay=replay_mode or settings.replay,
+                        responder=responder)  # fmt: skip
+    if ctx.replay or ctx.responder is not None:
         return dump(await roles(ctx), job_dir / ROLES)
     if client is None:
         async with job_client(job_dir, settings) as own:

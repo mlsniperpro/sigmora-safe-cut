@@ -68,6 +68,12 @@ class SamCall:
     name: str = ""
     #: A miss-loop phrase in the child set (``kids``): its tracks are ``child_phrase`` (WP3 rule 0).
     child_phrase: bool = False
+    #: The objects an object-prompt request names (what ``text`` encodes), for a responder; never recorded.
+    prompts: list[sam.ObjectPrompt] = field(default_factory=list[sam.ObjectPrompt])
+
+    def info(self, frames: int) -> dict[str, Any]:
+        return {"kind": self.kind, "concept": self.concept, "text": self.text, "sam_frames": frames,
+                "prompts": self.prompts, "labels": self.labels}  # fmt: skip
 
     @property
     def key(self) -> str:
@@ -215,9 +221,13 @@ async def run_calls(
     settings: Settings,
     replay_mode: bool,
     client: MetaClient | None = None,
+    responder: replay.Responder | None = None,
 ) -> list[sam.Segmentation]:
     """Replay or send ``calls``; live calls delete the job's uploads when they're done (AGENTS rule 6)."""
-    if replay_mode:
+    if responder is not None:
+        for c in calls:
+            replay.save(job_dir, RAW_STAGE, c.key, responder(RAW_STAGE, c.key, c.info(proxy.frames)))
+    if replay_mode or responder is not None:
         return [await sam.parse_video_events(replayed(job_dir, c).events) for c in calls]
     if client is None:
         async with job_client(job_dir, settings) as own:
@@ -244,13 +254,16 @@ async def run_async(
     concepts: Sequence[str] = CONCEPTS,
     settings: Settings | None = None,
     client: MetaClient | None = None,
+    responder: replay.Responder | None = None,
 ) -> Path:
     settings = settings or config.load_settings()
     replay_mode = replay_mode or settings.replay
     job = load(job_dir / JOB, Job)
     proxy = make_proxy(job_dir, job, settings)
     calls = phrase_calls(concepts)
-    parsed = await run_calls(job_dir, job, proxy, calls, settings=settings, replay_mode=replay_mode, client=client)
+    parsed = await run_calls(
+        job_dir, job, proxy, calls, settings=settings, replay_mode=replay_mode, client=client, responder=responder
+    )
     tracks = build(job, proxy, calls, parsed, model=settings.sam_model)
     log.info("tracked", extra={"job_id": job.job_id, "tracks": len(tracks.tracks), "replay": replay_mode})
     return dump(tracks, job_dir / TRACKS)
