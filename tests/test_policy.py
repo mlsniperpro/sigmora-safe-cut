@@ -11,7 +11,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from safecut import contracts
-from safecut.contracts import Decisions, Participant, StageStatus, Turn
+from safecut.contracts import Decisions, Participant, StageStatus, Track, Turn
 from safecut.decide import run as decide_run
 from safecut.decide.policy import (
     HOLD_ORDER,
@@ -573,3 +573,39 @@ def test_a_child_face_no_body_can_claim_locks_every_body_holding_it() -> None:
     for body in ("person:1", "person:2"):
         item = only(got, body)
         assert (item["decision"], item["kind"], item["locked"]) == ("hide", "child", True), body
+
+
+def test_a_reentry_of_a_childs_body_is_locked_too() -> None:
+    """The body is a child only through its item (grouped with a face voted child): its re-entry is still locked."""
+    face = track("face:1", 0, 20, (20, 10, 40, 30))
+    body = track("person:1", 0, 20, (10, 5, 60, 100))
+    back = track("person:2", 40, 60, (10, 5, 60, 100), reentry_of="person:1")
+    rs = [row("face:1", "child", "child", "child"), row("person:1", *("bystander",) * 3), matched("person:2")]
+    got = run(face, body, back, rs=rs, scene=scene(children=1))
+    item = only(got, "person:2")
+    assert (item["decision"], item["kind"], item["locked"]) == ("hide", "child", True)
+
+
+def test_a_face_inside_an_unpaired_child_body_is_locked() -> None:
+    """The face lies inside the body on only 70 % of frames (so they don't group); the body is voted child."""
+    boxes = {f: (20, 10, 40, 30) if f < 14 else (200, 10, 220, 30) for f in range(20)}
+    face = Track.model_validate({**track("face:1", 0, 19).model_dump(), "boxes": boxes})
+    body = track("person:1", 0, 19, (10, 5, 60, 100))
+    rs = [matched("face:1"), row("person:1", "child", "child", "child")]
+    got = run(face, body, rs=rs, scene=scene(children=1))
+    assert only(got, "face:1")["track_ids"] == ["face:1"]
+    item = only(got, "face:1")
+    assert (item["decision"], item["kind"], item["locked"]) == ("hide", "child", True)
+
+
+def test_duplicate_role_rows_fail_closed() -> None:
+    rs = [row("face:1", "child", "child", "child"), matched("face:1")]
+    assert only(run(track("face:1", 0, 20), rs=rs), "face:1")["kind"] == "child"
+    rs = [matched("face:1"), row("face:1", *("bystander",) * 3)]
+    assert only(run(track("face:1", 0, 20), rs=rs), "face:1")["decision"] == "hide"
+
+
+def test_a_close_up_face_without_a_body_is_hidden_whole() -> None:
+    """WP3 step 3 / DESIGN §2.7b: prominent (over a quarter of the frame height); SAM found no body."""
+    got = only(run(track("face:1", 0, 20, (100, 20, 160, 130)), rs=[row("face:1", *("bystander",) * 3)]), "face:1")
+    assert got["style"] == "person_solid"

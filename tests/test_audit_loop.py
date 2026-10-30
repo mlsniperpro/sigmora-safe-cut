@@ -25,6 +25,7 @@ from safecut.contracts import Audit, Decisions, Plan, dump, load
 from safecut.decide import run as decide_run
 from safecut.guard import run as guard_run
 from safecut.meta.errors import BudgetExceeded, MetaRefusal, MetaUnavailable
+from safecut.receipt import ReceiptError
 from safecut.receipt import run as receipt_run
 from safecut.render import render
 from safecut.render.draw import Frame
@@ -489,5 +490,36 @@ def test_a_crash_part_way_never_leaves_the_old_clean_verdict(tmp_path: Path) -> 
     audit = audit_of(job_dir)
     assert (audit.blocked_reason, audit.unresolved) == ("audit_failed", 60)
     assert not (job_dir / "receipt.json").exists()
-    sealed = load(receipt_run(job_dir, settings=SETTINGS), contracts.Receipt)  # a receipt now says it's blocked
-    assert (sealed.audit.unresolved, sealed.audit.blocked_reason) == (60, "audit_failed")
+    with pytest.raises(ReceiptError, match=r"current redacted\.mp4"):  # no audit finished on this video: no receipt
+        receipt_run(job_dir, settings=SETTINGS)
+
+
+def test_the_audit_redraws_a_video_drawn_from_another_plan(tmp_path: Path) -> None:
+    """A crash between writing a patched plan and finishing its render leaves an old video: the next audit redraws
+    it from the current plan before checking anything."""
+    job_dir = prepared(tmp_path)
+    plan = load(job_dir / "plan.json", Plan)
+    drop(job_dir, "i_2", {30, 31, 32})  # the video now lacks the bystander on 30-32 ...
+    dump(plan, job_dir / "plan.json")  # ... while the plan on disk covers them (the render never ran)
+    audit_run(job_dir, replay=True, settings=SETTINGS)
+    audit = audit_of(job_dir)
+    assert not [leak for leak in audit.leaks if leak.frame in (30, 31, 32)]  # redrawn: nothing leaked there
+    assert audit.unresolved == 0
+
+
+def test_a_frame_whose_detections_were_not_all_judged_is_unscanned(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    job_dir = prepared(tmp_path)
+    real = rules.excluded_by
+
+    def flaky(kind: Any, box: Any, frame: int, decisions: Any, by_track: Any) -> str | None:
+        if frame == 59:
+            raise RuntimeError("judging failed")
+        return real(kind, box, frame, decisions, by_track)
+
+    monkeypatch.setattr(rules, "excluded_by", flaky)
+    audit_run(job_dir, replay=True, settings=SETTINGS)
+    audit = audit_of(job_dir)
+    assert audit.frames_scanned < 60
+    assert audit.blocked_reason == "audit_failed"

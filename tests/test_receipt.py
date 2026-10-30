@@ -236,3 +236,22 @@ def test_without_files_json_a_billed_sam_call_is_never_claimed_deleted(job_dir: 
     assert not (job_dir / "files.json").exists()
     assert not data_handling(job_dir, {"sam": "sam-3.1", "auditor": "yunet-face"}, audit).files_deleted
     assert data_handling(job_dir, {"auditor": "yunet-face"}, audit).files_deleted
+
+
+def test_a_receipt_never_seals_an_audit_of_another_video(job_dir: Path) -> None:
+    """A re-render after the audit (``safecut render`` then ``safecut receipt``): the clean audit.json describes the
+    old video, so no receipt until the audit runs on the new one."""
+    receipt_run(job_dir, settings=SETTINGS)
+    plan = load(job_dir / "plan.json", contracts.Plan)
+    frames = {f: es for f, es in plan.frames.items() if f % 2}  # a weaker plan: half the frames bare
+    contracts.dump(plan.model_copy(update={"frames": frames}), job_dir / "plan.json")
+    render_run(job_dir)
+    with pytest.raises(ReceiptError, match=r"current redacted\.mp4"):
+        receipt_run(job_dir, settings=SETTINGS)
+    audit_run(job_dir, replay=True, settings=SETTINGS)
+    receipt_run(job_dir, settings=SETTINGS)  # the audit of this video is on record now
+
+
+def test_a_receipt_for_the_current_directory_by_its_dot(job_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(job_dir)
+    assert receipt_run(Path("."), settings=SETTINGS).name == RECEIPT
