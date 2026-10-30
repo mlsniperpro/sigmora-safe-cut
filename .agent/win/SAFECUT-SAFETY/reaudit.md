@@ -1,7 +1,7 @@
-AUDITED_COMMIT: 209bac8a9d1164af6acc5aa02156ea0bcd794f12
+AUDITED_COMMIT: 3f409cffc64db82c3ac57237fea0e228e1f60d82
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
-CLEAN_AUDITS_IN_A_ROW: 0
+CLEAN_AUDITS_IN_A_ROW: 2
 
 # SAFECUT-SAFETY re-audit log
 
@@ -232,4 +232,28 @@ mask coverage at 640/1280 px); WP4 no critical/high/medium, 2 low reproduced, fi
   densified tracks rarely use the long-gap branch; manifest truth paths come from owner recordings only; no byte
   guard on red-team requests (≈ 26 MB of 50 measured at the worst case).
 
-## Round 14: running at 209bac8 (main merged in: SHIP rounds 8-11)
+## Round 14 (at 209bac8, main merged in): CLEAN. WP3 no findings (≈ 2,300 random jobs with edits, pixel coverage
+of every hidden frame incl. back-fill/extend, cover/undo replay); WP4 no findings (300 frames against an independent
+renderer, ≈ 52 random jobs through publish, edge clips, double publish, the re-judge path).
+- Test-only fix after the round (87a495b): the E4 coverage property's checker ignored an item's other entries (a
+  body's box) once one entry was mask-shaped, so a saved hypothesis example (and the soak at bcae6dd) failed a correct
+  plan; it now rasterises exactly what the renderer hides (`hidden_mask`). The old checker fails that example, the new
+  one passes it; no product code changed.
+- Notes kept as notes: a child row on a non-person track counting toward the scene (unreachable: rows exist only for
+  face/person tracks); a child's face and body with no shared anchor frames (class h); a re-audit renumbering spots
+  under a stale `cover_spot` (over-hides); the introduction substring check (API-NOTES' wording, ≥ 2 words);
+  `box_at` interpolation across a long gap for exclusion (needs sparse kept anchors; tracks are densified);
+  `raw/redteam/frames.json` written non-atomically (a torn record fails replay closed); thresholds are owner config.
+
+## Round 15 (at 87a495b / 3f409cf): CLEAN. WP3 no findings (3,000 + 400 end-to-end fuzz seeds with pixel coverage of
+every hidden frame incl. SAM masks, fresh-seed E4 at ≥ 2,000 examples, spec-to-code read); WP4 no findings (3,000
+patch-coverage fuzzes, 80 detector-chaos jobs, 140 red-team-chaos jobs with two audit runs each, 7 clip lengths and
+5 frame sizes through render/audit/receipt, a 60 s 720p run).
+- Notes kept as notes: `decide()` pairing cost (2.2 s at 16 × 16 full-length tracks; realistic clips far below);
+  uncached guard cost and plan size (SHIP's payload, round 2); neighbour masks shifted onto mask-less anchors (API-NOTES
+  §12 and the contract's `_near`); the dev hypothesis profile keeps the too_slow health check; a budget stop from a
+  test double with no missing frames (LiveRedTeam always lists them); a cache test relying on mtime granularity; a
+  still-object render test on a static scene; job.json rewritten when the second opinion is marked (a later publish
+  re-renders: fail-safe).
+
+**Two consecutive clean full audits (rounds 14 and 15) on the code at 87a495b.**
