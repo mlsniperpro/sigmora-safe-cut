@@ -978,6 +978,35 @@ class ResponsesIndex(RootModel[list[ResponseEntry]]):
 
 
 # ---------------------------------------------------------------------------
+# 3.13 intake.json and approval.json (pipeline)
+# ---------------------------------------------------------------------------
+
+
+class Intake(Contract):
+    """Written when a job is created, before ``prepare``: the upload's name (the file in ``source/``) and how
+    the job may be used. ``prepare`` copies ``source``, ``created_at`` and ``consented`` into ``job.json``."""
+
+    source: SourceName
+    created_at: UtcDatetime
+    #: Owner and recording codes, and the hero/dev eval splits (PRE-A §3.8); everything else is false.
+    consented: StrictBool = False
+    #: ``replay`` jobs read saved responses from ``raw/`` and never call the network.
+    mode: Literal["live", "replay"] = "live"
+    code_kind: CodeKind | None = None
+
+
+class Approval(Contract):
+    """Written when the creator approves the plan (the review screen, or ``safecut run --auto-approve-policy``),
+    before ``render``. ``receipt`` copies ``approved_by``/``approved_at``; ``decisions_sha256`` pins the exact
+    ``decisions.json`` that was approved, so a later edit needs a new approval."""
+
+    approved_by: Literal["creator"] = "creator"
+    approved_at: UtcDatetime
+    how: Literal["review", "auto_policy"]
+    decisions_sha256: str = Field(pattern=SHA256_PATTERN)
+
+
+# ---------------------------------------------------------------------------
 # I/O helpers
 # ---------------------------------------------------------------------------
 
