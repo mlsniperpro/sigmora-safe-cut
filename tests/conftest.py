@@ -25,7 +25,13 @@ hypothesis_settings.register_profile("dev", max_examples=300, deadline=None)
 hypothesis_settings.register_profile(
     "soak", max_examples=20_000, deadline=None, suppress_health_check=[HealthCheck.too_slow]
 )
+# scripts/entry-check.sh E4: the safety-core properties run with at least 2000 examples each.
+hypothesis_settings.register_profile(
+    "entry", max_examples=2_000, deadline=None, suppress_health_check=[HealthCheck.too_slow]
+)
 hypothesis_settings.load_profile(os.environ.get("HYPOTHESIS_PROFILE", "dev"))
+
+pytest_plugins = ("tests.entry_report",)
 
 BASE = "https://api.meta.ai/v1"
 FAKE_KEY = "sk-test-not-a-real-key"

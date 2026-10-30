@@ -23,6 +23,9 @@ dependencies = [
     "uvicorn>=0.32",
 ]
 
+[project.scripts]
+safecut = "safecut.cli:main"
+
 [dependency-groups]
 dev = [
     "hypothesis>=6.112",
@@ -63,11 +66,14 @@ ignore = ["PLR0913", "PLR2004", "TRY003", "N818", "PLR0911", "RUF001", "RUF002",
 testpaths = ["tests"]
 addopts = "-ra --strict-markers -m 'not live'"  # live tests: uv run pytest -m live (needs MODEL_API_KEY)
 asyncio_mode = "auto"
-markers = ["live: calls the real Meta Model API (needs MODEL_API_KEY; spends credits)"]
+markers = [
+    "live: calls the real Meta Model API (needs MODEL_API_KEY; spends credits)",
+    "entry(key): proves one requirement of scripts/entry-check.sh, e.g. entry(\"E5:cors\") (keys listed there)",
+]
 
 [tool.pyright]
-include = ["safecut", "tests", "scripts"]
+include = ["safecut", "tests", "scripts", "eval"]
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
-strict = ["safecut", "scripts"]
+strict = ["safecut", "scripts", "eval"]
 reportMissingTypeStubs = false
