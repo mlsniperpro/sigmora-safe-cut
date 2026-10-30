@@ -1,25 +1,41 @@
-"""SAM 3.1 request bodies, cost metering and a call wrapper. Parsing is Meta's ``meta-sam-parser`` (WP1).
+"""SAM 3.1 request bodies, cost metering, a call wrapper and the stream parser (WP0 base, WP1 parser).
 
 One noun phrase (or one batch of object prompts) per request; the proxy clip's file ID comes from
-``files.json`` by name, never ``prepared.mp4`` (PRE-A §10.6).
+``files.json`` by name, never ``prepared.mp4`` (PRE-A §10.6). Parsing wraps Meta's ``meta-sam-parser`` and fails
+closed: an incomplete stream or a dropped line is ``MetaIncomplete``, never a partial result (PRE-A §10.6).
 """
 
 from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
 import httpx
+from meta_sam_parser import FramePrompt as SamFramePrompt
+from meta_sam_parser import (
+    PromptBox,
+    PromptObject,
+    PromptPoint,
+    ResponsesStreamError,
+    ResponsesStreamRefusalError,
+    SegmentationBoxRecord,
+    SegmentationMask,
+    SegmentationMaskRecord,
+    build_object_prompt,
+    parse_responses_stream,
+    video_segmentation_format,
+)
 
 from safecut import config
 from safecut.config import Settings
 from safecut.contracts import RESPONSE_ID_PATTERN, ResponseEntry, ResponsesIndex, dump, load, now_utc
 from safecut.meta import cost
 from safecut.meta.client import CallSpec, MetaClient, StreamResult, Units
-from safecut.meta.errors import MetaConfigError, MetaError
+from safecut.meta.errors import MetaConfigError, MetaError, MetaIncomplete, MetaRefusal
 from safecut.meta.retry import RetryPolicy
 
 log = logging.getLogger(__name__)
@@ -292,3 +308,116 @@ async def segment_image(
         store_param=client.settings.sam_send_store,
     )
     return await _stream(client, spec, body, image_meter, responses)
+
+
+# ---------------------------------------------------------------------------
+# Object prompts (PRE-A §1.3) and the stream parser (§1.4, §10.6)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ObjectPrompt:
+    """One object of a batched object-prompt request: a positive point, optionally a half-open box, on a proxy
+    frame. ``object_id`` is the id the request gives it; SAM reports the object under the same id."""
+
+    object_id: int
+    frame: int
+    point: tuple[int, int]
+    box: tuple[int, int, int, int] | None = None
+
+
+def object_prompt_text(size: tuple[int, int], prompts: Sequence[ObjectPrompt]) -> str:
+    """``build_object_prompt`` text for a batch (half-open boxes in, inclusive out; vectors O1–O3)."""
+    if not prompts:
+        raise ValueError("an object-prompt request needs at least one object")
+    if len({p.object_id for p in prompts}) != len(prompts):
+        raise ValueError("object ids in one request must be unique")
+    objects = [
+        PromptObject(
+            id=p.object_id,
+            prompts=(
+                SamFramePrompt(
+                    frame=p.frame,
+                    box=PromptBox(*p.box) if p.box is not None else None,
+                    points=(PromptPoint(p.point[0], p.point[1]),),
+                ),
+            ),
+        )
+        for p in prompts
+    ]
+    return build_object_prompt(size=size, objects=objects)
+
+
+@dataclass(frozen=True)
+class Detection:
+    """One SAM record: an object on one frame of the request's own video (the proxy)."""
+
+    frame: int
+    object_id: str
+    #: Half-open ``[x1, y1, x2, y2)`` in the proxy's pixels.
+    box: tuple[int, int, int, int]
+    #: The box-sized mask as SAM sent it (decode with ``meta_sam_parser.decode_mask_to_raster``).
+    mask: SegmentationMask | None
+    confidence: float | None
+
+
+@dataclass(frozen=True)
+class Segmentation:
+    detections: tuple[Detection, ...]
+    #: ``usage.video_frames_processed`` (the frames billed), or None when SAM didn't report it.
+    frames_billed: int | None
+
+
+async def _aiter(events: Sequence[Mapping[str, Any]]) -> AsyncIterator[Mapping[str, Any]]:
+    for event in events:
+        yield event
+
+
+async def parse_video_events(events: Sequence[Mapping[str, Any]]) -> Segmentation:
+    """Parse one SAM video stream's events (live or replayed) into detections, failing closed.
+
+    An incomplete outcome is ``MetaIncomplete`` (``eof`` when the stream just stopped); an error diagnostic means
+    the parser dropped a line, so the request is ``MetaIncomplete`` too (§10.6, vector S5); a refusal is
+    ``MetaRefusal``. Records arrive in any frame order and frames without objects are simply absent (§1.4).
+    """
+    try:
+        async with parse_responses_stream(_aiter(events), video_segmentation_format()) as parsed:
+            final = await parsed.final_result()
+    except ResponsesStreamRefusalError as exc:
+        raise MetaRefusal.of(str(exc)) from exc
+    except ResponsesStreamError as exc:
+        raise MetaIncomplete(f"SAM stream unusable: {exc.code}", eof=False) from exc
+    if final.outcome.status != "completed":
+        reason = getattr(final.outcome, "reason", None)
+        raise MetaIncomplete(f"SAM stream incomplete ({reason})", eof=reason == "eof")
+    errors = [d for d in final.diagnostics if d.severity == "error"]
+    if errors:
+        raise MetaIncomplete(f"SAM parser dropped {len(errors)} line(s): {errors[0].code} at line {errors[0].line}",
+                             eof=False)  # fmt: skip
+    masks: dict[tuple[int, str], SegmentationMaskRecord] = {}
+    for record in final.records:
+        if isinstance(record, SegmentationMaskRecord) and record.frame is not None:
+            key = (record.frame.frame_index, record.object_id)
+            if key not in masks or masks[key].revision <= record.revision:
+                masks[key] = record
+    detections: dict[tuple[int, str], Detection] = {}
+    for record in final.records:
+        if not isinstance(record, SegmentationBoxRecord) or record.frame is None:
+            continue
+        key = (record.frame.frame_index, record.object_id)
+        mask = masks.get(key)
+        detections[key] = Detection(
+            frame=key[0],
+            object_id=record.object_id,
+            box=(int(record.left), int(record.top), int(record.right), int(record.bottom)),
+            mask=mask.mask if mask is not None else None,
+            confidence=record.confidence,
+        )
+    completed = next((e for e in reversed(events) if e.get("type") == "response.completed"), None)
+    response: Any = completed.get("response") if completed else None
+    units, _ = video_meter(cast(Mapping[str, Any], response) if isinstance(response, Mapping) else {})
+    billed = units.get("frames")
+    return Segmentation(
+        detections=tuple(sorted(detections.values(), key=lambda d: (d.frame, int(d.object_id)))),
+        frames_billed=int(billed) if billed is not None else None,
+    )
