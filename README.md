@@ -6,7 +6,21 @@ Safe Cut watches a clip filmed in public and decides, from context, what shouldn
 
 Built for the **Meta Global AI Developer Hackathon** (Startup track), with Meta's Muse models and SAM 3.1 on the Meta Model API.
 
-> **Status (2026-10-20): pre-event.** This repo holds design docs only. Code starts at the hackathon kickoff (Oct 26, 12:00 ET), and every line of product code here is dated after it.
+> **Status:** the whole pipeline runs end to end in replay on a synthetic demo clip (drawn shapes; its recorded answers were generated from the clip's ground truth, not returned by Meta). Live runs on consented footage start once the owner adds the Meta key (`BLOCKED.md`). Every line of product code here is dated after the kickoff (Oct 26, 12:00 ET).
+
+## Run it yourself
+
+Needs Python 3.12 with [uv](https://docs.astral.sh/uv/). Everything below is offline: replay reads recorded responses and the network is blocked.
+
+<!-- fresh-clone:start -->
+```bash
+uv sync --locked
+uv run safecut run fixtures/clips/SC-A-91-synthetic-20261030.mp4 --out "$(mktemp -d)/demo" --replay --auto-approve-policy
+uv run python eval/run.py --split dev --variant full --replay
+```
+<!-- fresh-clone:end -->
+
+`safecut run` prints each stage and writes `redacted.mp4`, `audit.json`, `receipt.json` and `receipt.html` to the job folder. `eval/run.py` scores a run against the clip's ground truth (`eval/RESULTS.md` lists the committed runs). The API (`uv run uvicorn --factory safecut.api.app:create_app`) and the web app are documented in `web/README.md`.
 
 ## What existed before Oct 26
 

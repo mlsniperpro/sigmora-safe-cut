@@ -279,10 +279,13 @@ try {
     await page.waitForURL(/\/result$/, { timeout: 240_000 });
     await page.getByText(/frames checked\./).waitFor({ timeout: 60_000 });
     check(`${v}: the result shows the audit summary`, true);
-    const receipt = page.getByRole("link", { name: /receipt/i }).first();
-    const href = await receipt.getAttribute("href");
-    const receiptBody = href ? await (await fetch(href.startsWith("http") ? href : `${BASE}${href}`)).text() : "";
-    check(`${v}: the privacy receipt opens`, receiptBody.includes("<html") || receiptBody.includes("<!doctype"), href ?? "no link");
+    const hrefs = await page.locator("a[href*='receipt']").evaluateAll((links) => links.map((a) => a.href));
+    const htmlHref = hrefs.find((h) => h.includes("receipt.html"));
+    const jsonHref = hrefs.find((h) => h.includes("receipt.json"));
+    const html = htmlHref ? await (await fetch(htmlHref)).text() : "";
+    check(`${v}: the privacy receipt (HTML) opens`, /<html|<!doctype/i.test(html), htmlHref ?? "no receipt.html link");
+    const receiptJson = jsonHref ? await (await fetch(jsonHref)).json().catch(() => null) : null;
+    check(`${v}: the receipt JSON has its hash`, typeof receiptJson?.hash === "string" && receiptJson.hash.length === 64, jsonHref ?? "no receipt.json link");
     await shot(page, `${v}-5-result`);
     await axe(page, `${v} result`);
     await page.getByRole("button", { name: "Delete everything now" }).click();

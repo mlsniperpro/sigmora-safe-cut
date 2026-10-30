@@ -517,6 +517,7 @@ def e11() -> None:
         and "gate-allow" not in line
         and "SECRET_RE" not in line
         and "SECRET = re.compile" not in line
+        and "SECRET.search(" not in line  # the scanner's own tests feed it key-shaped strings
     ]
     if hits:
         raise CheckFailed(f"secret-shaped text in git history: {hits[0][:80]}…")
@@ -530,7 +531,10 @@ def e11() -> None:
             or path.suffix in {".png", ".jpg", ".mp4", ".gif"}
         ):
             continue
-        for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+        data = path.read_bytes()
+        if b"\x00" in data:
+            continue  # binary (an icon, model weights): no source lines to mark
+        for number, line in enumerate(data.decode("utf-8", errors="replace").splitlines(), 1):
             if MARKER.search(line):
                 raise CheckFailed(f"{name}:{number}: unfinished marker in shipped code")
     skips = sh(
