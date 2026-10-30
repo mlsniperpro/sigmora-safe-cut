@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 8237fab0b65f3c3501e2a8a5cccad4124386cb61
+AUDITED_COMMIT: 209bac8a9d1164af6acc5aa02156ea0bcd794f12
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -232,4 +232,4 @@ mask coverage at 640/1280 px); WP4 no critical/high/medium, 2 low reproduced, fi
   densified tracks rarely use the long-gap branch; manifest truth paths come from owner recordings only; no byte
   guard on red-team requests (≈ 26 MB of 50 measured at the worst case).
 
-## Round 14: running at 8237fab
+## Round 14: running at 209bac8 (main merged in: SHIP rounds 8-11)
