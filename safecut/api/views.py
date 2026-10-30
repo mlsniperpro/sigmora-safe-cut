@@ -7,9 +7,10 @@ out of the response, so the shapes grow as the pipeline runs.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, cast
 
 from PIL import Image
 from pydantic import BaseModel
@@ -65,6 +66,24 @@ def _optional[M: BaseModel](path: Path, model: type[M]) -> M | None:
     return load(path, model) if path.is_file() else None
 
 
+def _optional_json(path: Path) -> dict[str, Any] | None:
+    try:
+        data: object = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return cast(dict[str, Any], data) if isinstance(data, dict) else None
+
+
+def _recorded_model(folder: Path) -> str | None:
+    """The model a stage's recorded calls name (``raw/<stage>/*.json``), as the receipt reads it."""
+    for path in sorted(folder.glob("*.json")):
+        data = _optional_json(path)
+        model = data.get("model") if data else None
+        if isinstance(model, str) and model:
+            return model
+    return None
+
+
 def models_recorded(job_dir: Path, s: Settings) -> dict[str, str]:
     """Only what the job's files show ran: the trackers named on its tracks, the scene, roles and speech models
     their files record, the escalation when a ruling exists, the auditor ``audit.json`` names and the red team when
@@ -83,7 +102,7 @@ def models_recorded(job_dir: Path, s: Settings) -> dict[str, str]:
     if roles is not None and roles.model:
         ran["roles"] = roles.model
         if any(t.escalated for t in roles.tracks):  # any ruling, a child or unsure one included
-            ran["escalate"] = s.escalate_model
+            ran["escalate"] = _recorded_model(job_dir / "raw" / "escalate") or s.escalate_model
     transcript = _optional(job_dir / "transcript.json", Transcript)
     if transcript is not None and transcript.source:
         ran["asr"] = transcript.source
@@ -91,7 +110,9 @@ def models_recorded(job_dir: Path, s: Settings) -> dict[str, str]:
     if audit is not None:
         ran["auditor"] = audit.egoblur.model
         if audit.redteam:
-            ran["redteam"] = s.redteam_model
+            run = _optional_json(job_dir / "raw" / "audit" / "run.json")
+            recorded = run.get("redteam_model") if run else None
+            ran["redteam"] = recorded if isinstance(recorded, str) and recorded else s.redteam_model
     return ran
 
 

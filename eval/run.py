@@ -155,6 +155,8 @@ def refuse_early(split: SplitFile, variant: Variant, *, replay: bool, base: Path
         # A live run costs credits (and a test run one of its 3): only committed code can back a reported number.
         raise EvalError("the working tree has uncommitted changes; commit them before a live run")
     preflight(variant)
+    if not replay and load_settings().replay:
+        raise EvalError("SAFECUT_REPLAY is set in this shell: unset it for a live run (or pass --replay)")
     if not replay and variant != "egoblur" and load_settings().model_api_key is None:
         # The key is read by the first paid stage; checked here, a forgotten export never costs a test run.
         raise EvalError("MODEL_API_KEY isn't set: a live run needs it (export it in this shell first)")

@@ -396,3 +396,12 @@ def test_the_report_refuses_a_test_run_on_a_split_that_isnt_the_frozen_one(base:
         report.load_runs(base / "results", splits)
     (splits / "test.sha256").write_text(config["split_hash"] + "\n")
     assert report.load_runs(base / "results", splits)
+
+
+def test_a_live_run_in_a_replay_shell_is_refused_before_it_counts(base: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    splits = base / "splits"
+    runner.freeze("test", splits, base)
+    monkeypatch.setenv("SAFECUT_REPLAY", "1")
+    with pytest.raises(runner.EvalError, match="SAFECUT_REPLAY"):
+        runner.run("test", "full", replay=False, out=base / "results", splits=splits, base=base)
+    assert runner.runs_made(splits) == []

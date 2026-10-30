@@ -169,3 +169,17 @@ Round 9 was not clean (two medium): the clean count goes back to 0.
 | L5 | low | The report never checked a test run's `split_hash` against `test.sha256` | `load_runs` refuses a test run whose split isn't the frozen one | `test_the_report_refuses_a_test_run_on_a_split_that_isnt_the_frozen_one` |
 
 Round 10 was not clean (two medium): the count stays at 0.
+
+## Round 11 (on 73806ec, SENSE's final merged): 0 critical, 0 high, 2 medium, 3 low. Closed in the next commit.
+
+It ran E2, E3, E5, E7, E9, E10, E11 and E12: all OK; the six dev runs replay byte for byte at 73806ec.
+
+| # | Sev | Finding | Resolution | Test |
+|---|---|---|---|---|
+| M1 | medium | README and SUBMISSION presented EgoBlur as the deployed auditor, but the CPU-only deploy can only run YuNet; BLOCKED said to put the weights on the service's Volume and also not to enable them there | README (table and flowchart), SUBMISSION and BLOCKED: EgoBlur on a GPU machine only; the deployed service audits with YuNet (plates by the red team) and names it in audit.json and the receipt | E10, E12; review |
+| M2 | medium | CI's 20-minute python job was likely too short for about 1,460 tests, and the deploy waits on CI's success | 45 minutes | review |
+| L1 | low | A live eval run in a shell with `SAFECUT_REPLAY=1` passed the early checks, was counted, then crashed | `refuse_early` refuses it | `test_a_live_run_in_a_replay_shell_is_refused_before_it_counts` |
+| L2 | low | `models_recorded` named today's escalate and red-team settings | Reads `raw/escalate/*.json` and `raw/audit/run.json`, as the receipt does | `test_the_model_list_names_the_recorded_models` |
+| L3 | low | A live run is all or nothing at `--max-usd` | BLOCKED says so and to size `--max-usd` to the split | review |
+
+Round 11 was not clean (two medium): the count stays at 0.
