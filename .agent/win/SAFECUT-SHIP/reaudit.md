@@ -1,7 +1,7 @@
 AUDITED_COMMIT: pending
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
-CLEAN_AUDITS_IN_A_ROW: 0
+CLEAN_AUDITS_IN_A_ROW: 1
 
 # SAFECUT-SHIP re-audit log
 
@@ -125,3 +125,16 @@ Also found while integrating (not by the audit): E4 ran the **whole** suite unde
 | L4 | low | Committed runs were made at an earlier commit; one per-clip row differed at HEAD | Regenerated at 05f28a3 | E9, `eval/report.py --check` |
 
 Round 7 was not clean (one high), so the clean count stays at 0.
+
+## Round 8 (on 78a8d92, main a3cf274 merged during it): 0 critical, 0 high, 0 medium, 4 low. **Clean.**
+
+It ran E2, E3, E4, E5, E7, E9, E10, E11 and E12 itself: all OK. Its lows were fixed in a4a83ef, before the final rounds:
+
+| # | Sev | Finding | Resolution | Test |
+|---|---|---|---|---|
+| L1 | low | An added line starting with `++` shows as `+++ …` and was taken for a header (skipped, and able to redirect attribution) | Paths from the `diff` header; `---`/`+++` are headers only before the first hunk; combined diffs count `+` in any parent column | `test_history_scan_attributes_lines_to_their_files` (a merge, a `+++`-looking line, a header-looking line) |
+| L2 | low | Binary or large files skipped by the history and tree scans | `git log -p --text`; every tracked file scanned; `sh()` decodes with `errors="replace"` | `test_e11_history_scan_passes_on_this_repo` (30 MB of `--text` history, 0 hits) |
+| L3 | low | The escalation model was missing for a child or unsure ruling | Listed for any escalated track | review |
+| L4 | low | VIDEO-SCRIPT's VO overstated the audit; AGENTIC-LOOP quoted a coverage figure with no committed source | Reworded | E10 |
+
+Also since round 7, found by SENSE's auditor and fixed in 697110f: the Modal image shipped only `.py` files (no prompt templates, no YuNet weights); `test_the_image_ships_every_data_file_the_package_reads`.

@@ -104,6 +104,11 @@ Every E-line SHIP owns, every brief requirement, and the judging criteria, each 
 - [x] R7 L1, L3, L4: lowercase codes, honest model list, runs regenerated.
 - [-] R7 L2 kept: a too-short clip fails closed with the generic media copy (WP6's wording).
 
+## Audit round 8 and the Modal image (`reaudit.md`)
+
+- [x] R8 clean (no critical, high or medium); its four lows fixed: E11 history parser and binary scan, escalation model, two claims.
+- [x] The Modal image ships the prompts and YuNet weights: `test_the_image_ships_every_data_file_the_package_reads`.
+
 ## Judging criteria
 
 - [P] Impact (30): real numbers need `MODEL_API_KEY`, the consented hero clips and the test split (BLOCKED.md); until then every run is synthetic and labelled so, and the docs quote no numbers.
