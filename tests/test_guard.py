@@ -339,7 +339,7 @@ def test_a_reentry_gap_is_held_up_to_2_s() -> None:
 
 @settings(max_examples=300, deadline=None)
 @given(st.integers(0, 60), st.integers(0, 60), st.integers(1, 40), st.integers(1, 40))
-def test_property_coarse_dilation_contains_the_exact_one(cx: int, cy: int, rx: int, ry: int) -> None:
+def test_property_dilation_contains_the_exact_elliptical_one(cx: int, cy: int, rx: int, ry: int) -> None:
     mask = np.zeros((90, 120), dtype=np.bool_)
     mask[cy : cy + 9, cx : cx + 13] = True
     mask[cy + 20 : cy + 22, cx + 30 : cx + 31] = True

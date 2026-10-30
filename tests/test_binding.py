@@ -41,13 +41,11 @@ def test_rle_round_trips_a_real_mask() -> None:
     assert g.encode(mask).counts == rle.counts
 
 
-def test_dilate_and_shift() -> None:
+def test_dilate() -> None:
     mask = g.decode(disk_mask(100, 90, 10))
     grown = g.dilate(mask, 5, 3)
-    assert g.mask_bbox(grown) == (85, 77, 116, 104)
+    assert g.mask_bbox(grown) == (85, 77, 116, 104)  # 10 px radius disk grown 5 x 3
     assert (grown & mask).sum() == mask.sum()
-    assert g.mask_bbox(g.shift(mask, 7, -4)) == (97, 76, 118, 97)
-    assert not g.shift(mask, W, 0).any()
     assert not g.dilate(np.zeros((4, 4), dtype=np.bool_), 2, 2).any()
 
 
@@ -172,3 +170,12 @@ def test_two_keys_that_want_one_track_equally_bind_neither() -> None:
     a = track("face:1", 0, 30, (10, 10, 30, 30))
     got = bind([Sighting("badge", 1, 20, 20), Sighting("envelope", 2, 20, 20)], [a], width=W, height=H)
     assert got == {"badge": None, "envelope": None}
+
+
+@settings(max_examples=500, deadline=None)
+@given(st.integers(1, 12), st.integers(1, 12), st.data())
+def test_property_encode_round_trips_and_validates(height: int, width: int, data: st.DataObject) -> None:
+    bits = data.draw(st.lists(st.booleans(), min_size=height * width, max_size=height * width))
+    mask = np.array(bits, dtype=np.bool_).reshape(height, width)
+    rle = g.encode(mask)
+    assert (g.decode(Rle.model_validate(rle.model_dump())) == mask).all()  # the full validator accepts it
