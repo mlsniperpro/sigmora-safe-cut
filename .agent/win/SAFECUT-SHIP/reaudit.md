@@ -237,3 +237,17 @@ Round 15 (reviewer): 0 critical, 0 high, 1 medium, 4 low. Round 16 (judge): 0 cr
 | 16·rel | medium (borderline) | SUBMISSION listed Muse Spark Open as paste-ready | Owner-gated ⟨…⟩ (keep only if it ran) | review |
 | 16·L1 | low | The replay log says "owner step O8" | **Kept**: SAFETY's message; BLOCKED's EgoBlur step is the one it means | n/a |
 | 16·L2–L4 | low | Re-run the deploy workflow after setting URLs; judge window text; VO count | Docs fixed | review |
+
+## Rounds 17 and 18 (parallel, on eff4422 = origin/main, all lanes final): neither clean.
+
+Round 17 (reviewer): 0 critical, 0 high, 1 medium, 4 low. Round 18 (judge): 0 critical, 0 high, 2 medium, 5 low. They ran E2, E3, E5, E7, E8, E9, E10, E11 and E12 (all OK), replayed all six dev runs byte for byte at eff4422, walked BLOCKED's env through `load_settings` and `production_problems`, and ran the README's commands.
+
+| # | Sev | Finding | Resolution | Test |
+|---|---|---|---|---|
+| 17·M1 | medium | A pinned demo job was never rebuilt (TTL- and DELETE-exempt): a hero retake or a contract change in a new deploy would leave the landing on a stale or broken demo | `demo_stamp` (the recording's files, its clip, the `safecut` source) is kept in the job's state; a different stamp rebuilds it at startup | `test_a_pinned_demo_is_rebuilt_when_its_recording_or_code_changes` |
+| 18·M1 | medium | The README's synthetic-only prose would stay after real results | BLOCKED: rewrite those three passages with the test-split results | review |
+| 18·M2 | medium | RESULTS/README rounded to nearest (11/12 → 91.7 %), the landing page unflatteringly (91.6 %) | `report.pct` rounds like the landing page: recall down, exposure and over-blur up (today's figures are unchanged) | `test_report_rounds_like_the_landing_page_never_up` |
+| 17·L1 | low | The job poll is about 650 KB uncompressed | **Kept**: GZip middleware would also compress the signed video responses and break their range requests; the poll is 19 ms of CPU with the parse cache | n/a |
+| 17·L2 | low | The API never commits the Modal Volume | BLOCKED: check on the first deploy that the cron sees the API's jobs | review |
+| 17·L3, L4 | low | A global replay block inside a deployed container; a render retry re-approves | **Kept**: the deployed service runs live (deploy-check requires it); a retry after a receipt failure re-renders within the caps | n/a |
+| 18·L1–L5 | low | Landing table's single run id; the hero recording's `--id` and `--consented`; SUBMISSION's clip length vs the daily cap; committing `test.runs.json`; AGENTIC-LOOP "regenerated" | All in the docs (BLOCKED, SUBMISSION, AGENTIC-LOOP) | review |

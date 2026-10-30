@@ -1201,3 +1201,26 @@ def test_ipv4_clients_behind_a_dual_stack_hop_keep_their_own_limit(
     assert ip("::ffff:198.51.100.8") != ip("::ffff:198.51.100.7")
     assert ip("198.51.100.7:5000") == ip("198.51.100.7:6000") == "198.51.100.7"
     assert ip("[2001:db8:1:2::1]:443") == "2001:db8:1:2::/64"
+
+
+def test_a_pinned_demo_is_rebuilt_when_its_recording_or_code_changes(
+    make_client: Callable[..., tuple[TestClient, Service]], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A retake under the same hero id (or new code in a deploy) must not leave the landing page on the old demo."""
+    _, svc = make_client()
+    built: list[str] = []
+
+    def precompute(job_id: str, recording: Path, clip: Path) -> None:
+        built.append(job_id)
+        svc.store.create(mode="replay", job_id=job_id, pinned=True)
+        with svc.store.update(job_id) as state:
+            state.status, state.stage = "done", "done"
+
+    monkeypatch.setattr(svc, "_precompute", precompute)
+    assert svc.build_demo_jobs() == ["demo"]
+    assert svc.build_demo_jobs() == ["demo"]
+    assert len(built) == 1  # unchanged: reused
+    raw = tmp_path / "fixtures" / "jobs" / "demo" / "raw"
+    (raw / "retake.json").write_text("{}")  # the owner re-records the hero under the same id
+    assert svc.build_demo_jobs() == ["demo"]
+    assert len(built) == 2

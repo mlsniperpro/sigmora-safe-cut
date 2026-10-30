@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:  # run as a script (`python eval/report.py`): make the repo's packages importable
@@ -64,8 +65,14 @@ def load_runs(root: Path = RESULTS_DIR, splits: Path = ROOT / "eval" / "splits")
     return runs
 
 
-def pct(value: float | None) -> str:
-    return "n/a" if value is None else f"{value * 100:.1f}%"
+def pct(value: float | None, better: Literal["higher", "lower"]) -> str:
+    """One decimal, always rounded in the unflattering direction (AGENTS rule 9: never round up), exactly as the
+    landing page's table does (``web/src/components/landing/ResultsTable.tsx``): down for recall, up for
+    exposure and over-blur."""
+    if value is None:
+        return "n/a"
+    tenths = math.floor(value * 1000 + 1e-9) if better == "higher" else math.ceil(value * 1000 - 1e-9)
+    return f"{tenths / 10:.1f}%"
 
 
 def row_name(variant: str, run: dict[str, Any]) -> str:
@@ -123,8 +130,8 @@ def render(runs: list[dict[str, Any]], settings: Settings | None = None) -> str:
             name = row_name(variant, run)
             load = "n/a" if m["review_load_per_min"] is None else f"{m['review_load_per_min']:.2f}"
             lines.append(
-                f"| {name} | {pct(m['entity_recall'])} | {pct(m['exposure_rate'])} | "
-                f"{m['leak_bursts']} | {pct(m['over_blur'])} | {load} | {link} |"
+                f"| {name} | {pct(m['entity_recall'], 'higher')} | {pct(m['exposure_rate'], 'lower')} | "
+                f"{m['leak_bursts']} | {pct(m['over_blur'], 'lower')} | {load} | {link} |"
             )
         sizes = {
             (r["metrics"]["clips"], r["metrics"]["should_hide"], r["metrics"]["should_keep"], r["metrics"]["minutes"])
@@ -192,8 +199,8 @@ def readme_table(runs: list[dict[str, Any]]) -> str:
         if run is not None:
             m = run["metrics"]
             rows.append(
-                f"| {row_name(variant, run)} | {pct(m['entity_recall'])} | {pct(m['exposure_rate'])} | "
-                f"{m['leak_bursts']} | {pct(m['over_blur'])} |"
+                f"| {row_name(variant, run)} | {pct(m['entity_recall'], 'higher')} | "
+                f"{pct(m['exposure_rate'], 'lower')} | {m['leak_bursts']} | {pct(m['over_blur'], 'lower')} |"
             )
     return "\n".join(rows)
 
