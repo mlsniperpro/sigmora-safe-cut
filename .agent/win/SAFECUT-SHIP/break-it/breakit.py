@@ -1,3 +1,5 @@
+# ruff: noqa: S101, S311, S603, S607, PLR0912, RUF005 -- a test harness: asserts are its checks, randomness is
+# fuzz input (not crypto), and it launches our own uv/uvicorn by name.
 """Break-it run against a real replay API (uvicorn, a fresh jobs dir).
 
 1. soak: W concurrent clients each run the judge's full flow N times (create, upload, start, poll, random review
@@ -56,9 +58,24 @@ def start_api(jobs: Path, port: int) -> subprocess.Popen[bytes]:
         "SAFECUT_PAID_ACTIONS_PER_HOUR": "100000",
     }
     proc = subprocess.Popen(
-        ["uv", "run", "--no-sync", "uvicorn", "--factory", "safecut.api.app:create_app", "--host", "127.0.0.1",
-         "--port", str(port), "--log-level", "warning", "--no-proxy-headers"],
-        cwd=REPO, env=env, start_new_session=True,  # its own process group: a kill reaches uvicorn, not just uv
+        [
+            "uv",
+            "run",
+            "--no-sync",
+            "uvicorn",
+            "--factory",
+            "safecut.api.app:create_app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--log-level",
+            "warning",
+            "--no-proxy-headers",
+        ],
+        cwd=REPO,
+        env=env,
+        start_new_session=True,  # its own process group: a kill reaches uvicorn, not just uv
     )
     until = time.time() + 300
     while time.time() < until:
@@ -87,8 +104,9 @@ def wait_status(c: httpx.Client, jid: str, want: set[str], ms: float = 300) -> d
 
 
 def create_and_upload(c: httpx.Client) -> str:
-    r = c.post("/v1/jobs", json={"code": CODE, "file_name": "clip.mp4", "size_bytes": len(CLIP),
-                                 "content_type": "video/mp4"})
+    r = c.post(
+        "/v1/jobs", json={"code": CODE, "file_name": "clip.mp4", "size_bytes": len(CLIP), "content_type": "video/mp4"}
+    )
     assert r.status_code == 201, r.text
     body = r.json()
     url = body["upload_url"]
@@ -150,8 +168,9 @@ def soak(api: str) -> None:
             for n in range(N):
                 try:
                     flow(c, rng, f"w{w}n{n}")
-                except Exception as e:  # noqa: BLE001 -- every flow error is a soak failure, recorded
+                except Exception as e:  # every flow error is a soak failure, recorded
                     fail(f"soak w{w} n{n}: {type(e).__name__}: {e}")
+
     t0 = time.time()
     threads = [threading.Thread(target=worker, args=(w,)) for w in range(W)]
     for t in threads:
@@ -163,10 +182,22 @@ def soak(api: str) -> None:
 
 def fuzz(api: str, rounds: int = 1500) -> None:
     rng = random.Random(7)
-    junk: list[object] = [None, "", "x" * 5000, -1, 0, 1e308, [], {}, {"type": "keep"}, "\u0000", "../../etc/passwd",
-                          {"type": "merge", "edit_id": "e", "item_id": "i_1", "into": "i_1"},
-                          {"type": "undo", "edit_id": "e", "reverts": "nope"}, {"type": "cover_spot", "edit_id": "e",
-                                                                              "spot_id": "s999"}]
+    junk: list[object] = [
+        None,
+        "",
+        "x" * 5000,
+        -1,
+        0,
+        1e308,
+        [],
+        {},
+        {"type": "keep"},
+        "\u0000",
+        "../../etc/passwd",
+        {"type": "merge", "edit_id": "e", "item_id": "i_1", "into": "i_1"},
+        {"type": "undo", "edit_id": "e", "reverts": "nope"},
+        {"type": "cover_spot", "edit_id": "e", "spot_id": "s999"},
+    ]
     with httpx.Client(base_url=api, timeout=30) as c:
         jid = create_and_upload(c)
         c.post(f"/v1/jobs/{jid}/start")
@@ -175,20 +206,49 @@ def fuzz(api: str, rounds: int = 1500) -> None:
         statuses: dict[int, int] = {}
         for _ in range(rounds):
             j = rng.choice(ids)
-            route = rng.choice(["codes", "create", "start", "review", "render", "audit", "result", "delete",
-                                "media", "upload", "demo", "get"])
+            route = rng.choice(
+                [
+                    "codes",
+                    "create",
+                    "start",
+                    "review",
+                    "render",
+                    "audit",
+                    "result",
+                    "delete",
+                    "media",
+                    "upload",
+                    "demo",
+                    "get",
+                ]
+            )
             try:
                 if route == "codes":
                     r = c.post("/v1/codes/check", json=rng.choice([{"code": rng.choice(junk)}, rng.choice(junk)]))
                 elif route == "create":
-                    r = c.post("/v1/jobs", json={"code": rng.choice([CODE, rng.choice(junk)]),
-                                                 "file_name": rng.choice(["a.mp4", rng.choice(junk)]),
-                                                 "size_bytes": rng.choice([1, 10**12, rng.choice(junk)]),
-                                                 "content_type": rng.choice(["video/mp4", "text/html", None])})
+                    r = c.post(
+                        "/v1/jobs",
+                        json={
+                            "code": rng.choice([CODE, rng.choice(junk)]),
+                            "file_name": rng.choice(["a.mp4", rng.choice(junk)]),
+                            "size_bytes": rng.choice([1, 10**12, rng.choice(junk)]),
+                            "content_type": rng.choice(["video/mp4", "text/html", None]),
+                        },
+                    )
                 elif route == "review":
-                    r = c.post(f"/v1/jobs/{j}/review", json=rng.choice(junk + [
-                        {"type": rng.choice(["keep", "hide", "remove_person"]), "edit_id": f"f{rng.random()}",
-                         "item_id": rng.choice(["i_1", "i_999", "p_1", "i_x"])}]))
+                    r = c.post(
+                        f"/v1/jobs/{j}/review",
+                        json=rng.choice(
+                            junk
+                            + [
+                                {
+                                    "type": rng.choice(["keep", "hide", "remove_person"]),
+                                    "edit_id": f"f{rng.random()}",
+                                    "item_id": rng.choice(["i_1", "i_999", "p_1", "i_x"]),
+                                }
+                            ]
+                        ),
+                    )
                 elif route in ("start", "render", "audit"):
                     r = c.post(f"/v1/jobs/{j}/{route}")
                 elif route == "result":
@@ -196,11 +256,17 @@ def fuzz(api: str, rounds: int = 1500) -> None:
                 elif route == "delete":
                     r = c.delete(f"/v1/jobs/{rng.choice(['demo', 'nope', '../x'])}")
                 elif route == "media":
-                    r = c.get(f"/v1/jobs/{j}/media/{rng.choice(['redacted.mp4', '../intake.json', 'x'])}",
-                              params={"exp": rng.choice(["1", "9999999999", "x"]), "sig": "deadbeef"})
+                    r = c.get(
+                        f"/v1/jobs/{j}/media/{rng.choice(['redacted.mp4', '../intake.json', 'x'])}",
+                        params={"exp": rng.choice(["1", "9999999999", "x"]), "sig": "deadbeef"},
+                    )
                 elif route == "upload":
-                    r = c.put(f"/v1/uploads/{j}", content=os.urandom(rng.randint(0, 2048)),
-                              params={"exp": "9999999999", "sig": "00"}, headers={"content-type": "video/mp4"})
+                    r = c.put(
+                        f"/v1/uploads/{j}",
+                        content=os.urandom(rng.randint(0, 2048)),
+                        params={"exp": "9999999999", "sig": "00"},
+                        headers={"content-type": "video/mp4"},
+                    )
                 elif route == "demo":
                     r = c.get(f"/v1/demo/{rng.choice(['demo', 'nope', '..', 'x' * 200])}")
                 else:
@@ -242,9 +308,11 @@ def kill_restart() -> None:
         proc = start_api(jobs, port)
         with httpx.Client(base_url=api, timeout=60) as c:
             body = wait_status(c, jid, {"done", "needs_you"})
-            print(f"kill -9 twice (in analysis at stage {stage!r}, then in render): job ended {body['status']}",
-                  flush=True)
-    except Exception as e:  # noqa: BLE001 -- recorded as a failure
+            print(
+                f"kill -9 twice (in analysis at stage {stage!r}, then in render): job ended {body['status']}",
+                flush=True,
+            )
+    except Exception as e:  # recorded as a failure
         fail(f"kill/restart: {type(e).__name__}: {e}")
     finally:
         os.killpg(proc.pid, signal.SIGTERM)
