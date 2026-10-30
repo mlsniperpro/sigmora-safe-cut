@@ -1,17 +1,18 @@
-TESTED_COMMIT: 86be73c
+TESTED_COMMIT: ae004d8
 
 # SAFECUT-SENSE: what was done to break it
 
-All runs at `86be73c` (the code re-audit 10 covered), offline: no `MODEL_API_KEY`, no network, no live Meta call.
+All runs at `86be73c` (the code re-audit 10 covered) and again at `ae004d8` (the same code plus a behaviour-neutral lint
+change, verified in `reaudit.md` audit 11), offline: no `MODEL_API_KEY`, no network, no live Meta call.
 
 ## Soak: the replay end to end, five times
 `safecut run fixtures/clips/SC-A-91-synthetic-20261030.mp4 --replay --auto-approve-policy` (every stage: prepare →
 track → transcribe → scene → roles → decide → guard → render → audit → receipt), five fresh jobs in a row. All exited 0;
 the SHA-256 over `tracks.json`, `transcript.json`, `scene.json`, `roles.json`, `decisions.json` and `plan.json` was
-`bfcfcf69b9f28fd4` every time: the pipeline is deterministic, run to run.
+`bfcfcf69b9f28fd4` every time, at both commits: the pipeline is deterministic, run to run.
 
 ## Fuzz
-- Five seeded rounds (`--hypothesis-seed` 11, 22, 33, 44, 55) of the property suites `tests/test_sam_properties.py`,
+- Five seeded rounds (`--hypothesis-seed` 11, 22, 33, 44, 55, at both commits) of the property suites `tests/test_sam_properties.py`,
   `tests/test_scout_logic.py`, `tests/test_axes.py` and `tests/test_som.py`: 116 passed each round. They cover: any
   valid SAM stream split anywhere parses to exactly its boxes; junk spliced anywhere never parses silently wrong;
   linked tracks are dense, in frame and numbered once; interpolation rounds outward; the keep rule over random votes;
@@ -40,7 +41,8 @@ Besides the soak: `entry-check --only E2,E3,E8` on this lane's merges gave E2, E
 
 ## A fresh clone
 `git clone -b claude/kind-pasteur-y6blvc` → `uv sync --locked --all-groups` → the SENSE test files (250 passed) →
-`safecut run … --replay --auto-approve-policy` to `receipt.json` → `validate_job_dir`: VALID.
+`safecut run … --replay --auto-approve-policy` to `receipt.json` → `validate_job_dir`: VALID. Done at `86be73c` and again
+at `9a2fc80` (the code of `ae004d8`): 250 passed, VALID.
 
 ## The full suite
 `uv run pytest` at `86be73c`: 1413 passed (12 deselected: the `live` marker).
