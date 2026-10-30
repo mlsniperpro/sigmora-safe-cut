@@ -1,15 +1,17 @@
 """The audit loop (WP4 step 2, DESIGN §2.8, ``docs/prompts/redteam.md``): find leaks, patch them, prove it.
 
 Pass 1 runs the face/plate detector on **every** output frame and the red-team on the sampled frames (1 per
-second, the edges of every track's covered span, long gaps, every frame the detector flagged). Each leak becomes
-an audit patch (or, read through a mosaic, a solid re-render of that item); the guard re-plans, the renderer
-re-renders, and the next pass re-checks only the patched frames. After pass 3 whatever is left is ``unresolved``
-and publishing stays off. Nothing fails open: a frame the detector never scanned, or the red-team never answered,
-counts in ``unresolved`` (``audit_failed``), and a cap that stopped a call blocks as ``over_budget``.
+second, the edges of every track's covered span, long gaps, the first frame of every detector run). Each leak
+becomes an audit patch (and, read through a mosaic, its item is re-rendered solid too); the guard re-plans, the
+renderer re-renders, and the next pass scans the whole new render and red-teams the fixes. After pass 3 whatever
+is left is ``unresolved`` and publishing stays off. Nothing fails open: a frame the detector never scanned, or the
+red-team never answered, counts in ``unresolved`` (``audit_failed``), and a cap that stopped a call blocks as
+``over_budget``.
 """
 
 from __future__ import annotations
 
+import itertools
 import json
 import logging
 import time
@@ -19,7 +21,8 @@ from pathlib import Path
 
 from safecut.audit import leaks as rules
 from safecut.audit.detectors import Detection, Detector
-from safecut.audit.redteam import Answer, BudgetCause, RedTeam
+from safecut.audit.opinion import Ask, Opinion, consult, data_url, recorded, save
+from safecut.audit.redteam import MAX_FRAMES_PER_CALL, Answer, BudgetCause, RedTeam
 from safecut.contracts import (
     Audit,
     BlockedReason,
@@ -66,6 +69,9 @@ class State:
     seconds: dict[str, float] = field(default_factory=dict[str, float])
     #: The model that answered the red-team (None: nothing answered, or the synthetic oracle).
     redteam_model: str | None = None
+    detector_calls: int = 0
+    #: The open-weight second opinion, when it ran in this audit.
+    opinion: Opinion | None = None
 
 
 def approved(decisions: Decisions, roles: Roles | None, scene: Scene | None) -> list[str]:
@@ -100,11 +106,14 @@ def scan(state: State, job_dir: Path, detector: Detector, wanted: set[int], *, c
     (pass 1, every frame) its detections are tallied for ``egoblur.faces``/``plates``."""
     by_track = {t.track_id: t for t in state.tracks.tracks}
     found: list[Leak] = []
+    done: set[int] = set()
     started = time.perf_counter()
     try:
         for index, frame in frames_of(job_dir, state.job, wanted):
             detections: list[Detection] = detector.detect(frame)
+            state.detector_calls += 1
             state.scanned.add(index)
+            done.add(index)
             for d in detections:
                 if count and d.kind == "face":
                     state.faces += 1
@@ -113,7 +122,11 @@ def scan(state: State, job_dir: Path, detector: Detector, wanted: set[int], *, c
                 if rules.excluded_by(d.kind, d.box, index, state.decisions, by_track) is None:
                     found.append(Leak(frame=index, box=d.box, kind=d.kind, detector="egoblur", patched_item=None))
     except Exception:
-        log.exception("audit: the detector stopped after %d frames", len(state.scanned))
+        log.exception("audit: the detector stopped after %d of %d frames", len(done), len(wanted))
+    if not count:
+        # A re-check (pass 2-3) that didn't cover its frames leaves those fixes unverified: unresolved, never clean.
+        # (Pass 1's unscanned frames count through frames_scanned.)
+        state.unanswered.update(wanted - done)
     state.seconds["detector"] = state.seconds.get("detector", 0.0) + time.perf_counter() - started
     return found
 
@@ -128,7 +141,20 @@ async def red_team(
     bar = rules.bar_height(job.height)
     by_track = {t.track_id: t for t in state.tracks.tracks}
     started = time.perf_counter()
-    answer: Answer = await redteam.ask(list(frames_of(job_dir, job, frames)), approved_items, bar=bar)
+    answer = Answer()
+    batch: list[tuple[int, Frame]] = []
+    pending = iter(frames_of(job_dir, job, frames))
+    while True:  # one call's worth of frames in memory at a time
+        batch = list(itertools.islice(pending, MAX_FRAMES_PER_CALL))
+        if not batch:
+            break
+        got = await redteam.ask(batch, approved_items, bar=bar)
+        answer.findings.update(got.findings)
+        sent = {f for f, _ in batch}
+        # A frame the answer neither covers nor admits missing is unanswered all the same (fail closed).
+        answer.missing += sorted((sent - set(got.findings)) | (set(got.missing) & sent))
+        answer.model = answer.model or got.model
+        answer.budget_cause = answer.budget_cause or got.budget_cause
     state.seconds["redteam"] = state.seconds.get("redteam", 0.0) + time.perf_counter() - started
     state.unanswered.update(answer.missing)
     state.redteam_model = state.redteam_model or answer.model
@@ -141,7 +167,9 @@ async def red_team(
             if mapped == "in_bar" and finding.kind == "text" and rules.is_frame_label(finding.text):
                 continue  # the model read our own frame label (API-NOTES §5, G8)
             box = (0, 0, job.width, job.height) if mapped in (None, "in_bar") else mapped
-            exclude = rules.excluded_by(finding.kind, box, frame, state.decisions, by_track)
+            # A whole-frame box stands for a finding we couldn't place (fail closed): nothing kept excuses it.
+            placed = mapped not in (None, "in_bar")
+            exclude = rules.excluded_by(finding.kind, box, frame, state.decisions, by_track) if placed else None
             state.redteam.append(
                 RedteamHit(
                     frame=frame,
@@ -178,13 +206,11 @@ async def red_team(
     return found
 
 
-def patch(state: State, found: list[Leak]) -> tuple[list[Leak], set[int]]:
+def patch(state: State, found: list[Leak]) -> list[Leak]:
     """Turn this pass's leaks into fixes: every leak shares an audit patch over its box (static, padded, held over
-    ``f ± (half + extend)``), and an item a model read text through is re-rendered solid as well. Returns the leaks
-    with their ``patched_item`` and the frames the fixes changed (the next pass re-checks those)."""
+    ``f ± (half + extend)``), and an item a model read text through is re-rendered solid as well (the guard reads
+    the flags). Returns the leaks with their ``patched_item``."""
     job, plan = state.job, state.plan
-    redrawn = {leak.through_item for leak in found if leak.through_item is not None}
-    changed = {f for f, es in plan.frames.items() if any(e.item_id in redrawn for e in es)}
     number, label = rules.next_numbers(state.decisions)
     new_items: list[DecisionItem] = []
     patched: list[Leak] = []
@@ -194,10 +220,8 @@ def patch(state: State, found: list[Leak]) -> tuple[list[Leak], set[int]]:
         new_items.append(item)
         number, label = number + 1, label + 1
         patched += [leak.model_copy(update={"patched_item": item.item_id}) for leak in group.leaks]
-        if item.first is not None and item.last is not None:
-            changed.update(range(item.first, item.last + 1))
     state.decisions = Decisions(items=[*state.decisions.items, *new_items])
-    return patched, changed
+    return patched
 
 
 def summary(state: State, passes: int, detector: Detector, previous: Audit | None) -> Audit:
@@ -212,7 +236,13 @@ def summary(state: State, passes: int, detector: Detector, previous: Audit | Non
         reason = "audit_failed"
     elif open_leaks:
         reason = "unresolved_leaks"
-    keep_opinion = previous is not None and job.open_weight_attempted
+    keep_opinion = state.opinion is None and previous is not None and job.open_weight_attempted
+    if state.opinion is not None:
+        ow, ow_entries = state.opinion.summary, state.opinion.entries
+    elif keep_opinion and previous is not None:  # redteam.md "Re-runs": copied into every rewritten audit
+        ow, ow_entries = previous.open_weight, previous.redteam_open
+    else:
+        ow, ow_entries = OpenWeightSummary(), []
     return Audit(
         frames_scanned=len(state.scanned),
         egoblur=EgoBlurSummary(
@@ -228,25 +258,72 @@ def summary(state: State, passes: int, detector: Detector, previous: Audit | Non
         spots=rules.make_spots(open_leaks, job.fps),
         blocked_reason=reason,
         audit_budget_cause=state.budget_cause if reason == "over_budget" else None,
-        open_weight=previous.open_weight if keep_opinion and previous is not None else OpenWeightSummary(),
-        redteam_open=previous.redteam_open if keep_opinion and previous is not None else [],
+        open_weight=ow,
+        redteam_open=ow_entries,
     )
 
 
-def carried_flags(previous: Audit | None, decisions: Decisions) -> list[Leak]:
-    """Read-through fixes from an earlier audit stay (else the item would go back to a mosaic a model read through),
-    as long as their item is still hidden."""
+def carried(previous: Audit | None, decisions: Decisions, detector: Detector) -> list[Leak]:
+    """An earlier run's fixed leaks stay on record while their fix does: the receipt keeps counting them, and an
+    item read through stays solid. A leak whose patch or read-through item is no longer hidden is dropped, as is a
+    plate the current detector couldn't have reported."""
     if previous is None:
         return []
     hidden = {i.item_id for i in decisions.items if i.decision in ("hide", "needs_you")}
     return [
         leak for leak in previous.leaks
-        if leak.flag and not leak.unresolved and leak.through_item in hidden and leak.patched_item in hidden
+        if not leak.unresolved and leak.patched_item in hidden
+        and (leak.through_item is None or leak.through_item in hidden)
+        and not (leak.detector == "egoblur" and leak.kind == "plate" and not detector.detects_plates)
     ]  # fmt: skip
 
 
+async def settle(
+    state: State,
+    job_dir: Path,
+    *,
+    detector: Detector,
+    redteam: RedTeam,
+    found: list[Leak],
+    words: list[str],
+    passes: int,
+    max_passes: int,
+) -> int:
+    """``found`` are the leaks pass ``passes`` turned up. Patch them, re-plan, re-render, and as the next pass scan
+    the whole new render and red-team the fixes, until a pass finds nothing; leaks found by the last allowed pass
+    stay unresolved. Returns the passes run. (The second opinion's leaks come in the same way: its re-check is the
+    next pass.)"""
+    job, tracks = state.job, state.tracks
+    while found:
+        if passes >= max_passes:
+            state.leaks += [leak.model_copy(update={"unresolved": True}) for leak in found]
+            break
+        fixed = patch(state, found)
+        state.leaks += fixed
+        state.plan = make_plan(job, tracks, state.decisions, solid=read_through(state.leaks))
+        dump(state.decisions, job_dir / "decisions.json")
+        dump(state.plan, job_dir / "plan.json")
+        render(job_dir)
+        passes += 1
+        # Every frame of the new render, not just the patched ones: a re-encode shifts pixels on frames it didn't
+        # redraw (x264 rate control), and the detector's guarantee is about the video as published.
+        found = scan(state, job_dir, detector, set(range(job.frames)))
+        rechecks = {group.first for group in rules.group_leaks(fixed, job.fps)} | {
+            leak.frame for leak in fixed if leak.detector != "egoblur"
+        }
+        found += await red_team(state, job_dir, redteam, rechecks, words)
+    return passes
+
+
 async def audit_job(
-    job_dir: Path, *, detector: Detector, redteam: RedTeam, max_passes: int = MAX_PASSES
+    job_dir: Path,
+    *,
+    detector: Detector,
+    redteam: RedTeam,
+    max_passes: int = MAX_PASSES,
+    opinion: Ask | None = None,
+    opinion_grid_ok: bool = False,
+    opinion_model: str = "",
 ) -> tuple[Audit, dict[str, float]]:
     """Run the audit on ``job_dir`` (rendering first if needed); write ``audit.json`` and, when it patched,
     ``decisions.json``, ``plan.json`` and the re-rendered video. Returns the audit and its timings."""
@@ -257,28 +334,32 @@ async def audit_job(
     scene = load(job_dir / "scene.json", Scene) if (job_dir / "scene.json").exists() else None
     previous = load(job_dir / "audit.json", Audit) if (job_dir / "audit.json").exists() else None
     state = State(job=job, tracks=tracks, decisions=decisions, plan=load(job_dir / "plan.json", Plan))
-    state.leaks = carried_flags(previous, decisions)
+    state.leaks = carried(previous, decisions, detector)
     if not (job_dir / REDACTED).exists():
         render(job_dir)
     words = approved(decisions, roles, scene)
     everything = set(range(job.frames))
     found = scan(state, job_dir, detector, everything, count=True)
-    sampled = rules.sample_frames(job.frames, job.fps, tracks, state.plan, extra={leak.frame for leak in found})
+    flagged = {group.first for group in rules.group_leaks(found, job.fps)}  # one look per detector run, not per frame
+    sampled = rules.sample_frames(job.frames, job.fps, tracks, state.plan, extra=flagged)
     found += await red_team(state, job_dir, redteam, set(sampled), words)
-    passes = 1
-    while found:
-        if passes == max_passes:
-            state.leaks += [leak.model_copy(update={"unresolved": True}) for leak in found]
-            break
-        fixed, changed = patch(state, found)
-        state.leaks += fixed
-        state.plan = make_plan(job, tracks, state.decisions, solid=read_through(state.leaks))
-        dump(state.decisions, job_dir / "decisions.json")
-        dump(state.plan, job_dir / "plan.json")
-        render(job_dir)
-        passes += 1
-        found = scan(state, job_dir, detector, changed)
-        found += await red_team(state, job_dir, redteam, {leak.frame for leak in fixed}, words)
+    passes = await settle(state, job_dir, detector=detector, redteam=redteam, found=found, words=words, passes=1,
+                          max_passes=max_passes)  # fmt: skip
+    if opinion is not None and not job.open_weight_attempted:
+        # At most once in the job's life, marked before the first call (redteam.md "Second opinion").
+        state.job = job = job.model_copy(update={"open_weight_attempted": True})
+        dump(job, job_dir / "job.json")
+        bar = rules.bar_height(job.height)
+        urls = [(f, data_url(img, f, bar)) for f, img in frames_of(job_dir, job, set(sampled))]  # streamed: JPEGs only
+        state.opinion = await consult(opinion, urls, model=opinion_model, words="; ".join(words) or "none", job=job,
+                                      decisions=state.decisions, plan=state.plan,
+                                      by_track={t.track_id: t for t in tracks.tracks},
+                                      grid_ok=opinion_grid_ok)  # fmt: skip
+        save(job_dir, state.opinion)
+        passes = await settle(state, job_dir, detector=detector, redteam=redteam, found=state.opinion.leaks,
+                              words=words, passes=passes, max_passes=max_passes)  # fmt: skip
+    elif job.open_weight_attempted:
+        state.opinion = recorded(job_dir)  # redteam.md "Re-runs": what it said is copied into every rewritten audit
     audit = summary(state, passes, detector, previous)
     dump(audit, job_dir / "audit.json")
     write_run(job_dir, audit, state, detector)
@@ -293,7 +374,7 @@ def write_run(job_dir: Path, audit: Audit, state: State, detector: Detector) -> 
     """WP4's CPU timing (seconds per detector frame) and which models answered."""
     path = job_dir / RUN
     path.parent.mkdir(parents=True, exist_ok=True)
-    per_frame = state.seconds.get("detector", 0.0) / max(1, audit.frames_scanned)
+    per_frame = state.seconds.get("detector", 0.0) / max(1, state.detector_calls)
     record = {"detector": detector.model, "redteam_model": state.redteam_model, "seconds": state.seconds,
               "detector_s_per_frame": per_frame, "frames_scanned": audit.frames_scanned}  # fmt: skip
     path.write_text(json.dumps(record, indent=1))

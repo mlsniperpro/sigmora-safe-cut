@@ -33,7 +33,6 @@ from safecut.contracts import (
     Transcript,
     load,
     measured_usd,
-    now_utc,
     read_cost_lines,
     receipt_hash,
 )
@@ -44,7 +43,20 @@ APPROVAL = "approval.json"
 SYNTHETIC_MARKER = "synthetic.json"
 SYNTHETIC_TRUTH = Path("raw/redteam/synthetic_truth.json")
 SYNTHETIC_NOTE = "Synthetic job: every model answer was replayed from synthetic data; no model was called."
+BASETEN_NOTE = (
+    "Sampled output frames (already redacted) went to Muse Spark Open on Baseten for a second opinion: this job was"
+    " consented, and Baseten's terms, not Meta's store setting, govern that copy."
+)
 YUNET_NOTE = "Audited with YuNet (faces only): EgoBlur weights weren't installed; the red team checked plates."
+
+
+def is_synthetic(job_dir: Path) -> bool:
+    """A job replayed from synthetic answers: SENSE's demo recording (``raw/manifest.json`` ``synthetic: true``), a
+    ``synthetic.json`` marker, or the red-team oracle's truth file."""
+    manifest = job_dir / "raw" / "manifest.json"
+    if manifest.exists() and json.loads(manifest.read_text(encoding="utf-8")).get("synthetic") is True:
+        return True
+    return (job_dir / SYNTHETIC_MARKER).exists() or (job_dir / SYNTHETIC_TRUTH).exists()
 
 
 class ReceiptError(ValueError):
@@ -99,8 +111,13 @@ def data_handling(job_dir: Path, models: dict[str, str], audit: Audit) -> DataHa
     no_store = sorted({m for m in (asr, opinion, sam if unstored_sam else None) if m is not None})
     store_by_model = {m: False for stage, m in models.items() if stage != "auditor" and m not in no_store}
     notes: list[str] = []
-    if (job_dir / SYNTHETIC_MARKER).exists() or (job_dir / SYNTHETIC_TRUTH).exists():
+    billed = (job_dir / "cost.jsonl").exists() and any(
+        line.usd > 0 or line.estimated for line in read_cost_lines(job_dir / "cost.jsonl")
+    )
+    if is_synthetic(job_dir) and not billed:  # a job any model was paid for isn't "no model was called"
         notes.append(SYNTHETIC_NOTE)
+    if opinion is not None:
+        notes.append(BASETEN_NOTE)
     if audit.egoblur.model == "yunet-face":
         notes.append(YUNET_NOTE)
     if responses is not None and responses.pending:
@@ -138,7 +155,10 @@ def build(
     lines = list(read_cost_lines(job_dir / "cost.jsonl")) if (job_dir / "cost.jsonl").exists() else []
     meta, meta_estimated = measured_usd(lines, provider="meta")
     baseten, _ = measured_usd(lines, provider="baseten")
-    if approved_at is None and (job_dir / APPROVAL).exists():
+    if approved_at is None:
+        # The receipt says the creator approved: only an approval on record (the pipeline's approval.json) says so.
+        if not (job_dir / APPROVAL).exists():
+            raise ReceiptError("no approval.json: the creator hasn't approved this plan (review it, or auto-approve)")
         approved_at = datetime.fromisoformat(json.loads((job_dir / APPROVAL).read_text())["approved_at"])
     body = ReceiptBody(
         job_id=job.job_id,
@@ -155,7 +175,7 @@ def build(
         models=models,
         data_handling=data_handling(job_dir, models, audit),
         approved_by="creator",
-        approved_at=approved_at or now_utc(),
+        approved_at=approved_at,
         cost_usd=meta,
         cost_usd_estimated=meta_estimated,
         cost_usd_baseten=baseten,

@@ -43,6 +43,7 @@ from safecut import prepare
 from safecut.config import Settings
 from safecut.contracts import Job, Track, Tracks, load
 from safecut.meta import replay, sam
+from safecut.scout import boxes as keyframe_boxes
 from safecut.scout import grid, roles, scene
 from safecut.speech import stage as speech
 from safecut.track import stage as track_stage
@@ -277,7 +278,7 @@ SCENE_ANSWER: dict[str, Any] = {
 }  # fmt: skip
 
 
-def _responses_events(answer: Mapping[str, Any], response_id: str) -> list[dict[str, Any]]:
+def responses_events(answer: Mapping[str, Any], response_id: str) -> list[dict[str, Any]]:
     text = json.dumps(answer, separators=(",", ":"))
     response = {
         "id": response_id, "status": "completed",
@@ -320,9 +321,10 @@ class Responder:
 
     def __call__(self, stage: str, key: str, info: Mapping[str, Any]) -> replay.RawCall:
         answer = {"sam": self.sam, "asr": self.asr, "scene": self.scene, "roles": self.vote,
-                  "escalate": self.escalate}[stage](key, info)  # fmt: skip
+                  "escalate": self.escalate, "boxes": self.boxes}[stage](key, info)  # fmt: skip
         model = {"sam": self.settings.sam_model, "asr": self.settings.asr_model, "scene": self.settings.scene_model,
-                 "roles": self.settings.role_model, "escalate": self.settings.escalate_model}[stage]  # fmt: skip
+                 "roles": self.settings.role_model, "escalate": self.settings.escalate_model,
+                 "boxes": self.settings.role_model}[stage]  # fmt: skip
         request = {k: v for k, v in info.items() if k in ("kind", "concept", "text", "sam_frames", "vote", "frames")}
         if stage == "sam":
             request["file_id"] = SYNTHETIC_FILE
@@ -374,7 +376,7 @@ class Responder:
                 "audioDurationMs": round(SECONDS * 1000), "turns": turns}  # fmt: skip
 
     def scene(self, key: str, _info: Mapping[str, Any]) -> Any:
-        return _responses_events(SCENE_ANSWER, f"resp_synthetic_{key}")
+        return responses_events(SCENE_ANSWER, f"resp_synthetic_{key}")
 
     # -- role votes and escalation ---------------------------------------------
 
@@ -406,7 +408,7 @@ class Responder:
             frame = next((f for f in sent if object_box("e7", f) is not None), None)
             if frame is not None:
                 answer["missed"].append(self._missed(frame))
-        return _responses_events(answer, f"resp_synthetic_{key.replace('-', '_')}")
+        return responses_events(answer, f"resp_synthetic_{key.replace('-', '_')}")
 
     def _person(self, entity: str | None, track: Track, k: int) -> tuple[str, str, int | None]:
         if entity == "e1":
@@ -423,19 +425,35 @@ class Responder:
             return "unsure", "Too small to tell who this is on these frames.", None
         return "bystander", "Walks past in the background; nobody addresses them.", None
 
+    def gx(self, px: float) -> int:
+        return round(px * grid.GRID / self.job.width)
+
+    def gy(self, py: float) -> int:
+        return round((py + grid.BAR_H) * grid.GRID / (self.job.height + grid.BAR_H))
+
+    def grid_box(self, box: Box) -> list[int]:
+        return [self.gx(box[0]), self.gy(box[1]), self.gx(box[2]), self.gy(box[3])]
+
     def _missed(self, frame: int) -> dict[str, Any]:
         x1, y1, x2, y2 = ENVELOPE
-        sent_h = self.job.height + grid.BAR_H
-
-        def gx(px: float) -> int:
-            return round(px * grid.GRID / self.job.width)
-
-        def gy(py: float) -> int:
-            return round((py + grid.BAR_H) * grid.GRID / sent_h)
-
         return {"what": "an addressed envelope on the table", "sam_phrase": "envelope", "frame": frame,
-                "point": {"x": gx((x1 + x2) / 2), "y": gy((y1 + y2) / 2)},
-                "box": [gx(x1), gy(y1), gx(x2), gy(y2)], "recurs": False}  # fmt: skip
+                "point": {"x": self.gx((x1 + x2) / 2), "y": self.gy((y1 + y2) / 2)},
+                "box": self.grid_box(ENVELOPE), "recurs": False}  # fmt: skip
+
+    def boxes(self, key: str, info: Mapping[str, Any]) -> Any:
+        """The muse_no_track baseline's detector: every visible object on each keyframe, as boxes."""
+        frames: list[dict[str, Any]] = []
+        for f in cast(Sequence[int], info["frames"]):
+            objects: list[dict[str, Any]] = []
+            for entity in FIGURES:
+                for kind, box in (("face", face_box(entity, f)), ("person", person_box(entity, f))):
+                    if box is not None:
+                        objects.append({"kind": kind, "box": self.grid_box(box)})
+            for entity, kind in (("e5", "screen"), ("e6", "license plate"), ("e7", "document")):
+                if (box := object_box(entity, f)) is not None:
+                    objects.append({"kind": kind, "box": self.grid_box(box)})
+            frames.append({"frame": f, "objects": objects})
+        return responses_events({"frames": frames}, f"resp_synthetic_boxes_{key}")
 
     def escalate(self, key: str, info: Mapping[str, Any]) -> Any:
         tracks = self._tracks()
@@ -448,7 +466,7 @@ class Responder:
                 "evidence": "Walks past behind the host and guest; nobody addresses or introduces them.",
                 "why_others_wrong": "The unsure judge relied on the figure's size, not on any exchange.",
             })  # fmt: skip
-        return _responses_events({"rulings": rulings}, f"resp_synthetic_escalate_{key}")
+        return responses_events({"rulings": rulings}, f"resp_synthetic_escalate_{key}")
 
 
 def prepare_proxy_frames(job_dir: Path) -> int:
@@ -467,6 +485,25 @@ async def record(clip: Path, job_dir: Path) -> None:
     prepare.prepare(clip, job_dir)
     responder = Responder(job_dir, settings)
     await track_stage.run_async(job_dir, settings=settings, responder=responder)
+    await speech.run_async(job_dir, settings=settings, responder=responder)
+    await scene.run_async(job_dir, settings=settings, responder=responder)
+    await roles.run_async(job_dir, settings=settings, responder=responder)
+
+
+#: Baselines whose perception differs from the full pipeline, recorded under ``variants/<name>/raw/`` (EVAL §3).
+#: ``blur_all`` and ``detector_only`` replay the main recordings' ``face``/``license plate``/``screen`` sweeps.
+VARIANTS = ("muse_no_track",)
+
+
+async def record_muse_no_track(clip: Path, job_dir: Path) -> None:
+    """EVAL §3 row 3: Muse's per-keyframe boxes held between keyframes (no SAM, miss loop stubbed), then the scene
+    pass, the role pass ×3 and escalation as in the full pipeline."""
+    settings = Settings(sam_fps=8, miss_sam="stub")
+    (job_dir / "source").mkdir(parents=True)
+    shutil.copyfile(clip, job_dir / "source" / clip.name)
+    prepare.prepare(clip, job_dir)
+    responder = Responder(job_dir, settings)
+    await keyframe_boxes.run_async(job_dir, settings=settings, responder=responder)
     await speech.run_async(job_dir, settings=settings, responder=responder)
     await scene.run_async(job_dir, settings=settings, responder=responder)
     await roles.run_async(job_dir, settings=settings, responder=responder)
@@ -494,6 +531,21 @@ def main(out_root: Path) -> Path:
         "(none is model output).",
     }
     (demo / replay.RAW / "manifest.json").write_text(json.dumps(manifest, indent=1) + "\n")
+    for variant in VARIANTS:
+        with tempfile.TemporaryDirectory() as tmp:
+            job_dir = Path(tmp) / JOB_ID
+            asyncio.run(record_muse_no_track(clip, job_dir))
+            target = demo / "variants" / variant / replay.RAW
+            shutil.copytree(job_dir / replay.RAW, target)
+        note = {
+            "variant": variant,
+            "synthetic": True,
+            "source": manifest["source"],
+            "source_sha256": manifest["source_sha256"],
+            "settings": {"SAFECUT_MISS_SAM": "stub"},
+            "note": f"Synthetic recordings for the {variant} baseline (EVAL §3), generated from ground truth.",
+        }
+        (target / "variant.json").write_text(json.dumps(note, indent=1) + "\n")
     return demo
 
 

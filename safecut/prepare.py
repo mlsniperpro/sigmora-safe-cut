@@ -47,10 +47,12 @@ class PrepareError(ValueError):
 
 @dataclass(frozen=True)
 class SourceProbe:
-    """What prepare needs to know about an upload before transcoding it."""
+    """What prepare needs to know about an upload before transcoding it. ``audio_start`` is the first decoded
+    audio frame's time (AAC priming excluded), on the same container clock as the video packets."""
 
     video: media.Packets
     audio: media.Packets | None
+    audio_start: Fraction | None
     fps: int
     duration: Fraction
     size_bytes: int
@@ -99,15 +101,19 @@ def probe(source: Path) -> SourceProbe:
         reason: Reason = "no_video" if "no v:0 packets" in str(exc) else "unreadable"
         raise PrepareError(reason, f"can't read the video stream: {exc}") from exc
     audio: media.Packets | None = None
+    audio_start: Fraction | None = None
     if facts.audio:
         try:
             audio = media.packets(source, "a:0")
+            audio_start = media.decoded_start(source, "a:0")
         except media.MediaError:
+            audio = None
             log.warning("audio stream announced but unreadable; prepared without audio", extra={"source": source.name})
     duration = max(video.span, Fraction(facts.duration).limit_denominator(1_000_000))
     if duration > Fraction(str(config.MAX_CLIP_SECONDS)):
         raise PrepareError("too_long", f"{float(duration):.2f} s is over the {config.MAX_CLIP_SECONDS} s limit")
-    return SourceProbe(video=video, audio=audio, fps=job_fps(video), duration=duration, size_bytes=size)
+    return SourceProbe(video=video, audio=audio, audio_start=audio_start, fps=job_fps(video), duration=duration,
+                       size_bytes=size)  # fmt: skip
 
 
 def _video_filter(fps: int) -> str:
@@ -118,9 +124,9 @@ def _video_filter(fps: int) -> str:
     return f"setpts=PTS-STARTPTS,fps={fps},{scale}"
 
 
-def _audio_filter(video: media.Packets, audio: media.Packets) -> str:
+def _audio_filter(video: media.Packets, audio_start: Fraction) -> str:
     """Put the audio on the video's origin: trim what plays before the first video frame, or delay it."""
-    lead = video.start - audio.start  # > 0: audio starts first
+    lead = video.start - audio_start  # > 0: audio starts first
     chain = "asetpts=PTS-STARTPTS"
     if lead > 0:
         return f"{chain},atrim=start={float(lead):.6f},asetpts=PTS-STARTPTS"
@@ -131,8 +137,8 @@ def _audio_filter(video: media.Packets, audio: media.Packets) -> str:
 
 def transcode(source: Path, out: Path, probe_result: SourceProbe) -> None:
     args = ["-y", "-i", str(source), "-map", "0:v:0", "-vf", _video_filter(probe_result.fps)]
-    if probe_result.audio is not None:
-        args += ["-map", "0:a:0", "-af", _audio_filter(probe_result.video, probe_result.audio), "-c:a", "aac",
+    if probe_result.audio is not None and probe_result.audio_start is not None:
+        args += ["-map", "0:a:0", "-af", _audio_filter(probe_result.video, probe_result.audio_start), "-c:a", "aac",
                  "-b:a", "128k"]  # fmt: skip
     else:
         args += ["-an"]
@@ -182,7 +188,10 @@ def prepare(source: Path, job_dir: Path, intake: Intake | None = None) -> Path:
         partial.unlink(missing_ok=True)
         raise PrepareError("unreadable", f"transcode failed: {exc}") from exc
     partial.replace(prepared)
-    extract_keyframes(prepared, job_dir / KEYFRAMES, fps=found.fps, frames=frames)
+    try:
+        extract_keyframes(prepared, job_dir / KEYFRAMES, fps=found.fps, frames=frames)
+    except media.MediaError as exc:
+        raise PrepareError("unreadable", f"keyframes failed: {exc}") from exc
     job = Job(
         job_id=job_dir.name,
         source=intake.source if intake is not None else source.name,

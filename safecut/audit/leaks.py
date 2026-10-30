@@ -29,7 +29,6 @@ EXCLUDE_IOU = 0.3
 #: API-NOTES §5: a red-team box under 2 px becomes a 32 px box (fail closed: it still gets patched).
 MIN_SIDE = 2
 DEGENERATE_SIDE = 32
-Detector = Literal["egoblur", "redteam", "redteam_open"]
 
 
 def concept_matches(kind: LeakKind, concept: str) -> bool:

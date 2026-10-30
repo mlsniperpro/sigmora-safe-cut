@@ -5,6 +5,7 @@ red-team's private text never reaches the receipt (``redteam.md`` "Private text"
 from __future__ import annotations
 
 import base64
+import json
 from html import escape
 from pathlib import Path
 
@@ -68,10 +69,18 @@ def _item(job_dir: Path, item: ReceiptItem) -> str:
 
 def render_html(receipt: Receipt, job_dir: Path) -> str:
     a, d = receipt.audit, receipt.data_handling
+    approval_file = job_dir / "approval.json"
+    how = json.loads(approval_file.read_text(encoding="utf-8")).get("how") if approval_file.exists() else None
+    approval = (
+        "the policy's decisions accepted without review (auto-approve)"
+        if how == "auto_policy"
+        else "approved by the creator"
+    )
     publishable = a.unresolved == 0
     verdict = (
         '<span class="badge ok">Audit passed</span>'
-        "<span>Every output frame was checked; nothing is left exposed.</span>"
+        "<span>The detector scanned every output frame and the red team checked sampled frames: no leak is left"
+        " that they found.</span>"
         if publishable
         else f'<span class="badge bad">Publishing blocked</span><span>{a.unresolved} unresolved'
         f" ({escape(a.blocked_reason or 'unresolved')}).</span>"
@@ -92,6 +101,19 @@ def render_html(receipt: Receipt, job_dir: Path) -> str:
     stores += "".join(f"<tr><td><code>{escape(m)}</code></td><td>takes no store parameter</td></tr>"
                       for m in d.no_store_param)  # fmt: skip
     notes = "".join(f"<li>{escape(n)}</li>" for n in d.notes)
+    synthetic = any(n.startswith("Synthetic job") for n in d.notes)
+    if "redteam" in receipt.models:
+        redteam = f"a red team (<code>{escape(receipt.models['redteam'])}</code>)"
+    elif synthetic:
+        redteam = "a synthetic ground-truth oracle standing in for the red team (no model)"
+    else:
+        redteam = "a red team (which gave no answer, so those frames count as unresolved)"
+    caveat = (
+        '<p class="warn">Synthetic replay: these are the models the recorded stages name; none was called for this '
+        "job.</p>"
+        if synthetic
+        else ""
+    )
     items = "".join(_item(job_dir, item) for item in receipt.items)
     cost = f"${receipt.cost_usd:.4f}"
     if receipt.cost_usd_estimated:
@@ -103,7 +125,7 @@ def render_html(receipt: Receipt, job_dir: Path) -> str:
 <title>Privacy receipt · {escape(receipt.job_id)}</title><style>{_STYLE}</style></head>
 <body><main>
 <h1>Privacy receipt</h1>
-<div class="muted">Sigmora Safe Cut · job <code>{escape(receipt.job_id)}</code> · approved by the creator at
+<div class="muted">Sigmora Safe Cut · job <code>{escape(receipt.job_id)}</code> · {escape(approval)} at
 {escape(receipt.approved_at.isoformat())}</div>
 <div class="verdict">{verdict}</div>
 <div class="stats">{stat_html}</div>
@@ -111,10 +133,10 @@ def render_html(receipt: Receipt, job_dir: Path) -> str:
 <div class="items">{items}</div>
 <h2>The audit</h2>
 <div class="card">Auditor <code>{escape(a.auditor)}</code> scanned {a.frames_scanned} frames of the rendered video,
-and a red team was asked to read or identify anything on sampled frames. {a.leaks_found} leak(s) found,
+and {redteam} was asked to read or identify anything on sampled frames. {a.leaks_found} leak(s) found,
 {a.leaks_patched} patched, {a.unresolved} unresolved, in {a.passes} pass(es).</div>
 <h2>Models</h2>
-<div class="card"><table><tbody>{models}</tbody></table></div>
+<div class="card">{caveat}<table><tbody>{models}</tbody></table></div>
 <h2>Data handling</h2>
 <div class="card"><table><tbody><tr><td>Mode</td><td>{escape(d.mode)} (never Contributor)</td></tr>{stores}
 <tr><td>Uploaded files</td><td>{"deleted" if d.files_deleted else "not all deleted yet"}</td></tr>

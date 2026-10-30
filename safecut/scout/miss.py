@@ -38,6 +38,10 @@ SINGULAR = {
     "ladies": "lady",
     "minors": "minor",
     "faces": "face",
+    "childrens": "child",
+    "mens": "man",
+    "womens": "woman",
+    "peoples": "person",
 }
 CHILD_SET = frozenset(
     {"child", "kid", "baby", "infant", "toddler", "boy", "girl", "teen", "teenager", "student", "schoolchild", "minor"}

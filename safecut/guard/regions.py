@@ -6,8 +6,9 @@ everything else 8 % plus 8 px. Outside the frames SAM saw the object, the guard 
 * **anchors** (a box from SAM): the padded box, or the padded SAM mask when one exists;
 * **between anchors**, within SAM's own sampling step: the interpolated box, or both neighbouring masks shifted to
   it (API-NOTES §12), padded;
-* **gaps** (SAM lost the object between anchors): the last box held and grown 2 % a frame, joined with the
-  interpolated box, so a box that moved during the gap is still covered;
+* **gaps** (SAM lost the object between anchors): the box on each side held and grown 2 % a frame (forward from
+  where it was lost, backward from where it came back), joined with the interpolated box, so a box that moved
+  during the gap is still covered;
 * **back-fill** (``backfill`` frames before the first detection, SAM's late confirmation) and **extend** (8 frames
   after the last): the edge box held, grown 2 % a frame, and swept along the track's own motion at its edge (an
   object SAM confirmed late was usually already moving the same way).
@@ -26,7 +27,7 @@ from functools import lru_cache
 import numpy as np
 
 from safecut.contracts import Rle, Track
-from safecut.decide.geometry import BoolMask, BoxT, box_at, clamp, decode, dilate, encode, grow, mask_bbox, shift
+from safecut.decide.geometry import BoolMask, BoxT, box_at, clamp, decode, dilate, encode_crop, grow, mask_bbox, union
 
 #: DESIGN §2.6: a held box grows 2 % of its size per frame on each side...
 GROW_PER_FRAME = 0.02
@@ -54,10 +55,6 @@ def _expand(box: BoxT, share: float, width: int, height: int) -> BoxT:
     return out if out is not None else box
 
 
-def _union(a: BoxT, b: BoxT) -> BoxT:
-    return (min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]))
-
-
 def edge_velocity(track: Track, at_start: bool) -> tuple[float, float]:
     """The track's (dx, dy) per frame at its first (or last) anchor, measured over up to 8 frames inward and capped
     at a quarter of the box's size per frame."""
@@ -83,7 +80,7 @@ def held_box(edge: BoxT, distance: int, velocity: tuple[float, float], width: in
     itself and grown 2 % a frame (capped)."""
     dx, dy = velocity[0] * distance, velocity[1] * distance
     moved = clamp((edge[0] + dx, edge[1] + dy, edge[2] + dx, edge[3] + dy), width, height)
-    swept = _union(edge, moved) if moved is not None else edge
+    swept = union([edge, moved]) if moved is not None else edge
     return _expand(swept, min(GROW_PER_FRAME * distance, MAX_GROWTH), width, height)
 
 
@@ -97,6 +94,45 @@ def mask_ok(mask: BoolMask, box: BoxT) -> bool:
     w, h = box[2] - box[0], box[3] - box[1]
     spans = extent[2] - extent[0] >= 0.8 * w and extent[3] - extent[1] >= 0.8 * h
     return spans and int(crop.sum()) >= 0.8 * 0.3125 * w * h
+
+
+@dataclass(frozen=True)
+class Patch:
+    """A mask as its foreground's crop and the crop's top-left in frame pixels: moving it is free, and every step
+    works on the object's own area, never the whole frame."""
+
+    crop: BoolMask
+    x: int
+    y: int
+
+    @classmethod
+    def of(cls, mask: BoolMask) -> Patch | None:
+        bbox = mask_bbox(mask)
+        if bbox is None:
+            return None
+        return cls(mask[bbox[1] : bbox[3], bbox[0] : bbox[2]], bbox[0], bbox[1])
+
+    def moved(self, dx: int, dy: int) -> Patch:
+        return Patch(self.crop, self.x + dx, self.y + dy)
+
+    @property
+    def box(self) -> BoxT:
+        return (self.x, self.y, self.x + self.crop.shape[1], self.y + self.crop.shape[0])
+
+    def window(self, box: BoxT) -> BoolMask:
+        """The patch's foreground inside ``box``, as a ``box``-sized array."""
+        out = np.zeros((box[3] - box[1], box[2] - box[0]), dtype=np.bool_)
+        x1, y1 = max(box[0], self.x), max(box[1], self.y)
+        x2, y2 = min(box[2], self.box[2]), min(box[3], self.box[3])
+        if x2 > x1 and y2 > y1:
+            source = self.crop[y1 - self.y : y2 - self.y, x1 - self.x : x2 - self.x]
+            out[y1 - box[1] : y2 - box[1], x1 - box[0] : x2 - box[0]] = source
+        return out
+
+
+def join(patches: list[Patch]) -> Patch:
+    canvas = union([p.box for p in patches])
+    return Patch(np.logical_or.reduce([p.window(canvas) for p in patches]), canvas[0], canvas[1])
 
 
 class TrackRegions:
@@ -113,35 +149,39 @@ class TrackRegions:
         self.end_v = edge_velocity(track, at_start=False)
         self._decoded = lru_cache(maxsize=8)(self._decode)
 
-    def _decode(self, frame: int) -> BoolMask:
-        return decode(self.track.masks[frame])
+    def _decode(self, frame: int) -> Patch | None:
+        return Patch.of(decode(self.track.masks[frame]))
 
     def _pad(self, box: BoxT) -> BoxT:
         return grow(box, self.ratio, self.px, self.width, self.height)
 
-    def _padded_mask(self, mask: BoolMask, box: BoxT) -> Region | None:
+    def _padded_mask(self, patch: Patch | None, box: BoxT) -> Region | None:
+        # The span test runs on SAM's own (or the shifted) mask, before padding: dilation would grow a stray pixel
+        # in a small box into a disk that "spans" it while most of the object stays bare.
+        if patch is None or not mask_ok(patch.window(box), (0, 0, box[2] - box[0], box[3] - box[1])):
+            return None
         rx = math.ceil(self.ratio * (box[2] - box[0])) + self.px
         ry = math.ceil(self.ratio * (box[3] - box[1])) + self.px
-        grown = dilate(mask, rx, ry)
-        bbox = mask_bbox(grown)
-        if bbox is None or not mask_ok(grown, box):
+        canvas = np.zeros((patch.crop.shape[0] + 2 * ry, patch.crop.shape[1] + 2 * rx), dtype=np.bool_)
+        canvas[ry : ry + patch.crop.shape[0], rx : rx + patch.crop.shape[1]] = patch.crop
+        grown = Patch(dilate(canvas, rx, ry), patch.x - rx, patch.y - ry)
+        frame = (0, 0, self.width, self.height)
+        clipped = Patch.of(grown.window(frame))
+        if clipped is None:
             return None
-        return Region(box=bbox, mask=encode(grown))
+        return Region(box=clipped.box, mask=encode_crop(clipped.crop, clipped.x, clipped.y, height=self.height,
+                                                        width=self.width))  # fmt: skip
 
-    def _shifted_mask(self, frame: int, box: BoxT) -> BoolMask | None:
+    def _shifted_mask(self, frame: int, box: BoxT) -> Patch | None:
         """The neighbouring anchors' masks, each moved to ``box`` (API-NOTES §12), joined."""
         i = bisect.bisect_left(self.mask_keys, frame)
         near = [k for k in self.mask_keys[max(0, i - 1) : i + 1] if abs(k - frame) <= self.interp_gap]
-        if not near:
-            return None
-        out: BoolMask | None = None
+        moved: list[Patch] = []
         for k in near:
-            anchor = self.track.boxes.get(k)
-            if anchor is None:
-                continue
-            moved = shift(self._decoded(k), box[0] - anchor[0], box[1] - anchor[1])
-            out = moved if out is None else np.logical_or(out, moved)
-        return out
+            anchor, patch = self.track.boxes.get(k), self._decoded(k)
+            if anchor is not None and patch is not None:
+                moved.append(patch.moved(box[0] - anchor[0], box[1] - anchor[1]))
+        return join(moved) if moved else None
 
     def at(self, frame: int) -> Region:
         """The region on ``frame`` (which the caller keeps inside ``first - backfill … last + extend``)."""
@@ -175,5 +215,8 @@ class TrackRegions:
                 if region is not None:
                     return region
             return Region(self._pad(interpolated))
+        # A long gap is held from both ends: growing forward from where it was lost and backward from where it
+        # came back, plus the straight path between, so a reappearance far from the loss is covered too.
         held = held_box(t.boxes[before], frame - before, (0.0, 0.0), self.width, self.height)
-        return Region(self._pad(_union(held, interpolated)))
+        back = held_box(t.boxes[after], after - frame, (0.0, 0.0), self.width, self.height)
+        return Region(self._pad(union([held, back, interpolated])))

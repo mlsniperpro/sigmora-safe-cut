@@ -15,6 +15,7 @@ import pytest
 
 from safecut import contracts
 from safecut.audit import NoRedTeam, replay_redteam
+from safecut.audit import leaks as rules
 from safecut.audit import redteam as rt
 from safecut.audit import run as audit_run
 from safecut.audit.detectors import AuditorModel, Detection, YuNet
@@ -184,6 +185,23 @@ def test_our_frame_label_is_dropped_but_anything_else_in_the_bar_is_a_whole_fram
     contracts.validate_job_dir(job_dir)
 
 
+def test_a_finding_that_cannot_be_placed_is_never_excused_by_the_host(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A face reported in the bar (or with a malformed box) becomes a whole-frame leak, which no kept item excuses
+    (fail closed), even a host who fills the frame (stood in for by an exclusion that excuses everything)."""
+    job_dir = prepared(tmp_path)
+    monkeypatch.setattr(rules, "excluded_by", lambda *_: "i_1")
+    script = {0: [finding("face", [1, 2, 3])], 30: [finding("face", [10, 0, 300, 50])]}
+    audit_run(job_dir, replay=True, settings=SETTINGS, redteam=Scripted(script))
+    audit = audit_of(job_dir)
+    hits = [e for e in audit.redteam if isinstance(e, contracts.RedteamHit) and e.frame in (0, 30)]
+    assert hits
+    assert all(h.excluded_by is None for h in hits)
+    assert {leak.frame for leak in audit.leaks if leak.box == (0, 0, 320, 240)} >= {0, 30}
+    contracts.validate_job_dir(job_dir)
+
+
 def test_unanswered_frames_block_as_audit_failed(tmp_path: Path) -> None:
     job_dir = prepared(tmp_path)
     audit_run(job_dir, replay=True, settings=SETTINGS, redteam=NoRedTeam())
@@ -198,11 +216,17 @@ def test_a_replay_without_recordings_answers_nothing(tmp_path: Path) -> None:
     (job_dir / "raw/redteam/synthetic_truth.json").unlink()
     assert isinstance(replay_redteam(job_dir), NoRedTeam)
     recorded = job_dir / "raw/redteam/frames.json"
-    recorded.write_text(json.dumps({"model": "muse-spark-1.3", "frames": {"0": [], "30": []}}))
+    leak = finding("face", [10, 10, 40, 40]).model_dump()
+    recorded.write_text(json.dumps({"model": "muse-spark-1.3", "answers": {"0": [[leak], []], "30": [[]]}}))
     replay = replay_redteam(job_dir)
     assert isinstance(replay, ReplayRedTeam)
-    got = asyncio.run(replay.ask([(0, np.zeros((2, 2, 3), np.uint8)), (5, np.zeros((2, 2, 3), np.uint8))], [], bar=24))
-    assert (got.findings, got.missing, got.model) == ({0: []}, [5], "muse-spark-1.3")
+    blank = np.zeros((2, 2, 3), np.uint8)
+    first = asyncio.run(replay.ask([(0, blank), (5, blank)], [], bar=24))
+    assert (len(first.findings[0]), first.missing, first.model) == (1, [5], "muse-spark-1.3")
+    again = asyncio.run(replay.ask([(0, blank)], [], bar=24))  # the re-check gets the second recorded answer
+    assert again.findings == {0: []}
+    third = asyncio.run(replay.ask([(0, blank)], [], bar=24))  # asked more often than recorded: unanswered
+    assert (third.findings, third.missing, third.model) == ({}, [0], None)
 
 
 def test_a_budget_stop_blocks_as_over_budget(tmp_path: Path) -> None:
@@ -256,28 +280,27 @@ def test_the_audit_renders_first_when_there_is_no_video(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------------------------- live red-team logic
 
 
+REFUSED = "refused"
+INVALID = "invalid"
+
+
 class FakeCalls:
-    """Stands in for ``responses.create_json``/``create``: answers or raises from a queue, recording each call."""
+    """Stands in for ``responses.create``: from a queue, an output, a refusal, an invalid answer or an exception."""
 
     def __init__(self, outcomes: list[Any]) -> None:
         self.outcomes = outcomes
         self.bodies: list[Any] = []
 
-    def _next(self, body: Any) -> Any:
+    async def create(self, client: Any, body: Any, **_: Any) -> Any:
         self.bodies.append(body)
         outcome = self.outcomes.pop(0)
         if isinstance(outcome, Exception):
             raise outcome
-        return outcome
-
-    async def create_json(self, client: Any, model_type: Any, body: Any, **_: Any) -> Any:
-        return self._next(body), None
-
-    async def create(self, client: Any, body: Any, **_: Any) -> Any:
-        out = self._next(body)
-        text = out.model_dump_json()
-        return SimpleNamespace(response={"output": [{"type": "message", "content": [{"type": "output_text",
-                                                                                     "text": text}]}]})  # fmt: skip
+        if outcome == REFUSED:
+            part = {"type": "refusal", "refusal": "no"}
+        else:
+            part = {"type": "output_text", "text": "{not json" if outcome == INVALID else outcome.model_dump_json()}
+        return SimpleNamespace(response={"output": [{"type": "message", "content": [part]}]})
 
 
 def frames(*numbers: int) -> list[tuple[int, Frame]]:
@@ -291,7 +314,6 @@ def output(*numbers: int, hits: dict[int, list[Finding]] | None = None) -> Redte
 
 
 def live(tmp_path: Path, calls: FakeCalls, monkeypatch: pytest.MonkeyPatch) -> LiveRedTeam:
-    monkeypatch.setattr(rt.responses, "create_json", calls.create_json)
     monkeypatch.setattr(rt.responses, "create", calls.create)
     return LiveRedTeam(client=cast(Any, None), settings=Settings(), job_dir=tmp_path)  # responses is stubbed
 
@@ -310,7 +332,8 @@ def test_live_batches_50_frames_a_call_with_a_bar_on_every_image(
     assert first["store"] is False
     assert first["text"]["format"]["strict"] is True
     recorded = json.loads((tmp_path / "raw/redteam/frames.json").read_text())
-    assert len(recorded["frames"]) == 60
+    assert len(recorded["answers"]) == 60
+    assert all(len(asks) == 1 for asks in recorded["answers"].values())
     assert (tmp_path / "redteam_raw.jsonl").read_text().count("\n") == 2
 
 
@@ -323,10 +346,27 @@ def test_live_follows_up_once_on_missing_frames(tmp_path: Path, monkeypatch: pyt
 
 
 def test_live_reasks_a_refusal_once_with_the_softer_wording(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    calls = FakeCalls([MetaRefusal("no"), output(0)])
+    calls = FakeCalls([REFUSED, output(0)])
     got = asyncio.run(live(tmp_path, calls, monkeypatch).ask(frames(0), [], bar=24))
     assert sorted(got.findings) == [0]
     assert calls.bodies[1]["input"][1]["content"][0]["text"].startswith(rt.SOFTER)
+
+
+def test_live_reasks_a_refusal_the_client_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The client raises a refusal it meets while streaming, before any text: re-asked like one in the message."""
+    calls = FakeCalls([MetaRefusal("refused (2 chars)"), output(0)])
+    got = asyncio.run(live(tmp_path, calls, monkeypatch).ask(frames(0), [], bar=24))
+    assert sorted(got.findings) == [0]
+    assert calls.bodies[1]["input"][1]["content"][0]["text"].startswith(rt.SOFTER)
+
+
+@pytest.mark.parametrize("script", [[INVALID, REFUSED], [REFUSED, INVALID], [INVALID, INVALID], [REFUSED, REFUSED]])
+def test_live_reasks_at_most_once_per_call(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, script: list[str]) -> None:
+    """redteam.md: one re-ask in total per call, whatever went wrong; then the frames stay unresolved."""
+    calls = FakeCalls([*script, output(0)])
+    got = asyncio.run(live(tmp_path, calls, monkeypatch).ask(frames(0), [], bar=24))
+    assert len(calls.bodies) == 2
+    assert (got.findings, got.missing, got.model) == ({}, [0], None)  # no answer: no model claimed either
 
 
 def test_live_failures_and_budget_stops_leave_frames_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -345,3 +385,65 @@ def test_with_bar_and_image_part() -> None:
     assert rt.image_part(img)["image_url"].startswith("data:image/jpeg;base64,")
     merged = rt.merge_frames(output(1, 1, 5), {1})
     assert list(merged) == [1]
+
+
+class CrashOnRecheck:
+    """A detector that scans pass 1 fully, then dies on the first re-check (pass 2)."""
+
+    def __init__(self, frames: int) -> None:
+        self.frames, self.calls, self.inner = frames, 0, YuNet()
+
+    @property
+    def model(self) -> AuditorModel:
+        return "yunet-face"
+
+    @property
+    def detects_plates(self) -> bool:
+        return False
+
+    def detect(self, frame: Frame) -> list[Detection]:
+        self.calls += 1
+        if self.calls > self.frames:
+            raise RuntimeError("GPU lost")
+        return self.inner.detect(frame)
+
+
+def test_a_crash_while_rechecking_a_fix_is_never_clean(tmp_path: Path) -> None:
+    job_dir = prepared(tmp_path)
+    drop(job_dir, "i_2", {30, 31, 32})
+    audit_run(job_dir, replay=True, settings=SETTINGS, detector=CrashOnRecheck(60))
+    audit = audit_of(job_dir)
+    assert audit.frames_scanned == 60
+    assert audit.unresolved > 0
+    assert audit.blocked_reason == "audit_failed"
+    contracts.validate_job_dir(job_dir)
+
+
+class Silent:
+    """A red-team that leaves frames out without admitting it."""
+
+    async def ask(self, frames: Sequence[tuple[int, Frame]], approved: Sequence[str], *, bar: int) -> Answer:
+        return Answer(findings={})
+
+
+def test_frames_a_red_team_silently_skips_are_unresolved(tmp_path: Path) -> None:
+    job_dir = prepared(tmp_path)
+    audit_run(job_dir, replay=True, settings=SETTINGS, redteam=Silent())
+    audit = audit_of(job_dir)
+    assert (audit.blocked_reason, audit.unresolved >= 2) == ("audit_failed", True)
+
+
+def test_a_re_run_keeps_the_earlier_fixes_on_record(tmp_path: Path) -> None:
+    job_dir = prepared(tmp_path)
+    drop(job_dir, "i_2", {30, 31, 32})
+    audit_run(job_dir, replay=True, settings=SETTINGS)
+    first = audit_of(job_dir)
+    assert first.leaks
+    guard_run(job_dir)
+    render(job_dir)
+    audit_run(job_dir, replay=True, settings=SETTINGS)
+    second = audit_of(job_dir)
+    assert {(leak.frame, leak.patched_item) for leak in first.leaks} <= {(leak.frame, leak.patched_item)
+                                                                         for leak in second.leaks}  # fmt: skip
+    assert second.unresolved == 0
+    contracts.validate_job_dir(job_dir)

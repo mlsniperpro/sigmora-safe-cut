@@ -58,3 +58,16 @@ def test_records_a_whole_job_in_one_command(tmp_path: Path, monkeypatch: pytest.
     assert (out / "cost.jsonl").is_file()
     assert pipeline.find_recording(manifest["source_sha256"], tmp_path / "fixtures" / "jobs") == out
     assert status in (0, 1)  # 1 only if a later (SAFETY) stage of the analysis failed; SENSE recorded either way
+
+
+@pytest.mark.parametrize(
+    ("given", "want"), [("../..", "clip"), (".", "clip"), ("Hero 1/A", "a"), ("demo-live", "demo-live")]
+)
+def test_ids_never_escape_fixtures(given: str, want: str) -> None:
+    assert go_live.clip_id(Path(given)) == want
+
+
+def test_an_existing_recording_is_kept_unless_replaced(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (tmp_path / "fixtures" / "jobs" / "taken").mkdir(parents=True)
+    assert go_live.main([str(CLIP), "--id", "taken", "--out-root", str(tmp_path)]) == 2
+    assert "--replace" in capsys.readouterr().err

@@ -45,6 +45,9 @@ def test_e3_the_demo_job_is_redacted_audited_and_receipted(demo_job: Path) -> No
     assert probe_streams(demo_job / "redacted.mp4") == ["video:h264", "audio:aac"]
     assert verify_chain([load(demo_job / "receipt.json", Receipt)])
     assert (demo_job / "receipt.html").is_file()
+    receipt = load(demo_job / "receipt.json", Receipt)
+    assert any(n.startswith("Synthetic job") for n in receipt.data_handling.notes)  # honest about the replay
+    assert "redteam" not in receipt.models
 
 
 def test_e3_ground_truth_thresholds(demo_job: Path) -> None:

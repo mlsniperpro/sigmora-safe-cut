@@ -9,7 +9,7 @@ misses one of those becomes ``needs_you`` with the first ``hold`` that explains 
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
@@ -154,14 +154,16 @@ def judge_person(track: Track, row: RoleTrack | None, inputs: Inputs, gates: _Ga
         return Verdict("needs_you", "policy", "spotted by Muse Spark; SAM couldn't follow it, so a fixed box hides it")
     roles = inputs.roles
     if roles is None or roles.status != "ok" or row is None or row.failed_votes == 3:
-        return Verdict("needs_you", "policy", "the role check couldn't judge this person", hold="no_roles")
+        return Verdict("needs_you", "policy", "the role check couldn't judge this person",
+                       hold=_first_hold(gates, "no_roles"))  # fmt: skip
     if row.role == "bystander":
         return Verdict("hide", "model", f"bystander: {_evidence(row)}")
     if row.role == "unsure":
         suggestion = f"; a closer look suggests {row.suggested_role}" if row.suggested_role else ""
-        hold: Hold | None = None if row.escalated else "no_roles"
+        hold = None if row.escalated else _first_hold(gates, "no_roles")
         return Verdict("needs_you", "policy", f"checks didn't all agree{suggestion}", hold=hold)
-    if row.votes != ["participant"] * 3 or row.failed_votes or len(set(row.frames)) < 2:
+    seen = {f for f in row.frames if track.first <= f <= track.last}  # cited frames the track is actually on
+    if row.votes != ["participant"] * 3 or row.failed_votes or len(seen) < 2:
         return Verdict("needs_you", "policy", "participant, but not on 3/3 votes over 2 keyframes")
     if track.reentry_of is not None:
         return Verdict("needs_you", "policy", "came back into view as a new ID: hidden until you merge it")
@@ -180,11 +182,18 @@ _HOLD_REASONS: dict[Hold, str] = {
 }
 
 
-def _participant_hold(row: RoleTrack, inputs: Inputs, gates: _Gates) -> Hold | None:
+def _first_hold(gates: _Gates, hold: Hold) -> Hold:
+    """API-NOTES §12: when several holds apply, the first in :data:`HOLD_ORDER` is written."""
     if gates.no_scene:
         return "no_scene"
     if gates.no_speech:
         return "no_speech"
+    return hold
+
+
+def _participant_hold(row: RoleTrack, inputs: Inputs, gates: _Gates) -> Hold | None:
+    if gates.no_scene or gates.no_speech:
+        return _first_hold(gates, "no_scene")
     if gates.unmatched_child:
         return "unmatched_child"
     scene, transcript = inputs.scene, inputs.transcript
@@ -235,6 +244,28 @@ def _combine(verdicts: Sequence[Verdict]) -> Verdict:
     return Verdict("needs_you", "policy", reason, hold=hold)
 
 
+def _child_reentries(tracks: Sequence[Track], judged: Mapping[str, Verdict]) -> dict[str, Verdict]:
+    """A re-entry is the same object under a new ID: when any track linked by ``reentry_of`` (either way, along
+    the whole chain) is a child, every linked track is locked hidden too, so no ID of a child can be kept."""
+    root = {t.track_id: t.track_id for t in tracks}
+
+    def find(track_id: str) -> str:
+        while root[track_id] != track_id:
+            track_id = root[track_id]
+        return track_id
+
+    for t in tracks:
+        if t.reentry_of is not None and t.reentry_of in root:
+            root[find(t.track_id)] = find(t.reentry_of)
+    child_roots = {find(t.track_id) for t in tracks if judged[t.track_id].child}
+    reason = "child: came back into view as a new ID of a child, so always hidden"
+    return {
+        t.track_id: Verdict("hide", "policy", reason, child=True)
+        for t in tracks
+        if not judged[t.track_id].child and find(t.track_id) in child_roots
+    }
+
+
 def style_for(kind: Kind, group: Sequence[Track], job: Job) -> Style:
     """DESIGN §2.7/§2.7b: objects solid; a child or a prominent person gets a whole-person solid mask; other
     people a locked-grid mosaic sized from the face (or solid with no face to size it)."""
@@ -259,16 +290,17 @@ def decide(inputs: Inputs) -> Decisions:
     objects = {o.track_id: o for o in inputs.roles.objects} if inputs.roles is not None else {}
     groups = group_tracks(inputs.tracks.tracks)
     gates = _gates(inputs, groups, rows)
+    judged = {
+        t.track_id: judge_person(t, rows.get(t.track_id), inputs, gates)
+        if t.concept in PERSON_CONCEPTS
+        else judge_object(t, rows.get(t.track_id), objects.get(t.track_id))
+        for t in inputs.tracks.tracks
+    }
+    judged.update(_child_reentries(inputs.tracks.tracks, judged))
     items: list[DecisionItem] = []
     for number, group in enumerate(groups, start=1):
         person = all(t.concept in PERSON_CONCEPTS for t in group)
-        verdicts = [
-            judge_person(t, rows.get(t.track_id), inputs, gates)
-            if t.concept in PERSON_CONCEPTS
-            else judge_object(t, rows.get(t.track_id), objects.get(t.track_id))
-            for t in group
-        ]
-        verdict = _combine(verdicts)
+        verdict = _combine([judged[t.track_id] for t in group])
         kind: Kind = "child" if verdict.child else ("person" if person else kind_of(group[0].concept))
         frames: set[int] = set()
         for t in group:

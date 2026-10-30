@@ -184,3 +184,43 @@ def test_zero_matches_is_valid_and_out_of_order_frames_are_fine() -> None:
     reversed_text = "\n".join(reversed(lines)) + "\n"
     seg = asyncio.run(sam.parse_video_events(events(reversed_text, response_id="resp_r", frames_billed=10)))
     assert [d.frame for d in seg.detections] == [7, 9]
+
+
+def test_a_mangled_record_line_fails_but_prose_is_ignored() -> None:
+    good = stream_text({"0": {0: (10, 20, 15, 25)}}, (100, 80))
+    with pytest.raises(MetaIncomplete, match="aren't frame records"):
+        asyncio.run(sam.parse_video_events(events(":" + good, response_id="resp_m", frames_billed=10)))
+    seg = asyncio.run(
+        sam.parse_video_events(events("Found one object.\n" + good, response_id="resp_p", frames_billed=10))
+    )
+    assert [d.frame for d in seg.detections] == [0]
+
+
+def test_sam_must_answer_in_the_proxys_space_with_box_sized_masks() -> None:
+    good = stream_text({"0": {0: (10, 20, 15, 25)}}, (100, 80))
+    assert asyncio.run(sam.parse_video_events(events(good, response_id="r1", frames_billed=10), size=(100, 80)))
+    with pytest.raises(MetaIncomplete, match="space"):
+        asyncio.run(sam.parse_video_events(events(good, response_id="r2", frames_billed=10), size=(320, 180)))
+    small = "<0f>0<|box;x1=10;y1=20;x2=39;y2=59;w=100;h=80|><|mask;x=0;y=0;data=5,5,!!!!!(QO(0lu8?|>\n"
+    with pytest.raises(MetaIncomplete, match="box's size"):
+        asyncio.run(sam.parse_video_events(events(small, response_id="r3", frames_billed=10)))
+
+
+def test_a_detection_past_the_proxy_fails_the_stage(tracked: Path, tmp_path: Path) -> None:
+    copy = tmp_path / "j_counter"
+    shutil.copytree(tracked, copy)
+    record_sweep(copy, text="face", objects={"0": {30: (10, 10, 20, 20)}}, size=SIZE, proxy_frames=24,
+                 model="sam-3.1")  # fmt: skip
+    with pytest.raises(stage.TrackError, match="past the proxy"):
+        asyncio.run(stage.run_async(copy, replay_mode=True, settings=Settings(replay=True)))
+
+
+def test_a_recording_for_another_proxy_is_refused(tracked: Path, tmp_path: Path) -> None:
+    copy = tmp_path / "j_counter"
+    shutil.copytree(tracked, copy)
+    record_sweep(copy, text="face", objects={}, size=SIZE, proxy_frames=30, model="sam-3.1")
+    with pytest.raises(replay.ReplayMissing, match="30-frame proxy"):
+        asyncio.run(stage.run_async(copy, replay_mode=True, settings=Settings(replay=True)))
+    job = load(copy / "job.json", prepare.Job)
+    with pytest.raises(stage.TrackError, match=r"tracks\.json was made from"):
+        stage.proxy_for(copy, job, Settings(sam_fps=4), load(tracked / "tracks.json", Tracks))

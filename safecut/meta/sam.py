@@ -7,6 +7,7 @@ closed: an incomplete stream or a dropped line is ``MetaIncomplete``, never a pa
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
@@ -27,6 +28,7 @@ from meta_sam_parser import (
     SegmentationBoxRecord,
     SegmentationMask,
     SegmentationMaskRecord,
+    SegmentationTextRecord,
     build_object_prompt,
     parse_responses_stream,
     video_segmentation_format,
@@ -397,13 +399,18 @@ class _LaneText:
         return _LaneCollector()
 
 
-#: A parsed record, picklable across the pool: ("box", frame, id, left, top, right, bottom, confidence) or
-#: ("mask", frame, id, revision, encoding, payload, width, height).
+#: A parsed record, picklable across the pool: ("box", frame, id, left, top, right, bottom, confidence),
+#: ("mask", frame, id, revision, encoding, payload, width, height), ("text", order) for a stray line, or
+#: ("space", w, h) for each box token's media size.
 _Record = tuple[Any, ...]
 _Diagnostic = tuple[str, str, int]
 #: Below this many mask pixels a stream is parsed in-process (a pool costs more than it saves).
 PARALLEL_MIN_PIXELS = 1_500_000
 _MASK_SIZE = re.compile(r"data=([0-9]+),([0-9]+),")
+#: A box token's fields: its ``w``/``h`` name the pixel space every coordinate is in (the parser drops them).
+_BOX_TOKEN = re.compile(r"<\|box;([^|]*)\|>")
+#: A line with frame-record syntax (a ``<Nf>`` header or ``<|token|>``s) that the parser couldn't read as one.
+_RECORD_SYNTAX = re.compile(r"<\s*[0-9]+\s*f|<\|")
 
 
 def parse_lines(chunk: tuple[str, int]) -> tuple[list[_Record], list[_Diagnostic]]:
@@ -416,10 +423,17 @@ def parse_lines(chunk: tuple[str, int]) -> tuple[list[_Record], list[_Diagnostic
     for r in result.records:
         if isinstance(r, SegmentationBoxRecord) and r.frame is not None:
             records.append(("box", r.frame.frame_index, r.object_id, r.left, r.top, r.right, r.bottom, r.confidence))
+        elif isinstance(r, SegmentationTextRecord) and _RECORD_SYNTAX.search(r.text):
+            records.append(("text", r.order))
+        elif isinstance(r, SegmentationTextRecord) and r.text.strip():
+            log.warning("SAM stream carried a prose line; ignored", extra={"chars": len(r.text)})
         elif isinstance(r, SegmentationMaskRecord) and r.frame is not None:
             m = r.mask
             mask = ("mask", r.frame.frame_index, r.object_id, r.revision, m.encoding, m.payload, m.width, m.height)
             records.append(mask)
+    for fields in _BOX_TOKEN.findall(text):
+        keys = dict(part.split("=", 1) for part in fields.split(";") if "=" in part)
+        records.append(("space", keys.get("w"), keys.get("h")))
     diagnostics = [(d.severity, d.code, d.line + first - 1) for d in result.diagnostics]
     return records, diagnostics
 
@@ -440,7 +454,50 @@ def _chunks(text: str, parts: int) -> list[tuple[str, int]]:
     return [c for c in out if c[0]]
 
 
-async def parse_video_events(events: Sequence[Mapping[str, Any]]) -> Segmentation:
+def _detections(
+    results: Sequence[tuple[list[_Record], list[_Diagnostic]]], size: tuple[int, int] | None
+) -> list[Detection]:
+    """The parsed chunks' records as detections, failing closed on anything that would misplace or drop one."""
+    errors = [d for _, ds in results for d in ds if d[0] == "error"]
+    # Meta's parser keeps a line it can't read as a frame record as free text, without a diagnostic. One that has
+    # record syntax is a frame we couldn't read: fail closed, like a dropped line (prose is only logged).
+    stray = sum(1 for records, _ in results for r in records if r[0] == "text")
+    if stray:
+        raise MetaIncomplete(f"SAM stream has {stray} line(s) that aren't frame records", eof=False)
+    if errors:
+        raise MetaIncomplete(f"SAM parser dropped {len(errors)} line(s): {errors[0][1]} at line {errors[0][2]}",
+                             eof=False)  # fmt: skip
+    masks: dict[tuple[int, str], tuple[int, SegmentationMask]] = {}
+    boxes: dict[tuple[int, str], _Record] = {}
+    spaces = {(r[1], r[2]) for records, _ in results for r in records if r[0] == "space"}
+    if size is not None and spaces - {(str(size[0]), str(size[1]))}:
+        # Every coordinate is in the box tokens' w x h space; any other space than the proxy's would misplace them.
+        raise MetaIncomplete(f"SAM answered in a {sorted(spaces)[0]} space, not the proxy's {size[0]}x{size[1]}",
+                             eof=False)  # fmt: skip
+    for records, _ in results:
+        for r in records:
+            if r[0] == "space":
+                continue
+            if r[0] == "mask":
+                key = (r[1], r[2])
+                if key not in masks or masks[key][0] <= r[3]:
+                    masks[key] = (r[3], SegmentationMask(encoding=r[4], payload=r[5], width=r[6], height=r[7]))
+            else:
+                boxes[(r[1], r[2])] = r
+    detections: list[Detection] = []
+    for (f, oid), r in boxes.items():
+        mask = masks[(f, oid)][1] if (f, oid) in masks else None
+        box = (int(r[3]), int(r[4]), int(r[5]), int(r[6]))
+        if mask is not None and (mask.width, mask.height) != (box[2] - box[0], box[3] - box[1]):
+            # §1.4: a mask is box-sized; any other size would be placed wrong and under-hide.
+            raise MetaIncomplete(f"SAM mask {mask.width}x{mask.height} isn't its box's size (frame {f})", eof=False)
+        detections.append(Detection(frame=f, object_id=oid, box=box, mask=mask, confidence=r[7]))
+    return detections
+
+
+async def parse_video_events(
+    events: Sequence[Mapping[str, Any]], *, size: tuple[int, int] | None = None
+) -> Segmentation:
     """Parse one SAM video stream's events (live or replayed) into detections, failing closed.
 
     An incomplete outcome is ``MetaIncomplete`` (``eof`` when the stream just stopped); an error diagnostic means
@@ -460,26 +517,10 @@ async def parse_video_events(events: Sequence[Mapping[str, Any]]) -> Segmentatio
         raise MetaIncomplete(f"SAM stream incomplete ({reason})", eof=reason == "eof")
     pixels = sum(int(h) * int(w) for h, w in _MASK_SIZE.findall(text))
     parts = parallel.workers() * 2 if pixels >= PARALLEL_MIN_PIXELS else 1
-    results = parallel.map_in_pool(parse_lines, _chunks(text, parts), parallel=parts > 1)
-    errors = [d for _, ds in results for d in ds if d[0] == "error"]
-    if errors:
-        raise MetaIncomplete(f"SAM parser dropped {len(errors)} line(s): {errors[0][1]} at line {errors[0][2]}",
-                             eof=False)  # fmt: skip
-    masks: dict[tuple[int, str], tuple[int, SegmentationMask]] = {}
-    boxes: dict[tuple[int, str], _Record] = {}
-    for records, _ in results:
-        for r in records:
-            if r[0] == "mask":
-                key = (r[1], r[2])
-                if key not in masks or masks[key][0] <= r[3]:
-                    masks[key] = (r[3], SegmentationMask(encoding=r[4], payload=r[5], width=r[6], height=r[7]))
-            else:
-                boxes[(r[1], r[2])] = r
-    detections: list[Detection] = []
-    for (f, oid), r in boxes.items():
-        mask = masks[(f, oid)][1] if (f, oid) in masks else None
-        box = (int(r[3]), int(r[4]), int(r[5]), int(r[6]))
-        detections.append(Detection(frame=f, object_id=oid, box=box, mask=mask, confidence=r[7]))
+    # In a worker thread: parsing a long stream takes seconds, and other SAM streams of the job are still being
+    # read on this event loop meanwhile.
+    results = await asyncio.to_thread(parallel.map_in_pool, parse_lines, _chunks(text, parts), parallel=parts > 1)
+    detections = _detections(results, size)
     completed = next((e for e in reversed(events) if e.get("type") == "response.completed"), None)
     response: Any = completed.get("response") if completed else None
     units, _ = video_meter(cast(Mapping[str, Any], response) if isinstance(response, Mapping) else {})

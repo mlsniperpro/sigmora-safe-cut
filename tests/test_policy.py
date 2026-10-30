@@ -166,7 +166,7 @@ def test_an_object_with_a_child_vote_is_a_child() -> None:
 def test_a_reentry_is_hidden_until_the_creator_merges_it() -> None:
     a = track("face:1", 0, 10)
     b = track("face:2", 20, 30, reentry_of="face:1")
-    got = run(a, b, rs=[matched("face:1"), matched("face:2")])
+    got = run(a, b, rs=[matched("face:1", frames=(2, 8)), matched("face:2", frames=(22, 28))])
     assert only(got, "face:1")["decision"] == "keep"
     second = only(got, "face:2")
     assert second["decision"] == "needs_you"
@@ -235,6 +235,35 @@ def test_hold_precedence_writes_the_first_in_order() -> None:
     )
     assert got["hold"] == "no_scene"
     assert HOLD_ORDER == ("no_scene", "no_speech", "no_roles", "unmatched_child", "no_speech_link")
+
+
+@pytest.mark.parametrize(
+    ("kw", "hold"),
+    [
+        ({"scene": scene(status="failed")}, "no_scene"),
+        ({"transcript": transcript(status="failed")}, "no_speech"),
+        ({}, "no_roles"),
+    ],
+)
+def test_a_role_failure_still_writes_the_first_hold_in_order(kw: dict[str, Any], hold: str) -> None:
+    failed = row("face:1", "unsure", "unsure", "unsure", failed_votes=3, escalated=False)
+    unescalated = row("face:2", "participant", "participant", "unsure", escalated=False)
+    got = run(track("face:1", 0, 20), track("face:2", 0, 20, (200, 10, 240, 50)), rs=[failed, unescalated], **kw)
+    assert (only(got, "face:1")["hold"], only(got, "face:2")["hold"]) == (hold, hold)
+    assert only(got, "face:1")["reason"] == "the role check couldn't judge this person"
+
+
+def test_every_id_of_a_child_is_locked_across_reentries() -> None:
+    a = track("face:1", 0, 10)
+    b = track("face:2", 20, 30, reentry_of="face:1")
+    c = track("face:3", 40, 50, reentry_of="face:2")
+    # The child vote lands on the middle ID only; the earlier and later IDs are the same child.
+    rs = [matched("face:1", frames=(2, 8)), row("face:2", "child", "participant", "participant", frames=(22, 28)),
+          matched("face:3", frames=(42, 48))]  # fmt: skip
+    got = run(a, b, c, rs=rs)
+    for track_id in ("face:1", "face:2", "face:3"):
+        item = only(got, track_id)
+        assert (item["decision"], item["kind"], item["locked"]) == ("hide", "child", True), track_id
 
 
 def test_a_matched_scene_child_lets_participants_be_kept() -> None:  # P3
@@ -493,3 +522,9 @@ def test_property_children_are_never_kept(inputs: Inputs) -> None:
 @given(st.text(max_size=40))
 def test_property_normal_words_matches_the_contract(text: str) -> None:
     assert normal_words(text) == contracts._normal_words(text)
+
+
+def test_cited_frames_must_be_on_the_track() -> None:
+    """Audit finding: two cited frames outside the track's own span are no evidence for it."""
+    got = only(run(track("face:1", 40, 55), rs=[matched(frames=(2, 3))]), "face:1")
+    assert got["decision"] == "needs_you"

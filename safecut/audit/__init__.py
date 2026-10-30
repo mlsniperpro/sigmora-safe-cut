@@ -17,16 +17,19 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Sequence
+from contextlib import AsyncExitStack
 from pathlib import Path
 
-from safecut.audit.detectors import Detector, load_detector
+from safecut import open_weight, pipeline
+from safecut.audit.detectors import AuditorUnavailable, Detector, load_detector
 from safecut.audit.loop import audit_job
+from safecut.audit.opinion import Ask
 from safecut.audit.redteam import Answer, LiveRedTeam, RedTeam, ReplayRedTeam, SyntheticRedTeam
 from safecut.audit.truth import load_labels, manifest_truth
 from safecut.config import Settings, load_settings
 from safecut.contracts import Audit, Job, Plan, load
+from safecut.meta.budget import Caller
 from safecut.meta.client import MetaClient
-from safecut.meta.session import job_client
 from safecut.render.draw import Frame
 
 AUDIT = "audit.json"
@@ -57,10 +60,50 @@ def replay_redteam(job_dir: Path) -> RedTeam:
 
 
 async def _live(job_dir: Path, settings: Settings, detector: Detector, client: MetaClient | None) -> Audit:
-    if client is not None:
-        return (await audit_job(job_dir, detector=detector, redteam=LiveRedTeam(client, settings, job_dir)))[0]
-    async with job_client(job_dir, settings) as own:  # seeded with the job's spend so far (the job cap holds)
-        return (await audit_job(job_dir, detector=detector, redteam=LiveRedTeam(own, settings, job_dir)))[0]
+    job = load(job_dir / "job.json", Job)
+    # The job's own caller (judge, pilot, owner …): its caps hold, and the open-weight gate reads its code kind.
+    caller = pipeline.job_caller(job_dir, settings) if (job_dir / pipeline.INTAKE).exists() else Caller.local()
+    # Eligible, and actually able to run: a missing Baseten key or price would fail every batch.
+    eligible = (
+        not job.open_weight_attempted
+        and open_weight.enabled_for(settings, consented=job.consented, code_kind=caller.code_kind)
+        and settings.baseten_api_key is not None
+        and settings.open_weight_price is not None
+    )
+    # The service's one spend ledger: the daily, code and pilot-pool caps count every job's calls, not just this one.
+    ledger = pipeline.job_ledger(settings)
+    async with AsyncExitStack() as stack:
+        if client is None:
+            client = await stack.enter_async_context(
+                MetaClient(settings, job_id=job.job_id, caller=caller, ledger=ledger, cost_path=job_dir / "cost.jsonl")
+            )
+        meta = client
+        opinion: Ask | None = None
+        if eligible:
+            baseten = open_weight.open_weight_client(settings, job_id=job.job_id, caller=caller, ledger=ledger,
+                                                     cost_path=job_dir / "cost.jsonl")  # fmt: skip
+            stack.push_async_callback(baseten.aclose)
+
+            async def ask(frames: Sequence[tuple[int, str]], words: str) -> open_weight.SecondOpinion:
+                return await open_weight.second_opinion(baseten, settings, consented=job.consented, frames=frames,
+                                                        kept_clear=words)  # fmt: skip
+
+            opinion = ask
+
+        audit, _ = await audit_job(job_dir, detector=detector, redteam=LiveRedTeam(meta, settings, job_dir),
+                                   opinion=opinion, opinion_grid_ok=settings.open_weight_grid_ok,
+                                   opinion_model=settings.open_weight_model)  # fmt: skip
+        return audit
+
+
+def auditor_available(settings: Settings) -> bool:
+    """Whether the audit can run here (WP5 answers ``POST /start`` with 503 ``auditor_unavailable`` when it can't):
+    EgoBlur when its weights are installed, else the bundled YuNet, whose weights must be present and unaltered."""
+    try:
+        load_detector(settings)
+    except AuditorUnavailable:
+        return False
+    return True
 
 
 def run(
@@ -83,4 +126,4 @@ def run(
     return job_dir / AUDIT
 
 
-__all__ = ["AUDIT", "RECORDED", "SYNTHETIC_TRUTH", "NoRedTeam", "replay_redteam", "run"]
+__all__ = ["AUDIT", "RECORDED", "SYNTHETIC_TRUTH", "NoRedTeam", "auditor_available", "replay_redteam", "run"]

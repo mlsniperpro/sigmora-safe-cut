@@ -30,14 +30,18 @@ def edits(*raw: dict[str, Any]) -> list[ReviewEdit]:
 def base() -> Decisions:
     """i_1 kept participant (face:1), i_2 bystander (face:2), i_3 locked child (face:3), i_4 re-entry (face:4)."""
     ts = [
-        track("face:1", 0, 10, (10, 10, 30, 30)),
-        track("face:2", 0, 10, (100, 10, 120, 30)),
-        track("face:3", 0, 10, (200, 10, 220, 30)),
-        track("face:4", 20, 30, (10, 10, 30, 30), reentry_of="face:1"),
+        track("face:1", 0, 20, (10, 10, 30, 30)),
+        track("face:2", 0, 20, (100, 10, 120, 30)),
+        track("face:3", 0, 20, (200, 10, 220, 30)),
+        track("face:4", 25, 35, (10, 10, 30, 30), reentry_of="face:1"),
     ]
     p = ("participant",) * 3
-    rs = [row("face:1", *p, matches_participant=0), row("face:2", *("bystander",) * 3),
-          row("face:3", "child", "participant", "participant"), row("face:4", *p, matches_participant=0)]  # fmt: skip
+    rs = [
+        row("face:1", *p, matches_participant=0),
+        row("face:2", *("bystander",) * 3),
+        row("face:3", "child", "participant", "participant"),
+        row("face:4", *p, matches_participant=0, frames=(26, 30)),
+    ]
     got = decide(Inputs(job=job(), tracks=tracks(*ts), roles=roles(*rs), scene=scene(), transcript=transcript()))
     assert [i.decision for i in got.items] == ["keep", "hide", "hide", "needs_you"]
     return got
@@ -157,9 +161,14 @@ def test_cover_spot_adds_a_locked_audit_patch_and_marks_the_spot() -> None:
     assert patch.reason == PATCH_REASON
     assert result.audit is not None
     assert result.audit.spots[0].covered_by == "p_1"
-    with pytest.raises(ReviewError, match="uncovered spot"):
-        apply_review(result.decisions, edits({"type": "cover_spot", "edit_id": "c2", "spot_id": "s1"}),
-                     audit=result.audit, frames=60)  # fmt: skip
+    # Covering a covered spot again (the log replayed over its own result) adds nothing.
+    again = apply_review(result.decisions, edits({"type": "cover_spot", "edit_id": "c2", "spot_id": "s1"}),
+                         audit=result.audit, frames=60)  # fmt: skip
+    assert again.decisions == result.decisions
+    assert again.audit == result.audit
+    with pytest.raises(ReviewError, match="no spot s9"):
+        apply_review(base(), edits({"type": "cover_spot", "edit_id": "c", "spot_id": "s9"}),
+                     audit=audit_with_spot(), frames=60)  # fmt: skip
     with pytest.raises(ReviewError, match="needs the audit"):
         apply_review(base(), edits({"type": "cover_spot", "edit_id": "c", "spot_id": "s1"}))
 
@@ -211,3 +220,63 @@ def test_property_children_are_never_kept_even_after_creator_edits(
             assert item.decision == "hide"
             assert item.locked
     contracts._check_decisions(final, inputs.job, inputs.tracks, None)
+
+
+def test_merging_into_a_kept_static_item_makes_it_a_sam_item() -> None:
+    """Audit finding: a static origin with a SAM track in it fails the contract."""
+    ts = tracks(track("face:1", 3, 3, origin="static"), track("face:2", 0, 10, (100, 10, 120, 30)))
+    d = decide(Inputs(job=job(), tracks=ts))
+    static = next(i for i in d.items if i.origin == "static")
+    other = next(i for i in d.items if i.origin == "sam")
+    log = edits({"type": "keep", "edit_id": "k", "item_id": static.item_id},
+                {"type": "merge", "edit_id": "m", "item_id": other.item_id, "into": static.item_id})  # fmt: skip
+    merged = apply_review(d, log).decisions
+    assert [i.origin for i in merged.items] == ["sam"]
+    contracts._check_decisions(merged, job(), ts, None)
+
+
+def test_a_locked_item_can_not_be_hidden_by_the_creator_either() -> None:
+    # A creator "hide" would take the decision over (decided_by creator) from the policy that locked it.
+    with pytest.raises(ReviewError) as err:
+        apply_review(base(), edits({"type": "hide", "edit_id": "h", "item_id": "i_3"}))
+    assert err.value.code == "locked"
+
+
+def test_undoing_a_cover_spot_removes_its_patch_and_reopens_the_spot() -> None:
+    cover = {"type": "cover_spot", "edit_id": "c", "spot_id": "s1"}
+    covered = apply_review(base(), edits(cover), audit=audit_with_spot(), frames=60)
+    assert covered.audit is not None
+    # The server folds the whole log over its last result: the cover replays as a no-op, the undo reverts it.
+    undone = apply_review(covered.decisions, edits(cover, {"type": "undo", "edit_id": "u", "reverts": "c"}),
+                          audit=covered.audit, frames=60)  # fmt: skip
+    assert "p_1" not in by_id(undone.decisions)
+    assert undone.audit is not None
+    assert undone.audit.spots[0].covered_by is None
+    # From the policy's decisions the undone cover never applies.
+    fresh = apply_review(base(), edits(cover, {"type": "undo", "edit_id": "u", "reverts": "c"}),
+                         audit=audit_with_spot(), frames=60)  # fmt: skip
+    assert "p_1" not in by_id(fresh.decisions)
+    assert fresh.audit is not None
+    assert fresh.audit.spots[0].covered_by is None
+
+
+def test_an_undo_of_an_unknown_or_later_edit_reverts_nothing() -> None:
+    with pytest.raises(ReviewError) as err:
+        apply_review(base(), edits({"type": "undo", "edit_id": "u", "reverts": "nope"}))
+    assert (err.value.code, err.value.edit_id) == ("unknown_edit", "u")
+    # Not strict (a stage replaying the log): skipped silently.
+    assert apply_review(base(), edits({"type": "undo", "edit_id": "u", "reverts": "nope"}), strict=False).skipped == []
+    # An undo naming an edit sent after it reverts nothing.
+    log = edits({"type": "undo", "edit_id": "u", "reverts": "a"}, {"type": "keep", "edit_id": "a", "item_id": "i_2"})
+    assert [e.edit_id for e in effective(log)] == ["a"]
+    assert by_id(apply_review(base(), log).decisions)["i_2"].decision == "keep"
+
+
+def test_a_stale_last_edit_never_aborts_the_decide_stage(tmp_path: Path) -> None:
+    src, dst = Path("fixtures/contracts/j_example"), tmp_path / "j_example"
+    dst.mkdir()
+    for name in ("job.json", "tracks.json", "roles.json", "scene.json", "transcript.json", "decisions.json"):
+        shutil.copy(src / name, dst / name)
+    (dst / "review.json").write_text(json.dumps([{"type": "keep", "edit_id": "a", "item_id": "i_99"}]))
+    decide_run(dst)
+    contracts.validate_job_dir(dst)
