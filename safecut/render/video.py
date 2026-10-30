@@ -69,7 +69,7 @@ def h264_writer(out: Path, job: Job, audio_from: Path | None) -> Generator[Calla
         "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{job.width}x{job.height}", "-r", str(job.fps), "-i", "-",
     ]  # fmt: skip
     if audio_from is not None:
-        argv += ["-i", str(audio_from), "-map", "0:v:0", "-map", "1:a:0?", "-c:a", "aac", "-b:a", "160k"]
+        argv += ["-i", str(audio_from), "-map", "0:v:0", "-map", "1:a:0?", "-c:a", "copy"]
     argv += ["-c:v", "libx264", "-preset", "veryfast", "-crf", CRF, "-pix_fmt", "yuv420p",
              "-movflags", "+faststart", str(partial)]  # fmt: skip
     # stderr goes to a file, not a pipe: a chatty encoder can then never block on a full pipe while frames stream in.

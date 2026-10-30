@@ -121,3 +121,9 @@ Evidence is a test name, a command run in this session, or a commit. Owner input
 - [x] Duplicate tracks of a child linked (`test_a_duplicate_track_of_a_child_is_locked_and_counted_once`).
 - [x] Faces counted on the first pass that scans a frame; reopened leaks de-duplicated (`test_faces_are_counted_on_the_pass_that_first_scans_a_frame`).
 - [x] Approval vs audit patches and private red-team text: fixed by SHIP, on main (ff997a6).
+
+## Audit findings (round 11, fixed with a test at fc79f54, merged bcccc49)
+- [x] Escalation model from its recorded calls (`test_the_escalation_model_is_the_one_its_calls_recorded`).
+
+## Audit findings (round 12, fixed with tests at 5c4415f)
+- [x] Refused receipt reported as a contract failure; audio copied bit for bit (`tests/test_receipt.py`, `tests/test_render.py`).
