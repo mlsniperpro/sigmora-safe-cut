@@ -127,3 +127,7 @@ Evidence is a test name, a command run in this session, or a commit. Owner input
 
 ## Audit findings (round 12, fixed with tests at 5c4415f)
 - [x] Refused receipt reported as a contract failure; audio copied bit for bit (`tests/test_receipt.py`, `tests/test_render.py`).
+
+## Audit findings (round 13, fixed with tests at bb48177 / 8237fab)
+- [x] Copied leaks re-judged against today's decisions (`test_a_copied_opinion_leak_is_rejudged_when_the_creator_hides_what_it_lies_on`).
+- [x] Back-fill follows fast faces (`test_back_fill_follows_a_fast_moving_face`).

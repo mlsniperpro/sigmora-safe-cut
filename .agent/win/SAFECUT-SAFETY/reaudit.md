@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 5c4415f6022d81f5cdfa66d1c73c3fe27b2a0b4c
+AUDITED_COMMIT: 209bac8a9d1164af6acc5aa02156ea0bcd794f12
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -220,4 +220,16 @@ mask coverage at 640/1280 px); WP4 no critical/high/medium, 2 low reproduced, fi
   into a kept one clears the flag (the creator's own two actions); `retire()` unlinks JSON then HTML separately; the run
   record follows audit.json; `redteam_model` is the configured ID.
 
-## Round 13: running at 5c4415f
+## Round 13 (at 7066fb2, main merged in): 1 WP3 and 1 WP4 medium-low reproduced, fixed at bb48177 / 8237fab
+- WP4 medium-low (fail-closed): a second-opinion text leak copied into a re-run wasn't re-judged, so a creator hiding
+  what it lay on left a job the contract refuses → earlier text/screen/plate leaks are re-judged against today's
+  decisions and plan, flagged and rendered solid when they now read through
+  (`test_a_copied_opinion_leak_is_rejudged_when_the_creator_hides_what_it_lies_on`, fails without the fix).
+- WP3 medium-low: back-fill/extend followed motion only up to a quarter box width a frame, so a small, far face in a
+  fast turn outran it → up to one box width a frame (the sweep is a union: only wider)
+  (`test_back_fill_follows_a_fast_moving_face`, fails without the fix).
+- Notes kept as notes: `remove_person` on a locked child records the creator's edit (stays hidden and locked);
+  densified tracks rarely use the long-gap branch; manifest truth paths come from owner recordings only; no byte
+  guard on red-team requests (≈ 26 MB of 50 measured at the worst case).
+
+## Round 14: running at 209bac8 (main merged in: SHIP rounds 8-11)

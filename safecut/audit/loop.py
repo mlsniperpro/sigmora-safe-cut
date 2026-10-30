@@ -326,6 +326,22 @@ def reopened(leaks: list[Leak], plan: Plan, decisions: Decisions, *, height: int
     return out
 
 
+def rejudged(leaks: list[Leak], decisions: Decisions, plan: Plan) -> tuple[list[Leak], bool]:
+    """Earlier runs' text, screen and plate leaks judged against today's decisions and plan (the creator may have
+    hidden what they lie on since): one that now reads through a hidden item is flagged ``redaction_too_weak``, and
+    that item renders solid (redteam.md). Returns the leaks and whether any was newly flagged."""
+    out: list[Leak] = []
+    newly = False
+    for leak in leaks:
+        if leak.flag is None and leak.kind in ("text", "screen", "plate") and leak.detector != "egoblur":
+            through = rules.through_item(leak.box, leak.frame, decisions, plan)
+            if through is not None:
+                leak = leak.model_copy(update={"flag": "redaction_too_weak", "through_item": through})  # noqa: PLW2901 -- the judged copy replaces it
+                newly = True
+        out.append(leak)
+    return out, newly
+
+
 def planned_in_full(decisions: Decisions, plan: Plan) -> bool:
     """Every hidden item of ``decisions`` has entries in ``plan``, and the plan names no item ``decisions`` lacks."""
     hidden = {i.item_id for i in decisions.items if i.decision != "keep"}
@@ -418,7 +434,8 @@ async def audit_job(
     # never the previous clean verdict beside a changed video.
     retire(job_dir)
     dump(summary(state, 0, detector, previous), job_dir / "audit.json")
-    if not planned_in_full(state.decisions, state.plan):  # a crash between the two files: re-plan from decisions
+    state.leaks, newly = rejudged(state.leaks, state.decisions, state.plan)
+    if newly or not planned_in_full(state.decisions, state.plan):  # read through now, or a crash between the files
         state.plan = make_plan(job, tracks, state.decisions, solid=read_through(state.leaks),
                                cache=region_cache(job_dir))  # fmt: skip
         dump(state.plan, job_dir / "plan.json")

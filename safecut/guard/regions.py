@@ -44,8 +44,10 @@ from safecut.decide.geometry import (
 GROW_PER_FRAME = 0.02
 #: ...up to its own size again on each side, so a long hold stays a region, not the whole frame.
 MAX_GROWTH = 1.0
-#: The fastest edge motion the sweep follows, as a share of the box's size per frame (noise beyond it is capped).
-MAX_SPEED = 0.25
+#: The fastest edge motion the sweep follows, as a share of the box's size per frame. The sweep is a union, so a
+#: higher cap only widens the cover; one box size a frame follows a small, far face through a fast head turn, and
+#: anchor jitter, measured over up to 8 frames, stays far below it.
+MAX_SPEED = 1.0
 #: How far inward the edge velocity is measured (frames).
 VELOCITY_SPAN = 8
 
@@ -68,7 +70,7 @@ def _expand(box: BoxT, share: float, width: int, height: int) -> BoxT:
 
 def edge_velocity(track: Track, at_start: bool) -> tuple[float, float]:
     """The track's (dx, dy) per frame at its first (or last) anchor, measured over up to 8 frames inward and capped
-    at a quarter of the box's size per frame."""
+    at the box's own size per frame."""
     keys = sorted(track.boxes)
     edge = keys[0] if at_start else keys[-1]
     target = edge + VELOCITY_SPAN if at_start else edge - VELOCITY_SPAN
