@@ -28,7 +28,7 @@ from safecut.contracts import (
     Track,
     Tracks,
 )
-from safecut.decide.geometry import BoxT, box_at, clamp, grow, union
+from safecut.decide.geometry import BoxT, area, box_at, clamp, grow, intersection, union
 from safecut.guard.regions import Region, TrackRegions, ratio_for
 
 #: DESIGN §2.6: faces 15 % + 8 px, everything else 8 % + 8 px.
@@ -148,16 +148,21 @@ def _regions(
 
 
 def _with_body(
-    face: Track, start: int, regions: list[Region], *, bodied: set[int], job: Job, interp_gap: int
+    face: Track, start: int, regions: list[Region], *, bodies: dict[int, list[BoxT]], job: Job, interp_gap: int
 ) -> list[Region]:
-    """A whole-person item's face regions, with an estimated body under the face on every frame no body track of
-    the item covers. The body grows from the padded face *box* (a mask region's outline can sit inside it)."""
+    """A whole-person item's face regions, with an estimated body under the face on every frame where none of the
+    item's body regions holds this face (a face-only item, a face seen longer than its body track, or a merged
+    face elsewhere in the frame). The body grows from the padded face *box* (a mask outline can sit inside it)."""
     boxed = TrackRegions(face.model_copy(update={"masks": {}}), ratio=PADDING.face, px=PADDING.px, width=job.width,
                          height=job.height, interp_gap=interp_gap)  # fmt: skip
-    return [
-        held if frame in bodied else Region(body_below(union([held.box, boxed.at(frame).box]), job.width, job.height))
-        for frame, held in enumerate(regions, start=start)
-    ]
+    out: list[Region] = []
+    for frame, held in enumerate(regions, start=start):
+        padded = boxed.at(frame).box
+        if any(intersection(padded, b) >= 0.5 * area(padded) for b in bodies.get(frame, [])):
+            out.append(held)
+        else:
+            out.append(Region(body_below(union([held.box, padded]), job.width, job.height)))
+    return out
 
 
 def plan(
@@ -190,16 +195,20 @@ def plan(
             raise ValueError(f"{item.item_id} is pixelated but has no face track to size its grid")
         # A whole-person item covers an estimated body under its face on every frame no body track of the item covers
         # (a face-only item, or a face seen longer than its body track): DESIGN §2.7b's whole person, never a face.
-        bodied: set[int] = set()
+        # Body regions of the item, by frame: a face is covered whole on a frame where one of them holds it.
+        bodies: dict[int, list[BoxT]] = {}
         if item.style == "person_solid":  # the item's own style: a read-through re-render solid never shrinks it
             for t in (by_id[t] for t in item.track_ids if by_id[t].concept == "person"):
-                bodied.update(range(max(0, t.first - backfill), min(job.frames, hold_until(t, by_id, job) + 1)))
+                b_start, b_end = max(0, t.first - backfill), min(job.frames, hold_until(t, by_id, job) + 1)
+                b_regions = _regions(t, b_start, b_end, job=job, interp_gap=interp_gap, cache=cache)
+                for frame, region in enumerate(b_regions, start=b_start):
+                    bodies.setdefault(frame, []).append(region.box)
         for track_id in item.track_ids:
             track = by_id[track_id]
             start, end = max(0, track.first - backfill), min(job.frames, hold_until(track, by_id, job) + 1)
             regions = _regions(track, start, end, job=job, interp_gap=interp_gap, cache=cache)
             if item.style == "person_solid" and track.concept == "face":
-                regions = _with_body(track, start, regions, bodied=bodied, job=job, interp_gap=interp_gap)
+                regions = _with_body(track, start, regions, bodies=bodies, job=job, interp_gap=interp_gap)
             for frame, region in zip(range(start, end), regions, strict=True):
                 # Built unvalidated (thousands per clip): every field comes from validated inputs or the round-trip
                 # tested encoder, and every reader of plan.json validates it on load.

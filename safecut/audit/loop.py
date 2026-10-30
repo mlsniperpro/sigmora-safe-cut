@@ -19,6 +19,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from pydantic import TypeAdapter
+
 from safecut.audit import leaks as rules
 from safecut.audit.detectors import Detection, Detector
 from safecut.audit.opinion import Ask, Opinion, attempted, consult, data_url, mark_attempted, recorded, save
@@ -41,11 +43,12 @@ from safecut.contracts import (
     dump,
     load,
 )
+from safecut.decide.geometry import contains
 from safecut.guard import region_cache
 from safecut.guard.plan import plan as make_plan
 from safecut.guard.plan import read_through
 from safecut.receipt import retire
-from safecut.render import REDACTED, file_sha256, render, rendered_from_plan
+from safecut.render import REDACTED, file_sha256, render, rendered_from_plan, write_atomic
 from safecut.render.draw import Frame
 from safecut.render.video import read_frames
 
@@ -250,7 +253,8 @@ def summary(state: State, passes: int, detector: Detector, previous: Audit | Non
         frames_scanned=len(state.scanned),
         egoblur=EgoBlurSummary(
             model=detector.model,
-            faces=state.faces if state.scanned else None,  # null: the detector never ran (PRE-A §12)
+            # null only when the detector never ran on record (PRE-A §12): carried detector leaks keep a count.
+            faces=state.faces if state.scanned else _carried_faces(state.leaks),
             plates=(state.plates if detector.detects_plates else None),
         ),
         leaks=state.leaks,
@@ -266,7 +270,55 @@ def summary(state: State, passes: int, detector: Detector, previous: Audit | Non
     )
 
 
-def carried(previous: Audit | None, decisions: Decisions, detector: Detector) -> list[Leak]:
+def _carried_faces(leaks: list[Leak]) -> int | None:
+    faces = [leak for leak in leaks if leak.detector == "egoblur"]
+    return sum(leak.kind == "face" for leak in faces) if faces else None
+
+
+#: Leaks an audit has found so far, written before it changes decisions, plan or video, and removed when its
+#: audit.json is written: a crash part-way never loses what it found or which fixes it still had to re-check.
+PENDING = Path("raw/audit/pending.json")
+_LEAKS: TypeAdapter[list[Leak]] = TypeAdapter(list[Leak])
+
+
+def save_pending(job_dir: Path, leaks: list[Leak]) -> None:
+    path = job_dir / PENDING
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_bytes(_LEAKS.dump_json(leaks))
+    tmp.replace(path)
+
+
+def earlier_leaks(job_dir: Path, previous: Audit | None) -> list[Leak]:
+    """Every leak an earlier run of this job recorded: its audit.json and, after a crash, its pending record."""
+    leaks = list(previous.leaks) if previous is not None else []
+    path = job_dir / PENDING
+    if path.exists():
+        try:
+            pending = _LEAKS.validate_json(path.read_bytes())
+        except ValueError:
+            log.warning("audit: an unreadable pending record (a crash mid-write); its fixes are re-checked anyway")
+            pending = []
+        seen = {(leak.frame, leak.box, leak.kind, leak.detector) for leak in leaks}
+        leaks += [leak for leak in pending if (leak.frame, leak.box, leak.kind, leak.detector) not in seen]
+    return leaks
+
+
+def reopened(leaks: list[Leak], plan: Plan) -> list[Leak]:
+    """Leaks an earlier run left unresolved that nothing in the current plan covers: found again before this run's
+    first pass, so a re-run never forgets them (redteam.md "Never default to clean")."""
+    out: list[Leak] = []
+    for leak in leaks:
+        if not leak.unresolved:
+            continue
+        boxes = [e.box for e in plan.frames.get(leak.frame, [])]
+        boxes += [f.box for f in plan.crowd_fills if leak.frame in f.frames]
+        if not any(contains(b, leak.box) for b in boxes):
+            out.append(leak.model_copy(update={"unresolved": False, "patched_item": None}))
+    return out
+
+
+def carried(previous: Audit | list[Leak] | None, decisions: Decisions, detector: Detector) -> list[Leak]:
     """An earlier run's fixed leaks stay on record while their fix does: the receipt keeps counting them, and an
     item read through stays solid. A leak whose patch or read-through item is no longer hidden is dropped, as is a
     plate the current detector couldn't have reported."""
@@ -274,7 +326,7 @@ def carried(previous: Audit | None, decisions: Decisions, detector: Detector) ->
         return []
     hidden = {i.item_id for i in decisions.items if i.decision in ("hide", "needs_you")}
     return [
-        leak for leak in previous.leaks
+        leak for leak in (previous.leaks if isinstance(previous, Audit) else previous)
         if not leak.unresolved and leak.patched_item in hidden
         and (leak.through_item is None or leak.through_item in hidden)
         and not (leak.detector == "egoblur" and leak.kind == "plate" and not detector.detects_plates)
@@ -305,6 +357,7 @@ async def settle(
         state.leaks += fixed
         state.plan = make_plan(job, tracks, state.decisions, solid=read_through(state.leaks),
                                cache=region_cache(job_dir))  # fmt: skip
+        save_pending(job_dir, state.leaks)  # before the patches land: a crash from here on keeps them on record
         dump(state.decisions, job_dir / "decisions.json")
         dump(state.plan, job_dir / "plan.json")
         render(job_dir)
@@ -338,7 +391,10 @@ async def audit_job(
     scene = load(job_dir / "scene.json", Scene) if (job_dir / "scene.json").exists() else None
     previous = load(job_dir / "audit.json", Audit) if (job_dir / "audit.json").exists() else None
     state = State(job=job, tracks=tracks, decisions=decisions, plan=load(job_dir / "plan.json", Plan))
-    state.leaks = carried(previous, decisions, detector)
+    earlier = earlier_leaks(job_dir, previous)
+    state.leaks = carried(earlier, decisions, detector)
+    reopen = reopened(earlier, state.plan)
+    save_pending(job_dir, state.leaks + [leak.model_copy(update={"unresolved": True}) for leak in reopen])
     # Never default to clean (redteam.md): before this audit changes anything (patches, plan, video), the job's
     # receipt is retired and audit.json says nothing was checked yet, so a crash part-way leaves a blocked audit,
     # never the previous clean verdict beside a changed video.
@@ -349,8 +405,12 @@ async def audit_job(
     words = approved(decisions, roles, scene)
     everything = set(range(job.frames))
     found = scan(state, job_dir, detector, everything, count=True)
+    found += reopen
     flagged = {leak.frame for leak in found}  # redteam.md Inputs: "and every frame EgoBlur flagged"
-    sampled = rules.sample_frames(job.frames, job.fps, tracks, state.plan, extra=flagged)
+    # The fixes earlier runs made for the red team are re-read on every run (the model saw what the detector can't).
+    refix = {leak.frame for leak in state.leaks if leak.detector != "egoblur"}
+    refix |= {leak.frame for leak in earlier if leak.unresolved}  # and what they left unresolved is asked again
+    sampled = rules.sample_frames(job.frames, job.fps, tracks, state.plan, extra=flagged | refix)
     found += await red_team(state, job_dir, redteam, set(sampled), words)
     passes = await settle(state, job_dir, detector=detector, redteam=redteam, found=found, words=words, passes=1,
                           max_passes=max_passes)  # fmt: skip
@@ -377,6 +437,7 @@ async def audit_job(
         )  # redteam.md "Re-runs": what it said is copied into every rewritten audit
     audit = summary(state, passes, detector, previous)
     dump(audit, job_dir / "audit.json")
+    (job_dir / PENDING).unlink(missing_ok=True)
     write_run(job_dir, audit, state, detector)
     return audit, state.seconds
 
@@ -394,4 +455,4 @@ def write_run(job_dir: Path, audit: Audit, state: State, detector: Detector) -> 
     record = {"detector": detector.model, "redteam_model": state.redteam_model, "seconds": state.seconds,
               "detector_s_per_frame": per_frame, "frames_scanned": audit.frames_scanned,
               "video_sha256": file_sha256(job_dir / REDACTED)}  # fmt: skip
-    path.write_text(json.dumps(record, indent=1))
+    write_atomic(path, json.dumps(record, indent=1))

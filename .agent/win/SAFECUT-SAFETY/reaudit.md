@@ -1,4 +1,4 @@
-AUDITED_COMMIT: dd1312d0c63a45fe20c393fa3d4d1dd9e0d4b0aa
+AUDITED_COMMIT: a9e3b34c0111eda6b70cbafdee4a1df52b5de960
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -118,9 +118,27 @@ verified here before it is fixed, and fixed with a named test. The counter reset
   (`test_a_crash_during_the_opinion_is_recorded_as_failed_not_off`).
 - WP4 low: an unreadable manifest read as a real run; `files_deleted: true` with no files.json after billed SAM → fixed
   (`test_an_unreadable_recording_manifest_never_reads_as_a_real_run`, `test_without_files_json_a_billed_sam_call_is_never_claimed_deleted`).
-- WP4 low (SENSE's): `scripts/go_live.py` deletes the old recording before the new run is known good → filed with SENSE.
+- WP4 low (SENSE's): `scripts/go_live.py` deletes the old recording before the new run is known good → already fixed by SENSE (0dd5d1e).
 - WP4 low accepted: a frame-label text box spilling out of the bar stays a leak (G8: dropped "only if" wholly inside;
   fails closed); YuNet leaks carry the contract literal `detector: "egoblur"` (`audit.egoblur.model` names YuNet);
   the receipt doesn't hash the video (not in §3.9's contract).
 
-## Round 6: running at dd1312d (main d126234)
+## Round 6 (at dd1312d): 0 critical, 0 high; mediums and lows verified, fixed at a9e3b34 (merged 362379f) or filed
+- WP3 medium: a re-entry of a body that is a child only through its item wasn't locked; a face inside an unpaired
+  child body could be kept → one fixed-point child closure over items, re-entry chains and unpaired face/body links
+  (`test_a_reentry_of_a_childs_body_is_locked_too`, `test_a_face_inside_an_unpaired_child_body_is_locked`, both fail
+  without the fix).
+- WP3 low: duplicate role rows let a later row override a child vote → the row that hides more wins
+  (`test_duplicate_role_rows_fail_closed`).
+- WP3 low: a prominent face with no body track got the mosaic → whole person (`test_a_close_up_face_without_a_body_is_hidden_whole`);
+  this surfaced a real gap (the body estimate grew from a mask outline's box, inside the padded box), caught by the
+  E4 coverage property → the body now grows from the padded face box.
+- WP4 medium: the audit trusted any existing video → each render stamps its plan's sha256 and the audit redraws a
+  video drawn from another plan (`test_the_audit_redraws_a_video_drawn_from_another_plan`, fails without the fix).
+- WP4 medium: a clean audit.json could be sealed over a newer render → the audit records the video's sha256 and the
+  receipt refuses any other (`test_a_receipt_never_seals_an_audit_of_another_video`, fails without the fix).
+- WP4 medium: `receipt.run(Path("."))` crashed (shadow dir) → named from the resolved path (`test_a_receipt_for_the_current_directory_by_its_dot`).
+- WP4 low: a frame was marked scanned before its detections were judged → after (`test_a_frame_whose_detections_were_not_all_judged_is_unscanned`).
+- WP4 low (SHIP's): the CLI prints "done" for a blocked audit; `_review` leaves a standing receipt → filed with SHIP.
+
+## Round 7: running at a9e3b34 (main 362379f)

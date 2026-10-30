@@ -17,6 +17,7 @@ from safecut.config import Settings, load_settings
 from safecut.contracts import ContractError, Receipt, dump, load, validate_job_dir
 from safecut.receipt.build import ReceiptError, build, verify_chain
 from safecut.receipt.html import render_html
+from safecut.render import write_atomic
 
 RECEIPT = "receipt.json"
 RECEIPT_HTML = "receipt.html"
@@ -66,7 +67,7 @@ def retire(job_dir: Path) -> Receipt | None:
         return None
     previous = load(path, Receipt)
     dump(previous, job_dir / HISTORY / f"{previous.hash}.json")
-    (job_dir / HISTORY / HEAD).write_text(previous.hash, encoding="utf-8")
+    write_atomic(job_dir / HISTORY / HEAD, previous.hash)
     path.unlink()
     (job_dir / RECEIPT_HTML).unlink(missing_ok=True)
     return previous

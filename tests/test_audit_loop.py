@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 
 from safecut import contracts, pipeline
-from safecut.audit import NoRedTeam, replay_redteam
+from safecut.audit import NoRedTeam, loop, replay_redteam
 from safecut.audit import leaks as rules
 from safecut.audit import redteam as rt
 from safecut.audit import run as audit_run
@@ -523,3 +523,64 @@ def test_a_frame_whose_detections_were_not_all_judged_is_unscanned(
     audit = audit_of(job_dir)
     assert audit.frames_scanned < 60
     assert audit.blocked_reason == "audit_failed"
+
+
+class Moving(Scripted):
+    """A red team that reads text on frame 30 at a new place on every ask (each patch lands where it was)."""
+
+    async def ask(self, frames: Sequence[tuple[int, Frame]], approved: Sequence[str], *, bar: int) -> Answer:
+        x = 100 + 50 * len(self.asked)
+        self.script = {30: [finding("text", grid((x, 60, x + 40, 80)), "AMINA K.")]}
+        return await super().ask(frames, approved, bar=bar)
+
+
+def test_a_re_run_never_forgets_a_leak_it_left_unresolved(tmp_path: Path) -> None:
+    """Run 1 ends with an unresolved text leak no patch covers (found in its last pass). Run 2, on that same video,
+    with a model that now says nothing: the leak is found again and patched, never silently dropped."""
+    job_dir = prepared(tmp_path)
+    audit_run(job_dir, replay=True, settings=SETTINGS, redteam=Moving({}))
+    one = audit_of(job_dir)
+    assert one.blocked_reason == "unresolved_leaks"
+    (left,) = [x for x in one.leaks if x.unresolved]
+    silent = Scripted({})
+    audit_run(job_dir, replay=True, settings=SETTINGS, redteam=silent)
+    two = audit_of(job_dir)
+    assert two.passes >= 2  # found again from the record and patched (the model alone found nothing)
+    again = [x for x in two.leaks if (x.frame, x.box) == (left.frame, left.box)]
+    assert again
+    assert all(x.patched_item is not None and not x.unresolved for x in again)
+    assert left.frame in silent.asked[0]  # and its frame was asked again
+    contracts.validate_job_dir(job_dir)
+
+
+def test_a_crash_while_patching_keeps_the_leaks_and_rechecks_the_fixes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    job_dir = prepared(tmp_path)
+    leak = finding("text", grid((100, 60, 140, 80)), "AMINA K.")
+
+    def crash(_: Path) -> Path:
+        raise RuntimeError("render died")
+
+    monkeypatch.setattr(loop, "render", crash)
+    with pytest.raises(RuntimeError, match="render died"):
+        audit_run(job_dir, replay=True, settings=SETTINGS, redteam=Scripted({30: [leak]}))
+    monkeypatch.undo()
+    rerun = Scripted({})
+    audit_run(job_dir, replay=True, settings=SETTINGS, redteam=rerun)
+    audit = audit_of(job_dir)
+    assert [x.frame for x in audit.leaks if x.detector == "redteam"] == [30]  # kept on record
+    assert 30 in rerun.asked[0]  # and the fix re-read by the model
+    assert not (job_dir / "raw/audit/pending.json").exists()
+    contracts.validate_job_dir(job_dir)
+
+
+def test_a_blocked_re_run_keeps_its_detector_leaks_valid(tmp_path: Path) -> None:
+    job_dir = prepared(tmp_path)
+    drop(job_dir, "i_2", {30, 31, 32})
+    audit_run(job_dir, replay=True, settings=SETTINGS)
+    audit_run(job_dir, replay=True, settings=SETTINGS, detector=CrashOnRecheck(0))
+    audit = audit_of(job_dir)
+    assert audit.blocked_reason == "audit_failed"
+    assert audit.egoblur.faces is not None
+    contracts.validate_job_dir(job_dir)
