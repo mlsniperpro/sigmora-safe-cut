@@ -93,7 +93,8 @@ def test_a_clean_render_passes_in_one_pass(tmp_path: Path) -> None:
     assert audit.egoblur.model == "yunet-face"
     assert audit.egoblur.plates is None
     assert {e.frame // 30 for e in audit.redteam} == {0, 1}
-    assert json.loads((job_dir / "raw/audit/timing.json").read_text())["detector"] == "yunet-face"
+    run = json.loads((job_dir / "raw/audit/run.json").read_text())
+    assert (run["detector"], run["redteam_model"], run["frames_scanned"]) == ("yunet-face", None, 60)
     contracts.validate_job_dir(job_dir)
 
 

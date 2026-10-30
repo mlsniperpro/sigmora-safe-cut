@@ -8,14 +8,13 @@
   for a **synthetic** job the ground-truth oracle (``raw/redteam/synthetic_truth.json``). A replay with neither has
   no red-team answer at all: every sampled frame is unresolved (``audit_failed``), never clean.
 
-Per-frame CPU timings go to ``raw/audit/timing.json`` (WP4: if a 30 s clip at 1280 px takes over 3 minutes on CPU,
-the detector belongs on a GPU; ``gpu.py``).
+Per-frame CPU timings and the models that answered go to ``raw/audit/run.json`` (WP4: if a 30 s clip at
+1280 px takes over 3 minutes on CPU, the detector belongs on a GPU; ``gpu.py``).
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -31,7 +30,6 @@ from safecut.render.draw import Frame
 AUDIT = "audit.json"
 RECORDED = Path("raw/redteam/frames.json")
 SYNTHETIC_TRUTH = Path("raw/redteam/synthetic_truth.json")
-TIMING = Path("raw/audit/timing.json")
 
 
 class NoRedTeam:
@@ -53,22 +51,14 @@ def replay_redteam(job_dir: Path) -> RedTeam:
     return NoRedTeam()
 
 
-def _write_timing(job_dir: Path, audit: Audit, seconds: dict[str, float], detector: Detector) -> None:
-    path = job_dir / TIMING
-    path.parent.mkdir(parents=True, exist_ok=True)
-    per_frame = seconds.get("detector", 0.0) / max(1, audit.frames_scanned)
-    path.write_text(json.dumps({"detector": detector.model, "seconds": seconds, "detector_s_per_frame": per_frame}))
-
-
 async def _live(job_dir: Path, settings: Settings, detector: Detector, client: MetaClient | None) -> Audit:
     job = load(job_dir / "job.json", Job)
     if client is not None:
-        audit, seconds = await audit_job(job_dir, detector=detector, redteam=LiveRedTeam(client, settings, job_dir))
+        audit, _ = await audit_job(job_dir, detector=detector, redteam=LiveRedTeam(client, settings, job_dir))
     else:
         async with MetaClient(settings, job_id=job.job_id, caller=Caller.local(), ledger=LocalLedger(),
                               cost_path=job_dir / "cost.jsonl") as own:  # fmt: skip
-            audit, seconds = await audit_job(job_dir, detector=detector, redteam=LiveRedTeam(own, settings, job_dir))
-    _write_timing(job_dir, audit, seconds, detector)
+            audit, _ = await audit_job(job_dir, detector=detector, redteam=LiveRedTeam(own, settings, job_dir))
     return audit
 
 
@@ -88,8 +78,7 @@ def run(
         asyncio.run(_live(job_dir, settings, detector, client))
         return job_dir / AUDIT
     chosen = redteam or replay_redteam(job_dir)
-    audit, seconds = asyncio.run(audit_job(job_dir, detector=detector, redteam=chosen))
-    _write_timing(job_dir, audit, seconds, detector)
+    asyncio.run(audit_job(job_dir, detector=detector, redteam=chosen))
     return job_dir / AUDIT
 
 

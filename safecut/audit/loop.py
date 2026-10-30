@@ -10,6 +10,7 @@ counts in ``unresolved`` (``audit_failed``), and a cap that stopped a call block
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from collections.abc import Iterator
@@ -63,6 +64,8 @@ class State:
     faces: int = 0
     plates: int = 0
     seconds: dict[str, float] = field(default_factory=dict[str, float])
+    #: The model that answered the red-team (None: nothing answered, or the synthetic oracle).
+    redteam_model: str | None = None
 
 
 def approved(decisions: Decisions, roles: Roles | None, scene: Scene | None) -> list[str]:
@@ -128,6 +131,7 @@ async def red_team(
     answer: Answer = await redteam.ask(list(frames_of(job_dir, job, frames)), approved_items, bar=bar)
     state.seconds["redteam"] = state.seconds.get("redteam", 0.0) + time.perf_counter() - started
     state.unanswered.update(answer.missing)
+    state.redteam_model = state.redteam_model or answer.model
     state.budget_cause = state.budget_cause or answer.budget_cause
     found: list[Leak] = []
     for frame in sorted(answer.findings):
@@ -278,4 +282,19 @@ async def audit_job(
         found += await red_team(state, job_dir, redteam, {leak.frame for leak in fixed}, words)
     audit = summary(state, passes, detector, previous)
     dump(audit, job_dir / "audit.json")
+    write_run(job_dir, audit, state, detector)
     return audit, state.seconds
+
+
+#: Where the audit records what ran and how long it took (job-dir only; the receipt reads the red-team model).
+RUN = Path("raw/audit/run.json")
+
+
+def write_run(job_dir: Path, audit: Audit, state: State, detector: Detector) -> None:
+    """WP4's CPU timing (seconds per detector frame) and which models answered."""
+    path = job_dir / RUN
+    path.parent.mkdir(parents=True, exist_ok=True)
+    per_frame = state.seconds.get("detector", 0.0) / max(1, audit.frames_scanned)
+    record = {"detector": detector.model, "redteam_model": state.redteam_model, "seconds": state.seconds,
+              "detector_s_per_frame": per_frame, "frames_scanned": audit.frames_scanned}  # fmt: skip
+    path.write_text(json.dumps(record, indent=1))
