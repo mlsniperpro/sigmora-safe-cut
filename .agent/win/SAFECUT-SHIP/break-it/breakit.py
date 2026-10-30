@@ -32,6 +32,9 @@ failures: list[str] = []
 lock = threading.Lock()
 
 
+API_LOG = Path(tempfile.gettempdir()) / f"breakit-api-{os.getpid()}.log"
+
+
 def fail(msg: str) -> None:
     with lock:
         failures.append(msg)
@@ -76,6 +79,8 @@ def start_api(jobs: Path, port: int) -> subprocess.Popen[bytes]:
         cwd=REPO,
         env=env,
         start_new_session=True,  # its own process group: a kill reaches uvicorn, not just uv
+        stdout=API_LOG.open("ab"),
+        stderr=subprocess.STDOUT,  # the server's own output, so a crash says why (printed on failure)
     )
     until = time.time() + 300
     while time.time() < until:
@@ -339,6 +344,9 @@ def main() -> None:
         proc.wait()
     kill_restart()
     print(f"BREAKIT: {'PASS' if not failures else 'FAIL'} ({len(failures)} failures)")
+    if failures and API_LOG.exists():
+        print(f"--- the API's own log ({API_LOG}), last lines:")
+        print("\n".join(API_LOG.read_text(errors="replace").splitlines()[-40:]))
     sys.exit(1 if failures else 0)
 
 
