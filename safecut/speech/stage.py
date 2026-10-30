@@ -36,7 +36,7 @@ ASR_STAGE = "asr"
 ASR_KEY = "transcribe"
 FALLBACK_STAGE = "speech"
 FALLBACK_KEY = "fallback"
-_SPEAKER = re.compile(r"^[SU][1-9][0-9]*$")
+_SPEAKER = re.compile(r"^[SU][1-9][0-9]{0,5}$")  # bounded: a label is never a number int() can't take
 #: A fallback answer with fewer input tokens than this per second of clip didn't ingest the media at all (cookbook
 #: issue #59 counted only the prompt text). It can't tell a dropped soundtrack under an ingested video (≈ 2,200
 #: tokens/s); WP0's probe e measures that floor once the key exists.
@@ -111,9 +111,9 @@ async def primary(ctx: calls.Context) -> tuple[str, Any]:
 
     try:
         wav = await asyncio.to_thread(extract_wav, ctx.job_dir, ctx.job)
-    except media.MediaError as exc:
-        record(response={"failed": "MediaError", "reason": str(exc)[:300]})
-        return "failed", "MediaError"
+    except (media.MediaError, OSError) as exc:  # no WAV (ffmpeg or the disk): the fallback reads the video instead
+        record(response={"failed": type(exc).__name__, "reason": str(exc)[:300]})
+        return "failed", type(exc).__name__
     try:
         body = await asr.transcribe_raw(ctx.client, wav, model=settings.asr_model,
                                         language_bias=settings.asr_language_bias)  # fmt: skip

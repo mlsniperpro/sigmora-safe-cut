@@ -406,6 +406,11 @@ _Record = tuple[Any, ...]
 _Diagnostic = tuple[str, str, int]
 #: Below this many mask pixels a stream is parsed in-process (a pool costs more than it saves).
 PARALLEL_MIN_PIXELS = 1_500_000
+#: Object ids are small decimal integers (§1.4); a longer one is a broken answer, not an id to sort or link.
+MAX_OBJECT_ID_DIGITS = 9
+#: A number of 10+ digits where the grammar puts one (a frame index, an object id, a token field, a mask size),
+#: delimited by characters the base85 payload alphabet doesn't use, so a digit run inside a payload never matches.
+_HUGE_NUMBER = re.compile(r"<-?[0-9]{10,}f|[>,]-?[0-9]{10,}<\||[;=,]-?[0-9]{10,}[;|,]")
 _MASK_SIZE = re.compile(r"data=([0-9]+),([0-9]+),")
 #: A box token's fields: its ``w``/``h`` name the pixel space every coordinate is in (the parser drops them).
 _BOX_TOKEN = re.compile(r"<\|box;([^|]*)\|>")
@@ -499,6 +504,9 @@ def _detections(
     masks, boxes, repeated = _collect([r for records, _ in results for r in records if r[0] != "space"])
     if repeated:
         log.warning("SAM repeated an object on a frame; boxes joined", extra={"count": len(repeated)})
+    long_ids = sorted({oid for _, oid in boxes if len(oid) > MAX_OBJECT_ID_DIGITS})
+    if long_ids:
+        raise MetaIncomplete(f"SAM object id of {len(long_ids[0])} digits", eof=False)
     detections: list[Detection] = []
     for (f, oid), r in boxes.items():
         mask = masks[(f, oid)][1] if (f, oid) in masks and (f, oid) not in repeated else None
@@ -530,6 +538,8 @@ async def parse_video_events(
     if outcome.status != "completed":
         reason = getattr(outcome, "reason", None)
         raise MetaIncomplete(f"SAM stream incomplete ({reason})", eof=reason == "eof")
+    if _HUGE_NUMBER.search(text):  # Meta's parser would int() it: never a size or id, fail closed first
+        raise MetaIncomplete("SAM answer has a number of 10 or more digits", eof=False)
     sizes = [(int(h), int(w)) for h, w in _MASK_SIZE.findall(text)]
     if size is not None and any(h > size[1] or w > size[0] for h, w in sizes):
         # A box-sized mask can't be bigger than the frame; refused before Meta's parser decodes it (1 µs a pixel).

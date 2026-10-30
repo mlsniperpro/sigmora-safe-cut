@@ -1,4 +1,4 @@
-AUDITED_COMMIT: dd1312d0c63a45fe20c393fa3d4d1dd9e0d4b0aa
+AUDITED_COMMIT: a6702a7580a111f56a69100ea827f80fb5fa2bff
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -118,9 +118,47 @@ verified here before it is fixed, and fixed with a named test. The counter reset
   (`test_a_crash_during_the_opinion_is_recorded_as_failed_not_off`).
 - WP4 low: an unreadable manifest read as a real run; `files_deleted: true` with no files.json after billed SAM → fixed
   (`test_an_unreadable_recording_manifest_never_reads_as_a_real_run`, `test_without_files_json_a_billed_sam_call_is_never_claimed_deleted`).
-- WP4 low (SENSE's): `scripts/go_live.py` deletes the old recording before the new run is known good → filed with SENSE.
+- WP4 low (SENSE's): `scripts/go_live.py` deletes the old recording before the new run is known good → already fixed by SENSE (0dd5d1e).
 - WP4 low accepted: a frame-label text box spilling out of the bar stays a leak (G8: dropped "only if" wholly inside;
   fails closed); YuNet leaks carry the contract literal `detector: "egoblur"` (`audit.egoblur.model` names YuNet);
   the receipt doesn't hash the video (not in §3.9's contract).
 
-## Round 6: running at dd1312d (main d126234)
+## Round 6 (at dd1312d): 0 critical, 0 high; mediums and lows verified, fixed at a9e3b34 (merged 362379f) or filed
+- WP3 medium: a re-entry of a body that is a child only through its item wasn't locked; a face inside an unpaired
+  child body could be kept → one fixed-point child closure over items, re-entry chains and unpaired face/body links
+  (`test_a_reentry_of_a_childs_body_is_locked_too`, `test_a_face_inside_an_unpaired_child_body_is_locked`, both fail
+  without the fix).
+- WP3 low: duplicate role rows let a later row override a child vote → the row that hides more wins
+  (`test_duplicate_role_rows_fail_closed`).
+- WP3 low: a prominent face with no body track got the mosaic → whole person (`test_a_close_up_face_without_a_body_is_hidden_whole`);
+  this surfaced a real gap (the body estimate grew from a mask outline's box, inside the padded box), caught by the
+  E4 coverage property → the body now grows from the padded face box.
+- WP4 medium: the audit trusted any existing video → each render stamps its plan's sha256 and the audit redraws a
+  video drawn from another plan (`test_the_audit_redraws_a_video_drawn_from_another_plan`, fails without the fix).
+- WP4 medium: a clean audit.json could be sealed over a newer render → the audit records the video's sha256 and the
+  receipt refuses any other (`test_a_receipt_never_seals_an_audit_of_another_video`, fails without the fix).
+- WP4 medium: `receipt.run(Path("."))` crashed (shadow dir) → named from the resolved path (`test_a_receipt_for_the_current_directory_by_its_dot`).
+- WP4 low: a frame was marked scanned before its detections were judged → after (`test_a_frame_whose_detections_were_not_all_judged_is_unscanned`).
+- WP4 low (SHIP's): the CLI prints "done" for a blocked audit; `_review` leaves a standing receipt → filed with SHIP.
+
+## Round 7 (at a9e3b34): 0 critical, 0 high; mediums and lows verified, fixed at a6702a7 (merged 9047b78)
+- WP3 medium: a child's own body could be kept when their face paired with the adult holding them → child links
+  include a face in a body at half their frames when either is unpaired
+  (`test_a_childs_body_is_locked_when_their_face_pairs_with_the_adult_holding_them`, fails without the fix).
+- WP3 medium: one child split across items counted several times for the scene gate → the gate counts linked
+  children once (`test_one_child_split_across_items_counts_once_for_the_scene`, fails without the fix).
+- WP3 low: re-hide without tracks gave a face-only person the mosaic → covered whole (`test_keep_and_hide_are_the_creators`).
+- WP3 low: a face-only child got a face box → whole child (`test_a_face_only_child_is_covered_whole`).
+- WP3 low: body coverage was item-wide, not per face → per face frame (`test_a_merged_face_away_from_the_items_body_still_gets_a_body`).
+- WP4 medium: a receipt could seal a plan the video wasn't drawn from → refused
+  (`test_a_receipt_never_seals_a_plan_the_video_was_not_drawn_from`, fails without the fix).
+- WP4 medium: a re-run forgot an unresolved leak no patch covers → re-asked and found again
+  (`test_a_re_run_never_forgets_a_leak_it_left_unresolved`, fails without the fix).
+- WP4 medium: a crash while patching lost the leak record and skipped the re-checks → `raw/audit/pending.json`
+  and fixes re-read every run (`test_a_crash_while_patching_keeps_the_leaks_and_rechecks_the_fixes`, fails without the fix).
+- WP4 low: a blocked re-run with carried detector leaks was invalid → count kept (`test_a_blocked_re_run_keeps_its_detector_leaks_valid`).
+- WP4 low: torn run record / non-atomic small records → atomic writes; a torn record vouches for nothing
+  (`test_a_torn_audit_run_record_vouches_for_nothing`).
+- Noted, conservative: held-box growth capped at 100 %, edge velocity fallback, a misaligned face may touch 7 cells.
+
+## Round 8: running at a6702a7 (main 9047b78)

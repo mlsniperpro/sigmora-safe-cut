@@ -135,16 +135,15 @@ def _reverted(unique: list[ReviewEdit]) -> set[str]:
 
 def _default_style(item: DecisionItem, tracks: Tracks | None, job: Job | None) -> Style:
     """A kept item hidden again gets the style the policy gives a hidden person (DESIGN §2.7/§2.7b): with the tracks,
-    exactly (a prominent body whole-person solid, else the mosaic); without them, a body is covered whole (it may be
-    prominent) and a face alone gets the mosaic. Anything else is solid."""
+    exactly (a prominent body or close-up face whole-person solid, else the mosaic); without them, the person is
+    covered whole (they may be prominent). Anything else is solid."""
     if item.kind != "person":
         return "solid"
     if tracks is not None and job is not None:
         by_id = {t.track_id: t for t in tracks.tracks}
         return style_for("person", [by_id[t] for t in item.track_ids if t in by_id], job)
-    if any(t.startswith("person:") for t in item.track_ids):
-        return "person_solid"
-    return "pixelate" if any(t.startswith("face:") for t in item.track_ids) else "solid"
+    # Without the tracks nothing says the person isn't prominent (or a close-up): cover them whole.
+    return "person_solid" if any(t.startswith(("person:", "face:")) for t in item.track_ids) else "solid"
 
 
 def _patch_kind(leaks: list[Leak]) -> Literal["person", "plate", "other"]:

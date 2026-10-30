@@ -27,6 +27,15 @@ def edits(*raw: dict[str, Any]) -> list[ReviewEdit]:
     return [EDIT.validate_python(e) for e in raw]
 
 
+def base_tracks() -> Any:
+    return tracks(
+        track("face:1", 0, 20, (10, 10, 30, 30)),
+        track("face:2", 0, 20, (100, 10, 120, 30)),
+        track("face:3", 0, 20, (200, 10, 220, 30)),
+        track("face:4", 25, 35, (10, 10, 30, 30), reentry_of="face:1"),
+    )
+
+
 def base() -> Decisions:
     """i_1 kept participant (face:1), i_2 bystander (face:2), i_3 locked child (face:3), i_4 re-entry (face:4)."""
     ts = [
@@ -54,8 +63,11 @@ def by_id(d: Decisions) -> dict[str, DecisionItem]:
 def test_keep_and_hide_are_the_creators() -> None:
     got = by_id(apply_review(base(), edits({"type": "keep", "edit_id": "a", "item_id": "i_2"})).decisions)
     assert (got["i_2"].decision, got["i_2"].decided_by, got["i_2"].style) == ("keep", "creator", None)
-    got = by_id(apply_review(base(), edits({"type": "hide", "edit_id": "b", "item_id": "i_1"})).decisions)
+    hide = edits({"type": "hide", "edit_id": "b", "item_id": "i_1"})
+    got = by_id(apply_review(base(), hide, tracks=base_tracks(), job=job()).decisions)  # exactly the policy's style
     assert (got["i_1"].decision, got["i_1"].decided_by, got["i_1"].style) == ("hide", "creator", "pixelate")
+    got = by_id(apply_review(base(), hide).decisions)  # without the tracks nothing rules out a close-up: whole person
+    assert got["i_1"].style == "person_solid"
 
 
 def test_a_locked_child_can_not_be_kept_or_merged() -> None:

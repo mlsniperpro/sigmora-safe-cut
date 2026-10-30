@@ -15,7 +15,9 @@ The stage always writes ``roles.json`` (``failed``/``skipped`` with every track 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
+import shutil
 from collections.abc import Callable, Coroutine, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -172,8 +174,11 @@ class PassResult:
     hallucinated: int = 0
 
 
-def to_vote(answer: RolePassOut, judged: set[str], participants: int) -> tuple[votes.Vote, int]:
-    """A parsed answer as a :class:`votes.Vote`; labels it wasn't asked about are dropped and counted (rule 6).
+def to_vote(
+    answer: RolePassOut, judged: set[str], participants: int, people: frozenset[str] = frozenset()
+) -> tuple[votes.Vote, int]:
+    """A parsed answer as a :class:`votes.Vote`; labels it wasn't asked about are dropped and counted (rule 6),
+    except a child answer on any person label of the job (``people``): any child vote wins, asked or not.
 
     A label answered twice is merged fail closed: a child answer wins, two different roles become ``unsure``, and
     an object is sensitive if either entry says so. A participant index outside the scene's list is dropped."""
@@ -181,7 +186,7 @@ def to_vote(answer: RolePassOut, judged: set[str], participants: int) -> tuple[v
     objects: dict[str, votes.ObjectVote] = {}
     dropped = 0
     for t in answer.tracks:
-        if t.track_id not in judged:
+        if t.track_id not in judged and not (t.role == "child" and t.track_id in people):
             dropped += 1
             continue
         index = (
@@ -238,6 +243,7 @@ async def role_pass(
     even one with no labels, because the miss loop rides in it; a re-pass only asks windows with new labels."""
     keyframes = som.write(ctx.job_dir, ctx.job, tracks, frames)
     judged_ids = {t.track_id for t in judged}
+    people = frozenset(t.track_id for t in tracks.tracks if is_person(t))
     result = PassResult(windows=[], ballots=[])
     for w, chunk in enumerate(windows([k.frame for k in keyframes], ctx.job.fps)):
         per_frame = [
@@ -274,7 +280,7 @@ async def role_pass(
                 result.budget_stops += outcome.status == "skipped"
                 ballots.append(votes.Vote(failed=True))
                 continue
-            vote, dropped = to_vote(outcome.value, judged_ids, participants)
+            vote, dropped = to_vote(outcome.value, judged_ids, participants, people)
             result.hallucinated += dropped
             ballots.append(vote)
             for m in outcome.value.missed:
@@ -294,6 +300,10 @@ class Judged:
     objects: dict[str, votes.ObjectResult] = field(default_factory=dict[str, votes.ObjectResult])
 
 
+def child_voted(ballots: Sequence[votes.Vote], track_id: str) -> bool:
+    return any((vote := b.tracks.get(track_id)) is not None and vote.role == "child" for b in ballots if not b.failed)
+
+
 def aggregate(result: PassResult, judged: Sequence[Track]) -> Judged:
     out = Judged()
     for track in judged:
@@ -301,8 +311,10 @@ def aggregate(result: PassResult, judged: Sequence[Track]) -> Judged:
         per_object: list[votes.ObjectResult] = []
         for window, ballots in zip(result.windows, result.ballots, strict=True):
             # A window that showed the track only on crowded frames is still judged, with no valid evidence: a
-            # child vote there still locks it, anything else there can't count toward a keep.
-            if not window.shown(track.track_id) or len(ballots) != votes.VOTES:
+            # child vote there still locks it, anything else there can't count toward a keep. So is a window with a
+            # child vote for a track it didn't show (any child vote wins, fail closed).
+            relevant = window.shown(track.track_id) or (is_person(track) and child_voted(ballots, track.track_id))
+            if not relevant or len(ballots) != votes.VOTES:
                 continue
             present = window.present(track.track_id)
             if is_person(track):
@@ -373,7 +385,10 @@ async def escalate(
     som.write(ctx.job_dir, ctx.job, tracks, frames)
     context = prompts.render("escalate.context", scene_summary=context_summary, transcript_by_frames=transcript_frames)
     system = calls.system(prompts.text("escalate.system"))
-    rulings: dict[str, list[votes.Ruling | None]] = {d: [] for d in disputed}
+    # Per window index, combined in time order (escalation.md: the evidence is the first window's), not in the order
+    # the concurrent calls happen to finish.
+    rulings: dict[str, dict[int, votes.Ruling | None]] = {d: {} for d in disputed}
+    children: dict[str, votes.Ruling] = {}
 
     async def one(index: int, chunk: list[int]) -> None:
         shown = {d: [f for f in chunk if f in by_id[d].boxes] for d in disputed}
@@ -401,23 +416,41 @@ async def escalate(
             answers[got.track_id] = ruling if seen is None else votes.merge_rulings(seen, ruling)
             log.info("escalation", extra={"track": got.track_id, "why_others_wrong": got.why_others_wrong[:200]})
         for d in here:
-            rulings[d].append(votes.check_ruling(answers.get(d), present[d]))
+            rulings[d][index] = votes.check_ruling(answers.get(d), present[d])
+        for track_id, ruling in answers.items():
+            # Every tag is drawn on the images: a child ruling on a label it wasn't asked about still locks it.
+            if track_id not in here and ruling.role == "child" and track_id in by_id and is_person(by_id[track_id]):
+                children.setdefault(track_id, ruling)
 
     await asyncio.gather(*(one(i, chunk) for i, chunk in enumerate(chunks)))
-    return {d: votes.apply_rulings(r) for d, r in rulings.items() if r}
+    out = {d: votes.apply_rulings([r[i] for i in sorted(r)]) for d, r in rulings.items() if r}
+    for track_id, ruling in children.items():
+        if out.get(track_id, votes.NO_ESCALATION).role != "child":
+            out[track_id] = votes.Escalation(role="child", escalated=True, suggested_role=None,
+                                             evidence=ruling.evidence, frames=())  # fmt: skip
+    return out
 
 
 # ---------------------------------------------------------------------------- the stage
 
 
 def load_optional[M: Scene | Transcript](path: Path, model: type[M]) -> M | None:
-    return load(path, model) if path.exists() else None
+    """The earlier stage's file, or ``None`` when it is missing or unreadable: the role pass then runs without that
+    context (no scene participants or speech to support a keep, so it leans to unsure, the safe side)."""
+    if not path.exists():
+        return None
+    try:
+        return load(path, model)
+    except ValueError as exc:  # ContractError: a corrupt file is no context, never a crash before roles.json
+        log.warning("context file unreadable; judged without it", extra={"file": path.name, "error": str(exc)[:200]})
+        return None
 
 
 def role_track(track_id: str, result: votes.TrackResult, escalation: votes.Escalation | None) -> RoleTrack:
     role = result.role
+    matches = result.matches_participant
     if escalation is not None and escalation.role == "child":
-        role = "child"
+        role, matches = "child", None  # a child is never matched to a participant (the contract's rule too)
     return RoleTrack(
         track_id=track_id,
         role=role,
@@ -426,7 +459,7 @@ def role_track(track_id: str, result: votes.TrackResult, escalation: votes.Escal
         evidence=result.evidence,
         frames=list(result.frames),
         failed_votes=result.failed_votes,
-        matches_participant=result.matches_participant,
+        matches_participant=matches,
         suggested_role=escalation.suggested_role if escalation is not None else None,
         escalation_evidence=escalation.evidence if escalation is not None and escalation.escalated else None,
         escalation_frames=list(escalation.frames) if escalation is not None and escalation.frames is not None else None,
@@ -471,6 +504,7 @@ async def miss_loops(ctx: calls.Context, state: State, first: PassResult, scene:
         state.swept += outcome.swept  # only what SAM really searched counts as "already searched"
         state.tracks = outcome.tracks
         dump(state.tracks, ctx.job_dir / TRACKS)
+        stamp_output(ctx.job_dir)  # even if this run dies later, a re-run still knows its own appends
         new_judged = [t for t in outcome.new if som.judged(t)]
         if loop == miss.MAX_LOOPS or not new_judged:
             return  # loop 2's tracks get no role pass: they stay hidden for the creator
@@ -488,6 +522,11 @@ async def miss_loops(ctx: calls.Context, state: State, first: PassResult, scene:
             participants=participant_count(scene), every_window=False,
         )  # fmt: skip
         later = aggregate(again, new_judged)
+        flagged = [t for t in state.judged if is_person(t) and any(child_voted(b, t.track_id) for b in again.ballots)]
+        earlier = aggregate(again, flagged)
+        for track_id, child in earlier.person.items():
+            prior = state.results.person.get(track_id)
+            state.results.person[track_id] = votes.combine_windows([prior, child]) if prior else child
         state.results.person.update(later.person)
         state.results.objects.update(later.objects)
         state.ballots_of.update({t.track_id: again.ballots for t in new_judged})
@@ -523,9 +562,44 @@ def assemble(state: State, status: calls.Status, escalations: dict[str, votes.Es
     )
 
 
+#: What ``roles`` was given (``tracks.json`` as the track stage wrote it) and the digest of the ``tracks.json`` it
+#: left (with the miss loop's tracks appended). Job-local bookkeeping, never a recording.
+INPUT_COPY = ".roles-input-tracks.json"
+OUTPUT_STAMP = ".roles-output-tracks.sha256"
+
+
+def _digest(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def track_stage_tracks(job_dir: Path) -> Tracks:
+    """``tracks.json`` as the ``track`` stage wrote it. When it is still exactly what an earlier run of this stage
+    left, that run's input is restored (tracks, requests, concepts and crowded frames), so a re-run of ``roles`` on
+    its own output asks the same calls and reuses their recordings (never re-billed); otherwise it is the input."""
+    path, copy, stamp = job_dir / TRACKS, job_dir / INPUT_COPY, job_dir / OUTPUT_STAMP
+    if copy.is_file() and stamp.is_file() and stamp.read_text().strip() == _digest(path):
+        log.info("roles: this stage's earlier output; starting from its input again")
+        _copy_atomic(copy, path)
+    else:
+        stamp.unlink(missing_ok=True)
+        _copy_atomic(path, copy)
+    return load(path, Tracks)
+
+
+def _copy_atomic(source: Path, target: Path) -> None:
+    """A copy a kill can't leave half-written: written beside the target, then renamed over it."""
+    partial = target.with_name(f".{target.name}.partial")
+    shutil.copyfile(source, partial)
+    partial.replace(target)
+
+
+def stamp_output(job_dir: Path) -> None:
+    (job_dir / OUTPUT_STAMP).write_text(_digest(job_dir / TRACKS) + "\n")
+
+
 async def roles(ctx: calls.Context) -> Roles:
     job = ctx.job
-    tracks = load(ctx.job_dir / TRACKS, Tracks)
+    tracks = track_stage_tracks(ctx.job_dir)
     scene = load_optional(ctx.job_dir / SCENE, Scene)
     transcript = load_optional(ctx.job_dir / TRANSCRIPT, Transcript)
     judged = [t for t in tracks.tracks if som.judged(t)]
@@ -552,7 +626,9 @@ async def roles(ctx: calls.Context) -> Roles:
         ctx, tracks=state.tracks, disputed=disputed, ballots_of=state.ballots_of, context_summary=summary,
         transcript_frames=transcript_by_frames(job, transcript),
     )  # fmt: skip
-    return assemble(state, status, escalations, ctx.settings.role_model, keyframes)
+    result = assemble(state, status, escalations, ctx.settings.role_model, keyframes)
+    stamp_output(ctx.job_dir)
+    return result
 
 
 async def run_async(

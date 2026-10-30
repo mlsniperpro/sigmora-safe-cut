@@ -94,5 +94,17 @@ Evidence is a test name, a command run in this session, or a commit. Owner input
 - [x] Read-through keeps whole-person cover; spot numbers stable (`tests/test_guard.py`, `tests/test_policy_review.py`).
 - [x] Fail-closed audit on a crash; receipt validated before it stands (`test_a_crash_part_way_never_leaves_the_old_clean_verdict`).
 - [x] Crash-safe second-opinion record; manifest and files_deleted honesty (`tests/test_audit_opinion.py`, `tests/test_receipt.py`).
-- [-] go_live.py recording replacement: SENSE's script, filed with SENSE.
+- [-] go_live.py recording replacement: SENSE's script, already fixed by SENSE (0dd5d1e).
 - [-] Frame-label spill, `detector` literal, unhashed video: spec-literal or outside the contract (reaudit.md).
+
+## Audit findings (round 6, fixed with tests at a9e3b34, merged 362379f; details in reaudit.md)
+- [x] Child closure over items, re-entries and unpaired face/body links; duplicate rows fail closed (`tests/test_policy.py`).
+- [x] Close-up faces hidden whole; body grows from the padded face box (`test_a_close_up_face_without_a_body_is_hidden_whole`, E4 coverage property).
+- [x] Renders stamped with their plan; audits with their video; receipts refuse a mismatch (`test_the_audit_redraws_a_video_drawn_from_another_plan`, `test_a_receipt_never_seals_an_audit_of_another_video`).
+- [x] Receipt for `.`; scanned only after judging (`test_a_receipt_for_the_current_directory_by_its_dot`, `test_a_frame_whose_detections_were_not_all_judged_is_unscanned`).
+- [-] CLI "done" on a blocked audit; `_review` and a standing receipt: SHIP's files, filed with SHIP.
+
+## Audit findings (round 7, fixed with tests at a6702a7, merged 9047b78; details in reaudit.md)
+- [x] Child links across pairings drive the lock and the scene count (`tests/test_policy.py`).
+- [x] Whole-person covers: re-hide fallback, face-only child, per-face body (`tests/test_policy_review.py`, `tests/test_guard.py`).
+- [x] Receipt needs the current render; leaks survive re-runs and crashes; atomic records (`tests/test_receipt.py`, `tests/test_audit_loop.py`).

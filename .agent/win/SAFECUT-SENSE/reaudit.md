@@ -1,12 +1,14 @@
-AUDITED_COMMIT: 145fbfb
+AUDITED_COMMIT: b9b13d8
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
 
 # SAFECUT-SENSE re-audit log
 
-Each audit is a full, independent, read-only pass by a Sonnet reviewer (effort high) over the lane's code against
-its specs. Every finding was verified here before it was fixed; each fix has a named test.
+Each audit is a full, independent, read-only pass by two Sonnet reviewers (effort high; perception, and reasoning
+with go-live) over the lane's code against its specs, at one commit. Every finding was verified here before it was
+fixed; each fix has a named test that fails without it. **Clean** means no Critical, High or Medium finding: Lows are
+still fixed (or recorded as decisions below), but every full pass finds some, so they don't reset the count.
 
 ## Audit 1 (perception: prepare, track, SAM parser, replay) at 6ccbb3a: 0 critical, 1 high, 3 medium, 5 low
 - H1 detections past the proxy dropped silently → `TrackError` in `build`; replay refuses a recording made for another proxy (`test_a_detection_past_the_proxy_fails_the_stage`, `test_a_recording_for_another_proxy_is_refused`)
@@ -63,3 +65,37 @@ Not clean. Every finding verified (repro rerun, or the code read) and fixed; eac
 - L transcript turns cut at 300 chars in prompts → 1,500 (`prompts.TURN_CHARS`)
 - L a turn after the clip clamped to its last frame → dropped (`test_a_turn_after_the_clip_ends_is_dropped_not_clamped`)
 - L go-live's swap deleted the old recording before the new one was in place → renamed aside and restored after a crash, staging outside fixtures/jobs (`test_a_swap_killed_halfway_restores_the_earlier_recording`)
+
+## Audit 5 (two auditors) at b27847c: 0 critical, 0 high, 3 medium (perception), 10 low
+Not clean (perception mediums). Reasoning half: clean (0 C/H/M, 7 lows). All verified; fixed with failing-first tests.
+- M a long, tiny upload hit the packet cap first and was refused as bad_media → the header's duration is checked before packets (`test_an_over_long_upload_is_too_long_even_past_the_packet_cap`)
+- M ffmpeg itself indexes every declared sample before printing (crafted 50 KB MP4 → 1.8 GB RSS, reproduced by the auditor) → every read of an upload runs under a 1 GiB address-space limit via `sh ulimit` (`test_every_read_of_an_upload_runs_under_the_probe_memory_limit`)
+- M a proxy under SAM's 15-frame hot start would return no tracks → track fails before any call (`test_a_clip_too_short_for_sam_fails_before_any_call`)
+- L a SAM object id of thousands of digits → over 9 digits fails closed (`test_a_huge_object_id_fails_closed`); ffmpeg banner in error text → the header's last line only
+- L re-running `roles` alone on its own output re-billed → earlier miss-loop tracks set aside first (`test_roles_run_again_on_its_own_output_re_bills_nothing`)
+- L escalation evidence by completion order → time order (`test_escalation_evidence_follows_time_order_not_completion`)
+- L corrupt recording crashed the Muse checkpoint → asked again (`test_a_corrupt_recording_is_no_checkpoint`)
+- L a child vote on an unasked label or in a window not showing it was dropped → it locks (`test_a_child_vote_locks_even_where_the_track_was_not_shown_or_asked`)
+- L go-live: another id's leftover failed `rmdir`; a recording set aside by a killed swap didn't count → both fixed (`test_another_ids_leftover_does_not_fail_a_good_swap`, `test_a_set_aside_recording_still_needs_replace`)
+- L child words missing (schoolgirl, newborn, tween, …) → added; stricter only (`test_more_child_words_lock`)
+- Decision: SAM recordings without `source_sha256` (the committed synthetic fixtures) still replay: they are bound to their clip by the manifest's `source_sha256`, which `pipeline.find_recording` matches before any replay.
+- Decision: speech-fallback's `self_intro`/`addresses` sanity check is not applied: the fields are dropped by design, the role pass reads `text` (the same evidence), and speech can never create a keep.
+
+## Audit 6 (two auditors) at 7db7881: 0 critical, 0 high, 3 medium (perception), 11 low
+Not clean (perception mediums; none can under-hide). Reasoning half: clean (0 C/H/M; one Low+ fixed exactly).
+- M an 8192² upload passed the probe and its transcode used 2.2 GB unbounded → sources over 40 Mpx refused before any full decode; the transcode runs under a 6 GiB limit with fixed thread counts (`test_a_resolution_bomb_is_refused_before_any_full_decode`, `test_the_transcode_runs_under_its_own_memory_limit`)
+- M non-UTF-8 container metadata crashed `facts` with a UnicodeDecodeError (service: "internal") → stderr decoded with replacement; header facts read from ffmpeg's own lines only, so a title can't fake the duration either (`test_metadata_bytes_and_lies_never_break_the_stream_facts`)
+- M a clip under ~1.75 s passed prepare and failed track as an untyped TrackError ("internal") → `ClipTooShort` carries reason bad_media, which the service maps (`test_a_clip_too_short_for_sam_fails_before_any_call`)
+- L probe decodes on many-core hosts → one thread and one filter thread, 2 GiB; 1080p and 4K60 phone-style clips prepare end to end (checked by hand: 1.5 s and 2.8 s)
+- L a 10+ digit SAM field (mask size) reached Meta's int() → fails closed first; an unusable checkpoint (ValueError) is asked again (`test_a_huge_mask_size_fails_closed`)
+- L one parse pool per SAM stream could start dozens of interpreters → one pool at a time per process
+- Low+ (reasoning) a roles re-run after a phrase sweep re-billed pass 1 (concepts/crowded frames not restored) → roles keeps a copy of its input and stamps its output; a re-run on its own output restores the exact input (`test_a_re_run_after_a_phrase_sweep_re_bills_nothing`)
+- L a child ruling on a label escalation wasn't asked about was dropped → locks (`test_a_child_ruling_on_an_unasked_label_locks_it`); `schoolchildren's`, youth, adolescent, preschooler, kindergartener lock (`test_possessives_and_more_child_words_lock`); corrupt scene/transcript → no context, roles.json still written (`test_a_corrupt_scene_file_still_writes_roles`); WAV disk error → fallback; go-live: a stopped run exits 1 (`test_a_stopped_run_is_not_reported_as_success`), `--id` keeps dots as separators (`test_ids_keep_their_dots_as_separators`)
+
+## Audit 7 (two auditors) at 1c94c2f: 0 critical, 0 high, 1 medium (reasoning), 9 low
+Not clean (one reasoning medium, introduced by audit 6's fix). Perception half: clean (0 C/H/M, 4 lows).
+- M a child ruling on an unasked, matched participant made `role_track` emit a matched child, which the contract rejects: roles crashed with no roles.json → a child is never matched (`test_a_child_ruling_on_the_host_still_writes_roles`)
+- L (perception) U+2028/\x1e/\x85 in metadata forged header lines through `splitlines()` (bypassing the pixel cap; still bounded by the transcode limit) → split on `\n` only; size from the first video stream (`test_unicode_line_breaks_in_metadata_cannot_forge_header_lines`)
+- L a stream line imageio can't parse (AttributeError) → bad_media (`test_a_stream_line_the_parser_cannot_read_is_bad_media`); the encoder gets its own `-threads 4` (checked: `threads=4 lookahead_threads=1` in the prepared clip); negative 10+ digit SAM fields fail closed (`test_a_huge_negative_number_fails_closed`)
+- L a corrupt transcript.json crashed `scene` → no speech, scene.json written (`test_a_corrupt_transcript_still_writes_scene`); roles' input copy/restore atomic; speaker labels bounded (`test_a_speaker_label_that_is_a_huge_number_is_relabelled`); fixture ids never end in a separator
+- Decision: an `unsure` escalation ruling citing no frames counts as no ruling (`escalated: false`), the same rule as a role vote without citations (role-pass rule 5); advisory only.

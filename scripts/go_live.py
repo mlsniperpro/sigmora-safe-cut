@@ -9,6 +9,7 @@ lets ``safecut run <clip> --replay`` find it by the clip's sha256. Every recordi
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -25,6 +26,12 @@ DEFAULT_CAP = 3.00
 def clip_id(clip: Path) -> str:
     """A fixture directory name: lowercase ``[a-z0-9_-]`` only, never empty, ``.`` or ``..``."""
     return re.sub(r"[^a-z0-9_-]+", "-", clip.name.removesuffix(clip.suffix).lower()).strip("-")[:60] or "clip"
+
+
+def fixture_id(given: str) -> str:
+    """An ``--id`` as a fixture directory name: like :func:`clip_id`, but the whole id (a dot becomes a separator,
+    ``v1.5`` → ``v1-5``, rather than starting an extension that would be cut off)."""
+    return re.sub(r"[^a-z0-9_-]+", "-", given.lower()).strip("-")[:60].strip("-") or "clip"
 
 
 def allowed(clip: Path, consented: bool) -> bool:
@@ -84,7 +91,8 @@ def keep(job_dir: Path, out: Path, clip: Path) -> Path:
     staging.replace(out)
     if old.exists():
         shutil.rmtree(old)
-    work.rmdir()
+    with contextlib.suppress(OSError):  # another id's run may still have files there
+        work.rmdir()
     return out
 
 
@@ -117,8 +125,10 @@ def main(argv: list[str] | None = None) -> int:
     from safecut import pipeline  # noqa: PLC0415 -- settings read the env set above
     from safecut.stages import StageUnavailable  # noqa: PLC0415
 
-    name = clip_id(Path(args.id)) if args.id else clip_id(clip)  # never a path: only [a-z0-9_-]
-    if (root / "fixtures" / "jobs" / name).exists() and not args.replace:
+    name = fixture_id(args.id) if args.id else clip_id(clip)  # never a path: only [a-z0-9_-]
+    # A run killed mid-swap leaves the earlier recording aside in fixtures/.go-live/: it still counts as one.
+    aside = root / "fixtures" / ".go-live" / f"{name}.old"
+    if ((root / "fixtures" / "jobs" / name).exists() or aside.exists()) and not args.replace:
         print(f"go-live: fixtures/jobs/{name} already holds a recording; pass --replace or another --id",
               file=sys.stderr)  # fmt: skip
         return 2
@@ -139,16 +149,17 @@ def main(argv: list[str] | None = None) -> int:
         status = 1
     out = root / "fixtures" / "jobs" / name
     recorded = (job_dir / "raw").is_dir() and any((job_dir / "raw").rglob("*.json"))
-    if not recorded or (out.exists() and (status or stopped)):
+    if not recorded or ((out.exists() or aside.exists()) and (status or stopped)):
         # A run that recorded nothing, or an unfinished one, never replaces an earlier (paid-for) recording.
-        print(f"go-live: kept {out if out.exists() else 'nothing'}; this run's responses stay in {job_dir}",
+        kept = out if out.exists() else aside if aside.exists() else "nothing"
+        print(f"go-live: kept {kept}; this run's responses stay in {job_dir}",
               file=sys.stderr)  # fmt: skip
         return status or 1
     out = keep(job_dir, out, clip)
     data = json.loads((out / "raw" / "manifest.json").read_text())
     print(f"go-live: recorded {data['calls']} call(s), ${data['usd']:.4f} measured "
           f"(+${data['usd_estimated']:.4f} possibly billed) into {out}")  # fmt: skip
-    return status
+    return status or (1 if stopped else 0)  # a stopped run is unfinished: never reported as success
 
 
 if __name__ == "__main__":
