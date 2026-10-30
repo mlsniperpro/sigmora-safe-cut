@@ -510,6 +510,24 @@ class DecisionItem(Contract):
     box: Box | None = None
     first: Frame | None = None
     last: Frame | None = None
+    #: DESIGN §2.7b / UI-SPEC §8 request 9: the creator's "remove person" (a whole-person solid hide, recorded in
+    #: the receipt). Left out of the file while false, so receipts sealed before it existed keep their hash.
+    removed_by_creator: bool = False
+
+    @model_serializer(mode="wrap")
+    def _omit_not_removed(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data = cast(dict[str, Any], handler(self))
+        if not data.get("removed_by_creator"):
+            data.pop("removed_by_creator", None)
+        return data
+
+    @model_validator(mode="after")
+    def _removed(self) -> DecisionItem:
+        if self.removed_by_creator and (
+            self.decision != "hide" or self.decided_by != "creator" or self.style != "person_solid"
+        ):
+            raise ValueError(f"{self.item_id}: a removed person is a creator's person_solid hide")
+        return self
 
     @model_validator(mode="after")
     def _rules(self) -> DecisionItem:
