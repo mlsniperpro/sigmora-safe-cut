@@ -32,11 +32,16 @@ APP_NAME = "safecut"
 #: face detector on OpenCV (the main dependencies ship it), and audit.json and the receipt say so.
 AUDIT_GROUPS = ["audit"] if os.environ.get("SAFECUT_DEPLOY_AUDIT") == "1" else []
 
+#: What the image leaves out of the source packages: bytecode only; every data file ships.
+SOURCE_IGNORE = ["**/__pycache__", "**/*.pyc"]
+
 image = (
     modal.Image.debian_slim(python_version="3.12")
     .env({"SAFECUT_JOBS_DIR": JOBS, "SAFECUT_TRUST_PROXY": "1"})
     .uv_sync(str(ROOT), groups=AUDIT_GROUPS, frozen=True)
-    .add_local_python_source("safecut", "eval")
+    # The default ignore keeps only .py files: the prompt templates (safecut/scout/prompts/*.txt) and the bundled
+    # YuNet weights (safecut/audit/weights/*.onnx) would be missing, and scene, roles and the audit would fail.
+    .add_local_python_source("safecut", "eval", ignore=SOURCE_IGNORE)
     .add_local_dir(str(ROOT / "fixtures" / "jobs"), "/root/fixtures/jobs")
     .add_local_dir(str(ROOT / "fixtures" / "clips"), "/root/fixtures/clips")
 )
