@@ -413,6 +413,11 @@ def e4() -> None:
             count = examples.get(nodeid)
             if count is None or count < 2000:
                 raise CheckFailed(f"{nodeid} ({key}) ran {count or 0} hypothesis examples; needs ≥ 2000")
+    # The policy's own tests must cover every branch of it (not the whole suite reaching it by accident): stricter,
+    # and minutes instead of the whole suite under coverage.
+    policy_tests = sorted(str(p) for p in (ROOT / "tests").glob("test_policy*.py"))
+    if not policy_tests:
+        raise CheckFailed("no policy tests (tests/test_policy*.py)")
     cov = sh(
         [
             str(BIN / "pytest"),
@@ -423,6 +428,7 @@ def e4() -> None:
             "--cov-branch",
             "--cov-report=term-missing",
             "--cov-fail-under=100",
+            *policy_tests,
         ],
         timeout=1800,
     )

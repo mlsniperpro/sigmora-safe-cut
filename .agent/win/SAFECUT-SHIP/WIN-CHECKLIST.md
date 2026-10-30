@@ -91,6 +91,13 @@ Every E-line SHIP owns, every brief requirement, and the judging criteria, each 
 - [x] R5 lows: E3 correlation guard, busy ceiling order, BLOCKED URL, README wording.
 - [-] R5 L2 kept: E7's deployed branch (the strict deploy-check is the live proof).
 
+## Audit round 6 (`reaudit.md`)
+
+- [x] R6 M1 every real-length code or key is a secret to E11: `test_secret_pattern_knows_this_projects_own_secrets`.
+- [x] R6 M2 run configs name only what ran; `muse_no_track` never calls SAM: two tests; runs regenerated.
+- [x] R6 lows: deploy-check cold-start wait and live-branch test, HANDOFF moved, wording, synthetic default.
+- [x] E4 measures the policy's coverage with the policy's own tests (it timed out on the whole suite).
+
 ## Judging criteria
 
 - [P] Impact (30): real numbers need `MODEL_API_KEY`, the consented hero clips and the test split (BLOCKED.md); until then every run is synthetic and labelled so, and the docs quote no numbers.

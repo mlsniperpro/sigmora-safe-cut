@@ -98,3 +98,18 @@ Round 4 was not clean (three medium), so the clean count stays at 0.
 | L4 | low | BLOCKED: `SAFECUT_PUBLIC_URL` "printed by Modal" though the API won't start without it | BLOCKED gives its predictable form | review |
 | L5 | low | README "deleted 24 hours after" vs 24 h + one sweep | Reworded | review |
 | L6 | low | DELETE doesn't stop a running paid call | Reworded: the current call finishes (under the per-clip cap), then it stops | review |
+
+## Round 6 (on 5d5853f): 0 critical, 0 high, 2 medium, 6 low. Closed in ef66bc3 / 0369c33 / f2e0aac.
+
+| # | Sev | Finding | Resolution | Test |
+|---|---|---|---|---|
+| M1 | medium | E11 flagged only 24+ character codes, and exempted any lowercase-words-and-digits value, so a 16-character or word-style judge code passed | Any 12+ character `code`/`key` value is a secret except a lowercase error code and the tests' four exact named stand-ins (`STAND_INS`); history and tree: 0 hits | `test_secret_pattern_knows_this_projects_own_secrets` |
+| M2 | medium | Five of six run configs still named configured models for stages they skipped | `models_recorded` reports only what a job's files show ran; `muse_no_track` no longer runs SAM at all (it was called, live, for nothing) and records the role model its hook uses; runs regenerated | `test_a_run_config_names_only_the_models_that_ran` (four variants), `test_muse_no_track_never_runs_the_tracker` |
+| L1 | low | deploy-check could go false-red on a cold start (the demo job builds about a minute after startup) | Polls the demo for up to `DEPLOY_DEMO_WAIT_S` (300 s) | `test_deploy_check_fails_loudly` still fails fast on an unknown hero |
+| L2 | low | The live branch of deploy-check was untested | A stub of a live API with its key | `test_deploy_check_accepts_a_live_api_with_its_key` |
+| L3 | low | Stale public root `HANDOFF.md` (WP6's wind-down note) | Moved to `.agent/handoffs/WP6-HANDOFF.md` | n/a |
+| L4 | low | "Sigmora calls it" stated as fact | "Built to be called by Sigmora … (service keys)" | review |
+| L5 | low | VIDEO-SCRIPT used a recording code BLOCKED never creates | The owner code | review |
+| L6 | low | A replay with `raw/` but no manifest was labelled real | Labelled synthetic | covered by `test_a_replay_is_synthetic_unless_its_manifest_says_otherwise` |
+
+Also found while integrating (not by the audit): E4 ran the **whole** suite under coverage to measure `policy.py`; at about 1,370 tests it exceeded its 30-minute bound on a fresh clone (E4: FAIL TimeoutExpired, every other line OK). E4 now requires 100 % branch coverage of `policy.py` from the policy's own tests (`tests/test_policy*.py`, 100 % in under 3 minutes), which is the stricter reading.
