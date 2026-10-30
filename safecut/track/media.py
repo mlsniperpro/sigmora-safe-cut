@@ -6,18 +6,23 @@ stream's own time base) and stream facts from the header ffmpeg prints for ``-i`
 
 from __future__ import annotations
 
+import importlib
 import re
 import subprocess
 import tempfile
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
 from typing import Any, cast
 
 import imageio_ffmpeg
-from imageio_ffmpeg._parsing import parse_ffmpeg_header  # pyright: ignore[reportPrivateUsage, reportMissingTypeStubs, reportUnknownVariableType] -- the parser read_frames uses, run here under limits
 
+#: The parser ``imageio_ffmpeg.read_frames`` uses for ffmpeg's ``-i`` header, run here under the probe limits.
+parse_ffmpeg_header = cast(
+    Callable[[str], dict[str, Any]], importlib.import_module("imageio_ffmpeg._parsing").parse_ffmpeg_header
+)
 #: Uploads are MP4 or MOV (the API and the web app take nothing else), read only by the mov demuxer: never a
 #: playlist (an ``.m3u8`` makes ffmpeg's HLS demuxer open the local files it names) or any other demuxer.
 SAFE_INPUT = ("-format_whitelist", "mov,mp4,m4a,3gp,3g2,mj2")
@@ -229,7 +234,7 @@ def facts(path: Path) -> StreamFacts:
     videos = [line for line in header if " Video: " in line]
     header = [line for line in header if " Video: " not in line or line is videos[0]] if videos else header
     try:
-        meta = cast(dict[str, Any], parse_ffmpeg_header("\n".join(header)))
+        meta = parse_ffmpeg_header("\n".join(header))
     except (ValueError, IndexError, KeyError, AttributeError, TypeError) as exc:  # a stream line it can't read
         raise MediaError(f"can't read {path.name}: {exc}") from exc
     size = cast(tuple[int, int], tuple(meta.get("size") or (0, 0)))

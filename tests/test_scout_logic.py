@@ -465,7 +465,7 @@ def test_a_long_phrase_makes_a_bounded_concept() -> None:
 
 def test_a_child_vote_locks_even_where_the_track_was_not_shown_or_asked() -> None:
     from safecut.scout import roles  # noqa: PLC0415 -- the aggregation needs the stage's window type
-    from safecut.scout.schemas import RolePassOut  # noqa: PLC0415
+    from safecut.scout.schemas import RolePassOut  # noqa: PLC0415 -- the answer schema, imported where used
 
     face = Track(track_id="face:7", concept="face", first=90, last=120, boxes=dict.fromkeys(range(90, 121),
                  (10, 10, 50, 50)), source="sam-3.1", prompt="face")  # fmt: skip
@@ -545,10 +545,10 @@ def test_any_schema_valid_answers_assemble_into_a_valid_roles_file(
     checks (re-audit 7's medium was a contract rejection on a valid answer)."""
     from datetime import UTC, datetime  # noqa: PLC0415 -- only this test builds a job
 
-    from safecut import contracts  # noqa: PLC0415
-    from safecut.contracts import Job, Tracks  # noqa: PLC0415
-    from safecut.scout import calls, roles  # noqa: PLC0415
-    from safecut.scout.schemas import RolePassOut  # noqa: PLC0415
+    from safecut import contracts  # noqa: PLC0415 -- only this property needs the contract checks
+    from safecut.contracts import Job, Tracks  # noqa: PLC0415 -- only this property builds a job
+    from safecut.scout import calls, roles  # noqa: PLC0415 -- the stage under test, imported where used
+    from safecut.scout.schemas import RolePassOut  # noqa: PLC0415 -- the answer schema, imported where used
 
     job = Job(job_id="j", source="c.mp4", source_sha256="a" * 64, prepared="prepared.mp4", fps=30, width=1280,
               height=720, frames=120, times=[i / 30 for i in range(120)], audio=False,
