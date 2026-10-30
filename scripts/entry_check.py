@@ -582,7 +582,14 @@ def e9() -> None:
 SUBMISSION_DOCS = ("README.md", "docs/SUBMISSION.md", "docs/VIDEO-SCRIPT.md", "docs/AGENTIC-LOOP.md", "docs/LAUNCH.md")
 #: A reported figure: a percentage, a dollar amount, or a decimal fraction standing alone (not a version like 3.1 in
 #: ``sam-3.1``, which sits in code spans anyway).
-FIGURE = re.compile(r"(?<![\w.\-/])(\$?\d+(?:\.\d+)?%|\$\d+(?:\.\d+)?|\d+\.\d+)(?![\w\-/%]|\.\d)")
+FIGURE = re.compile(
+    r"(?<![\w.\-/])("
+    r"\$?\d{1,3}(?:,\d{3})+(?:\.\d+)?(?:\s?%| percent)?"  # 1,200 / $1,200.50 / 12,500 %
+    r"|\$?\d+(?:[.,]\d+)?(?:\s?%| percent)"  # 97.5% / 99 % / 3 percent / 99,5 %
+    r"|\$\d+(?:\.\d+)?"  # $0.91
+    r"|\d+\.\d+"  # 0.82
+    r")(?![\w\-/%]|[.,]\d)"
+)
 
 
 #: A count reported as a result ("47 leaks", "20 clips"): checked like a figure, whatever its size.
@@ -593,6 +600,14 @@ COUNT = re.compile(
 CODE_FENCE = re.compile(
     r"```(?:bash|sh|shell|console|json|jsonc|python|py|ts|tsx|js|yaml|yml|toml|text|diff)\b.*?```", re.DOTALL
 )
+
+
+def figure_pattern(figure: str) -> str:
+    """Where ``figure`` may stand in RESULTS.md: the same number, a percentage written with or without a space or as
+    "percent", whole-token on both sides."""
+    number = re.sub(r"\s?%$| percent$", "", figure)
+    unit = r"(?:\s?%| percent)" if number != figure else ""
+    return rf"(?<![\w.,]){re.escape(number)}{unit}(?![\w%]|[.,]\d)"
 
 
 def prose(text: str) -> str:
@@ -625,7 +640,7 @@ def e10() -> None:
     for doc in SUBMISSION_DOCS:
         seen = prose((ROOT / doc).read_text(encoding="utf-8"))
         for figure in [*FIGURE.findall(seen), *COUNT.findall(seen)]:
-            if not re.search(rf"(?<![\w.]){re.escape(figure)}(?![\w%]|\.\d)", results):
+            if not re.search(figure_pattern(figure), results):
                 raise CheckFailed(f"{doc}: the figure {figure} is not in eval/RESULTS.md")
 
 

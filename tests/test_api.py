@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from fastapi import Request
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
@@ -27,7 +28,7 @@ from safecut.api.app import Service, create_app, hero_job_id, production_problem
 from safecut.api.store import JobNotFound, JobStore
 from safecut.api.views import public_audit
 from safecut.config import AccessCode, CodeWindow, ServiceKey, Settings
-from safecut.contracts import Audit, CostLine, Job, RedteamHit, Roles, append_cost_line, load
+from safecut.contracts import Audit, CostLine, Job, Plan, RedteamHit, Roles, append_cost_line, load
 from safecut.meta.budget import CapLimit
 from safecut.stages import REDACTED, Stage
 from tests.fake_stages import CLIP
@@ -1141,3 +1142,47 @@ def test_the_model_list_names_the_recorded_models(tmp_path: Path) -> None:
     assert load(job / "audit.json", Audit).redteam
     assert models["escalate"] == "muse-spark-recorded"
     assert models["redteam"] == "muse-spark-redteam-recorded"
+
+
+def test_a_poll_reuses_parsed_files_until_they_change(tmp_path: Path) -> None:
+    from safecut.api import views  # noqa: PLC0415 -- the module whose cache is under test
+
+    job = tmp_path / "job"
+    shutil.copytree(ROOT / "fixtures" / "contracts" / "j_example", job)
+    first = views._optional(job / "plan.json", Plan)  # pyright: ignore[reportPrivateUsage] -- the cache itself
+    assert views._optional(job / "plan.json", Plan) is first  # pyright: ignore[reportPrivateUsage]
+    data = (job / "plan.json").read_text()
+    time.sleep(0.01)
+    (job / "plan.json").write_text(data + " ")  # changed on disk: parsed again
+    assert views._optional(job / "plan.json", Plan) is not first  # pyright: ignore[reportPrivateUsage]
+    assert views._optional(job / "missing.json", Plan) is None  # pyright: ignore[reportPrivateUsage]
+
+
+def test_ipv6_clients_share_a_limit_per_64(make_client: Callable[..., tuple[TestClient, Service]]) -> None:
+    _, svc = make_client(trust_proxy=True)
+
+    def ip(forwarded: str) -> str:
+        scope = {"type": "http", "headers": [(b"x-forwarded-for", forwarded.encode())], "client": ("127.0.0.1", 1)}
+        return svc.client_ip(Request(scope))
+
+    assert ip("2001:db8:1:2::1") == ip("2001:db8:1:2:ffff::9") == "2001:db8:1:2::/64"
+    assert ip("2001:db8:1:3::1") != ip("2001:db8:1:2::1")
+    assert ip("198.51.100.7") == "198.51.100.7"
+
+
+def test_an_upload_to_a_job_deleted_after_its_signature_check_is_a_404(
+    make_client: Callable[..., tuple[TestClient, Service]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, svc = make_client()
+    body = {"code": JUDGE, "size_bytes": CLIP.stat().st_size, "content_type": "video/mp4", "file_name": "a.mp4"}
+    created = client.post("/v1/jobs", json=body).json()
+    verify = svc.signer.verify
+
+    def verify_then_delete(*args: Any, **kwargs: Any) -> bool:
+        ok = verify(*args, **kwargs)
+        svc.store.delete(created["job_id"])
+        return ok
+
+    monkeypatch.setattr(svc.signer, "verify", verify_then_delete)
+    put = client.put(created["upload_url"], content=CLIP.read_bytes(), headers={"Content-Type": "video/mp4"})
+    assert put.status_code == 404

@@ -8,6 +8,8 @@ out of the response, so the shapes grow as the pipeline runs.
 from __future__ import annotations
 
 import json
+import threading
+from collections import OrderedDict
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any, cast
@@ -62,8 +64,33 @@ def public_audit(audit: Audit) -> dict[str, Any]:
     return body
 
 
+#: Parsed job files, keyed by path, model and the file's (mtime_ns, size): a poll re-parses only what changed
+#: (validating plan.json and tracks.json is most of a poll's CPU on a long clip). Read-only use: never mutated.
+_PARSED: OrderedDict[tuple[str, str], tuple[tuple[int, int], BaseModel]] = OrderedDict()
+_PARSED_LOCK = threading.Lock()
+_PARSED_MAX = 256
+
+
 def _optional[M: BaseModel](path: Path, model: type[M]) -> M | None:
-    return load(path, model) if path.is_file() else None
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    if not path.is_file():
+        return None
+    key, stamp = (str(path), model.__qualname__), (stat.st_mtime_ns, stat.st_size)
+    with _PARSED_LOCK:
+        hit = _PARSED.get(key)
+        if hit is not None and hit[0] == stamp:
+            _PARSED.move_to_end(key)
+            return cast(M, hit[1])
+    parsed = load(path, model)
+    with _PARSED_LOCK:
+        _PARSED[key] = (stamp, parsed)
+        _PARSED.move_to_end(key)
+        while len(_PARSED) > _PARSED_MAX:
+            _PARSED.popitem(last=False)
+    return parsed
 
 
 def _optional_json(path: Path) -> dict[str, Any] | None:

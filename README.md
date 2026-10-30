@@ -66,7 +66,7 @@ The honest failures on this clip: the YuNet baseline finds no drawn face at all 
 ## Production notes
 
 - **Service:** FastAPI on Modal (`deploy/modal_app.py`). It runs one API container, because the per-IP rate limits and the spend ledger are in-process; the pipeline runs in that container's worker threads. Job folders live on a Volume.
-- **Access:** judge and public access codes, plus pilot, recording and owner codes, each with its own validity window, and Bearer service keys for Sigmora. A code is bound to its job by a non-secret ID, so revoking it (removing it from `SAFECUT_ACCESS_CODES` and redeploying) stops its jobs' paid work at their next paid step: every start, render, audit and re-queue re-checks the code, and so does the restart.
+- **Access:** judge and public access codes, plus pilot, recording and owner codes, each with its own validity window, and Bearer service keys for Sigmora. A code is bound to its job by a non-secret ID, so revoking it (removing it from `SAFECUT_ACCESS_CODES` and redeploying) stops its jobs' paid work at the next start, render, audit, re-queue or restart, which each re-check the code; an analysis already running finishes, within the per-clip and daily caps.
 - **Spend caps,** checked before any paid work. The values are in `eval/RESULTS.md`'s service limits:
   - a per-clip cap;
   - a daily cap for judge and public codes, reset at 00:00 UTC;

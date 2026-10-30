@@ -338,3 +338,11 @@ def test_bearer_tokens_are_secrets_in_any_case() -> None:
     token = "Zx81kdJq0LmnB7Yt5" + "ExP2rVw9sAc"
     assert entry_check.secret_hit(f"Authorization: Bearer {token}")
     assert entry_check.secret_hit(f"authorization: bearer {token}")
+
+
+def test_e10_reads_percentages_in_every_house_style() -> None:
+    seen = entry_check.prose("recall of 99 % on 3 percent of $1,200 clips; 97.5% and 99,5%")
+    assert entry_check.FIGURE.findall(seen) == ["99 %", "3 percent", "$1,200", "97.5%", "99,5%"]
+    assert re.search(entry_check.figure_pattern("95 %"), "covered on ≥ 95% of frames")
+    assert re.search(entry_check.figure_pattern("95%"), "≥ 95 % of the box")
+    assert not re.search(entry_check.figure_pattern("5 %"), "≥ 95 % of the box")
