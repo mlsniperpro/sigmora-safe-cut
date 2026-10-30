@@ -249,7 +249,8 @@ export function WhyDrawer({
                 </div>
               )}
               {frame !== undefined && (
-                <p className="mt-2 text-sm text-muted">Frame at {formatFrameTenths(frame, fps)}. This is the frame Muse Spark was shown. The labels are the objects SAM 3.1 tracked.</p>
+                // Live, so ←/→ on the viewer announces the frame it moved to, as the frame buttons do (§9).
+                <p className="mt-2 text-sm text-muted" aria-live="polite" aria-atomic="true">Frame at {formatFrameTenths(frame, fps)}. This is the frame Muse Spark was shown. The labels are the objects SAM 3.1 tracked.</p>
               )}
               {frame !== undefined && model.primaryTrack && (
                 <p className="mt-1 font-mono text-xs text-muted">

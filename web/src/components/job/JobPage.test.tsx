@@ -201,6 +201,20 @@ describe("review panel", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Face 6 · Person" })).toBeNull());
   });
 
+  it("stepping the keyframe with the arrow keys announces the new frame (§4.5, §9)", async () => {
+    const user = setup("job-review-hero1");
+    await screen.findByText("2 hidden · 1 kept clear · 1 needs you");
+    await user.click(screen.getByRole("button", { name: /^Why\? Face 2/ }));
+    const drawer = await screen.findByRole("dialog", { name: /^Face 2/ });
+    const caption = within(drawer).getByText(/^Frame at /);
+    expect(caption).toHaveAttribute("aria-live", "polite");
+    const before = caption.textContent;
+    act(() => within(drawer).getByRole("group", { name: /^Keyframe viewer/ }).focus());
+    await user.keyboard("{ArrowRight}");
+    await waitFor(() => expect(within(drawer).getByText(/^Frame at /).textContent).not.toBe(before));
+    expect(within(drawer).getByText(/^Frame at /)).toBe(caption);
+  });
+
   it("renders: Approve & render shows the render stages", async () => {
     const user = setup("job-review-hero1");
     await screen.findByText("2 hidden · 1 kept clear · 1 needs you");

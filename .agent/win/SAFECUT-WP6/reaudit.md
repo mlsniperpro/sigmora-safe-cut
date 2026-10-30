@@ -521,6 +521,8 @@ On the fix commit: `checks.sh` exit 0, 878 tests, e2e 143/143.
 
 Also fixed, from the "noted, not counted" list: the audit-added chip's accessible name read "…covered it.." (the reason already ends a sentence); chip names and the Why drawer's reason now add a full stop only when the text has none. view test (fails on 9c46081).
 
-Noted, not counted: ←/→ on the Why drawer's keyframe change the frame without an announcement (the time buttons and ◀/▶ announce through `aria-current`; §4.5 asks only for the stepping); WP5 must send `Access-Control-Expose-Headers: Retry-After` for the UI to read it cross-origin (without it the UI holds the 60 s default, which §10.3 allows).
+Also fixed in a follow-up commit: ←/→ on the Why drawer's keyframe changed the frame without an announcement; the "Frame at …" caption is now a polite live region. JobPage test (fails without it).
 
-On the fix commit: `checks.sh` exit 0, 880 tests, e2e 143/143.
+Noted, not counted: WP5 must send `Access-Control-Expose-Headers: Retry-After` for the UI to read it cross-origin (without it the UI holds the 60 s default, which §10.3 allows).
+
+On the fix commits: `checks.sh` exit 0, 881 tests, e2e 143/143.

@@ -170,6 +170,7 @@ Round 14 (fixes in the round-14 commit; details in `reaudit.md`):
 - [x] Self-found: fixture dates shift with the clock, so the mock and the tests hold on any date: mock-backend tests, suite run at clock shifts up to +400 days
 - [x] R40-1 (low) a deadline already due (Retry-After: 0) opens at once: useNow test
 - [x] R40 noted item: no doubled full stop in chip names and the Why reason: view test
+- [x] R40 noted item: ←/→ on the Why keyframe announces the frame: JobPage test
 - [x] R39-1 (low) time-gated retry buttons re-enable at their deadline: useNow test
 - [x] R39-2 (low) a failed job's Try again hidden under the §2.6.1 expiry rule: JobPage test
 - [x] R38-1 (medium) 202 acks without `job_id` parse: contracts test
