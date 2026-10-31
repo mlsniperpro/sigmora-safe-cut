@@ -10,10 +10,11 @@ retry fails too.
 from __future__ import annotations
 
 import logging
+import queue
 import re
 import threading
 from collections.abc import Callable
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
@@ -132,6 +133,65 @@ def _media_rejection(exc: BaseException) -> MediaRejected | None:
     )
 
 
+class DaemonPool:
+    """A fixed pool of **daemon** threads with ``ThreadPoolExecutor``'s ``submit``/``shutdown``. A container being
+    replaced must exit at once (``Service.stop(wait=False)``); ``ThreadPoolExecutor``'s threads are joined at
+    interpreter exit, which would keep it, and its running job, alive beside the new container. A job stopped this way
+    is a job its container died under: the next container resumes it from its last finished stage."""
+
+    def __init__(self, workers: int, *, name: str) -> None:
+        self._tasks: queue.SimpleQueue[tuple[Future[None], Callable[[], None]] | None] = queue.SimpleQueue()
+        self._threads = [
+            threading.Thread(target=self._loop, name=f"{name}_{i}", daemon=True) for i in range(max(1, workers))
+        ]
+        self._closed = False
+        self._lock = threading.Lock()
+        for thread in self._threads:
+            thread.start()
+
+    def submit(self, fn: Callable[..., None], *args: object) -> Future[None]:
+        future: Future[None] = Future()
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("cannot schedule new work after shutdown")
+            self._tasks.put((future, lambda: fn(*args)))
+        return future
+
+    def _loop(self) -> None:
+        while True:
+            item = self._tasks.get()
+            if item is None:
+                return
+            future, work = item
+            if not future.set_running_or_notify_cancel():
+                continue
+            try:
+                work()
+            except BaseException as exc:
+                future.set_exception(exc)
+            else:
+                future.set_result(None)
+
+    def shutdown(self, *, wait: bool = True, cancel_futures: bool = False) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+        if cancel_futures:
+            while True:
+                try:
+                    item = self._tasks.get_nowait()
+                except queue.Empty:
+                    break
+                if item is not None:
+                    item[0].cancel()
+        for _ in self._threads:
+            self._tasks.put(None)
+        if wait:
+            for thread in self._threads:
+                thread.join()
+
+
 class Worker:
     """A bounded pool of pipeline threads. ``submit`` returns at once; the job's state tells the rest."""
 
@@ -150,7 +210,7 @@ class Worker:
         #: scale-to-zero container up until the job stops (deploy/modal_app.py ``SafeCutApi.hold``).
         self._keepalive = keepalive
         self.access = Access(settings)
-        self._pool = ThreadPoolExecutor(max_workers=max_workers or settings.workers, thread_name_prefix="job")
+        self._pool = DaemonPool(max_workers or settings.workers, name="job")
         self._running: dict[str, Future[None]] = {}
         self._timers: dict[str, threading.Timer] = {}
         self._lock = threading.Lock()

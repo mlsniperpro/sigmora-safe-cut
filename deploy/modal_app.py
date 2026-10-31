@@ -110,7 +110,8 @@ class SafeCutApi:
         problems = production_problems(settings)
         if problems:  # a weak judge code or URL key is refused at startup, never served
             raise RuntimeError("safecut-secrets isn't fit for production: " + "; ".join(problems))
-        self.service = Service(settings, keepalive=_keepalive)
+        # wait_on_stop=False: the ASGI lifespan stops the service before @modal.exit, and must not wait for jobs either.
+        self.service = Service(settings, keepalive=_keepalive, wait_on_stop=False)
         self.service.start()
 
     @modal.asgi_app(label="safecut-api")
@@ -181,8 +182,8 @@ _server: Any = None
     # spend of a burst, and a scan that waits its turn falls back to YuNet at its timeout.
     max_containers=4,
     scaledown_window=GPU_SCALEDOWN_S,
+    # No Modal-level retries: the API retries a transient failure once itself, and reserves and prices each call.
     timeout=10 * 60,
-    retries=modal.Retries(max_retries=1, initial_delay=2.0, backoff_coefficient=2.0),
 )
 def egoblur_detect(request: dict[str, Any]) -> dict[str, Any]:
     """One audit scan: EgoBlur Gen 2 on the wanted frames of a job's render (``safecut.audit.gpu.GpuServer``)."""
@@ -196,7 +197,7 @@ def egoblur_detect(request: dict[str, Any]) -> dict[str, Any]:
 
 
 #: How long the pre-deploy smoke waits for its GPU probe (a cold GPU container, the weights loading).
-GPU_PROBE_TIMEOUT_S = 10 * 60
+GPU_PROBE_TIMEOUT_S = 5 * 60  # with the 15-minute replay run, inside the smoke's 25 minutes
 
 
 @app.function(volumes={AUDIT: audit}, timeout=25 * 60)

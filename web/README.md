@@ -91,5 +91,5 @@ Idle, now (scaled to zero)   cleanup cron only, 96 runs of ~14 s                
 A visit's quiet tail         API stays up 300 s after the last request              0.0053  visit
 One 60 s clip, API           ~300 s of the API container                            0.0053  clip
 One 60 s clip, GPU audit     ~210 s on an L4, plus its 30 s tail                    0.0628  clip
-One clip, GPU worst case     what the ledger reserves: 930 s on an L4               0.2435  clip
+One clip, GPU worst case     what the estimate reserves: 930 s                      0.2454  clip
 ```

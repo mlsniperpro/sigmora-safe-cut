@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from safecut.config import Settings
+
 #: ``modal billing rates`` (https://modal.com/pricing, read 2026-10-31): per hour.
 CPU_CORE_HOUR = 0.0473
 GIB_HOUR = 0.008
@@ -77,8 +79,8 @@ def rows() -> list[Row]:
         ),
         Row(
             "One clip, GPU worst case",
-            f"what the ledger reserves: {JOB_GPU_WORST_S} s on an L4",
-            usd(JOB_GPU_WORST_S, l4),
+            f"what the estimate reserves: {JOB_GPU_WORST_S} s",
+            usd(JOB_GPU_WORST_S, Settings().audit_gpu_usd_per_hour),
             "clip",
         ),
     ]

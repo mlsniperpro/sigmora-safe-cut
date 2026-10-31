@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 56f8061
+AUDITED_COMMIT: e3305d8
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -88,3 +88,18 @@ fix has a test that fails without it.
   tied to `MAX_PASSES` (`test_the_estimate_counts_one_gpu_scan_per_audit_pass`) and the docs say how retries are
   reserved; `run.json` records `gpu_calls` and `gpu_wall_s`; stale `.building` folders are swept
   (`test_the_sweep_removes_a_demo_build_a_dead_container_left`); FP32 sources linked; BLOCKED.md's cron output.
+
+## Round 5 (on e3305d8): 0 high, 1 medium, 6 low. All closed.
+
+- M1 the "exit doesn't wait" fix was unreachable: Modal ends the ASGI lifespan (which stopped the service with
+  `wait=True`) before `@modal.exit` (modal 1.6.2 `_runtime/user_code_imports.py` `function_execution_context`), and
+  `ThreadPoolExecutor` threads are joined at interpreter exit → `Service(wait_on_stop=False)` on Modal, honoured by
+  the lifespan, and the worker runs jobs on a `DaemonPool`
+  (`test_a_replaced_container_closes_its_app_without_waiting_for_a_running_job`,
+  `test_job_threads_never_keep_a_finished_interpreter_alive`, `test_the_daemon_pool_runs_cancels_and_reports_like_an_executor`;
+  the SIGKILL test passes on it).
+- Lows: `JobStore.get` re-reads under the swap lock when the file vanishes between its check and its read; the API's
+  own JSON 503s no longer read as a waking gateway in the web client (`api.test.ts`); the cost table's worst-case row
+  priced at the configured rate (all three copies regenerated); the GPU probe bounded at 5 minutes inside the
+  smoke's 25; no Modal-level retries on `egoblur_detect` (every billed attempt is reserved and priced); a test renamed
+  to what it shows.

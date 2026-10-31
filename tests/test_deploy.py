@@ -228,7 +228,8 @@ def test_modal_app_defines_the_api_worker_volume_and_cron() -> None:
     assert 'Volume.from_name("safecut-jobs"' in source
     assert 'Volume.from_name("safecut-models"' in source
     assert "return create_app(service=self.service)" in source
-    assert "Service(settings, keepalive=_keepalive)" in source  # every queued action holds the container up
+    # Every queued action holds the container up; a replaced container never waits for its jobs.
+    assert "Service(settings, keepalive=_keepalive, wait_on_stop=False)" in source
 
 
 def test_the_api_scales_to_zero_and_never_runs_two_copies() -> None:

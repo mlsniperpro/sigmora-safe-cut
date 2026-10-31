@@ -191,7 +191,14 @@ class JobStore:
         try:
             state = load(path, JobState)
         except ContractError:
-            raise JobNotFound(job_id) from None
+            # Gone between the check and the read: a swap in flight. Read again once it is done.
+            with self._swap:
+                if not path.is_file():
+                    raise JobNotFound(job_id) from None
+                try:
+                    state = load(path, JobState)
+                except ContractError:
+                    raise JobNotFound(job_id) from None
         if not state.pinned and (now or datetime.now(UTC)) >= state.deletes_at:
             self.delete(job_id)
             raise JobNotFound(job_id, expired=True)

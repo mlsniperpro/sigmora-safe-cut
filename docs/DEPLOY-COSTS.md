@@ -26,7 +26,7 @@ Idle, now (scaled to zero)   cleanup cron only, 96 runs of ~14 s                
 A visit's quiet tail         API stays up 300 s after the last request              0.0053  visit
 One 60 s clip, API           ~300 s of the API container                            0.0053  clip
 One 60 s clip, GPU audit     ~210 s on an L4, plus its 30 s tail                    0.0628  clip
-One clip, GPU worst case     what the ledger reserves: 930 s on an L4               0.2435  clip
+One clip, GPU worst case     what the estimate reserves: 930 s                      0.2454  clip
 ```
 
 Modal bills a container's CPU and memory at whichever is higher, its request or its use, so the request is what an
@@ -53,7 +53,8 @@ and the receipt (`cost_usd_gpu`); the up-front check on `POST /start` adds the G
   containers drain while new ones start (modal 1.6.2 `app.py`, `deploy`); a running job's `hold` input would keep the
   old one draining while the new one's start resumed the same job, two writers on one Volume, paid twice. With
   `recreate` Modal stops the old containers (waiting up to 40 s, modal 1.6.2 `runner.py`) before new work starts,
-  and the API's exit hook doesn't wait for running jobs, so the old one goes at once: a deploy is one restart, and
+  and the old one goes at once (its service stops without waiting for running jobs, both from the ASGI lifespan,
+  which Modal ends first, and from `@modal.exit`, and its job threads are daemons the interpreter doesn't wait for): a deploy is one restart, and
   the job resumes once, from its last finished stage.
 - **The demo is rebuilt beside the one being served.** A new deploy's code, or a demo YuNet had to audit (retried at
   most every 6 hours), is built in a scratch folder and swapped in only when done; a failed build leaves the old demo
@@ -93,7 +94,8 @@ and the receipt (`cost_usd_gpu`); the up-front check on `POST /start` adds the G
   render: the red team is asked again about frames whose pixels changed, and those calls are paid. Rare, and bounded
   by the job and daily caps.
 - The up-front estimate counts one GPU scan per audit pass at its timeout; a transient failure's one retry is
-  reserved call by call, so the ledger's caps still hold it.
+  reserved call by call, so the ledger's caps still hold it. The GPU function has no Modal-level retries, so every
+  attempt Modal bills is one the API reserved and priced.
 - GPU dollars count against the same job, daily, code and pilot caps as Meta's (conservative: a cap protects the
   owner's total spend), and are shown apart on the receipt (`cost_usd_gpu`).
 

@@ -107,8 +107,14 @@ function isIdempotent(init: RequestInit): boolean {
   return init.method === "GET" || (init.method === "POST" && init.path === "/v1/codes/check");
 }
 
-/** A gateway answering for an API that isn't up yet; anything else came from the API itself. */
+/**
+ * A gateway answering for an API that isn't up yet. The API's own 503s (`auditor_unavailable`, `config`) carry its
+ * JSON error body and mean it is awake, so only a 502/503/504 without one counts.
+ */
 const GATEWAY_STATUSES = new Set([502, 503, 504]);
+function fromGateway(raw: RawResponse): boolean {
+  return GATEWAY_STATUSES.has(raw.status) && !errorBodySchema.safeParse(raw.body).success;
+}
 
 /**
  * Wraps a request in its timeout (15 s once the service is awake, 60 s before), mapping aborts to `timeout`
@@ -122,7 +128,7 @@ async function send(transport: Transport, wake: WakeTracker, init: RequestInit):
   outer?.addEventListener("abort", onOuterAbort, { once: true });
   try {
     const raw = await transport.request({ ...init, signal: controller.signal });
-    if (GATEWAY_STATUSES.has(raw.status)) wake.lost();
+    if (fromGateway(raw)) wake.lost();
     else wake.answered();
     return raw;
   } catch (cause) {

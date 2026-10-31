@@ -235,6 +235,13 @@ describe("cold start", () => {
     await client.getJob("j").catch(() => undefined);
     expect(client.wake.isAwake()).toBe(false);
   });
+
+  it("the API's own 503 (its JSON error body) means it is awake", async () => {
+    const body = { error: { code: "auditor_unavailable", message: "Safe Cut's final check isn't available right now." } };
+    const { client } = scripted([{ status: 503, headers: headers(), body }]);
+    await client.getJob("j").catch(() => undefined);
+    expect(client.wake.isAwake()).toBe(true);
+  });
 });
 
 describe("MockBackend (integration through the client)", () => {

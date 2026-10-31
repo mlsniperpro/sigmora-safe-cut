@@ -151,8 +151,12 @@ class Service:
         status_probe: StatusProbe | None = None,
         fixtures: Path = pipeline.FIXTURE_JOBS,
         keepalive: Callable[[str], None] | None = None,
+        wait_on_stop: bool = True,
     ) -> None:
         self.settings = settings
+        #: Whether shutting down waits for running jobs. Modal's container sets False: its ASGI lifespan ends (and
+        #: stops this service) before ``@modal.exit``, and a container being replaced must go at once.
+        self.wait_on_stop = wait_on_stop
         self.store = store or JobStore(
             Path(settings.jobs_dir),
             ttl=timedelta(hours=settings.job_ttl_hours),
@@ -963,7 +967,7 @@ def create_app(settings: Settings | None = None, *, service: Service | None = No
         try:
             yield
         finally:
-            svc.stop()
+            svc.stop(wait=svc.wait_on_stop)
             if blocking:
                 netguard.unblock()
 

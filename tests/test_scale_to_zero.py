@@ -389,7 +389,7 @@ def test_a_corrupt_limit_store_is_moved_aside_never_taking_the_api_down(tmp_path
         limiter.hit("paid", "198.51.100.1", limit=1, window_s=3600)
 
 
-def test_the_per_minute_limit_cant_be_reset_by_a_sleep() -> None:
+def test_the_api_only_sleeps_after_a_quiet_spell_longer_than_the_per_minute_window() -> None:
     """In memory on purpose: the container only sleeps after API_SCALEDOWN_S with no input at all, longer than the
     60 s window, so by the time a restart forgets a window that window has already closed."""
     import ast  # noqa: PLC0415
@@ -695,3 +695,83 @@ def test_a_replaced_container_stops_without_waiting_for_its_jobs(make_service: C
     svc.stop(wait=False)
     assert time.monotonic() - started < 2  # the next container resumes the job; this one goes at once
     gate.set()
+
+
+# ---------------------------------------------------------------------------------------------- round-5 audit fixes
+
+
+def test_a_replaced_container_closes_its_app_without_waiting_for_a_running_job(tmp_path: Path) -> None:
+    """Modal ends the ASGI lifespan (which stops the service) before ``@modal.exit``: with ``wait_on_stop=False``
+    closing the app mid-job is bounded, and the job stays mid-action on the Volume for the next container."""
+    from tests.test_api import recordings  # noqa: PLC0415
+
+    svc = Service(settings_for(tmp_path), fixtures=recordings(tmp_path), wait_on_stop=False)
+    gate = threading.Event()
+    real = svc.worker._run_action  # pyright: ignore[reportPrivateUsage]
+
+    def slow(job: str, action: Any) -> None:
+        gate.wait(30)
+        real(job, action)
+
+    svc.worker._run_action = slow  # type: ignore[method-assign]  # pyright: ignore[reportPrivateUsage]
+    client = TestClient(create_app(service=svc, background=False))
+    client.__enter__()
+    job_id = upload_clip(client)
+    assert client.post(f"/v1/jobs/{job_id}/start").status_code == 202
+    started = time.monotonic()
+    client.__exit__(None, None, None)  # the lifespan's shutdown, as Modal runs it
+    assert time.monotonic() - started < 3
+    assert svc.store.get(job_id).status == "processing"  # resumable by the next container's start
+    gate.set()
+
+
+def test_job_threads_never_keep_a_finished_interpreter_alive() -> None:
+    """ThreadPoolExecutor's threads are joined at interpreter exit; the worker's are daemons, so a container whose
+    service stopped exits at once, its running job left to the next container."""
+    script = (
+        "import threading, time\n"
+        "from safecut.api.worker import DaemonPool\n"
+        "pool = DaemonPool(2, name='job')\n"
+        "pool.submit(time.sleep, 60)\n"
+        "time.sleep(0.2)\n"
+        "pool.shutdown(wait=False, cancel_futures=True)\n"
+        "print('stopped', flush=True)\n"
+    )
+    started = time.monotonic()
+    proc = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=30, check=False)  # noqa: S603
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "stopped"
+    assert time.monotonic() - started < 15  # not the 60 s job
+
+
+def test_the_daemon_pool_runs_cancels_and_reports_like_an_executor() -> None:
+    from safecut.api.worker import DaemonPool  # noqa: PLC0415
+
+    pool = DaemonPool(1, name="t")
+    gate = threading.Event()
+
+    def blocked() -> None:
+        gate.wait(10)
+
+    first = pool.submit(blocked)
+    wait_for(first.running, "the first task to start", timeout_s=5)
+    queued = pool.submit(time.sleep, 0)
+    boom = ValueError("stage failed")
+
+    def failing() -> None:
+        raise boom
+
+    def raising() -> None:
+        failing()
+
+    pool.shutdown(wait=False, cancel_futures=True)
+    assert queued.cancelled()  # never started
+    gate.set()
+    assert first.result(5) is None
+    with pytest.raises(RuntimeError, match="after shutdown"):
+        pool.submit(raising)
+    other = DaemonPool(1, name="u")
+    failed = other.submit(raising)
+    with pytest.raises(ValueError, match="stage failed"):
+        failed.result(5)
+    other.shutdown(wait=True)
