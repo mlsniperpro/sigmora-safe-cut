@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 0788906
+AUDITED_COMMIT: 39ae67d
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -184,3 +184,10 @@ fix has a test that fails without it.
   `/healthz` reports `keepalive`, and `deploy-check.sh` fails on `false` (or, right after a deploy, on none tried:
   every start's demo-build hold is the probe) (`test_deploy_check_proves_the_keepalive_reaches_modal`; the keepalive
   tests assert the recorded outcome).
+
+## Round 12 (on 39ae67d): 0 critical, 0 high, 1 medium, 0 low. Closed. Not clean.
+
+- M1 `deploy-check.sh` judged the keepalive from the first cold-wake `/healthz`, which can answer before the
+  keepalive thread reaches Modal, so a healthy deploy could fail → the check waits (up to `DEPLOY_DEMO_WAIT_S`)
+  for an outcome, after the demo-build wait (`test_deploy_check_waits_for_the_keepalives_outcome_after_a_cold_wake`:
+  a stub that answers null first, then true).

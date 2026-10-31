@@ -656,3 +656,32 @@ def test_deploy_check_proves_the_keepalive_reaches_modal(keepalive: bool | None,
     finally:
         server.shutdown()
     assert line in result.stdout, result.stdout
+
+
+def test_deploy_check_waits_for_the_keepalives_outcome_after_a_cold_wake() -> None:
+    """The keepalive runs on its own thread after the container starts: the first /healthz may say null. The check
+    waits for the outcome instead of failing a healthy deploy."""
+    answers = [{**LIVE, "uptime_s": 1.0, "keepalive": None}]
+
+    class Waking(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            body = answers[0] if self.path == "/healthz" else {}
+            if self.path == "/healthz":
+                answers[0] = {**LIVE, "uptime_s": 3.0, "keepalive": True}  # the spawn has reached Modal by now
+            self.send_response(200 if self.path == "/healthz" else 404)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(body).encode())
+
+        def log_message(self, format: str, *args: object) -> None:  # the base class's own parameter name
+            del format, args
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Waking)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        result = deploy_check(f"http://127.0.0.1:{server.server_address[1]}", "-", replay_ok=False, yunet_ok=False,
+                              DEPLOY_DEMO_WAIT_S="30", SPOOF_N="1", DEPLOY_EXPECT_COLD="1")  # fmt: skip
+    finally:
+        server.shutdown()
+    assert "ok    API: its keepalive reached Modal" in result.stdout, result.stdout
+    assert "no keepalive was tried" not in result.stdout
