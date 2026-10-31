@@ -1,4 +1,4 @@
-AUDITED_COMMIT: d124d7e
+AUDITED_COMMIT: 3e5431b
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -276,3 +276,14 @@ survivor equivalent.
   `MAX_RESUMES` 3 (`test_the_documented_limits_hold_their_order`).
 - L3 the keepalive on the re-queue timer path was untested →
   `test_a_re_queue_waiting_out_its_delay_also_holds_the_container`.
+
+## Round 20 (on 3e5431b): 0 critical, 0 high, 0 medium, 1 low. Closed. Not clean.
+
+The round-19 changes checked against modal 1.6.2's `runner.py`; the re-queue keepalive test fails with its fix
+removed.
+
+- L1 `WIN-CHECKLIST.md` gave a stale web test count (916, now 918) → the count is dropped, so it can't drift again.
+- Noted by the reviewer and closed too: the web bounds tests compared against literals, not the API's
+  `scaledown_window` → `test_the_web_app_counts_the_api_awake_only_inside_its_scaledown_window` reads
+  `AWAKE_FOR_MS`, `WAKING_AFTER_MS`, `REQUEST_TIMEOUT_MS` and `COLD_START_TIMEOUT_MS` from the web source and checks
+  them against the Modal class (fails with `AWAKE_FOR_MS = 300_000`).

@@ -259,6 +259,25 @@ def test_the_api_scales_to_zero_and_never_scales_out_to_two_copies() -> None:
     assert concurrent == ["modal.concurrent(max_inputs=64)"]  # hold inputs share the one container
 
 
+def web_constant(path: str, name: str) -> int:
+    source = (ROOT / "web" / "src" / "lib" / path).read_text()
+    found = [line for line in source.splitlines() if line.startswith(f"export const {name} = ")]
+    assert len(found) == 1, f"{name} not found once in {path}"
+    return int(found[0].split("=", 1)[1].strip().rstrip(";").replace("_", ""))
+
+
+def test_the_web_app_counts_the_api_awake_only_inside_its_scaledown_window() -> None:
+    """The web app treats the API as awake for a while after an answer and only then uses the short timeout; that
+    while must end before Modal can put the container to sleep, or a cold start would hit the short timeout."""
+    tree = modal_tree()
+    api = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "SafeCutApi")
+    kwargs = decorator_kwargs(api, "cls", tree)
+    scaledown_ms = kwargs["scaledown_window"] * 1000
+    assert web_constant("wake.ts", "AWAKE_FOR_MS") < scaledown_ms
+    assert web_constant("wake.ts", "WAKING_AFTER_MS") < web_constant("api.ts", "COLD_START_TIMEOUT_MS")
+    assert web_constant("api.ts", "REQUEST_TIMEOUT_MS") < web_constant("api.ts", "COLD_START_TIMEOUT_MS")
+
+
 def test_the_cron_runs_on_the_smallest_container_and_wakes_stranded_jobs() -> None:
     tree = modal_tree()
     cleanup = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "cleanup")
