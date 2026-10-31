@@ -559,6 +559,41 @@ def test_the_demo_builds_child_can_import_modal_as_this_process_does(
         gpu._modal()  # pyright: ignore[reportPrivateUsage] -- no folder named: the import error stands
 
 
+def test_the_served_demo_stays_up_while_it_is_rebuilt_and_if_the_rebuild_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A rebuild (a new deploy's code, a GPU retry) runs beside the served demo: /v1/demo keeps answering throughout,
+    and a build that fails leaves the old demo in place."""
+    from safecut.config import Settings  # noqa: PLC0415 -- imported in the test that uses it
+
+    svc = Service(Settings(replay=True, jobs_dir=str(tmp_path / "jobs")))
+    job_id = app_module.hero_job_id("demo")
+    try:
+        assert svc.build_demo_jobs() == ["demo"]
+        with svc.store.update(job_id) as state:
+            state.demo_stamp = "an older build"
+        during: list[str] = []
+        real = subprocess.run
+
+        def failing(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            during.append(svc.store.get(job_id).status)  # what /v1/demo serves while the child runs
+            return subprocess.CompletedProcess(args, 1, "", "the child failed")
+
+        monkeypatch.setattr(app_module.subprocess, "run", failing)
+        assert svc.build_demo_jobs() == []
+        monkeypatch.setattr(app_module.subprocess, "run", real)
+        assert during == ["done"]
+        kept = svc.store.get(job_id)
+        assert (kept.status, kept.demo_stamp) == ("done", "an older build")
+        assert (svc.store.path(job_id) / "receipt.json").is_file()
+        assert not (svc.store.root / app_module.BUILDING / job_id).exists()  # the scratch build is cleaned up
+        assert svc.build_demo_jobs() == ["demo"]  # and the next good build replaces it
+        assert svc.store.get(job_id).demo_stamp != "an older build"
+        contracts.validate_job_dir(svc.store.path(job_id))
+    finally:
+        svc.stop()
+
+
 def test_the_demo_job_builds_through_the_real_child_process(tmp_path: Path) -> None:
     """The demo is built by a ``safecut run --replay`` child with the environment ``child_env`` gives it: it must
     come up (an environment that broke the child's imports once took the demo away)."""

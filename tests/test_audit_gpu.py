@@ -40,6 +40,7 @@ from safecut.render import render
 from tests.safety_jobs import make_job
 
 FACE, PLATE = "ego_blur_face_gen2.jit", "ego_blur_lp_gen2.jit"
+ROOT = Path(__file__).resolve().parent.parent
 
 
 @pytest.fixture
@@ -919,3 +920,38 @@ def test_after_a_failure_the_gpu_is_never_called_again_in_that_audit(tmp_path: P
     with pytest.raises(GpuUnavailable):
         detector.detect_frames(job_dir, {2})
     assert len(fake.requests) == asked  # no second paid timeout
+
+
+# ---------------------------------------------------------------------------------------------- round-10 audit fixes
+
+
+def test_a_permit_that_fails_is_not_submitted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The replay permit is set up inside NotSubmitted: a server_url it can't permit (a loopback dev server) means no
+    call was made, so nothing is priced."""
+    from types import SimpleNamespace  # noqa: PLC0415 -- a stand-in Modal, local to this test
+
+    spawned: list[object] = []
+    fake_modal = SimpleNamespace(
+        Function=SimpleNamespace(from_name=lambda app, name: SimpleNamespace(spawn=spawned.append)),
+        exception=SimpleNamespace(TimeoutError=type("ModalTimeout", (Exception,), {})),
+        config=SimpleNamespace(config={"server_url": "http://localhost:8889"}),
+    )
+    monkeypatch.setattr(gpu, "_modal", lambda: fake_modal)
+    request = GpuRequest(job="j_x-0123456789abcdef", frames=[0], model="egoblur-gen2", face_threshold=0.5,
+                         plate_threshold=0.5)  # fmt: skip
+    with pytest.raises(gpu.NotSubmitted, match="remote host"):
+        gpu.modal_call(Settings(audit_gpu=True))(request, 1.0)
+    assert spawned == []
+
+
+def test_the_sweep_keeps_the_privacy_pages_hour() -> None:
+    """A copy a cut-short check left is gone within the hour: the sweep's age plus the cron's period."""
+    import re  # noqa: PLC0415 -- imported in the test that uses it
+
+    from safecut.api.store import HANDOFF_GRACE_S  # noqa: PLC0415 -- imported in the test that uses it
+
+    source = (ROOT / "deploy" / "modal_app.py").read_text()
+    period = int(re.search(r"schedule=modal\.Period\(minutes=(\d+)\)", source).group(1))  # type: ignore[union-attr] -- the cron exists (test_deploy)
+    assert HANDOFF_GRACE_S + period * 60 <= 3600
+    privacy = (ROOT / "web" / "src" / "app" / "privacy" / "page.tsx").read_text()
+    assert "within the hour if the check is cut short" in privacy

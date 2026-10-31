@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 324c373
+AUDITED_COMMIT: fc77dfc
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -159,3 +159,17 @@ fix has a test that fails without it.
 - L8 DEPLOY-COSTS said an open reservation counts for 2.5 h → it counts until released (fail closed), as the code does.
 - L9 `checks.sh` runs `pnpm build` → kept: `.agent/ENTRY-DONE.md` E1 requires the production build in cloud
   sessions, overriding AGENTS rule 12 (COMMON: these briefs win).
+
+## Round 10 (on fc77dfc): 0 critical, 0 high, 1 medium, 3 low. All closed. Not clean.
+
+- M1 round 9's edit of one test replaced a span that also held
+  `test_the_served_demo_stays_up_while_it_is_rebuilt_and_if_the_rebuild_fails` → restored verbatim (it passes); a
+  scan of every commit on the branch confirms no other test went missing (only the two per-frame `RemoteDetector`
+  tests whose code was replaced, and one rename).
+- L1 the privacy page said "within the hour" while a cut-short check's copy could live 75 minutes → the sweep takes
+  copies older than 45 minutes, so with the 15-minute cron it is within the hour
+  (`test_the_sweep_keeps_the_privacy_pages_hour`).
+- L2 UI-SPEC's retry row said a timed-out GET is retried three times → one retry, as the code does.
+- L3 the permit-failure path and `_probe_gpu` were untested; the smoke's `finally` committed unguarded →
+  `test_a_permit_that_fails_is_not_submitted`, `test_the_pre_deploy_probe_reports_every_gpu_failure` (5 cases), and
+  the extra commit dropped (`Handoff.close` commits best effort).

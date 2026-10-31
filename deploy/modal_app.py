@@ -244,8 +244,7 @@ def pipeline_worker_smoke(audit_gpu: bool = False) -> dict[str, object]:
         try:
             result["gpu_probe"] = _probe_gpu(handoff, out, file_sha256(out / "redacted.mp4"))
         finally:
-            handoff.close()
-            audit.commit()
+            handoff.close()  # removes the copy and commits that, best effort: never a crash of the smoke
     return result
 
 

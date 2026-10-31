@@ -103,8 +103,8 @@ and the receipt (`cost_usd_gpu`); the up-front check on `POST /start` adds the G
 ## Where it would break first
 
 - The handoff Volume holds a copy of the redacted render (never the upload) while its audit runs; the audit removes
-  it and commits the removal when it ends, and the cron's hourly sweep removes any copy a dead container left, so a
-  copy outlives its job by at most about 75 minutes. The privacy page says so.
+  it and commits the removal when it ends, and the 15-minute cron removes any copy older than 45 minutes that a
+  dead container left, so no copy outlives its check by an hour. The privacy page says so.
 - A GPU answer over 2 MiB comes back through Modal's blob storage, a host replay's network guard doesn't let
   through: a replayed (demo-mode) audit of a very crowded clip falls back to YuNet, named as such. Live jobs aren't
   under the guard.

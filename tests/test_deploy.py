@@ -578,3 +578,60 @@ def test_deploy_check_judges_this_deploys_demo_never_an_earlier_one(health: dict
     finally:
         server.shutdown()
     assert line in result.stdout, result.stdout
+
+
+class _Call:
+    def __init__(self, answer: dict[str, object] | Exception) -> None:
+        self.answer = answer
+        self.cancelled: list[bool] = []
+
+    def get(self, timeout: float) -> dict[str, object]:
+        del timeout
+        if isinstance(self.answer, Exception):
+            raise self.answer
+        return self.answer
+
+    def cancel(self, terminate_containers: bool = False) -> None:
+        self.cancelled.append(terminate_containers)
+
+
+@pytest.mark.parametrize(
+    ("put_fails", "spawn", "expected"),
+    [
+        (False, {"gpu": "NVIDIA L4", "frames": {"0": []}}, {"gpu": "NVIDIA L4", "refused": None, "frames": 1}),
+        (True, None, {"refused": "error"}),
+        (False, RuntimeError("the function isn't deployed"), {"refused": "error"}),
+        (False, TimeoutError("no output"), {"refused": "timeout"}),
+        (False, {"refused": "no_gpu", "detail": "no CUDA device"}, {"refused": "no_gpu"}),
+    ],
+)
+def test_the_pre_deploy_probe_reports_every_gpu_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, put_fails: bool, spawn: object, expected: dict[str, object]
+) -> None:
+    """Every way the GPU probe can fail becomes a probe record (so SAFECUT_DEPLOY_GPU_OPTIONAL can waive it), never a
+    crash of the smoke; a call it gives up on is cancelled with its container."""
+    from deploy import modal_app  # noqa: PLC0415 -- the deploy group, imported where it is used
+
+    (tmp_path / "job.json").write_text(json.dumps({"frames": 1}))
+    calls: list[_Call] = []
+
+    class Handoff:
+        def put(self, out: Path, sha: str) -> str:
+            del out, sha
+            if put_fails:
+                raise RuntimeError("there are open files preventing the operation")
+            return "smoke-0123456789abcdef"
+
+    def spawner(request: dict[str, object]) -> _Call:
+        del request
+        if isinstance(spawn, RuntimeError):
+            raise spawn
+        call = _Call(spawn if isinstance(spawn, (dict, Exception)) else {})
+        calls.append(call)
+        return call
+
+    monkeypatch.setattr(modal_app, "egoblur_detect", type("Fn", (), {"spawn": staticmethod(spawner)}))
+    probe = modal_app._probe_gpu(Handoff(), tmp_path, "0" * 64)  # pyright: ignore[reportPrivateUsage] -- the unit under test
+    assert {k: probe[k] for k in expected} == expected
+    if expected.get("refused") in ("timeout", "no_gpu"):
+        assert calls[0].cancelled == [True]

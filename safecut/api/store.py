@@ -350,7 +350,12 @@ def _age(path: Path, now: datetime) -> timedelta:
         return timedelta(0)
 
 
-def sweep_handoff(root: Path, *, older_than_s: float = 3600.0, now: float | None = None) -> list[str]:
+#: A handoff folder older than this belongs to an audit that is over (an audit's scans take minutes): with the
+#: 15-minute cron, a copy a cut-short check left is gone within the hour (the privacy page says so).
+HANDOFF_GRACE_S = 45 * 60.0
+
+
+def sweep_handoff(root: Path, *, older_than_s: float = HANDOFF_GRACE_S, now: float | None = None) -> list[str]:
     """Remove the GPU auditor's handoff folders an audit left behind (a container that died mid-audit). The cleanup cron
     runs it; it lives here, not in ``safecut.audit``, so the cron's small container never imports the pipeline."""
     if not root.is_dir():
