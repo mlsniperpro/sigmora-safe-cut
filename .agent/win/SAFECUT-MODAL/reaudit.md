@@ -1,4 +1,4 @@
-AUDITED_COMMIT: e9690c3
+AUDITED_COMMIT: 1b5db0f
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -255,3 +255,13 @@ No wrong behaviour; gaps in the proof, found by mutation.
   `import safecut.api.app`, in a fresh interpreter).
 - Noted by the reviewer and closed too: a handoff folder's age now refreshes on every reuse, so an audit longer
   than the sweep's 35 minutes never loses its render mid-scan (`test_each_render_is_copied_to_the_handoff_once`).
+
+## Round 18 (on 1b5db0f): 0 critical, 0 high, 0 medium, 1 low. Closed. Not clean.
+
+The round-17 tests were mutation-checked (each fails on its mutant); 16 of 17 further mutants were killed, the
+survivor equivalent.
+
+- L1 the docs and the workflow comment said `recreate` stops the old container before new work starts; modal 1.6.2
+  publishes first, then stops the old containers, waiting up to 40 s and only warning past that → DEPLOY-COSTS,
+  BLOCKED.md and deploy.yml say so (the overlap is the seconds before the old API exits, which it does without
+  waiting for jobs; pushes during judging are barred).

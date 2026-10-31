@@ -49,13 +49,15 @@ and the receipt (`cost_usd_gpu`); the up-front check on `POST /start` adds the G
   never paid for twice. A job found mid-action by a restart after 45 minutes, or on its fourth restart, fails as `internal` instead of waking a container again and again (a job still running in a live container is left to finish).
   Proven by `tests/test_scale_to_zero.py`: a local API is killed with SIGKILL mid-analysis and mid-audit; a fresh
   process finishes the job, its receipt verifies, and every stage logs exactly one `done`.
-- **Deploys stop the old container first (`modal deploy --strategy recreate`).** Modal's default, `rolling`, lets old
+- **Deploys stop the old container right after publishing (`modal deploy --strategy recreate`).** Modal's default, `rolling`, lets old
   containers drain while new ones start (modal 1.6.2 `app.py`, `deploy`); a running job's `hold` input would keep the
   old one draining while the new one's start resumed the same job, two writers on one Volume, paid twice. With
-  `recreate` Modal stops the old containers (waiting up to 40 s, modal 1.6.2 `runner.py`) before new work starts,
-  and the old one goes at once (its service stops without waiting for running jobs, both from the ASGI lifespan,
-  which Modal ends first, and from `@modal.exit`, and its job threads are daemons the interpreter doesn't wait for): a deploy is one restart, and
-  the job resumes once, from its last finished stage.
+  `recreate` Modal publishes the new version and then stops the old containers, waiting up to 40 s for them (modal
+  1.6.2 `runner.py`; a stop that takes longer only warns). The old API container goes at once (its service stops
+  without waiting for running jobs, from the ASGI lifespan, which Modal ends first, and from `@modal.exit`, and its
+  job threads are daemons the interpreter doesn't wait for), so the overlap is the few seconds between the publish
+  and that exit: a deploy is in effect one restart, and the job resumes once, from its last finished stage. Pushes
+  during judging are barred anyway (BLOCKED.md).
 - **The demo is rebuilt beside the one being served.** A new deploy's code, or a demo YuNet had to audit (retried at
   most every 6 hours), is built in a scratch folder and swapped in only when done; a failed build leaves the old demo
   up. The build has a ledger of its own (the owner's spend, under the job cap), so the service's ledger keeps one

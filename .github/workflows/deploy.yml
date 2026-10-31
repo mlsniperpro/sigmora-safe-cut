@@ -68,8 +68,8 @@ jobs:
       - name: Deploy the API, the GPU auditor, the worker smoke and the deletion cron (only after the smoke passed)
         if: steps.gate.outputs.run == 'true'
         # recreate, not the default rolling: a running job's hold input would keep the old container draining while
-        # a new one's start resumed the same job (two writers, paid twice). Recreate stops the old one first; the
-        # new one resumes its jobs once, as after any restart.
+        # a new one's start resumed the same job (two writers, paid twice). Recreate publishes, then stops the old
+        # containers (waiting up to 40 s), which exit without waiting for their jobs: the new one resumes them once.
         run: uv run modal deploy --strategy recreate deploy/modal_app.py
       - name: Prove one replay job end to end on the deployed app, audited by EgoBlur on the GPU
         if: steps.gate.outputs.run == 'true'
