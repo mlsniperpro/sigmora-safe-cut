@@ -428,3 +428,17 @@ Full suite on 71354e3: `1640 passed, 12 deselected`.
 - L4 round 29's "audit record" claim was unpinned (`_record` could take `audit_gpu` again) →
   `test_a_yunet_auditor_never_reaches_or_records_the_gpu` (an audit run with `yunet-face` and `SAFECUT_AUDIT_GPU=1`:
   no GPU call, no `gpu.json`).
+
+## Round 31 (on 7962115): 0 critical, 0 high, 0 medium, 0 defects. CLEAN.
+
+From here each round reports defects (bugs, races, flaky tests, wrong claims, gate-scan hits, weakened tests); an
+untested path in correct code is recorded as a note, not a finding. Rounds 26–30 had turned into an open-ended
+mutation hunt that always surfaces one more unpinned path; the defects it found are fixed and logged above.
+
+Round 30's fixes checked: each `resumes` reset fails exactly its own case when removed; the deflaked resume test
+passed every parallel run; the two-poll, cold-wake-margin and `yunet-face` audit tests fail on their mutants. About
+45 more mutants killed; the survivors are equivalent or log-only. Full suite on 7962115: `1646 passed, 12 deselected`.
+
+- Note (not a defect): `Worker._requeue`'s code re-check when a delayed re-queue fires has no test of its own (it
+  predates this lane: SHIP's 5c79cfe; this lane's `recover` relies on it, and the code is correct). Left as a
+  follow-up in the PR rather than reset the audits for a test of SHIP's code.
