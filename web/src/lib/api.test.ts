@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import heroMock from "../../mocks/job-review-hero1.json";
-import { ApiError, GET_RETRY_DELAYS_MS, REQUEST_TIMEOUT_MS, SafeCutClient, type RawResponse, type RequestInit, type Transport } from "./api";
+import codeCheckOk from "../../mocks/code-check-ok.json";
+import { ApiError, COLD_START_TIMEOUT_MS, GET_RETRY_DELAYS_MS, REQUEST_TIMEOUT_MS, SafeCutClient, type RawResponse, type RequestInit, type Transport } from "./api";
 import { MockBackend } from "@/test/mock-backend";
 
 const headers = (h: Record<string, string> = {}) => ({ get: (k: string) => h[k] ?? null });
@@ -94,9 +95,10 @@ describe("SafeCutClient", () => {
     expect(http.calls).toHaveLength(1);
   });
 
-  it("aborts after 15 s as a timeout", async () => {
+  it("aborts after 15 s as a timeout once the service is known to be awake", async () => {
     vi.useFakeTimers();
-    const { client } = scripted(["hang"]);
+    const { client } = scripted([{ status: 200, headers: headers(), body: heroMock }, "hang"]);
+    await client.getJob("j");
     const pending = client.render("j").catch((e: unknown) => e);
     await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS);
     expect(await pending).toMatchObject({ kind: "timeout" });
@@ -113,6 +115,132 @@ describe("SafeCutClient", () => {
     const { client, calls } = scripted([{ status: 200, headers: headers(), body: ack }]);
     await client.review("j", { type: "hide", edit_id: "e", item_id: "i_4" });
     expect(calls[0]).toMatchObject({ method: "POST", path: "/v1/jobs/j/review", body: { type: "hide", edit_id: "e", item_id: "i_4" } });
+  });
+});
+
+describe("cold start", () => {
+  const ok = { status: 200, headers: headers(), body: heroMock } satisfies RawResponse;
+  const ack = { status: 202, headers: headers(), body: { status: "rendering" } } satisfies RawResponse;
+
+  it("waits up to 60 s for the first request, not 15 s", async () => {
+    vi.useFakeTimers();
+    const { client, calls } = scripted(["hang", "hang"]);
+    const pending = client.getJob("j").then(() => "answered", (e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS + 1_000);
+    // Still waiting: nothing has timed out, so nothing was retried.
+    expect(calls).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(COLD_START_TIMEOUT_MS * 2);
+    expect(await pending).toMatchObject({ kind: "timeout" });
+    expect(calls).toHaveLength(2);
+  });
+
+  it("retries a GET that timed out, and gets the answer once the service is up", async () => {
+    vi.useFakeTimers();
+    const { client, calls, waits } = scripted(["hang", ok]);
+    const pending = client.getJob("j");
+    await vi.advanceTimersByTimeAsync(COLD_START_TIMEOUT_MS);
+    await expect(pending).resolves.toMatchObject({ job_id: "j_hero1" });
+    expect(calls).toHaveLength(2);
+    expect(waits).toEqual([GET_RETRY_DELAYS_MS[0]]);
+  });
+
+  it("falls back to the cold timeout for the retry after a warm request timed out", async () => {
+    vi.useFakeTimers();
+    const { client, calls } = scripted([ok, "hang", "hang"]);
+    await client.getJob("j");
+    const pending = client.getJob("j").then(() => "answered", (e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS);
+    // The warm attempt timed out and the retry started; it is not cut off at another 15 s.
+    expect(calls).toHaveLength(3);
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS * 2);
+    expect(calls).toHaveLength(3);
+    await vi.advanceTimersByTimeAsync(COLD_START_TIMEOUT_MS);
+    expect(await pending).toMatchObject({ kind: "timeout" });
+  });
+
+  it("stops after two timeouts, so an outage is reported and not waited out", async () => {
+    vi.useFakeTimers();
+    const { client, calls } = scripted(["hang", "hang", "hang"]);
+    const pending = client.getJob("j").then(() => "answered", (e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(COLD_START_TIMEOUT_MS * 2);
+    expect(await pending).toMatchObject({ kind: "timeout" });
+    expect(calls).toHaveLength(2);
+  });
+
+  it("retries a code check, which has no side effects, after a timeout", async () => {
+    vi.useFakeTimers();
+    const { client, calls } = scripted(["hang", { status: 200, headers: headers(), body: codeCheckOk.body }]);
+    const pending = client.checkCode("code");
+    await vi.advanceTimersByTimeAsync(COLD_START_TIMEOUT_MS);
+    await expect(pending).resolves.toMatchObject({ kind: expect.any(String) });
+    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(["POST /v1/codes/check", "POST /v1/codes/check"]);
+  });
+
+  it("does not retry a POST that timed out: the server may have processed it", async () => {
+    vi.useFakeTimers();
+    for (const send of [
+      (c: SafeCutClient) => c.createJob({ code: "c", size_bytes: 1, content_type: "video/mp4", file_name: "a.mp4" }),
+      (c: SafeCutClient) => c.startJob("j"),
+      (c: SafeCutClient) => c.render("j"),
+      (c: SafeCutClient) => c.audit("j"),
+      (c: SafeCutClient) => c.review("j", { type: "hide", edit_id: "e", item_id: "i_4" }),
+    ]) {
+      const { client, calls } = scripted(["hang", ack]);
+      const pending = send(client).then(() => "answered", (e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(COLD_START_TIMEOUT_MS);
+      expect(await pending).toMatchObject({ kind: "timeout" });
+      expect(calls).toHaveLength(1);
+    }
+  });
+
+  it("does not retry a DELETE that timed out", async () => {
+    vi.useFakeTimers();
+    const { client, calls } = scripted(["hang", { status: 204, headers: headers(), body: null }]);
+    const pending = client.deleteJob("j").then(() => "answered", (e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(COLD_START_TIMEOUT_MS);
+    expect(await pending).toMatchObject({ kind: "timeout" });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("tells the wake tracker: waking after 4 s of waiting, awake once the API answers", async () => {
+    vi.useFakeTimers();
+    let answer: (r: RawResponse) => void = () => undefined;
+    const transport: Transport = {
+      request: () => new Promise<RawResponse>((resolve) => (answer = resolve)),
+      upload: () => Promise.resolve(),
+    };
+    const client = new SafeCutClient({ transport });
+    const seen: boolean[] = [];
+    client.wake.subscribe(() => seen.push(client.wake.isWaking()));
+    const pending = client.getJob("j");
+    await vi.advanceTimersByTimeAsync(3_900);
+    expect(client.wake.isWaking()).toBe(false);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(client.wake.isWaking()).toBe(true);
+    answer(ok);
+    await pending;
+    expect(client.wake.isWaking()).toBe(false);
+    expect(client.wake.isAwake()).toBe(true);
+    expect(seen).toEqual([true, false]);
+  });
+
+  it("an HTTP error from the API still means the service is awake", async () => {
+    const { client } = scripted([{ status: 404, headers: headers(), body: { error: { code: "not_found" } } }]);
+    await client.getJob("j").catch(() => undefined);
+    expect(client.wake.isAwake()).toBe(true);
+  });
+
+  it("a gateway error does not", async () => {
+    const { client } = scripted([{ status: 503, headers: headers(), body: null }]);
+    await client.getJob("j").catch(() => undefined);
+    expect(client.wake.isAwake()).toBe(false);
+  });
+
+  it("the API's own 503 (its JSON error body) means it is awake", async () => {
+    const body = { error: { code: "auditor_unavailable", message: "Safe Cut's final check isn't available right now." } };
+    const { client } = scripted([{ status: 503, headers: headers(), body }]);
+    await client.getJob("j").catch(() => undefined);
+    expect(client.wake.isAwake()).toBe(true);
   });
 });
 
@@ -202,5 +330,12 @@ describe("MockBackend (integration through the client)", () => {
   it("refuses edits on a read-only job", async () => {
     const { client } = make();
     await expect(client.review("result-audit-failed", { type: "hide", edit_id: "a", item_id: "i_4" })).rejects.toMatchObject({ status: 409, code: "read_only" });
+  });
+});
+
+describe("documented bounds", () => {
+  it("waits for a cold start under Modal's own 150 s request limit, longer than a warm request", () => {
+    expect(COLD_START_TIMEOUT_MS).toBeLessThan(150_000);
+    expect(COLD_START_TIMEOUT_MS).toBeGreaterThan(REQUEST_TIMEOUT_MS);
   });
 });

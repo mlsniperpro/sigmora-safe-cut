@@ -12,6 +12,7 @@ import { useHeadingTitle } from "@/hooks/useHeadingTitle";
 import { useJob, type JobLoad } from "@/hooks/useJob";
 import { useReportMode } from "../mode";
 import { ReviewPanel } from "../review/ReviewPanel";
+import { WakingNotice } from "../WakingNotice";
 import { MessagePage } from "../ui";
 import { FailedJob } from "./FailedJob";
 import { ProgressView } from "./ProgressView";
@@ -34,14 +35,18 @@ export function loadMessage(kind: Exclude<JobLoad["kind"], "loading" | "ready">,
 
 export function JobSkeleton() {
   return (
-    <div aria-busy="true" className="mx-auto max-w-6xl px-4 pt-6">
-      <div className="aspect-video w-full rounded-xl bg-surface-2" />
-      <div className="mt-6 grid gap-5 lg:grid-cols-3">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="h-40 rounded-xl bg-surface-2" />
-        ))}
+    <div className="mx-auto max-w-6xl px-4 pt-6">
+      {/* Outside the busy region: a polite message inside `aria-busy` isn't announced. */}
+      <WakingNotice className="mb-4 text-sm text-muted" />
+      <div aria-busy="true">
+        <div className="aspect-video w-full rounded-xl bg-surface-2" />
+        <div className="mt-6 grid gap-5 lg:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-40 rounded-xl bg-surface-2" />
+          ))}
+        </div>
+        <span className="sr-only">Loading your clip…</span>
       </div>
-      <span className="sr-only">Loading your clip…</span>
     </div>
   );
 }
@@ -89,6 +94,7 @@ export function JobPage() {
     case "retry_later":
       return (
         <section className="mx-auto max-w-3xl px-4 py-2">
+          <WakingNotice />
           <ProgressView
             fileName={j.job?.source_name ?? null}
             duration={j.job ? j.job.frames / j.job.fps : null}

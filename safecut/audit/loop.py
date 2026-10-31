@@ -21,8 +21,9 @@ from pathlib import Path
 
 from pydantic import TypeAdapter
 
+from safecut.audit import gpu
 from safecut.audit import leaks as rules
-from safecut.audit.detectors import Detection, Detector
+from safecut.audit.detectors import Detection, Detector, device_of
 from safecut.audit.opinion import Ask, Opinion, attempted, consult, data_url, mark_attempted, recorded, save
 from safecut.audit.redteam import MAX_FRAMES_PER_CALL, Answer, BudgetCause, RedTeam
 from safecut.contracts import (
@@ -105,6 +106,16 @@ def frames_of(job_dir: Path, job: Job, wanted: set[int]) -> Iterator[tuple[int, 
             yield index, frame
 
 
+def detected(detector: Detector, job_dir: Path, job: Job, wanted: set[int]) -> Iterator[tuple[int, list[Detection]]]:
+    """Each wanted frame's detections, in order: one GPU call for the whole scan, or the local detector per frame."""
+    batch = gpu.batches(detector, job_dir, wanted)
+    if batch is not None:
+        yield from batch
+        return
+    for index, frame in frames_of(job_dir, job, wanted):
+        yield index, detector.detect(frame)
+
+
 def scan(state: State, job_dir: Path, detector: Detector, wanted: set[int], *, count: bool = False) -> list[Leak]:
     """The detector on every frame in ``wanted``; a crash stops the scan and leaves the rest unscanned. A frame's
     detections are tallied for ``egoblur.faces``/``plates`` the first time it is scanned. With ``count`` (pass 1) the
@@ -114,8 +125,7 @@ def scan(state: State, job_dir: Path, detector: Detector, wanted: set[int], *, c
     done: set[int] = set()
     started = time.perf_counter()
     try:
-        for index, frame in frames_of(job_dir, state.job, wanted):
-            detections: list[Detection] = detector.detect(frame)
+        for index, detections in detected(detector, job_dir, state.job, wanted):
             state.detector_calls += 1
             first = index not in state.scanned  # tallied once per frame: pass 1, or the pass that first scanned it
             for d in detections:
@@ -257,6 +267,7 @@ def summary(state: State, passes: int, detector: Detector, previous: Audit | Non
             # null only when the detector never ran on record (PRE-A §12): carried detector leaks keep a count.
             faces=state.faces if state.scanned else _carried_faces(state.leaks),
             plates=(state.plates if detector.detects_plates else None),
+            device=device_of(detector),
         ),
         leaks=state.leaks,
         redteam=state.redteam,
@@ -494,7 +505,10 @@ def write_run(job_dir: Path, audit: Audit, state: State, detector: Detector) -> 
     path.parent.mkdir(parents=True, exist_ok=True)
     per_frame = state.seconds.get("detector", 0.0) / max(1, state.detector_calls)
     # The video this audit checked: a receipt only seals an audit that describes the video in the job now.
-    record = {"detector": detector.model, "redteam_model": state.redteam_model, "seconds": state.seconds,
+    # A GPU detector's time is in its calls (pass 1 before the audit started): its own wall seconds, not this loop's.
+    gpu = {"gpu_calls": getattr(detector, "calls", 0), "gpu_wall_s": round(getattr(detector, "wall_s", 0.0), 3)}
+    record = {"detector": detector.model, "device": device_of(detector), **gpu, "redteam_model": state.redteam_model,
+              "seconds": state.seconds,
               "detector_s_per_frame": per_frame, "frames_scanned": audit.frames_scanned,
               "video_sha256": file_sha256(job_dir / REDACTED)}  # fmt: skip
     write_atomic(path, json.dumps(record, indent=1))

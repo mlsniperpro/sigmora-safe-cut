@@ -13,10 +13,14 @@ import hashlib
 import importlib
 import ipaddress
 import logging
+import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
+import time
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -40,13 +44,15 @@ from safecut.api.access import (
     ApiRefusal,
     Grant,
     RateLimiter,
+    StoredRateLimiter,
     check_caps,
     estimate_usd,
 )
-from safecut.api.store import Failure, JobNotFound, JobState, JobStore, UploadSpec
+from safecut.api.store import ACTIVE, BUILDING, Failure, JobNotFound, JobState, JobStore, UploadSpec
 from safecut.api.urls import UPLOAD_TTL_S, Signer, expiry
 from safecut.api.views import Views, iso
 from safecut.api.worker import Worker
+from safecut.audit.gpu import child_env
 from safecut.config import Settings, load_settings
 from safecut.contracts import Audit, ContractError, Decisions, Intake, Job, Plan, Tracks, dump, load
 from safecut.decide import REVIEW, policy_decisions
@@ -61,6 +67,18 @@ log = logging.getLogger("safecut.api")
 HEALTH_EVERY_EARLY = timedelta(minutes=5)
 HEALTH_EVERY = timedelta(minutes=1)
 HEALTH_SWITCH = datetime(2026, 11, 5, tzinfo=UTC)
+#: One action runs a few minutes (a 60 s clip, live); one past this is stuck, not slow, and fails.
+STALL_LIMIT = timedelta(minutes=45)
+#: How often a demo job the GPU couldn't audit is built again (each rebuild takes the demo away for a minute).
+DEMO_GPU_RETRY = timedelta(hours=6)
+#: ``hold``'s name for the demo build: the container stays up while it runs (it isn't a job action).
+DEMO_HOLD = "demo-build"
+#: Restarts a job may need (a redeploy, a preemption): one more and it is the job taking its container down.
+MAX_RESUMES = 3
+#: How long one ``hold`` input waits: under the API function's 60-minute timeout (deploy/modal_app.py).
+HOLD_LIMIT_S = 55 * 60.0
+#: The paid-action rate limit's SQLite file, beside the spend ledger on the jobs Volume.
+RATE_DB = "ratelimit.sqlite"
 
 StatusProbe = Callable[[], Awaitable[str]]
 
@@ -132,19 +150,27 @@ class Service:
         worker: Worker | None = None,
         status_probe: StatusProbe | None = None,
         fixtures: Path = pipeline.FIXTURE_JOBS,
+        keepalive: Callable[[str], None] | None = None,
+        wait_on_stop: bool = True,
     ) -> None:
         self.settings = settings
+        #: Whether shutting down waits for running jobs. Modal's container sets False: its ASGI lifespan ends (and
+        #: stops this service) before ``@modal.exit``, and a container being replaced must go at once.
+        self.wait_on_stop = wait_on_stop
         self.store = store or JobStore(
             Path(settings.jobs_dir),
             ttl=timedelta(hours=settings.job_ttl_hours),
             cleanup_every=timedelta(minutes=settings.cleanup_interval_min),
         )
-        self.worker = worker or Worker(self.store, settings)
+        self.worker = worker or Worker(self.store, settings, keepalive=keepalive)
         #: Jobs whose upload is streaming right now (one PUT per job at a time).
         self.uploading: set[str] = set()
         self.uploads_lock = threading.Lock()
         self.access = Access(settings)
+        #: Per-minute limits live in memory (a container only restarts after a quiet spell longer than their
+        #: window); the per-hour paid-action limit is on the jobs Volume, so a scale-to-zero restart can't reset it.
         self.limiter = RateLimiter()
+        self.paid_limiter = StoredRateLimiter(Path(settings.jobs_dir) / RATE_DB)
         self.ledger = pipeline.job_ledger(settings)
         secret = settings.url_secret.get_secret_value().encode() if settings.url_secret else None
         self.signer = Signer(secret, settings.public_url)
@@ -153,10 +179,75 @@ class Service:
         self.fixtures = fixtures
         self._health: tuple[datetime, str] | None = None
         self._stop = threading.Event()
+        self._started = False
+        self._start_lock = threading.Lock()
+        self.started_monotonic = time.monotonic()
+        self._demo_built = threading.Event()
+        #: Heroes whose served demo was built from this process's code and recordings (``/healthz``, deploy checks).
+        self.demos_current: set[str] = set()
 
-    def stop(self) -> None:
+    def start(self) -> bool:
+        """Once per process, whichever comes first (the ASGI lifespan, or Modal's container start): resume the
+        jobs a previous container left mid-action, and start the deletion loop and the demo-job build. Returns
+        whether this call did it."""
+        with self._start_lock:
+            if self._started:
+                return False
+            self._started = True
+        self.recover()
+        threading.Thread(target=self.cleanup_loop, name="cleanup", daemon=True).start()
+        threading.Thread(target=self._build_demos, name="demo", daemon=True).start()
+        self.worker.keep_up(DEMO_HOLD)  # building the demo isn't a job action: hold the container up for it too
+        return True
+
+    @property
+    def demo_built(self) -> bool:
+        return self._demo_built.is_set()
+
+    def _build_demos(self) -> None:
+        try:
+            self.build_demo_jobs()
+        finally:
+            self._demo_built.set()
+
+    def stop(self, *, wait: bool = True) -> None:
+        """Stop the loops and the workers. ``wait=False`` (a container being replaced) doesn't wait for running jobs:
+        the next container resumes them from their last finished stage, and a quick exit keeps the two apart."""
         self._stop.set()
-        self.worker.shutdown()
+        self.worker.shutdown(wait=wait)
+        self.paid_limiter.close()
+        self.ledger.close()
+
+    def hold(self, job_id: str, *, poll_s: float = 2.0, limit_s: float = HOLD_LIMIT_S) -> str:
+        """Block while this process is working on the job, then return its status (``gone`` once deleted).
+
+        On Modal this runs as an input of the API container itself (``SafeCutApi.hold``): a container with an
+        input in flight isn't scaled down, and a worker thread alone isn't an input. A job active on disk that
+        nothing here is moving (stranded by a container that went away) is resumed; one active past
+        :data:`STALL_LIMIT` is failed, so no job, and no container, waits forever."""
+        deadline = time.monotonic() + limit_s
+        if job_id == DEMO_HOLD:  # until the demo is built, the service stops (a replaced container) or the limit
+            while not self._demo_built.is_set() and not self._stop.is_set() and time.monotonic() <= deadline:
+                self._demo_built.wait(poll_s)
+            return "built" if self._demo_built.is_set() else "building"
+        idle_polls = 0
+        while True:
+            try:
+                state = self.store.get(job_id)
+            except JobNotFound:
+                return "gone"
+            tracked = self.worker.tracking(job_id)
+            # Not active and nothing here will move it: the job has stopped. (Queued but not yet written as active:
+            # the keepalive can arrive before the request that queued the job has saved its state, so a tracked job
+            # is waited on whatever its state says.)
+            if state.status not in ACTIVE and not tracked:
+                return state.status
+            idle_polls = 0 if tracked else idle_polls + 1
+            if idle_polls >= 2:  # two polls apart, so an action between its timer and its thread isn't caught
+                self.recover(only=job_id)
+                idle_polls = 0
+            if self._stop.wait(poll_s) or time.monotonic() > deadline:
+                return state.status
 
     @property
     def mode(self) -> Literal["live", "replay"]:
@@ -174,16 +265,31 @@ class Service:
             except Exception:
                 log.exception("cleanup sweep failed")
 
-    def recover(self) -> list[str]:
-        """After a restart (a redeploy, a crash) no thread is working on any job: re-queue every job that was
-        mid-action, from where its files say it stopped (stages are idempotent and resume from ``job_log.jsonl``),
-        so a poller never waits forever on a status nothing will change. Returns the re-queued IDs."""
+    def recover(self, *, only: str | None = None) -> list[str]:
+        """After a restart (a redeploy, a crash, a scale-to-zero sleep) no thread is working on any job: re-queue
+        every job that was mid-action, from where its files say it stopped (stages are idempotent and resume from
+        ``job_log.jsonl``, so a stage that finished is never paid for twice), so a poller never waits forever on a
+        status nothing will change. A job this process is still moving is left alone, and one active past
+        :data:`STALL_LIMIT` fails as ``internal`` instead. Returns the re-queued IDs."""
         resumed: list[str] = []
-        for job_id in self.store.ids():
+        now = datetime.now(UTC)
+        for job_id in [only] if only is not None else self.store.ids():
             try:
                 with self.store.update(job_id) as state:
-                    if state.pinned or state.status not in ("processing", "rendering", "retry_later"):
+                    if state.pinned or state.status not in ACTIVE or self.worker.tracking(job_id):
                         continue
+                    stalled = state.started_at is not None and now - state.started_at > STALL_LIMIT
+                    if stalled or state.resumes >= MAX_RESUMES:
+                        state.status, state.retry_at = "failed", None
+                        detail = (
+                            f"stalled: still at {state.stage} {STALL_LIMIT} after it started"
+                            if stalled
+                            else f"stopped {state.resumes + 1} times at {state.stage} (its container went away)"
+                        )
+                        state.failure = Failure(stage=state.stage, reason="internal", detail=detail)
+                        log.warning("job %s failed at %s: %s", job_id, state.stage, detail)
+                        continue
+                    state.resumes += 1
                     analysing = state.status == "processing" or (
                         state.status == "retry_later" and state.stage not in ("render", "audit", "receipt")
                     )
@@ -207,6 +313,7 @@ class Service:
                         self.worker.submit_later(job_id, action, wait)
                     else:
                         state.status = "processing" if analysing else "rendering"
+                        state.started_at = now  # re-queued: its stall clock starts again
                         state.retry_at = None
                         self.worker.submit(job_id, action)
                     resumed.append(job_id)
@@ -231,54 +338,60 @@ class Service:
                 continue
             job_id = hero_job_id(recording.name)
             clip = Path(self.fixtures.parent.parent / data.source)
-            stamp = demo_stamp(recording, clip)
+            stamp = demo_stamp(recording, clip, audit_gpu=self.settings.audit_on_gpu)
             try:
                 existing = self.store.get(job_id)
-                if existing.status == "done" and existing.demo_stamp == stamp:
+                if existing.status == "done" and existing.demo_stamp == stamp and not self._retry_gpu(job_id, existing):
                     built.append(recording.name)
+                    self.demos_current.add(recording.name)
                     continue
-                self.store.delete(job_id)  # a re-recorded hero, a new clip or new code: built again
             except JobNotFound:
                 pass
+            # A re-recorded hero, a new clip, new code, or a demo the GPU couldn't audit: built again, beside the one
+            # being served, which keeps serving until the new one is done (and stays if the build fails).
             try:
-                self._precompute(job_id, recording, clip)
-                with self.store.update(job_id) as state:
-                    state.demo_stamp = stamp
+                self._precompute(job_id, recording, clip, stamp)
                 built.append(recording.name)
+                self.demos_current.add(recording.name)
             except Exception as exc:
-                log.warning("demo job %s not built: %s", recording.name, exc)
-                self.store.delete(job_id)
+                log.warning("demo job %s not built (any earlier build is still served): %s", recording.name, exc)
         return built
 
-    def _precompute(self, job_id: str, recording: Path, clip: Path) -> None:
-        """Run the hero job with ``safecut run --replay`` in a child process: the child blocks the network for
-        its whole life, and a live API's own threads are never blocked by it."""
-        self.store.create(mode="replay", job_id=job_id, pinned=True)
-        job_dir = self.store.path(job_id)
-        proc = subprocess.run(  # noqa: S603 -- fixed argv: this interpreter, our own CLI, our own paths
-            [
-                sys.executable,
-                "-m",
-                "safecut.cli",
-                "run",
-                str(clip),
-                "--out",
-                str(job_dir),
-                "--replay",
-                "--replay-from",
-                str(recording),
-                "--auto-approve-policy",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=900,
-            check=False,
-        )
-        if proc.returncode != 0:
-            raise pipeline.PipelineError(f"safecut run exited {proc.returncode}: {proc.stderr.strip()[-300:]}")
-        with self.store.update(job_id) as state:
-            state.status, state.stage = "done", "done"
-            state.synthetic = pipeline.recording_is_synthetic(job_dir)
+    def _retry_gpu(self, job_id: str, state: JobState) -> bool:
+        """A demo job built while the GPU auditor couldn't answer (its audit names YuNet) is built again, at most every
+        :data:`DEMO_GPU_RETRY` so a GPU outage can't take the demo away on every wake. Never when the audit isn't
+        meant for the GPU (``yunet-face`` runs here: its demo is on the CPU by design)."""
+        if not self.settings.audit_on_gpu or datetime.now(UTC) - state.created_at < DEMO_GPU_RETRY:
+            return False
+        try:
+            device = load(self.store.path(job_id) / "audit.json", Audit).egoblur.device
+        except (OSError, ContractError):
+            return True
+        return not (device or "").startswith("cuda:")
+
+    def _precompute(self, job_id: str, recording: Path, clip: Path, stamp: str) -> None:
+        """Run the hero job with ``safecut run --replay`` in a child process (the child blocks the network for its
+        whole life, and a live API's own threads are never blocked by it), into a scratch folder beside the store;
+        only a finished build replaces the served demo, in one quick swap. The child keeps a ledger of its own: the
+        demo is the owner's spend under the job cap alone, and the service's ledger keeps one writer."""
+        scratch = self.store.root / BUILDING / job_id
+        shutil.rmtree(scratch, ignore_errors=True)  # a build a dead container left half done
+        scratch.mkdir(parents=True)
+        try:
+            with tempfile.TemporaryDirectory(prefix="demo-ledger-") as ledger:
+                env = child_env({**os.environ, "SAFECUT_JOBS_DIR": ledger})  # the GPU path reaches Modal from it too
+                proc = subprocess.run(  # noqa: S603 -- fixed argv: this interpreter, our own CLI, our own paths
+                    [sys.executable, "-m", "safecut.cli", "run", str(clip), "--out", str(scratch), "--replay",
+                     "--replay-from", str(recording), "--auto-approve-policy"],
+                    capture_output=True, text=True, timeout=900, check=False, env=env,
+                )  # fmt: skip
+            if proc.returncode != 0:
+                raise pipeline.PipelineError(f"safecut run exited {proc.returncode}: {proc.stderr.strip()[-300:]}")
+            synthetic = pipeline.recording_is_synthetic(scratch)
+            # One swap: readers see the old demo or the new one, never neither (JobStore.replace_pinned).
+            self.store.replace_pinned(job_id, scratch, synthetic=synthetic, demo_stamp=stamp)
+        finally:
+            shutil.rmtree(scratch, ignore_errors=True)
 
     # -- health ----------------------------------------------------------------
 
@@ -376,7 +489,7 @@ def _limit(request: Request, svc: Service, *, paid: bool) -> None:
     client = svc.client_ip(request)
     svc.limiter.hit("api", client, limit=svc.settings.rate_limit_per_min, window_s=60)
     if paid:
-        svc.limiter.hit("paid", client, limit=svc.settings.paid_actions_per_hour, window_s=3600)
+        svc.paid_limiter.hit("paid", client, limit=svc.settings.paid_actions_per_hour, window_s=3600)
 
 
 def _api_limit(request: Request, svc: Svc) -> None:
@@ -427,7 +540,7 @@ def create_job(svc: Svc, body: CreateBody, authorization: Annotated[str | None, 
     if body.content_type not in ("video/mp4", "video/quicktime"):
         raise ApiRefusal(415, "unsupported_media", "Safe Cut takes MP4 or MOV video files.")
     if grant.kind in ("pilot", "recording", "owner"):
-        check_caps(svc.settings, svc.ledger, grant, estimate=estimate_usd(None))
+        check_caps(svc.settings, svc.ledger, grant, estimate=estimate_usd(None, svc.settings))
     now = datetime.now(UTC)
     upload_expires = now + timedelta(seconds=UPLOAD_TTL_S)
     state = svc.store.create(
@@ -525,9 +638,10 @@ def _parse_ip(host: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None
     return None
 
 
-def demo_stamp(recording: Path, clip: Path) -> str:
-    """What a pinned demo job was built from: every file of its recording (path and bytes), its clip, and the
-    ``safecut`` source. Any change (a retake under the same id, a contract change in a new deploy) rebuilds it."""
+def demo_stamp(recording: Path, clip: Path, *, audit_gpu: bool = False) -> str:
+    """What a pinned demo job was built from: every file of its recording (path and bytes), its clip, the
+    ``safecut`` source and whether its audit runs on the GPU. Any change (a retake under the same id, a contract
+    change in a new deploy, the GPU auditor switched on or off) rebuilds it."""
     package = Path(__file__).resolve().parent.parent
     labelled = [(f"raw:{p.relative_to(recording)}", p) for p in sorted(recording.rglob("*")) if p.is_file()]
     labelled.append(("clip", clip))
@@ -535,6 +649,8 @@ def demo_stamp(recording: Path, clip: Path) -> str:
         (f"code:{p.relative_to(package)}", p) for p in sorted(package.rglob("*.py")) if "__pycache__" not in p.parts
     ]
     digest = hashlib.sha256()
+    if audit_gpu:  # off leaves every earlier stamp as it was
+        digest.update(b"audit_gpu")
     for label, path in labelled:
         digest.update(label.encode())
         digest.update(path.read_bytes() if path.is_file() else b"missing")
@@ -584,7 +700,9 @@ def start(svc: Svc, job_id: str) -> JSONResponse:
                     svc.settings,
                     svc.ledger,
                     grant,
-                    estimate=estimate_usd(min(duration, MAX_DURATION_S) if duration is not None else None),
+                    estimate=estimate_usd(
+                        min(duration, MAX_DURATION_S) if duration is not None else None, svc.settings
+                    ),
                 )
         if not (job_dir / INTAKE).is_file():
             dump(
@@ -604,9 +722,11 @@ def start(svc: Svc, job_id: str) -> JSONResponse:
                 raise ApiRefusal(422, "no_recording", "Demo mode can only replay the recorded demo clips.")
             pipeline.attach_recording(job_dir, recording)
         state.status, state.stage, state.failure = "processing", "queued", None
+        state.started_at = datetime.now(UTC)  # the stall clock runs from queueing, not from the last action
         state.synthetic = pipeline.recording_is_synthetic(job_dir)
         state.duration_s = duration
         state.requeues = 0
+        state.resumes = 0
         updated = state.model_copy()
         svc.worker.submit(job_id, "analyse")
     return ack(updated)
@@ -720,6 +840,8 @@ def render(svc: Svc, job_id: str) -> JSONResponse:
             check_caps(svc.settings, svc.ledger, grant, estimate=0.01)
         pipeline.approve(svc.store.path(job_id), how="review")
         state.status, state.stage, state.failure = "rendering", "render", None
+        state.started_at = datetime.now(UTC)  # a long review never makes a queued render look stalled
+        state.resumes = 0  # a retry after "stopped N times" starts its resume count afresh, as start does
         updated = state.model_copy()
         svc.worker.submit(job_id, "publish")
     return ack(updated)
@@ -738,6 +860,8 @@ def audit(svc: Svc, job_id: str) -> JSONResponse:
         if state.mode == "live" and grant is not None:
             check_caps(svc.settings, svc.ledger, grant, estimate=0.01)
         state.status, state.stage, state.failure = "rendering", "audit", None
+        state.started_at = datetime.now(UTC)  # a long review never makes a queued audit look stalled
+        state.resumes = 0
         updated = state.model_copy()
         svc.worker.submit(job_id, "audit")
     return ack(updated)
@@ -808,6 +932,15 @@ async def healthz(svc: Svc) -> JSONResponse:
         "meta": meta,
         "jobs_dir": "ok" if writable else "missing",
         "key": svc.settings.model_api_key is not None,
+        # The API scales to zero: a small uptime on the first answer after a quiet spell proves a cold wake.
+        "uptime_s": round(time.monotonic() - svc.started_monotonic, 1),
+        "audit_gpu": svc.settings.audit_on_gpu,
+        # Whether this container's demo build has finished, and which demos match its code: a deploy check judges
+        # the demo built by the new code, never one an earlier deploy left on the Volume.
+        "demos_building": not svc.demo_built,
+        "demos_current": sorted(svc.demos_current),
+        # Whether the last keepalive (the container holding itself up for a job) reached Modal; null before any.
+        "keepalive": svc.worker.keepalive_ok,
     }
     return JSONResponse(body, status_code=200 if writable else 503)
 
@@ -840,20 +973,15 @@ def create_app(settings: Settings | None = None, *, service: Service | None = No
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
-        threads: list[threading.Thread] = []
         blocking = svc.settings.replay and not netguard.active()
         if blocking:
             netguard.block()  # a replay deployment never reaches the network, in any thread
         if background:
-            svc.recover()
-            threads.append(threading.Thread(target=svc.cleanup_loop, name="cleanup", daemon=True))
-            threads.append(threading.Thread(target=svc.build_demo_jobs, name="demo", daemon=True))
-            for thread in threads:
-                thread.start()
+            svc.start()
         try:
             yield
         finally:
-            svc.stop()
+            svc.stop(wait=svc.wait_on_stop)
             if blocking:
                 netguard.unblock()
 

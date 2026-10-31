@@ -54,6 +54,21 @@ BASETEN_NOTE = (
     " consented, and Baseten's terms, not Meta's store setting, govern that copy."
 )
 YUNET_NOTE = "Audited with YuNet (faces only): EgoBlur weights weren't installed; the red team checked plates."
+#: The GPU auditor was asked for but didn't answer (``raw/audit/gpu.json`` holds the full reason).
+YUNET_FALLBACK_NOTE = (
+    "Audited with YuNet (faces only): EgoBlur on the GPU didn't answer ({reason}); the red team checked plates."
+)
+#: A replayed or synthetic job whose audit ran EgoBlur on a GPU: the one model that really ran for this receipt.
+SYNTHETIC_GPU_NOTE = (
+    "Synthetic job: every model answer was replayed from synthetic data; the only model called was the audit's"
+    " detector, EgoBlur on a GPU (the auditor named here is the one that answered)."
+)
+REPLAY_GPU_NOTE = (
+    "Replay: every model answer was read back from a recording of an earlier run of this clip, except the audit's"
+    " detector, EgoBlur, which was called on a GPU for this receipt (the auditor named here is the one that answered);"
+    " the other models named are the ones that answered then."
+)
+GPU_RECORD = Path("raw/audit/gpu.json")
 REPLAY_NOTE = (
     "Replay: every model answer was read back from a recording of an earlier run of this clip; no model was called"
     " for this receipt, and the models named are the ones that answered then."
@@ -97,6 +112,16 @@ def _recorded_model(folder: Path) -> str | None:
         if isinstance(model, str) and model:
             return model
     return None
+
+
+def _yunet_note(job_dir: Path) -> str:
+    """Why YuNet audited: the GPU auditor's recorded fallback when it was asked for, else no EgoBlur weights."""
+    record = job_dir / GPU_RECORD
+    if record.is_file():
+        fallback = json.loads(record.read_text(encoding="utf-8")).get("fallback")
+        if isinstance(fallback, str) and fallback:
+            return YUNET_FALLBACK_NOTE.format(reason=fallback.split(":", 1)[0])
+    return YUNET_NOTE
 
 
 def models_ran(job_dir: Path, settings: Settings, audit: Audit) -> dict[str, str]:
@@ -147,8 +172,14 @@ def data_handling(job_dir: Path, models: dict[str, str], audit: Audit) -> DataHa
     no_store = sorted({m for m in (asr, opinion, sam if unstored_sam else None) if m is not None})
     store_by_model = {m: False for stage, m in models.items() if stage != "auditor" and m not in no_store}
     notes: list[str] = []
-    billed = (job_dir / "cost.jsonl").exists() and any(
-        line.usd > 0 or line.estimated for line in read_cost_lines(job_dir / "cost.jsonl")
+    lines = list(read_cost_lines(job_dir / "cost.jsonl")) if (job_dir / "cost.jsonl").exists() else []
+    # A model API that was paid (Meta, Baseten). The GPU auditor's Modal seconds are compute for our own detector:
+    # they never make a replay "called the models", and they are named on their own (the *_GPU_NOTE variants).
+    billed = any((line.usd > 0 or line.estimated) and line.provider != "modal" for line in lines)
+    # EgoBlur ran on a GPU for this receipt, or a GPU call was made (and paid) even if YuNet then audited: either
+    # way "no model was called" would be false.
+    on_gpu = (audit.egoblur.device or "").startswith("cuda:") or any(
+        line.provider == "modal" and (line.usd > 0 or line.estimated) for line in lines
     )
     sam_billed = (
         sam is not None
@@ -158,13 +189,13 @@ def data_handling(job_dir: Path, models: dict[str, str], audit: Audit) -> DataHa
         )
     )
     if is_synthetic(job_dir) and not billed:  # a job any model was paid for isn't "no model was called"
-        notes.append(SYNTHETIC_NOTE)
+        notes.append(SYNTHETIC_GPU_NOTE if on_gpu else SYNTHETIC_NOTE)
     elif is_replay(job_dir) and not billed:
-        notes.append(REPLAY_NOTE)
+        notes.append(REPLAY_GPU_NOTE if on_gpu else REPLAY_NOTE)
     if opinion is not None:
         notes.append(BASETEN_NOTE)
     if audit.egoblur.model == "yunet-face":
-        notes.append(YUNET_NOTE)
+        notes.append(_yunet_note(job_dir))
     approval = job_dir / APPROVAL
     if approval.exists() and load(approval, Approval).how == "auto_policy":
         notes.append(AUTO_APPROVE_NOTE)
@@ -222,6 +253,7 @@ def build(
     lines = list(read_cost_lines(job_dir / "cost.jsonl")) if (job_dir / "cost.jsonl").exists() else []
     meta, meta_estimated = measured_usd(lines, provider="meta")
     baseten, _ = measured_usd(lines, provider="baseten")
+    gpu_measured, gpu_estimated = measured_usd(lines, provider="modal")
     if approved_at is None:
         # The receipt says the creator approved: only an approval on record (the pipeline's approval.json) says so.
         if not (job_dir / APPROVAL).exists():
@@ -232,6 +264,7 @@ def build(
         items=items,
         audit=ReceiptAudit(
             auditor=audit.egoblur.model,
+            auditor_device=audit.egoblur.device,
             frames_scanned=audit.frames_scanned,
             leaks_found=len(audit.leaks),
             leaks_patched=sum(leak.patched_item is not None for leak in audit.leaks),
@@ -246,6 +279,7 @@ def build(
         cost_usd=meta,
         cost_usd_estimated=meta_estimated,
         cost_usd_baseten=baseten,
+        cost_usd_gpu=gpu_measured + gpu_estimated,
         prev_hash=prev_hash,
     )
     return Receipt.seal(body)

@@ -8,6 +8,7 @@ depends on pycocotools' untyped C extension.
 from __future__ import annotations
 
 import bisect
+import functools
 import importlib
 import math
 from collections.abc import Callable
@@ -24,13 +25,18 @@ BoolMask = NDArray[np.bool_]
 
 
 _LinearSumAssignment = Callable[..., tuple[NDArray[np.intp], NDArray[np.intp]]]
-# scipy ships no type information; the one function used is typed here (scipy.optimize.linear_sum_assignment).
-_lsa = cast(_LinearSumAssignment, importlib.import_module("scipy.optimize").linear_sum_assignment)
+
+
+@functools.cache
+def _lsa() -> _LinearSumAssignment:
+    """scipy.optimize.linear_sum_assignment, imported on first use: scipy is ~0.4 s of the API's cold start, and
+    only the binding stages need it. scipy ships no type information, so the one function used is typed here."""
+    return cast(_LinearSumAssignment, importlib.import_module("scipy.optimize").linear_sum_assignment)
 
 
 def assign(score: NDArray[np.float64]) -> list[tuple[int, int]]:
     """The Hungarian assignment (rows to columns) that maximises the total ``score``."""
-    rows, cols = _lsa(score, maximize=True)
+    rows, cols = _lsa()(score, maximize=True)
     return list(zip((int(r) for r in rows), (int(c) for c in cols), strict=True))
 
 

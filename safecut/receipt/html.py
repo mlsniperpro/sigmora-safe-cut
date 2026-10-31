@@ -123,6 +123,9 @@ def render_html(receipt: Receipt, job_dir: Path) -> str:
         cost += f" (+ up to ${receipt.cost_usd_estimated:.4f} unconfirmed)"
     if receipt.cost_usd_baseten:
         cost += f"; Baseten ${receipt.cost_usd_baseten:.4f}"
+    if receipt.cost_usd_gpu:
+        cost += f"; audit GPU about ${receipt.cost_usd_gpu:.4f} (estimate)"
+    where = f" on <code>{escape(a.auditor_device)}</code>" if a.auditor_device else ""
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Privacy receipt · {escape(receipt.job_id)}</title><style>{_STYLE}</style></head>
@@ -135,8 +138,8 @@ def render_html(receipt: Receipt, job_dir: Path) -> str:
 <h2>What was hidden, what was kept, and why</h2>
 <div class="items">{items}</div>
 <h2>The audit</h2>
-<div class="card">Auditor <code>{escape(a.auditor)}</code> scanned {a.frames_scanned} frames of the rendered video,
-and {redteam} was asked to read or identify anything on sampled frames. {a.leaks_found} leak(s) found,
+<div class="card">Auditor <code>{escape(a.auditor)}</code>{where} scanned {a.frames_scanned} frames of the rendered
+video, and {redteam} was asked to read or identify anything on sampled frames. {a.leaks_found} leak(s) found,
 {a.leaks_patched} patched, {a.unresolved} unresolved, in {a.passes} pass(es).</div>
 <h2>Models</h2>
 <div class="card">{caveat}<table><tbody>{models}</tbody></table></div>

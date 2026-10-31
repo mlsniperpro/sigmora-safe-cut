@@ -4,7 +4,9 @@
 // landing (the replayed demo job, labelled synthetic) → /try (code, upload of the demo clip) → progress →
 // review (hide/keep with undo, merge a new ID into a participant, remove a person, a locked child that can't be
 // kept, the Why drawer) → render → result + receipt → delete. Runs axe on every screen and fails on any serious
-// or critical violation. Usage: pnpm e2e:api [--shots <dir>] (builds the app against the local API first).
+// or critical violation. Then a cold start (a delayed fake API, so the service "wakes" while the page waits): the
+// landing page and /try say "Waking Safe Cut up", then the message goes, the labelled demo plays, and a second
+// visit opens at once. Usage: pnpm e2e:api [--shots <dir>] (builds the app against the local API first).
 import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
@@ -22,6 +24,8 @@ const AXE = readFileSync(createRequire(import.meta.url).resolve("axe-core/axe.mi
 const CODE = "e2e-judge-code";
 const MANIFEST = JSON.parse(readFileSync(join(REPO, "fixtures", "jobs", "demo", "raw", "manifest.json"), "utf8"));
 const CLIP = join(REPO, MANIFEST.source);
+
+const WAKING = /Waking Safe Cut up\. The first request after a quiet spell takes up to a minute\./;
 
 const results = [];
 /** The open page's console errors, printed if the run stops early. */
@@ -66,6 +70,108 @@ async function axe(page, label) {
   const serious = violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   check(`axe (no serious or critical): ${label}`, serious.length === 0, serious.map((v) => `${v.id}×${v.nodes}`).join("; "));
   if (violations.length > serious.length) console.log(`     note: minor axe findings on ${label}: ${violations.filter((v) => !serious.includes(v)).map((v) => v.id).join(", ")}`);
+}
+
+/**
+ * A fake cold start in front of the real API: every JSON request of this page is held until `release()`, the way
+ * Modal queues requests while a container starts (it never errors). Media and uploads go straight through.
+ */
+async function coldApi(page) {
+  let released = false;
+  let open;
+  const ready = new Promise((resolve) => (open = resolve));
+  let held = 0;
+  await page.route(`${API}/v1/**`, async (route) => {
+    if (route.request().resourceType() !== "fetch") return route.continue();
+    if (!released) {
+      held += 1;
+      await ready;
+    }
+    try {
+      await route.fulfill({ response: await route.fetch() });
+    } catch {
+      // The page closed while the request was held.
+    }
+  });
+  return {
+    held: () => held,
+    release: () => {
+      released = true;
+      open();
+    },
+  };
+}
+
+async function newPage(browser, viewport) {
+  const context = await browser.newContext({ viewport, deviceScaleFactor: 1 });
+  const page = await context.newPage();
+  const errors = [];
+  pageErrors = errors;
+  page.on("pageerror", (e) => errors.push(e.message));
+  page.on("console", (m) => {
+    if (m.type() === "error") errors.push(m.text());
+  });
+  return { context, page, errors };
+}
+
+const unexpected = (errors) => errors.filter((e) => !e.includes("Failed to load resource") && !e.includes("status of 404") && !e.includes("status of 401"));
+
+/** The service is cold when the page loads: the landing page and /try wait, say so politely, then carry on. */
+async function coldStart(browser) {
+  // Landing, on a phone: the demo's first request is held.
+  {
+    const { context, page, errors } = await newPage(browser, { name: "mobile", width: 390, height: 844 });
+    const cold = await coldApi(page);
+    await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+    const notice = page.getByText(WAKING);
+    await notice.waitFor({ timeout: 20_000 });
+    check("cold start, landing: a slow first request says the service is waking up", cold.held() > 0);
+    check("cold start, landing: the message is in a polite status region", (await page.getByRole("status").filter({ hasText: WAKING }).count()) === 1);
+    check("cold start, landing: the demo is still loading, not failed", await page.getByText("Loading the demo…").isVisible());
+    const scrollW = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    check("cold start, landing: no horizontal page scroll while waking", scrollW <= 0, `${scrollW}px`);
+    await shot(page, "cold-1-landing-waking");
+    await axe(page, "landing while the service wakes");
+    cold.release();
+    await page.getByText(/saved results for a synthetic test clip/).waitFor({ timeout: 20_000 });
+    check("cold start, landing: the labelled demo opens once the service is up", true);
+    check("cold start, landing: the waking message goes once the API answers", (await notice.count()) === 0);
+    const played = await page.locator("figure video").evaluate(async (el) => {
+      if (el.paused) await el.play().catch(() => undefined);
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+      return { error: el.error?.code ?? null, time: el.currentTime };
+    });
+    check("cold start, landing: the demo plays without error", played.error === null && played.time > 0, `error=${played.error} t=${played.time.toFixed(2)}`);
+    check("cold start, landing: no unexpected console errors", unexpected(errors).length === 0, unexpected(errors).slice(0, 3).join(" | "));
+    // The service is awake now (the API process is up): a new visit opens the labelled demo at once, with no message.
+    const reopened = Date.now();
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.getByText(/saved results for a synthetic test clip/).waitFor({ timeout: 20_000 });
+    const took = Date.now() - reopened;
+    check("cold start, landing: after a wake the labelled demo opens at once", took < 4_000 && (await notice.count()) === 0, `${took} ms`);
+    await context.close();
+  }
+
+  // /try on a desktop: the code check is the first request.
+  {
+    const { context, page, errors } = await newPage(browser, { name: "desktop", width: 1280, height: 900 });
+    const cold = await coldApi(page);
+    await page.goto(`${BASE}/try`, { waitUntil: "domcontentloaded" });
+    await page.getByLabel("Access code").fill(CODE);
+    await page.getByRole("button", { name: "Continue" }).click();
+    const notice = page.getByText(WAKING);
+    await notice.waitFor({ timeout: 20_000 });
+    check("cold start, /try: a slow code check says the service is waking up", cold.held() > 0);
+    check("cold start, /try: the button says it is checking, and no error shows", (await page.getByRole("button", { name: "Checking…" }).count()) === 1 && (await page.getByText(/service isn't responding/).count()) === 0);
+    await shot(page, "cold-2-try-waking");
+    await axe(page, "try while the service wakes");
+    cold.release();
+    await page.getByRole("button", { name: "Choose a file" }).waitFor({ timeout: 20_000 });
+    check("cold start, /try: the code is accepted once the service is up", true);
+    check("cold start, /try: the waking message goes once the API answers", (await notice.count()) === 0);
+    check("cold start, /try: no unexpected console errors", unexpected(errors).length === 0, unexpected(errors).slice(0, 3).join(" | "));
+    await context.close();
+  }
 }
 
 async function shot(page, name) {
@@ -298,6 +404,8 @@ try {
     check(`${v}: no unexpected console errors`, real.length === 0, real.slice(0, 3).join(" | "));
     await context.close();
   }
+
+  await coldStart(browser);
 } catch (error) {
   check("the run finished", false, String(error?.stack ?? error).slice(0, 600));
   if (pageErrors.length) console.log(`     page console errors:\n       ${pageErrors.slice(-8).join("\n       ")}`);

@@ -224,6 +224,7 @@ export const COPY = {
   billing: "Safe Cut can't start new clips right now. Try again later.",
   noRights: "Tick the box to confirm you're 18 or over, can upload this clip and aren't in a restricted territory.",
   deleted: "Deleted from Safe Cut's servers.",
+  waking: "Waking Safe Cut up. The first request after a quiet spell takes up to a minute.",
   unreachable: "Safe Cut's service isn't responding right now. Your clip is safe and nothing has been published. Try again in a minute.",
   unexpected: "Something went wrong on our side. Nothing has been published.",
   expired: "This clip has been deleted. Safe Cut deletes clips from its servers automatically after 24 hours.",

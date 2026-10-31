@@ -27,6 +27,8 @@ STATE = "state.json"
 JOB_ID_PATTERN = r"^j_[A-Za-z0-9_-]{22}$"
 
 JobStatus = Literal["created", "processing", "retry_later", "review", "rendering", "done", "needs_you", "failed"]
+#: A job in one of these is being worked on: ``Service.recover`` resumes it after a restart.
+ACTIVE: tuple[JobStatus, ...] = ("processing", "rendering", "retry_later")
 StageName = Literal[
     "queued",
     "prepare",
@@ -107,6 +109,9 @@ class JobState(BaseModel):
     started_at: datetime | None = None
     #: How many times a ``retry_later`` job was re-queued (once at most, UI-SPEC §8 request 1).
     requeues: int = 0
+    #: Restarts that found this job mid-action (``Service.recover``); reset when an action finishes. A job that keeps
+    #: taking its container down with it fails after ``MAX_RESUMES`` instead of waking a new one forever.
+    resumes: int = Field(default=0, ge=0)
     #: The clip length in seconds, once known (for the cap estimate and ``eta_s``).
     duration_s: float | None = None
     #: A replay of synthetic recordings (the drawn test clip): every response says so (AGENTS rule 9).
@@ -133,6 +138,8 @@ class JobStore:
         self.root.mkdir(parents=True, exist_ok=True)
         self._locks: dict[str, threading.RLock] = {}
         self._guard = threading.Lock()
+        #: Held across the two renames of ``replace_pinned``; ``get`` takes it only when a job folder looks missing.
+        self._swap = threading.Lock()
 
     def path(self, job_id: str) -> Path:
         return self.root / job_id
@@ -178,11 +185,20 @@ class JobStore:
             raise JobNotFound(job_id)
         path = self.path(job_id) / STATE
         if not path.is_file():
-            raise JobNotFound(job_id)
+            with self._swap:  # a replace_pinned in its two renames: wait the microseconds, then look again
+                if not path.is_file():
+                    raise JobNotFound(job_id)
         try:
             state = load(path, JobState)
         except ContractError:
-            raise JobNotFound(job_id) from None
+            # Gone between the check and the read: a swap in flight. Read again once it is done.
+            with self._swap:
+                if not path.is_file():
+                    raise JobNotFound(job_id) from None
+                try:
+                    state = load(path, JobState)
+                except ContractError:
+                    raise JobNotFound(job_id) from None
         if not state.pinned and (now or datetime.now(UTC)) >= state.deletes_at:
             self.delete(job_id)
             raise JobNotFound(job_id, expired=True)
@@ -197,6 +213,32 @@ class JobStore:
             state.updated_at = datetime.now(UTC)
             if self.path(job_id).is_dir():
                 dump(JobState.model_validate(state.model_dump()), self.path(job_id) / STATE)
+
+    def replace_pinned(self, job_id: str, built: Path, *, now: datetime | None = None, **fields: object) -> JobState:
+        """Swap a fully built folder in as the pinned job ``job_id`` (the demo), replacing any earlier one: its state
+        is written into ``built`` first, then two renames under the swap lock, which ``get`` honours on a miss, so a
+        reader sees the old job or the new one, never neither. If the second rename fails the old job is put back."""
+        now = now or datetime.now(UTC)
+        state = JobState.model_validate(
+            {"job_id": job_id, "mode": "replay", "status": "done", "stage": "done", "created_at": now,
+             "updated_at": now, "deletes_at": self.deletes_at(now), "pinned": True, **fields}
+        )  # fmt: skip
+        dump(state, built / STATE)
+        target = self.path(job_id)
+        doomed = self.root / f"{DELETING}{job_id}-{secrets.token_hex(4)}"
+        with self._lock(job_id), self._swap:
+            had = target.exists()
+            if had:
+                target.rename(doomed)
+            try:
+                built.rename(target)
+            except BaseException:
+                if had:
+                    doomed.rename(target)
+                raise
+        if had:
+            _reap(doomed)
+        return state
 
     def delete(self, job_id: str) -> bool:
         """Remove the whole job directory (every upload, response, render and receipt). True if it existed."""
@@ -231,6 +273,18 @@ class JobStore:
     def ids(self) -> list[str]:
         return sorted(p.name for p in self.root.iterdir() if p.is_dir() and _valid_id(p.name))
 
+    def active(self) -> list[str]:
+        """Jobs mid-action on disk (not pinned demo jobs): what a container that went to sleep may have left."""
+        found: list[str] = []
+        for job_id in self.ids():
+            try:
+                state = self.get(job_id)
+            except (JobNotFound, ContractError):
+                continue
+            if not state.pinned and state.status in ACTIVE:
+                found.append(job_id)
+        return found
+
     def sweep(self, *, now: datetime | None = None) -> list[str]:
         """The 24 h deletion job: remove every unpinned job created more than the TTL ago (and any directory
         whose state can't be read, which can't be trusted to expire on its own). Returns the removed IDs."""
@@ -255,11 +309,19 @@ class JobStore:
                 removed.append(job_id)
         for leftover in self.root.glob(f"{DELETING}*"):
             _reap(leftover)  # a deletion a crash or a busy writer left half done
+        building = self.root / BUILDING
+        for leftover in building.iterdir() if building.is_dir() else ():
+            if _age(leftover, now) > BUILD_GRACE:
+                _reap(leftover)  # a demo build whose container died before it finished
         return removed
 
 
 #: A deleted job's directory while it's removed (never a valid job ID, so nothing serves it).
 DELETING = ".deleting-"
+#: Where a pinned demo job is built before ``replace_pinned`` swaps it in (``Service._precompute``); skipped by ``ids``.
+BUILDING = ".building"
+#: A build folder this old belongs to a container that died mid-build: the sweep removes it.
+BUILD_GRACE = timedelta(hours=2)
 STATELESS_GRACE = timedelta(minutes=1)
 
 
@@ -286,6 +348,25 @@ def _age(path: Path, now: datetime) -> timedelta:
         return now - datetime.fromtimestamp(path.stat().st_mtime, UTC)
     except OSError:
         return timedelta(0)
+
+
+#: A handoff folder older than this belongs to an audit that is over (an audit's scans take minutes): with the
+#: 15-minute cron, a copy a cut-short check left is gone within the hour (the privacy page says so).
+HANDOFF_GRACE_S = 35 * 60.0
+
+
+def sweep_handoff(root: Path, *, older_than_s: float = HANDOFF_GRACE_S, now: float | None = None) -> list[str]:
+    """Remove the GPU auditor's handoff folders an audit left behind (a container that died mid-audit). The cleanup cron
+    runs it; it lives here, not in ``safecut.audit``, so the cron's small container never imports the pipeline."""
+    if not root.is_dir():
+        return []
+    cutoff = (time.time() if now is None else now) - older_than_s
+    removed: list[str] = []
+    for folder in sorted(root.iterdir()):
+        if folder.is_dir() and folder.stat().st_mtime < cutoff:
+            shutil.rmtree(folder, ignore_errors=True)
+            removed.append(folder.name)
+    return removed
 
 
 def _valid_id(job_id: str) -> bool:

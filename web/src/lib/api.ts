@@ -26,9 +26,19 @@ import {
   type ReviewAck,
   type ReviewEdit,
 } from "./contracts";
+import { WakeTracker } from "./wake";
 
+/** A request's timeout while the service is known to be awake (it answered in the last two minutes). */
 export const REQUEST_TIMEOUT_MS = 15_000;
+/**
+ * A request's timeout otherwise. The API scales to zero and Modal queues the first request after a quiet
+ * spell until a container is up (10 to 40 s; UI-SPEC §10.3 "Cold start"), so the first request waits for it.
+ * Under Modal's own 150 s limit per request, so a real outage is ours to report, not a gateway error.
+ */
+export const COLD_START_TIMEOUT_MS = 60_000;
 export const GET_RETRY_DELAYS_MS: readonly number[] = [2_000, 4_000, 8_000];
+/** A call that times out twice has waited out a cold start at least once: a third wait would only hide an outage. */
+const MAX_TIMEOUTS_PER_CALL = 2;
 
 export type ApiErrorKind = "http" | "network" | "timeout" | "schema";
 
@@ -86,20 +96,48 @@ function parseRetryAfter(value: string | null): number | null {
   return Number.isNaN(date) ? null : Math.max(0, (date - Date.now()) / 1000);
 }
 
-/** Wraps a request in the 15 s timeout, mapping aborts to `timeout` and fetch failures to `network`. */
-async function send(transport: Transport, init: RequestInit): Promise<RawResponse> {
+/**
+ * Requests that are safe to send twice, so a timeout or network error may be retried: every GET, and
+ * `POST /v1/codes/check`, which only reads. Every other POST is not: a request that timed out may still have
+ * been processed (a cold start can finish a `POST /start` or `/render` after the browser gave up), so
+ * repeating it could create a second job or bill a second render. Those are reported instead, and the job's
+ * polling shows whether the server accepted them (UI-SPEC §10.3 "Timeouts"). `DELETE` isn't retried either.
+ */
+function isIdempotent(init: RequestInit): boolean {
+  return init.method === "GET" || (init.method === "POST" && init.path === "/v1/codes/check");
+}
+
+/**
+ * A gateway answering for an API that isn't up yet. The API's own 503s (`auditor_unavailable`, `config`) carry its
+ * JSON error body and mean it is awake, so only a 502/503/504 without one counts.
+ */
+const GATEWAY_STATUSES = new Set([502, 503, 504]);
+function fromGateway(raw: RawResponse): boolean {
+  return GATEWAY_STATUSES.has(raw.status) && !errorBodySchema.safeParse(raw.body).success;
+}
+
+/**
+ * Wraps a request in its timeout (15 s once the service is awake, 60 s before), mapping aborts to `timeout`
+ * and fetch failures to `network`, and tells `wake` whether the API answered.
+ */
+async function send(transport: Transport, wake: WakeTracker, init: RequestInit): Promise<RawResponse> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), wake.isAwake() ? REQUEST_TIMEOUT_MS : COLD_START_TIMEOUT_MS);
   const outer = init.signal;
   const onOuterAbort = () => controller.abort();
   outer?.addEventListener("abort", onOuterAbort, { once: true });
   try {
-    return await transport.request({ ...init, signal: controller.signal });
+    const raw = await transport.request({ ...init, signal: controller.signal });
+    if (fromGateway(raw)) wake.lost();
+    else wake.answered();
+    return raw;
   } catch (cause) {
     if (controller.signal.aborted && !outer?.aborted) {
+      wake.lost();
       throw new ApiError({ kind: "timeout", message: `${init.method} ${init.path} timed out` });
     }
     if (cause instanceof ApiError) throw cause;
+    if (!outer?.aborted) wake.lost();
     throw new ApiError({ kind: "network", message: `${init.method} ${init.path} failed: ${String(cause)}` });
   } finally {
     clearTimeout(timer);
@@ -151,31 +189,46 @@ export interface ClientOptions {
   transport: Transport;
   /** Injected for tests so retries don't wait for real. */
   sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
+  /** Injected for tests; the app's client owns its own. */
+  wake?: WakeTracker;
 }
 
 export class SafeCutClient {
   private readonly transport: Transport;
   private readonly wait: (ms: number, signal?: AbortSignal) => Promise<void>;
+  /** Whether the API is probably waking from a cold start; the UI subscribes to it (`useServiceWaking`). */
+  readonly wake: WakeTracker;
 
-  constructor({ transport, sleep: wait = sleep }: ClientOptions) {
+  constructor({ transport, sleep: wait = sleep, wake = new WakeTracker() }: ClientOptions) {
     this.transport = transport;
     this.wait = wait;
+    this.wake = wake;
   }
 
-  /** A JSON request, retried only on network errors and timeouts, and only for GETs (§10.3). */
+  /**
+   * A JSON request, retried only on network errors and timeouts, and only when it is safe to send twice
+   * (`isIdempotent`, §10.3). The whole call, retries included, counts as one wait for the wake-up signal.
+   */
   private async call<S extends z.ZodType>(schema: S, init: RequestInit): Promise<z.infer<S>> {
-    const delays = init.method === "GET" ? GET_RETRY_DELAYS_MS : [];
-    for (let attempt = 0; ; attempt += 1) {
-      try {
-        const raw = await send(this.transport, init);
-        checkStatus(init, raw);
-        return parseBody(schema, init, raw);
-      } catch (error) {
-        const retryable = error instanceof ApiError && (error.kind === "network" || error.kind === "timeout");
-        const delay = delays[attempt];
-        if (!retryable || delay === undefined || init.signal?.aborted) throw error;
-        await this.wait(delay, init.signal);
+    const delays = isIdempotent(init) ? GET_RETRY_DELAYS_MS : [];
+    const end = this.wake.begin();
+    try {
+      let timeouts = 0;
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          const raw = await send(this.transport, this.wake, init);
+          checkStatus(init, raw);
+          return parseBody(schema, init, raw);
+        } catch (error) {
+          if (error instanceof ApiError && error.kind === "timeout") timeouts += 1;
+          const retryable = error instanceof ApiError && (error.kind === "network" || error.kind === "timeout") && timeouts < MAX_TIMEOUTS_PER_CALL;
+          const delay = delays[attempt];
+          if (!retryable || delay === undefined || init.signal?.aborted) throw error;
+          await this.wait(delay, init.signal);
+        }
       }
+    } finally {
+      end();
     }
   }
 
@@ -221,9 +274,14 @@ export class SafeCutClient {
   /** Resolves on 2xx and on any 404 (the job is gone either way, §10.3). */
   async deleteJob(jobId: string, signal?: AbortSignal): Promise<void> {
     const init: RequestInit = { method: "DELETE", path: `/v1/jobs/${encodeURIComponent(jobId)}`, ...(signal && { signal }) };
-    const raw = await send(this.transport, init);
-    if (raw.status === 404) return;
-    checkStatus(init, raw);
+    const end = this.wake.begin();
+    try {
+      const raw = await send(this.transport, this.wake, init);
+      if (raw.status === 404) return;
+      checkStatus(init, raw);
+    } finally {
+      end();
+    }
   }
 
   getDemo(heroId: string, signal?: AbortSignal): Promise<DemoResponse> {

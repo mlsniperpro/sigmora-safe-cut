@@ -5,6 +5,9 @@ and :func:`blocked` refuses only in the calling thread while its ``with`` lasts 
 so a replay job can't silence a live job running in another thread. Loopback stays open (a local API under
 test), except the ports a configured HTTP(S) proxy listens on; everything else raises :class:`NetworkBlocked` at
 ``connect``/``getaddrinfo`` time, so a stage that forgot its replay branch fails loudly instead of spending.
+
+One named exception: :func:`permitting` lets the Modal control plane through while the GPU auditor runs (our own
+compute on our own renders, never a model API), and only that host and the addresses it resolved to.
 """
 
 from __future__ import annotations
@@ -43,6 +46,10 @@ def _is_local(host: object) -> bool:
 
 
 _original: dict[str, Any] = {}
+#: Hosts :func:`permitting` let through (with a count, since scopes nest across threads), and their addresses.
+_permitted_hosts: dict[str, int] = {}
+_permitted_addresses: set[str] = set()
+_permit_lock = threading.Lock()
 _install_lock = threading.Lock()
 _global = threading.Event()
 _local = threading.local()
@@ -68,9 +75,18 @@ def proxy_ports() -> frozenset[int]:
     return frozenset(ports)
 
 
+def _name(host: object) -> str:
+    if isinstance(host, bytes):
+        host = host.decode("ascii", "replace")
+    return str(host).strip("[]").rstrip(".").lower()
+
+
 def _allowed(family: int, address: Any) -> bool:
     if family not in (socket.AF_INET, socket.AF_INET6):
         return True
+    with _permit_lock:
+        if _permitted_hosts and _name(address[0]) in _permitted_addresses:
+            return True
     return _is_local(address[0]) and address[1] not in proxy_ports()
 
 
@@ -87,9 +103,15 @@ def _guarded_connect_ex(self: socket.socket, address: Any, /) -> int:
 
 
 def _guarded_getaddrinfo(host: Any, *args: Any, **kwargs: Any) -> Any:
-    if _refusing() and not _is_local(host):
+    with _permit_lock:
+        permitted = host is not None and _name(host) in _permitted_hosts
+    if _refusing() and not _is_local(host) and not permitted:
         raise NetworkBlocked(f"replay mode: refused to resolve {host!r}")
-    return _original["getaddrinfo"](host, *args, **kwargs)
+    found = _original["getaddrinfo"](host, *args, **kwargs)
+    if permitted:
+        with _permit_lock:
+            _permitted_addresses.update(_name(entry[4][0]) for entry in found)
+    return found
 
 
 def _install() -> None:
@@ -130,3 +152,29 @@ def blocked() -> Generator[None]:
         yield
     finally:
         _local.depth -= 1
+
+
+@contextmanager
+def permitting(host: str) -> Generator[None]:
+    """Let ``host`` (and the addresses it resolves to inside the ``with``) through every guard, in every thread:
+    clients such as Modal's resolve and connect on their own threads. Nothing else is let through."""
+    _install()
+    name = _name(host)
+    if _is_local(name) or not name:
+        raise ValueError(f"permitting() names a remote host, not {host!r}")
+    with _permit_lock:
+        _permitted_hosts[name] = _permitted_hosts.get(name, 0) + 1
+        try:
+            ipaddress.ip_address(name)
+            _permitted_addresses.add(name)
+        except ValueError:
+            pass
+    try:
+        yield
+    finally:
+        with _permit_lock:
+            _permitted_hosts[name] -= 1
+            if not _permitted_hosts[name]:
+                del _permitted_hosts[name]
+            if not _permitted_hosts:
+                _permitted_addresses.clear()

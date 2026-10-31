@@ -10,10 +10,12 @@ retry fails too.
 from __future__ import annotations
 
 import logging
+import queue
 import re
 import threading
+import time
 from collections.abc import Callable
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
@@ -132,6 +134,65 @@ def _media_rejection(exc: BaseException) -> MediaRejected | None:
     )
 
 
+class DaemonPool:
+    """A fixed pool of **daemon** threads with ``ThreadPoolExecutor``'s ``submit``/``shutdown``. A container being
+    replaced must exit at once (``Service.stop(wait=False)``); ``ThreadPoolExecutor``'s threads are joined at
+    interpreter exit, which would keep it, and its running job, alive beside the new container. A job stopped this way
+    is a job its container died under: the next container resumes it from its last finished stage."""
+
+    def __init__(self, workers: int, *, name: str) -> None:
+        self._tasks: queue.SimpleQueue[tuple[Future[None], Callable[[], None]] | None] = queue.SimpleQueue()
+        self._threads = [
+            threading.Thread(target=self._loop, name=f"{name}_{i}", daemon=True) for i in range(max(1, workers))
+        ]
+        self._closed = False
+        self._lock = threading.Lock()
+        for thread in self._threads:
+            thread.start()
+
+    def submit(self, fn: Callable[..., None], *args: object) -> Future[None]:
+        future: Future[None] = Future()
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("cannot schedule new work after shutdown")
+            self._tasks.put((future, lambda: fn(*args)))
+        return future
+
+    def _loop(self) -> None:
+        while True:
+            item = self._tasks.get()
+            if item is None:
+                return
+            future, work = item
+            if not future.set_running_or_notify_cancel():
+                continue
+            try:
+                work()
+            except BaseException as exc:
+                future.set_exception(exc)
+            else:
+                future.set_result(None)
+
+    def shutdown(self, *, wait: bool = True, cancel_futures: bool = False) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+        if cancel_futures:
+            while True:
+                try:
+                    item = self._tasks.get_nowait()
+                except queue.Empty:
+                    break
+                if item is not None:
+                    item[0].cancel()
+        for _ in self._threads:
+            self._tasks.put(None)
+        if wait:
+            for thread in self._threads:
+                thread.join()
+
+
 class Worker:
     """A bounded pool of pipeline threads. ``submit`` returns at once; the job's state tells the rest."""
 
@@ -142,11 +203,18 @@ class Worker:
         *,
         max_workers: int | None = None,
         clock: Callable[[], datetime] | None = None,
+        keepalive: Callable[[str], None] | None = None,
     ) -> None:
         self.store = store
         self.settings = settings
+        #: Called with the job's ID whenever an action is queued: on Modal it opens an input that holds the
+        #: scale-to-zero container up until the job stops (deploy/modal_app.py ``SafeCutApi.hold``).
+        self._keepalive = keepalive
+        #: Whether the last keepalive reached the platform (None: none tried yet). ``/healthz`` reports it, and a
+        #: deploy check fails on False: a keepalive that never works would let a sleeping container strand jobs.
+        self.keepalive_ok: bool | None = None
         self.access = Access(settings)
-        self._pool = ThreadPoolExecutor(max_workers=max_workers or settings.workers, thread_name_prefix="job")
+        self._pool = DaemonPool(max_workers or settings.workers, name="job")
         self._running: dict[str, Future[None]] = {}
         self._timers: dict[str, threading.Timer] = {}
         self._lock = threading.Lock()
@@ -157,11 +225,18 @@ class Worker:
             future = self._running.get(job_id)
             return future is not None and not future.done()
 
+    def tracking(self, job_id: str) -> bool:
+        """Whether this process will still move the job: an action running or queued, or its re-queue pending."""
+        with self._lock:
+            future = self._running.get(job_id)
+            return (future is not None and not future.done()) or job_id in self._timers
+
     def submit(self, job_id: str, action: Action) -> Future[None]:
         with self._lock:
             future = self._pool.submit(self._run, job_id, action)
             self._running[job_id] = future
-            return future
+        self.keep_up(job_id)
+        return future
 
     def submit_later(self, job_id: str, action: Action, delay_s: float) -> None:
         """The one re-queue, ``delay_s`` from now; it re-checks the job's code when it fires (``_requeue``)."""
@@ -170,6 +245,20 @@ class Worker:
         with self._lock:
             self._timers[job_id] = timer
         timer.start()
+        self.keep_up(job_id)
+
+    def keep_up(self, job_id: str) -> None:
+        """Ask the platform to keep this process up while the job runs, from a thread of its own: the request that
+        queued the job (and the job's lock it holds) never waits on the platform. A failure is logged, never raised:
+        the 15-minute cron resumes any job a sleeping container stranded."""
+        if self._keepalive is None:
+            return
+        thread = threading.Thread(target=self._record_hold, args=(self._keepalive, job_id), name=f"hold-{job_id}",
+                                  daemon=True)  # fmt: skip
+        thread.start()
+
+    def _record_hold(self, keepalive: Callable[[str], None], job_id: str) -> None:
+        self.keepalive_ok = _spawn_hold(keepalive, job_id)
 
     def wait(self, job_id: str, timeout: float = 120) -> None:
         """Block until the job's current action finishes (tests and the CLI's ``serve --once``)."""
@@ -185,13 +274,13 @@ class Worker:
         if timer is not None:
             timer.cancel()
 
-    def shutdown(self) -> None:
+    def shutdown(self, *, wait: bool = True) -> None:
         with self._lock:
             timers = list(self._timers.values())
             self._timers.clear()
         for timer in timers:
             timer.cancel()
-        self._pool.shutdown(wait=True, cancel_futures=True)
+        self._pool.shutdown(wait=wait, cancel_futures=True)
 
     # -- one action -------------------------------------------------------
 
@@ -227,7 +316,7 @@ class Worker:
                     job_id, status="processing", stage="queued", failure=None, retry_at=None, started_at=self._now()
                 )
                 pipeline.analyse(job_dir, replay=replay, settings=self.settings, on_stage=on_stage)
-                self._set(job_id, status="review", stage="review", stage_reason=None)
+                self._set(job_id, status="review", stage="review", stage_reason=None, resumes=0)
             else:
                 self._set(
                     job_id,
@@ -261,11 +350,11 @@ class Worker:
             if stage.name == "audit":
                 audit = load(job_dir / "audit.json", Audit)
                 if audit.blocked_reason in ("audit_failed", "over_budget"):
-                    self._set(job_dir.name, status="needs_you", stage="audit", stage_reason=None)
+                    self._set(job_dir.name, status="needs_you", stage="audit", stage_reason=None, resumes=0)
                     return
         # Publishing is gated by the cross-file checks (ARCHITECTURE §3): a job whose files disagree never ends done.
         validate_job_dir(job_dir)
-        self._set(job_dir.name, status="done", stage="done", stage_reason=None)
+        self._set(job_dir.name, status="done", stage="done", stage_reason=None, resumes=0)
 
     def _fail(self, job_id: str, action: Action, failure: Failure, *, transient: bool) -> None:
         try:
@@ -296,6 +385,29 @@ class Worker:
                 self._set(job_id, status="failed", failure=Failure(stage=state.stage, reason="code_not_active"))
                 return
         self.submit(job_id, action)
+
+
+#: Waits between keepalive attempts: a blip in the platform's control plane is retried, briefly, before the job is
+#: left to the cron (a job without a hold may be cut short by a sleep and resumed up to 15 minutes later).
+HOLD_RETRY_DELAYS_S = (0.5, 2.0)
+
+
+def _spawn_hold(keepalive: Callable[[str], None], job_id: str, *, sleep: Callable[[float], None] = time.sleep) -> bool:
+    for attempt, delay in enumerate(HOLD_RETRY_DELAYS_S, start=1):
+        try:
+            keepalive(job_id)
+        except Exception as exc:
+            log.info("keepalive for job %s failed (attempt %d: %s); retrying in %.1f s", job_id, attempt, exc, delay)
+            sleep(delay)
+        else:
+            return True
+    try:
+        keepalive(job_id)
+    except Exception:
+        log.warning("keepalive for job %s failed %d times; the cron will resume it if the container sleeps", job_id,
+                    len(HOLD_RETRY_DELAYS_S) + 1, exc_info=True)  # fmt: skip
+        return False
+    return True
 
 
 def stage_index(name: str | None) -> int:
