@@ -1,4 +1,4 @@
-TESTED_COMMIT: eff4422
+TESTED_COMMIT: 7a533a6
 
 # SAFECUT-SHIP: what we did to break it
 
@@ -22,7 +22,8 @@ replayed once to prove idempotency) → render → poll → `/result` → GET ev
 | cda38bc, 3a029bd, 73806ec | 9 each | **0** | 650–820 s |
 | b296a92 | 9 | **0** | |
 | 2286b91 | 9 | **0** on the re-run (see the note below) | 521 s |
-| eff4422 | 9 | **0** | 561 s: the tested commit (= origin/main, all three lanes' final code) |
+| eff4422 | 9 | **0** | 561 s |
+| 7a533a6 | 9 | **0** | 593 s: the tested commit (= origin/main, all three lanes' final code) |
 
 An earlier 4 × 5 attempt (at f881924's parent) had 2 failures, both `no_recording`: the demo clip changed on disk
 mid-run when main was merged into the tree it ran from. That is why every later run uses a pinned worktree.
@@ -41,7 +42,7 @@ random upload bytes, traversal in media names and IDs.
 | 0b1b364 | 1,500 | **0** | 200 ×55, 201 ×3, 202 ×1, 307 ×9, 401 ×13, 403 ×84, 404 ×956, 409 ×66, 413 ×9, 415 ×5, 422 ×299 |
 | 5fa2f33 | 1,500 | **0** | the same mix |
 | c3fee0c | 1,500 | **0** | 200 ×55, 201 ×3, 202 ×1, 307 ×9, 401 ×13, 403 ×84, 404 ×956, 409 ×66, 413 ×9, 415 ×5, 422 ×299 |
-| cda38bc, 3a029bd, 73806ec, b296a92, 2286b91, eff4422 | 1,500 each | **0** | the same mix |
+| cda38bc, 3a029bd, 73806ec, b296a92, 2286b91, eff4422, 7a533a6 | 1,500 each | **0** | the same mix |
 
 After the fuzz the fuzzed job and the pinned demo were both intact, and the API process was still alive.
 
@@ -55,7 +56,7 @@ directory, the job is driven to review and rendered, the API is killed again mid
 | 17e2e9a | **PASS**: killed in analysis at `prepare`, then in render; `Service.recover()` re-queued it both times and it ended `done` |
 | 5fa2f33 | **PASS** (the same) |
 | c3fee0c | **PASS** (the same) |
-| cda38bc, 3a029bd, 73806ec, b296a92, 2286b91, eff4422 | **PASS** each (killed during `prepare` or `track`, then in render; every job ended `done`) |
+| cda38bc, 3a029bd, 73806ec, b296a92, 2286b91, eff4422, 7a533a6 | **PASS** each (killed during `prepare` or `track`, then in render; every job ended `done`) |
 
 The first attempt (0b1b364) failed in the harness, not the service: SIGKILL reached `uv run`, not its uvicorn
 child, which kept the port ("address already in use"). The harness now starts the API in its own session and
@@ -81,5 +82,5 @@ kills the group.
 
 - `pnpm e2e:api` (E6): the built web app in Chromium against the real API, desktop and phone, every judge step
   including the merge of a re-entered guest, axe on every screen: 63/63 at the last run.
-- `bash scripts/entry-check.sh` on a fresh clone of origin/main runs the README's fresh-clone block (E11) and
-  every E-line; its final output is in the PR's final status.
+- `bash scripts/entry-check.sh` on a fresh clone of origin/main at 7a533a6 printed ENTRY: PASS (every E-line OK,
+  including E11's run of the README's fresh-clone block); it is re-run after the final merge for the PR's status.

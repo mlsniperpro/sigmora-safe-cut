@@ -1,7 +1,7 @@
-AUDITED_COMMIT: pending
+AUDITED_COMMIT: 7a533a6
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
-CLEAN_AUDITS_IN_A_ROW: 0
+CLEAN_AUDITS_IN_A_ROW: 2
 
 # SAFECUT-SHIP re-audit log
 
@@ -251,3 +251,26 @@ Round 17 (reviewer): 0 critical, 0 high, 1 medium, 4 low. Round 18 (judge): 0 cr
 | 17·L2 | low | The API never commits the Modal Volume | BLOCKED: check on the first deploy that the cron sees the API's jobs | review |
 | 17·L3, L4 | low | A global replay block inside a deployed container; a render retry re-approves | **Kept**: the deployed service runs live (deploy-check requires it); a retry after a receipt failure re-renders within the caps | n/a |
 | 18·L1–L5 | low | Landing table's single run id; the hero recording's `--id` and `--consented`; SUBMISSION's clip length vs the daily cap; committing `test.runs.json`; AGENTIC-LOOP "regenerated" | All in the docs (BLOCKED, SUBMISSION, AGENTIC-LOOP) | review |
+
+## Rounds 19 and 20 (independent, on 7a533a6 = origin/main, all three lanes' final code): **both clean.**
+
+"Clean" here, as throughout: no critical, high or medium finding. Two consecutive audits of the same code found nothing at those levels, so `CLEAN_AUDITS_IN_A_ROW: 2` and `AUDITED_COMMIT: 7a533a6`; later commits touch only `.md` files and `.agent/`.
+
+Round 19 (reviewer): 0 critical, 0 high, 0 medium, 5 low. It verified `demo_stamp` (deterministic, 0.02 s, machine-independent; unchanged stamp reused, changed stamp rebuilt), drove a full replay flow whose every body parsed with the web's zod schemas, checked `report.pct` against the landing page's rule, and ran E5, E7, E9, E10 and E12 (OK).
+
+Round 20 (judge): 0 critical, 0 high, 0 medium, 5 low. It ran E2, E3, E5, E7, E8, E9, E10, E11 and E12 and `eval/report.py --check` (all OK); the README's commands with the review path; a `dev full` re-run identical to the committed run; every figure in README and RESULTS against `metrics.json`; and BLOCKED's sample env through `load_settings` and `production_problems` (no problems).
+
+Measured on the same commit: `bash scripts/entry-check.sh` on a fresh clone of origin/main at 7a533a6 printed ENTRY: PASS (all twelve lines OK), and break-it passed (soak 9/9, fuzz without a 5xx, both kill -9 recoveries).
+
+| # | Sev | Finding | Resolution |
+|---|---|---|---|
+| 19·L1 | low | An unreadable pinned-demo state (after a schema change that narrows `JobState`) skips the delete, so that startup builds no demo; the next one does | **Kept** for the frozen code: hypothetical (no schema change is planned), self-healing at the next start; the fix (delete in the `JobNotFound` branch) is noted for after submission |
+| 19·L2 | low | `demo_stamp` hashes `*.py` only (not prompts or weights) | **Kept**: a prompt or weights change ships with a code change in practice; noted |
+| 19·L3 | low | A deploy touching `safecut/*.py` rebuilds the demo (about a minute of 404) | **Kept**: by design; BLOCKED already says not to push to main during judging |
+| 19·L4 | low | Cost and review-load figures round to nearest | **Kept**: no cost is measured yet (replay runs say "none measured"); the percentages, the only reported figures, round unflatteringly |
+| 19·L5 | low | A `retry_later` render shows progress 1.0 | **Kept**: the status line says "trying again in a few minutes" beside it; cosmetic |
+| 20·L1 | low | BLOCKED's cron check (`cleanup` printing `[]`) proves nothing | BLOCKED: list the Volume's job directories instead (docs) |
+| 20·L2 | low | README "within a day" vs 24 h 15 min | README says 24 h 15 min (docs) |
+| 20·L3 | low | BLOCKED called Nov 5 00:00 "after the deadline" (it is 2 h before) | Reworded (docs) |
+| 20·L4 | low | The go-live smoke run on the synthetic clip would write a "real" recording of drawn shapes | BLOCKED: `--id live-smoke`, don't commit it (docs) |
+| 20·L5 | low | The deploy re-run needs the web app live first | BLOCKED: after the Vercel step (docs) |
