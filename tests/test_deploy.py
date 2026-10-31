@@ -13,6 +13,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.request
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -91,7 +92,18 @@ def api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
                 break
             except OSError:
                 time.sleep(0.2)
-        yield f"http://127.0.0.1:{port}"
+        url = f"http://127.0.0.1:{port}"
+        # A healthy deployment has finished confirming its demo build (the stamp check hashes the package, slow on a
+        # loaded machine): the check's own short wait then judges the deployment, not this machine's load.
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            try:
+                if json.loads(urllib.request.urlopen(f"{url}/healthz", timeout=5).read())["demos_building"] is False:  # noqa: S310 -- our own local API
+                    break
+            except (OSError, ValueError, KeyError):
+                pass
+            time.sleep(0.2)
+        yield url
     finally:
         proc.terminate()
         proc.wait(timeout=10)
