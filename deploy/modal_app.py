@@ -242,24 +242,33 @@ def pipeline_worker_smoke(audit_gpu: bool = False) -> dict[str, object]:
     if not audit_gpu and audited is not None:
         handoff = Handoff(Path(AUDIT), audit.commit)
         try:
-            job = json.loads((out / "job.json").read_text())
-            request = {"job": handoff.put(out, file_sha256(out / "redacted.mp4")), "model": "egoblur-gen2",
-                       "frames": list(range(job["frames"])), "face_threshold": 0.5, "plate_threshold": 0.5}  # fmt: skip
-            call = egoblur_detect.spawn(request)
-            try:
-                probe = call.get(timeout=GPU_PROBE_TIMEOUT_S)
-            except (TimeoutError, modal.exception.TimeoutError):
-                call.cancel(terminate_containers=True)
-                probe = {"refused": "timeout", "detail": f"no GPU answer in {GPU_PROBE_TIMEOUT_S} s"}
-            except Exception as exc:  # a crash in the GPU image: reported, so SAFECUT_DEPLOY_GPU_OPTIONAL can waive it
-                call.cancel(terminate_containers=True)
-                probe = {"refused": "error", "detail": f"{type(exc).__name__}: {exc}"[:300]}
-            result["gpu_probe"] = {"gpu": probe.get("gpu"), "refused": probe.get("refused"),
-                                   "detail": probe.get("detail"), "frames": len(probe.get("frames") or {})}  # fmt: skip
+            result["gpu_probe"] = _probe_gpu(handoff, out, file_sha256(out / "redacted.mp4"))
         finally:
             handoff.close()
             audit.commit()
     return result
+
+
+def _probe_gpu(handoff: Any, out: Path, sha: str) -> dict[str, object]:
+    """This app's ``egoblur_detect`` on the smoke render, every failure reported as a probe record (so
+    ``SAFECUT_DEPLOY_GPU_OPTIONAL=1`` can waive it), never as a crash of the smoke."""
+    import json  # noqa: PLC0415 -- inside the container
+
+    call: Any = None
+    try:
+        job = json.loads((out / "job.json").read_text())
+        request = {"job": handoff.put(out, sha), "model": "egoblur-gen2", "frames": list(range(job["frames"])),
+                   "face_threshold": 0.5, "plate_threshold": 0.5}  # fmt: skip
+        call = egoblur_detect.spawn(request)
+        probe = call.get(timeout=GPU_PROBE_TIMEOUT_S)
+    except (TimeoutError, modal.exception.TimeoutError):
+        probe = {"refused": "timeout", "detail": f"no GPU answer in {GPU_PROBE_TIMEOUT_S} s"}
+    except Exception as exc:  # the handoff, the spawn or a crash in the GPU image
+        probe = {"refused": "error", "detail": f"{type(exc).__name__}: {exc}"[:300]}
+    if "refused" in probe and call is not None:
+        call.cancel(terminate_containers=True)
+    return {"gpu": probe.get("gpu"), "refused": probe.get("refused"), "detail": probe.get("detail"),
+            "frames": len(probe.get("frames") or {})}  # fmt: skip
 
 
 @app.function(volumes={"/data": jobs}, timeout=5 * 60)

@@ -29,6 +29,7 @@ import os
 import re
 import shutil
 import site
+import sys
 import tempfile
 import threading
 import time
@@ -339,11 +340,18 @@ class Handoff:
             shutil.rmtree(self.root / name, ignore_errors=True)
 
     def close(self) -> None:
-        """Remove every render this audit put there (Modal's background commit, or the next one, carries it)."""
+        """Remove every render this audit put there, and commit the removal (best effort: a commit that fails is
+        logged, and Modal's background commit or the cron's hourly sweep removes the copy instead)."""
         with self._exclusive():
+            if not self._put:
+                return
             for name in self._put:
                 shutil.rmtree(self.root / name, ignore_errors=True)
             self._put.clear()
+            try:
+                self._bounded_commit()
+            except Exception:
+                log.warning("couldn't commit the handoff cleanup; the cron's sweep removes it", exc_info=True)
 
 
 class GpuDetector:
@@ -406,6 +414,8 @@ class GpuDetector:
             raise ValueError(f"this GPU detector audits {self.job_dir}, not {job_dir}")
         if not wanted:
             return {}
+        if self.failure is not None:  # once the GPU has failed this audit, it's re-run on YuNet: no more GPU calls
+            raise self.failure
         try:
             sha = file_sha256(job_dir / REDACTED)
             cached = self._cache.get(sha, {})
@@ -503,8 +513,16 @@ class GpuDetector:
 
 
 def _modal() -> Any:
-    """The Modal client (the ``deploy`` group; present in every Modal container), imported only when used."""
-    return importlib.import_module("modal")
+    """The Modal client (the ``deploy`` group; present in every Modal container), imported only when used; a child
+    process finds it through ``SAFECUT_MODAL_PATH`` (``child_env``), appended last to ``sys.path``."""
+    try:
+        return importlib.import_module("modal")
+    except ModuleNotFoundError:
+        folder = os.environ.get(MODAL_PATH_ENV)
+        if not folder or folder in sys.path:
+            raise
+        sys.path.append(folder)
+        return importlib.import_module("modal")
 
 
 def on_daemon[T](work: Callable[[], T], *, timeout_s: float | None = None) -> T:
@@ -555,23 +573,25 @@ def modal_permitted() -> Generator[None]:
         yield
 
 
+#: The Modal client's folder, for a child process (``child_env``); appended to ``sys.path`` on first use.
+MODAL_PATH_ENV = "SAFECUT_MODAL_PATH"
+
+
 def child_env(env: Mapping[str, str]) -> dict[str, str]:
     """The environment for a child Python (``safecut run``) that must reach Modal as this process does. In a Modal
     container the client may live outside the interpreter's own site-packages (a mount the runtime adds at
-    startup), which a child may not repeat: that folder, and only such a folder, is passed on ``PYTHONPATH``. A
-    site-packages folder never is: ``PYTHONPATH`` precedes the standard library, so it could shadow it (a ``typing``
-    backport there would)."""
+    startup), which a child may not repeat: that folder is named in ``SAFECUT_MODAL_PATH``, and the child appends it
+    to ``sys.path`` only when it first needs Modal (``_modal``), after the standard library and its own packages,
+    so nothing there can shadow them (``PYTHONPATH`` would put it first). Unchanged where the client is in
+    site-packages, or absent."""
     out = dict(env)
     spec = importlib.util.find_spec("modal")
     if spec is None or spec.origin is None:
         return out
     folder = Path(spec.origin).resolve().parent.parent
     standard = {Path(p).resolve() for p in (*site.getsitepackages(), site.getusersitepackages())}
-    if folder in standard:
-        return out
-    paths = [p for p in out.get("PYTHONPATH", "").split(os.pathsep) if p]
-    if str(folder) not in paths:
-        out["PYTHONPATH"] = os.pathsep.join([*paths, str(folder)])
+    if folder not in standard:
+        out[MODAL_PATH_ENV] = str(folder)
     return out
 
 
@@ -583,8 +603,9 @@ def modal_call(settings: Settings) -> RemoteCall:
         return off_loop(lambda: _call(request, timeout_s))
 
     def _call(request: GpuRequest, timeout_s: float) -> tuple[dict[str, Any], str | None]:
-        with modal_permitted():
-            try:
+        with ExitStack() as scope:
+            try:  # everything before Modal accepts the call: nothing ran, nothing is priced
+                scope.enter_context(modal_permitted())
                 function = modal.Function.from_name(settings.audit_gpu_app, settings.audit_gpu_function)
                 handle = function.spawn(request.model_dump(mode="json"))
             except Exception as exc:
@@ -634,6 +655,7 @@ def batches(detector: Detector, job_dir: Path, wanted: set[int]) -> Iterator[tup
 
 
 __all__ = [
+    "MODAL_PATH_ENV",
     "GpuAnswer",
     "GpuDetector",
     "GpuMeter",

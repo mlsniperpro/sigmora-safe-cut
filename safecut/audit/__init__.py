@@ -130,7 +130,12 @@ def _available(model: str, weights: str, stamp: int | None, face: float, plate: 
 
 
 def choose_detector(
-    job_dir: Path, settings: Settings, *, call: RemoteCall | None = None, commit: Callable[[], None] | None = None
+    job_dir: Path,
+    settings: Settings,
+    *,
+    call: RemoteCall | None = None,
+    commit: Callable[[], None] | None = None,
+    tried: list[GpuDetector] | None = None,
 ) -> tuple[Detector, str | None]:
     """EgoBlur on the Modal GPU when ``SAFECUT_AUDIT_GPU=1`` and it answers pass 1 (fetched here, before the red
     team spends anything); otherwise the local detector (YuNet in the slim API container). Returns the detector and,
@@ -143,6 +148,8 @@ def choose_detector(
         meter = GpuMeter(settings, pipeline.job_ledger(settings), caller, job.job_id, job_dir / "cost.jsonl")
         handoff = Handoff(Path(settings.audit_gpu_handoff_dir), commit or gpu.modal_commit(settings))
         detector = GpuDetector(job_dir, settings, call or gpu.modal_call(settings), meter, handoff=handoff)
+        if tried is not None:
+            tried.append(detector)  # its calls are on record even if YuNet ends up auditing
     except ImportError as exc:  # no Modal client here (a local run with SAFECUT_AUDIT_GPU=1)
         return _local(settings, f"no_modal: {exc}")
     except Exception as exc:  # anything else that stops the GPU path being set up: the audit still runs
@@ -170,13 +177,14 @@ def _audit(job_dir: Path, settings: Settings, detector: Detector, redteam: RedTe
         asyncio.run(audit_job(job_dir, detector=detector, redteam=redteam or replay_redteam(job_dir)))
 
 
-def _record(job_dir: Path, detector: Detector, wanted: bool, fallback: str | None) -> None:
-    """``raw/audit/gpu.json``: whether the GPU auditor was asked for, what ran, and why not when it didn't."""
+def _record(job_dir: Path, detector: Detector, wanted: bool, fallback: str | None, tried: list[GpuDetector]) -> None:
+    """``raw/audit/gpu.json``: whether the GPU auditor was asked for, what ran, why not when it didn't, and every
+    GPU call this audit made (priced in ``cost.jsonl``), including those before a fallback."""
     if not wanted:
         return
-    calls = detector.calls if isinstance(detector, GpuDetector) else 0
     record = {"requested": True, "ran": detector.model, "device": device_of(detector), "fallback": fallback,
-              "gpu_calls": calls}  # fmt: skip
+              "gpu_calls": sum(g.calls for g in tried),
+              "gpu_wall_s": round(sum(g.wall_s for g in tried), 3)}  # fmt: skip
     write_atomic(job_dir / GPU_RECORD, json.dumps(record, indent=1))
 
 
@@ -195,8 +203,9 @@ def run(
     settings = settings or load_settings()
     replay = replay or settings.replay
     fallback: str | None = None
+    tried: list[GpuDetector] = []
     if detector is None:
-        detector, fallback = choose_detector(job_dir, settings, call=gpu_call, commit=gpu_commit)
+        detector, fallback = choose_detector(job_dir, settings, call=gpu_call, commit=gpu_commit, tried=tried)
     try:
         _audit(job_dir, settings, detector, redteam, client, replay=replay)
     finally:
@@ -209,7 +218,7 @@ def run(
         detector = load_detector(settings)
         log.warning("GPU auditor stopped mid-audit (%s): auditing again with %s", fallback, detector.model)
         _audit(job_dir, settings, detector, redteam, client, replay=replay)
-    _record(job_dir, detector, settings.audit_gpu and settings.egoblur_model != "yunet-face", fallback)
+    _record(job_dir, detector, settings.audit_gpu and settings.egoblur_model != "yunet-face", fallback, tried)
     return job_dir / AUDIT
 
 

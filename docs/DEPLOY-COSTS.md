@@ -89,7 +89,8 @@ and the receipt (`cost_usd_gpu`); the up-front check on `POST /start` adds the G
 
 - A finished stage is never run again after a restart, so its Meta calls are never repaid. The stage a kill
   interrupted does run again from its inputs, and its calls are paid again; the job cap bounds that, and a SIGKILL's
-  open ledger reservation counts as spent for 2.5 hours (failing closed). After three restarts the job fails.
+  open ledger reservation keeps counting as spent (failing closed: `LocalLedger` counts every reservation not
+  released). After three restarts the job fails.
 - A GPU that answers pass 1 and then fails a re-check makes the audit run again, whole, on YuNet, on the patched
   render: the red team is asked again about frames whose pixels changed, and those calls are paid. Rare, and bounded
   by the job and daily caps.
@@ -100,6 +101,13 @@ and the receipt (`cost_usd_gpu`); the up-front check on `POST /start` adds the G
   owner's total spend), and are shown apart on the receipt (`cost_usd_gpu`).
 
 ## Where it would break first
+
+- The handoff Volume holds a copy of the redacted render (never the upload) while its audit runs; the audit removes
+  it and commits the removal when it ends, and the cron's hourly sweep removes any copy a dead container left, so a
+  copy outlives its job by at most about 75 minutes. The privacy page says so.
+- A GPU answer over 2 MiB comes back through Modal's blob storage, a host replay's network guard doesn't let
+  through: a replayed (demo-mode) audit of a very crowded clip falls back to YuNet, named as such. Live jobs aren't
+  under the guard.
 
 - The spend ledger is SQLite on the jobs Volume. If a torn snapshot ever leaves it unreadable, the API refuses to
   start (it fails closed: no spend without a ledger). The fix is the owner's: `modal volume get safecut-jobs

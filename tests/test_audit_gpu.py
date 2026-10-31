@@ -144,16 +144,19 @@ def test_egoblur_on_the_gpu_audits_and_the_receipt_names_the_gpu(tmp_path: Path,
     audit = audit_of(job_dir)
     assert (audit.egoblur.model, audit.egoblur.device) == ("egoblur-gen2", "cuda:Tesla T4")
     assert (audit.unresolved, audit.frames_scanned) == (0, 60)
-    # Pass 1 is one call for every frame, made before the red team runs; the Volume is committed before each call.
-    assert len(fake.requests) == fake.commits == 1
+    # Pass 1 is one call for every frame, made before the red team runs; the Volume is committed before each call,
+    # and once more when the audit removes its copy.
+    assert len(fake.requests) == 1
+    assert fake.commits == 2
     assert fake.requests[0].frames == list(range(60))
     # The render went through the handoff Volume (named by job and render hash), and was removed after the audit.
     assert fake.requests[0].job.startswith(f"{job_dir.name}-")
     assert list(handoff_root(job_dir).iterdir()) == []
     assert fake.timeouts == [settings.audit_gpu_timeout_s]
     record = json.loads((job_dir / GPU_RECORD).read_text())
-    assert record == {"requested": True, "ran": "egoblur-gen2", "device": "cuda:Tesla T4", "fallback": None,
-                      "gpu_calls": 1}  # fmt: skip
+    assert record["gpu_wall_s"] > 0
+    expected = {"requested": True, "ran": "egoblur-gen2", "device": "cuda:Tesla T4", "fallback": None, "gpu_calls": 1}
+    assert {k: v for k, v in record.items() if k != "gpu_wall_s"} == expected
     run = json.loads((job_dir / "raw/audit/run.json").read_text())
     assert (run["detector"], run["device"]) == ("egoblur-gen2", "cuda:Tesla T4")
     (line,) = gpu_lines(job_dir)
@@ -188,7 +191,7 @@ def test_a_leak_is_patched_and_rechecked_on_the_gpu(tmp_path: Path, weights: Pat
     assert audit.unresolved == 0
     assert audit.passes >= 2
     assert len(fake.requests) >= 2  # the patched render is re-scanned on the GPU, not locally
-    assert fake.commits == len(fake.requests)
+    assert fake.commits == len(fake.requests) + 1  # one per call, and the cleanup's
     lines = gpu_lines(job_dir)
     assert len(lines) == len(fake.requests)
     assert [line.units["idle_s"] for line in lines] == [settings.audit_gpu_idle_s] + [0.0] * (len(lines) - 1)
@@ -546,7 +549,7 @@ def test_a_handoff_commit_that_fails_is_retried_then_falls_back(tmp_path: Path, 
         raise RuntimeError("there are open files preventing the operation")
 
     audit_run(job_dir, replay=True, settings=settings_for(tmp_path), gpu_call=fake.call, gpu_commit=refusing)
-    assert len(commits) == 2  # once, then the one retry
+    assert len(commits) == 3  # once, the one retry, and the cleanup's (which fails too, logged; the cron sweeps it)
     assert fake.requests == []  # never asked the GPU about a render it might not see
     assert json.loads((job_dir / GPU_RECORD).read_text())["fallback"].startswith("error: handoff: RuntimeError")
     assert list(handoff_root(job_dir).iterdir()) == []  # the copy is removed on the way out
@@ -741,6 +744,9 @@ def test_a_paid_gpu_call_that_didnt_answer_still_isnt_no_model_called(tmp_path: 
     assert SYNTHETIC_NOTE not in notes
     run = json.loads((job_dir / "raw/audit/run.json").read_text())
     assert (run["detector"], run["gpu_calls"]) == ("yunet-face", 0)  # the audit that stands ran on YuNet
+    record = json.loads((job_dir / GPU_RECORD).read_text())
+    assert record["gpu_calls"] == 1  # but the paid, timed-out call is on record, as in cost.jsonl
+    assert len(gpu_lines(job_dir)) == 1
 
 
 def test_run_json_records_the_gpu_time(tmp_path: Path, weights: Path) -> None:
@@ -874,3 +880,42 @@ def test_a_call_that_never_reached_modal_costs_and_claims_nothing(tmp_path: Path
     notes = sealed(job_dir, settings).data_handling.notes
     assert SYNTHETIC_NOTE in notes
     assert SYNTHETIC_GPU_NOTE not in notes
+
+
+# ---------------------------------------------------------------------------------------------- round-9 audit fixes
+
+
+def test_a_modal_lookup_that_fails_is_not_submitted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The real wrapper: a failure before Modal accepts the call (the function isn't deployed) is NotSubmitted."""
+    from types import SimpleNamespace  # noqa: PLC0415 -- a stand-in Modal, local to this test
+
+    def missing(app: str, name: str) -> Any:
+        raise LookupError(f"{app}/{name} isn't deployed")
+
+    fake_modal = SimpleNamespace(
+        Function=SimpleNamespace(from_name=missing),
+        exception=SimpleNamespace(TimeoutError=type("ModalTimeout", (Exception,), {})),
+        config=SimpleNamespace(config={"server_url": "https://api.modal.com"}),
+    )
+    monkeypatch.setattr(gpu, "_modal", lambda: fake_modal)
+    request = GpuRequest(job="j_x-0123456789abcdef", frames=[0], model="egoblur-gen2", face_threshold=0.5,
+                         plate_threshold=0.5)  # fmt: skip
+    with pytest.raises(gpu.NotSubmitted, match="isn't deployed"):
+        gpu.modal_call(Settings(audit_gpu=True))(request, 1.0)
+
+
+def test_after_a_failure_the_gpu_is_never_called_again_in_that_audit(tmp_path: Path, weights: Path) -> None:
+    job_dir = prepared(tmp_path)
+    settings = settings_for(tmp_path)
+    fake = FakeModal(server(job_dir, weights), [None, "timeout"])
+    detector = GpuDetector(
+        job_dir, settings, fake.call, meter(job_dir, settings), handoff=handoff(job_dir, fake.commit)
+    )
+    detector.prefetch()
+    (job_dir / "redacted.mp4").write_bytes((job_dir / "redacted.mp4").read_bytes() + b"\0")  # a re-render
+    with pytest.raises(GpuUnavailable):
+        detector.detect_frames(job_dir, {1})
+    asked = len(fake.requests)
+    with pytest.raises(GpuUnavailable):
+        detector.detect_frames(job_dir, {2})
+    assert len(fake.requests) == asked  # no second paid timeout

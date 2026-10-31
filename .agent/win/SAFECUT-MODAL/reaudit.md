@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 9e21278
+AUDITED_COMMIT: 324c373
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -137,3 +137,25 @@ fix has a test that fails without it.
   says turning the GPU off needs the optional switch too; the stall clock starts when an action is queued (start,
   render, audit, a re-queue), so a render after a long review is resumed, not failed
   (`test_a_render_queued_after_a_long_review_is_resumed_not_failed_as_stalled`).
+
+## Round 9 (on 324c373): 0 critical, 0 high, 0 medium, 9 low. Closed or decided. Not clean.
+
+- L1 `gpu.json` said `gpu_calls: 0` after a paid call that timed out → it records every GPU call the audit made,
+  before any fallback (`test_a_paid_gpu_call_that_didnt_answer_still_isnt_no_model_called` asserts 1).
+- L2 the replay permit was outside `NotSubmitted`, and the real wrapper was untested; the pre-deploy probe let a
+  handoff or spawn error escape → both inside (`test_a_modal_lookup_that_fails_is_not_submitted`, `_probe_gpu`).
+- L3 a detector that had failed kept calling the GPU (a second paid timeout) → it short-circuits
+  (`test_after_a_failure_the_gpu_is_never_called_again_in_that_audit`).
+- L4 the round-8 tests didn't run `recover` or the audit route; a checklist test name was wrong → strengthened
+  (`test_a_render_queued_after_a_long_review_is_resumed_not_failed_as_stalled` now resumes it in a successor;
+  `test_queueing_an_audit_starts_its_stall_clock`).
+- L5 the handoff copy outlived "Delete everything now" → the audit commits its removal; the privacy page and
+  DEPLOY-COSTS say a copy of the redacted result sits with the GPU during the check and is gone within the hour if
+  the check is cut short.
+- L6 a GPU answer over 2 MiB comes back through blob storage, which replay's guard blocks → documented (a replayed
+  crowded clip falls back to YuNet, named; live jobs aren't guarded).
+- L7 `PYTHONPATH` could let the Modal mount shadow the child's packages → `SAFECUT_MODAL_PATH`, appended last to
+  `sys.path` on first use (`test_the_demo_builds_child_can_import_modal_as_this_process_does`).
+- L8 DEPLOY-COSTS said an open reservation counts for 2.5 h → it counts until released (fail closed), as the code does.
+- L9 `checks.sh` runs `pnpm build` → kept: `.agent/ENTRY-DONE.md` E1 requires the production build in cloud
+  sessions, overriding AGENTS rule 12 (COMMON: these briefs win).

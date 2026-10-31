@@ -524,57 +524,39 @@ def test_a_locked_limit_store_counts_in_memory_without_moving_the_file(
 def test_the_demo_builds_child_can_import_modal_as_this_process_does(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A Modal client outside site-packages (the runtime's own mount) reaches the child on PYTHONPATH; a client in
-    site-packages never puts site-packages there, ahead of the standard library (a typing backport would shadow it)."""
+    """A Modal client outside site-packages (the runtime's own mount) is named for the child, which appends it to
+    the end of sys.path on first use: nothing there can shadow the standard library or the child's own packages."""
     import importlib.util  # noqa: PLC0415 -- imported in the test that uses it
 
-    from safecut.audit.gpu import child_env  # noqa: PLC0415 -- imported in the test that uses it
+    from safecut.audit import gpu  # noqa: PLC0415 -- imported in the test that uses it
 
-    assert child_env({"PYTHONPATH": "/somewhere"}) == {"PYTHONPATH": "/somewhere"}  # this venv's modal: untouched
+    assert gpu.child_env({"PYTHONPATH": "/somewhere"}) == {"PYTHONPATH": "/somewhere"}  # this venv's modal: untouched
     mount = tmp_path / "pkg"
     (mount / "modal").mkdir(parents=True)
-    (mount / "modal" / "__init__.py").write_text("")
+    (mount / "modal" / "__init__.py").write_text("MOUNTED = True\n")
     spec = importlib.util.spec_from_file_location("modal", mount / "modal" / "__init__.py")
-    monkeypatch.setattr(importlib.util, "find_spec", lambda name: spec if name == "modal" else None)
-    env = child_env({"PYTHONPATH": "/somewhere"})
-    assert env["PYTHONPATH"].split(os.pathsep) == ["/somewhere", str(mount.resolve())]
-    assert child_env(env)["PYTHONPATH"] == env["PYTHONPATH"]  # added once
-    assert child_env({}) == {"PYTHONPATH": str(mount.resolve())}
+    with monkeypatch.context() as patched:
+        patched.setattr(importlib.util, "find_spec", lambda name: spec if name == "modal" else None)
+        env = gpu.child_env({"PYTHONPATH": "/somewhere"})
+    assert env == {"PYTHONPATH": "/somewhere", gpu.MODAL_PATH_ENV: str(mount.resolve())}  # never on PYTHONPATH
+    # The child: modal isn't importable until the named folder is on sys.path, appended last.
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    monkeypatch.setenv(gpu.MODAL_PATH_ENV, str(mount.resolve()))
+    sentinel = object()
 
+    def importer(name: str) -> object:
+        assert name == "modal"
+        if str(mount.resolve()) not in sys.path:
+            raise ModuleNotFoundError("No module named 'modal'")
+        return sentinel
 
-def test_the_served_demo_stays_up_while_it_is_rebuilt_and_if_the_rebuild_fails(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A rebuild (a new deploy's code, a GPU retry) runs beside the served demo: /v1/demo keeps answering throughout,
-    and a build that fails leaves the old demo in place."""
-    from safecut.config import Settings  # noqa: PLC0415 -- imported in the test that uses it
-
-    svc = Service(Settings(replay=True, jobs_dir=str(tmp_path / "jobs")))
-    job_id = app_module.hero_job_id("demo")
-    try:
-        assert svc.build_demo_jobs() == ["demo"]
-        with svc.store.update(job_id) as state:
-            state.demo_stamp = "an older build"
-        during: list[str] = []
-        real = subprocess.run
-
-        def failing(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            during.append(svc.store.get(job_id).status)  # what /v1/demo serves while the child runs
-            return subprocess.CompletedProcess(args, 1, "", "the child failed")
-
-        monkeypatch.setattr(app_module.subprocess, "run", failing)
-        assert svc.build_demo_jobs() == []
-        monkeypatch.setattr(app_module.subprocess, "run", real)
-        assert during == ["done"]
-        kept = svc.store.get(job_id)
-        assert (kept.status, kept.demo_stamp) == ("done", "an older build")
-        assert (svc.store.path(job_id) / "receipt.json").is_file()
-        assert not (svc.store.root / app_module.BUILDING / job_id).exists()  # the scratch build is cleaned up
-        assert svc.build_demo_jobs() == ["demo"]  # and the next good build replaces it
-        assert svc.store.get(job_id).demo_stamp != "an older build"
-        contracts.validate_job_dir(svc.store.path(job_id))
-    finally:
-        svc.stop()
+    monkeypatch.setattr(gpu.importlib, "import_module", importer)
+    assert gpu._modal() is sentinel  # pyright: ignore[reportPrivateUsage] -- the loader under test
+    assert sys.path[-1] == str(mount.resolve())  # last: the standard library and the child's packages win
+    monkeypatch.delenv(gpu.MODAL_PATH_ENV)
+    monkeypatch.setattr(sys, "path", [p for p in sys.path if p != str(mount.resolve())])
+    with pytest.raises(ModuleNotFoundError):
+        gpu._modal()  # pyright: ignore[reportPrivateUsage] -- no folder named: the import error stands
 
 
 def test_the_demo_job_builds_through_the_real_child_process(tmp_path: Path) -> None:
@@ -797,5 +779,26 @@ def test_a_render_queued_after_a_long_review_is_resumed_not_failed_as_stalled(
     svc.worker._run_action = held  # type: ignore[method-assign]  # pyright: ignore[reportPrivateUsage] -- a stand-in action
     assert client.post(f"/v1/jobs/{job_id}/render").status_code == 202
     assert datetime.now(UTC) - svc.store.get(job_id).started_at < timedelta(minutes=1)  # type: ignore[operator] -- set on queueing
+    # The container goes before the render starts; the next one's recover resumes it rather than failing it.
+    svc.worker.shutdown(wait=False)  # drops the queued render, as a container going away does
     gate.set()
+    successor = Service(svc.settings, fixtures=svc.fixtures)
+    try:
+        assert successor.recover() == [job_id]
+        successor.worker.wait(job_id)
+        assert successor.store.get(job_id).status == "done"
+    finally:
+        successor.stop()
+
+
+def test_queueing_an_audit_starts_its_stall_clock(make_service: Callable[..., Any]) -> None:
+    client, svc = make_service()
+    job_id = upload_clip(client)
+    run_to(client, svc, job_id, "start", "review")
+    run_to(client, svc, job_id, "render", "done")
+    with svc.store.update(job_id) as state:  # the audit couldn't finish; the creator comes back hours later
+        state.status = "needs_you"
+        state.started_at = datetime.now(UTC) - STALL_LIMIT - timedelta(hours=2)
+    assert client.post(f"/v1/jobs/{job_id}/audit").status_code == 202
+    assert datetime.now(UTC) - svc.store.get(job_id).started_at < timedelta(minutes=1)  # type: ignore[operator] -- set on queueing
     svc.worker.wait(job_id)
