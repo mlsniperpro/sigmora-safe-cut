@@ -1078,3 +1078,52 @@ def test_the_handoff_copy_never_carries_the_uploads_file_name(tmp_path: Path) ->
     copied = (handoff_root(job_dir) / name / "job.json").read_text()
     assert "Amina" not in copied
     assert load(handoff_root(job_dir) / name / "job.json", Job).frames == job.frames  # what the GPU needs is kept
+
+
+# ---------------------------------------------------------------------------------------------- round-21 audit fixes
+
+
+@pytest.mark.parametrize("stall", ["spawn", "cancel"])
+def test_a_control_plane_that_stalls_is_a_timeout_not_a_hung_audit(monkeypatch: pytest.MonkeyPatch, stall: str) -> None:
+    """Only the wait used to be bounded: a spawn that never returns, or a cancel after a timeout that never returns,
+    held the audit (and its job) until the hold's limit. The whole call is bounded now."""
+    import threading  # noqa: PLC0415 -- imported in the test that uses it
+    import time  # noqa: PLC0415 -- imported in the test that uses it
+    from types import SimpleNamespace  # noqa: PLC0415 -- a stand-in Modal, local to this test
+
+    gate = threading.Event()
+    modal_timeout = type("ModalTimeout", (Exception,), {})
+
+    class Handle:
+        object_id = "fc-1"
+
+        def get(self, timeout: float) -> dict[str, Any]:
+            del timeout
+            raise modal_timeout("no output")
+
+        def cancel(self, terminate_containers: bool = False) -> None:
+            del terminate_containers
+            gate.wait(30)
+
+    def spawn(request: object) -> Handle:
+        del request
+        if stall == "spawn":
+            gate.wait(30)
+        return Handle()
+
+    fake_modal = SimpleNamespace(
+        Function=SimpleNamespace(from_name=lambda app, name: SimpleNamespace(spawn=spawn)),
+        exception=SimpleNamespace(TimeoutError=modal_timeout),
+        config=SimpleNamespace(config={"server_url": "https://api.modal.com"}),
+    )
+    monkeypatch.setattr(gpu, "_modal", lambda: fake_modal)
+    monkeypatch.setattr(gpu, "CALL_MARGIN_S", 0.2)
+    request = GpuRequest(job="j_x-0123456789abcdef", frames=[0], model="egoblur-gen2", face_threshold=0.5,
+                         plate_threshold=0.5)  # fmt: skip
+    started = time.monotonic()
+    try:
+        with pytest.raises(TimeoutError):
+            gpu.modal_call(Settings(audit_gpu=True))(request, 0.1)
+        assert time.monotonic() - started < 5
+    finally:
+        gate.set()

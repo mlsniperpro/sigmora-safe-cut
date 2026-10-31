@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 3e5431b
+AUDITED_COMMIT: 6fe0e04
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -285,5 +285,20 @@ removed.
 - L1 `WIN-CHECKLIST.md` gave a stale web test count (916, now 918) → the count is dropped, so it can't drift again.
 - Noted by the reviewer and closed too: the web bounds tests compared against literals, not the API's
   `scaledown_window` → `test_the_web_app_counts_the_api_awake_only_inside_its_scaledown_window` reads
-  `AWAKE_FOR_MS`, `WAKING_AFTER_MS`, `REQUEST_TIMEOUT_MS` and `COLD_START_TIMEOUT_MS` from the web source and checks
-  them against the Modal class (fails with `AWAKE_FOR_MS = 300_000`).
+  `AWAKE_FOR_MS` from the web source and checks it against the Modal class's `scaledown_window`, and the other three
+  timings (`WAKING_AFTER_MS`, `REQUEST_TIMEOUT_MS`, `COLD_START_TIMEOUT_MS`) against each other (fails with
+  `AWAKE_FOR_MS = 300_000`).
+
+## Round 21 (on 6fe0e04): 0 critical, 0 high, 1 medium, 4 low. All closed. Not clean.
+
+- M1 only the GPU call's wait was bounded: a control plane stalling on the spawn, or on the cancel after a timeout,
+  held the audit (and its job) until the hold's limit → the whole call runs within `timeout + CALL_MARGIN_S` (60 s)
+  as a `TimeoutError` (priced as a timeout: the spawn may have gone through) →
+  `test_a_control_plane_that_stalls_is_a_timeout_not_a_hung_audit[spawn|cancel]` (both fail on the old wrapper).
+- L1 the checklist cited parametrize ids that don't exist → the collected ids (`[setup2-stale_volume]`,
+  `[setup4-altered_weights]`).
+- L2 round 20's entry overstated what the new test compares → reworded.
+- L3 the keepalive spawn made one attempt, so one control-plane blip left a running job without a hold → two retries
+  with 0.5 s and 2 s backoff (`HOLD_RETRY_DELAYS_S`), then the cron →
+  `test_a_keepalive_is_retried_briefly_before_the_job_is_left_to_the_cron`.
+- L4 `break-it.md` missing → written on the final commit, after the last audit.

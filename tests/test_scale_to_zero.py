@@ -988,3 +988,26 @@ def test_a_re_queue_waiting_out_its_delay_also_holds_the_container(make_service:
     wait_for(lambda: held == [job_id], "the re-queue's keepalive", timeout_s=10)
     assert svc.worker.tracking(job_id)  # the timer is pending
     svc.worker.cancel(job_id)
+
+
+# ---------------------------------------------------------------------------------------------- round-21 audit fixes
+
+
+@pytest.mark.parametrize(("failures", "ok"), [(0, True), (2, True), (3, False)])
+def test_a_keepalive_is_retried_briefly_before_the_job_is_left_to_the_cron(failures: int, ok: bool) -> None:
+    """One control-plane blip mustn't leave a running job without a hold: the spawn is tried three times, with short
+    backoff, before the job is left to the cron."""
+    from safecut.api import worker  # noqa: PLC0415 -- the private helper under test
+
+    calls: list[str] = []
+    slept: list[float] = []
+
+    def flaky(job_id: str) -> None:
+        calls.append(job_id)
+        if len(calls) <= failures:
+            raise ConnectionError("Modal control plane: 503")
+
+    assert worker._spawn_hold(flaky, "j_1", sleep=slept.append) is ok  # pyright: ignore[reportPrivateUsage]
+    assert calls == ["j_1"] * min(failures + 1, 3)
+    assert slept == list(worker.HOLD_RETRY_DELAYS_S[: min(failures, 2)])
+    assert sum(worker.HOLD_RETRY_DELAYS_S) < 5  # bounded: the job's thread never waits long on the platform

@@ -601,12 +601,19 @@ def child_env(env: Mapping[str, str]) -> dict[str, str]:
     return out
 
 
+#: How long the control plane may take, on top of the scan's own wait, to accept a call and to cancel one.
+CALL_MARGIN_S = 60.0
+
+
 def modal_call(settings: Settings) -> RemoteCall:
-    """The deployed GPU function, spawned and awaited with a bound; a timed-out call is cancelled."""
+    """The deployed GPU function, spawned and awaited with a bound; a timed-out call is cancelled. The whole call
+    (the lookup, the spawn, the wait and a cancel) is bounded too, at ``timeout_s + CALL_MARGIN_S``: a control plane
+    that stalls is a :class:`TimeoutError` (priced as a timeout, since the spawn may have gone through), never an
+    audit that waits forever."""
     modal = _modal()
 
     def call(request: GpuRequest, timeout_s: float) -> tuple[dict[str, Any], str | None]:
-        return off_loop(lambda: _call(request, timeout_s))
+        return on_daemon(lambda: _call(request, timeout_s), timeout_s=timeout_s + CALL_MARGIN_S)
 
     def _call(request: GpuRequest, timeout_s: float) -> tuple[dict[str, Any], str | None]:
         with ExitStack() as scope:
@@ -661,6 +668,7 @@ def batches(detector: Detector, job_dir: Path, wanted: set[int]) -> Iterator[tup
 
 
 __all__ = [
+    "CALL_MARGIN_S",
     "MODAL_PATH_ENV",
     "GpuAnswer",
     "GpuDetector",

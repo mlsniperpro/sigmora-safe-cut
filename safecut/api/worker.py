@@ -13,6 +13,7 @@ import logging
 import queue
 import re
 import threading
+import time
 from collections.abc import Callable
 from concurrent.futures import Future
 from datetime import UTC, datetime, timedelta
@@ -386,12 +387,25 @@ class Worker:
         self.submit(job_id, action)
 
 
-def _spawn_hold(keepalive: Callable[[str], None], job_id: str) -> bool:
+#: Waits between keepalive attempts: a blip in the platform's control plane is retried, briefly, before the job is
+#: left to the cron (a job without a hold may be cut short by a sleep and resumed up to 15 minutes later).
+HOLD_RETRY_DELAYS_S = (0.5, 2.0)
+
+
+def _spawn_hold(keepalive: Callable[[str], None], job_id: str, *, sleep: Callable[[float], None] = time.sleep) -> bool:
+    for attempt, delay in enumerate(HOLD_RETRY_DELAYS_S, start=1):
+        try:
+            keepalive(job_id)
+        except Exception as exc:
+            log.info("keepalive for job %s failed (attempt %d: %s); retrying in %.1f s", job_id, attempt, exc, delay)
+            sleep(delay)
+        else:
+            return True
     try:
         keepalive(job_id)
     except Exception:
-        log.warning("keepalive for job %s failed; the cron will resume it if the container sleeps", job_id,
-                    exc_info=True)  # fmt: skip
+        log.warning("keepalive for job %s failed %d times; the cron will resume it if the container sleeps", job_id,
+                    len(HOLD_RETRY_DELAYS_S) + 1, exc_info=True)  # fmt: skip
         return False
     return True
 
