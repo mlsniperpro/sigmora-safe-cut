@@ -1,7 +1,7 @@
-AUDITED_COMMIT: f6f8945
+AUDITED_COMMIT: 7962115
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
-CLEAN_AUDITS_IN_A_ROW: 0
+CLEAN_AUDITS_IN_A_ROW: 2
 
 # SAFECUT-MODAL re-audit log
 
@@ -442,3 +442,16 @@ passed every parallel run; the two-poll, cold-wake-margin and `yunet-face` audit
 - Note (not a defect): `Worker._requeue`'s code re-check when a delayed re-queue fires has no test of its own (it
   predates this lane: SHIP's 5c79cfe; this lane's `recover` relies on it, and the code is correct). Left as a
   follow-up in the PR rather than reset the audits for a test of SHIP's code.
+
+## Round 32 (on 7962115, HEAD acb09b1): 0 critical, 0 high, 0 medium, 0 low. CLEAN. Two in a row.
+
+A fresh read of every lane file and the evidence, the gate's scans re-run on the added lines (none), the lane's test
+files under load (the tightest-timed GPU-bound test 25 of 25), the suite's GPU and deploy tests with torch blocked as
+CI has it, every cited id collected, the cost figures recomputed, and the Modal claims checked in modal 1.6.2.
+
+Notes (not defects), for the PR's follow-ups: the audit stage run alone on a job with a stale or missing render
+prefetches that render (the pipeline renders first, so unreachable there); a whole-audit re-run on YuNet after a
+mid-audit GPU failure can't report plates (YuNet is faces only, as its receipt note says); the deploy probe names
+`egoblur-gen2` and 0.5 thresholds on purpose; `eval/RESULTS.md`'s worst-case line is Meta's part only (outside this
+lane); a Modal secret overriding the image's `SAFECUT_AUDIT_GPU=1` and the cron's `hold.spawn` need the first real
+deploy to confirm (BLOCKED.md).
