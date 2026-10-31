@@ -701,3 +701,111 @@ def test_deploy_check_waits_for_the_keepalives_outcome_after_a_cold_wake() -> No
         server.shutdown()
     assert "ok    API: its keepalive reached Modal" in result.stdout, result.stdout
     assert "no keepalive was tried" not in result.stdout
+
+
+# ---------------------------------------------------------------------------------------------- the Modal glue, run
+
+
+def _method(name: str) -> Any:
+    """A ``SafeCutApi`` method's own function (modal 1.6.2 wraps each in a PartialFunction)."""
+    from deploy import modal_app  # noqa: PLC0415 -- the deploy group, imported where it is used
+
+    return vars(modal_app.SafeCutApi._get_user_cls())[name]._get_raw_f()  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType] -- modal 1.6.2's own accessors
+
+
+def test_the_hold_input_lasts_as_long_as_the_services_hold() -> None:
+    from types import SimpleNamespace  # noqa: PLC0415 -- stand-ins, local to this test
+
+    asked: list[str] = []
+    api = SimpleNamespace(service=SimpleNamespace(hold=lambda job_id: asked.append(job_id) or "review"))
+    assert _method("hold")(api, "j_1") == "review"
+    assert asked == ["j_1"]
+    stopped: list[bool] = []
+    _method("shutdown")(SimpleNamespace(service=SimpleNamespace(stop=lambda *, wait: stopped.append(wait))))
+    assert stopped == [False]  # a replaced container never waits for its jobs
+
+
+def test_boot_refuses_weak_secrets_and_otherwise_starts_a_held_service(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace  # noqa: PLC0415 -- stand-ins, local to this test
+
+    import safecut.api.app as api_app  # noqa: PLC0415 -- patched where boot imports from
+    from deploy import modal_app  # noqa: PLC0415 -- the deploy group, imported where it is used
+
+    made: list[dict[str, Any]] = []
+
+    class FakeService:
+        def __init__(self, settings: Any, **kwargs: Any) -> None:
+            del settings
+            made.append(kwargs)
+
+        def start(self) -> bool:
+            made.append({"started": True})
+            return True
+
+    monkeypatch.setattr(api_app, "Service", FakeService)
+    monkeypatch.setattr(api_app, "production_problems", lambda settings: ["SAFECUT_URL_SECRET is unset"])
+    api = SimpleNamespace()
+    with pytest.raises(RuntimeError, match="isn't fit for production"):
+        _method("boot")(api)
+    assert made == []  # nothing served on weak secrets
+    monkeypatch.setattr(api_app, "production_problems", lambda settings: [])
+    _method("boot")(api)
+    assert made == [{"keepalive": modal_app._keepalive, "wait_on_stop": False}, {"started": True}]  # pyright: ignore[reportPrivateUsage] -- the hook under test
+
+
+def test_the_keepalive_spawns_this_containers_hold_inside_the_modal_permit(monkeypatch: pytest.MonkeyPatch) -> None:
+    from contextlib import contextmanager  # noqa: PLC0415 -- a recording permit, local to this test
+    from types import SimpleNamespace  # noqa: PLC0415 -- stand-ins, local to this test
+
+    from deploy import modal_app  # noqa: PLC0415 -- the deploy group, imported where it is used
+    from safecut.audit import gpu  # noqa: PLC0415 -- patched where the keepalive imports from
+
+    inside: list[bool] = []
+    spawned: list[tuple[str, bool]] = []
+
+    @contextmanager
+    def permit() -> Any:
+        inside.append(True)
+        yield
+        inside.pop()
+
+    monkeypatch.setattr(gpu, "modal_permitted", permit)
+    monkeypatch.setattr(modal_app, "_api", lambda: SimpleNamespace(
+        hold=SimpleNamespace(spawn=lambda job_id: spawned.append((job_id, bool(inside))))))  # fmt: skip
+    modal_app._keepalive("j_1")  # pyright: ignore[reportPrivateUsage] -- the hook under test
+    assert spawned == [("j_1", True)]
+
+
+def test_the_cron_sweeps_jobs_and_handoffs_commits_and_wakes_jobs_mid_action(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from datetime import timedelta  # noqa: PLC0415 -- imported in the test that uses it
+    from types import SimpleNamespace  # noqa: PLC0415 -- stand-ins, local to this test
+
+    from deploy import modal_app  # noqa: PLC0415 -- the deploy group, imported where it is used
+
+    calls: list[str] = []
+
+    def volume(name: str) -> Any:
+        return SimpleNamespace(reload=lambda: calls.append(f"{name}.reload"),
+                               commit=lambda: calls.append(f"{name}.commit"))  # fmt: skip
+
+    jobs_dir, handoff = tmp_path / "jobs", tmp_path / "audit"
+    store = JobStore(jobs_dir, ttl=timedelta(hours=24), cleanup_every=timedelta(minutes=15))
+    active = store.create(mode="replay").job_id
+    with store.update(active) as state:
+        state.status = "processing"
+    old = handoff / "j_gone-0123456789abcdef"
+    old.mkdir(parents=True)
+    os.utime(old, (1_000, 1_000))
+    woken: list[str] = []
+    monkeypatch.setenv("SAFECUT_JOBS_DIR", str(jobs_dir))
+    monkeypatch.setattr(modal_app, "jobs", volume("jobs"))
+    monkeypatch.setattr(modal_app, "audit", volume("audit"))
+    monkeypatch.setattr(modal_app, "AUDIT", str(handoff))
+    monkeypatch.setattr(modal_app, "_api", lambda: SimpleNamespace(hold=SimpleNamespace(spawn=woken.append)))
+    result = modal_app.cleanup._raw_f_()  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType] -- modal 1.6.2's raw function
+    assert result == {"removed": [], "handoffs": [old.name], "resumed": [active]}
+    assert not old.exists()
+    assert woken == [active]
+    assert calls == ["jobs.reload", "jobs.commit", "audit.reload", "audit.commit"]

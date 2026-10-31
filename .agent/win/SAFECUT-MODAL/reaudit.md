@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 4f6f52f
+AUDITED_COMMIT: 64b38b1
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -227,3 +227,17 @@ read were killed, and the two survivors were equivalent mutants.
 - L1 a keepalive's `hold` could read the job's state before the request that queued it had saved "processing", and
   return at once on the stale "created" → `hold` waits on any job this process is tracking, whatever its state says
   (`test_a_keepalive_that_arrives_before_the_state_is_saved_still_holds`, reproduced with a zero-latency keepalive).
+
+## Round 16 (on 64b38b1): 0 critical, 0 high, 2 medium, 1 low. All closed. Not clean.
+
+The round-15 `hold` fix was mutation-checked (its test failed 3 of 3 with the fix reverted).
+
+- M1 the Modal glue (`SafeCutApi.hold`/`boot`/`shutdown`, `_keepalive`, the cron's body) was only shape-checked →
+  run for real through modal 1.6.2's raw functions with stand-ins:
+  `test_the_hold_input_lasts_as_long_as_the_services_hold`,
+  `test_boot_refuses_weak_secrets_and_otherwise_starts_a_held_service`,
+  `test_the_keepalive_spawns_this_containers_hold_inside_the_modal_permit`,
+  `test_the_cron_sweeps_jobs_and_handoffs_commits_and_wakes_jobs_mid_action`.
+- M2 `gpu.modal_commit` had no test → `test_the_handoff_commit_commits_the_handoff_volume_inside_the_permit`.
+- L1 the handoff copy of `job.json` carried the upload's own file name → the copy's `source` is a neutral name
+  (`test_the_handoff_copy_never_carries_the_uploads_file_name`); the privacy page says so.

@@ -1030,3 +1030,47 @@ def test_a_gpu_call_is_reserved_at_its_worst_case_with_the_idle_tail(tmp_path: P
     box.reserve("c1")
     expected = (settings.audit_gpu_timeout_s + settings.audit_gpu_idle_s) * settings.audit_gpu_usd_per_hour / 3600
     assert reserved == [pytest.approx(expected)]
+
+
+# ---------------------------------------------------------------------------------------------- round-16 audit fixes
+
+
+def test_the_handoff_commit_commits_the_handoff_volume_inside_the_permit(monkeypatch: pytest.MonkeyPatch) -> None:
+    from contextlib import contextmanager  # noqa: PLC0415 -- a recording permit, local to this test
+    from types import SimpleNamespace  # noqa: PLC0415 -- a stand-in Modal, local to this test
+
+    inside: list[bool] = []
+    events: list[tuple[str, str, bool]] = []
+
+    @contextmanager
+    def permit() -> Any:
+        inside.append(True)
+        yield
+        inside.pop()
+
+    def from_name(name: str) -> Any:
+        def commit() -> None:
+            events.append(("commit", name, bool(inside)))
+            if name == "broken":
+                raise RuntimeError("Volume commit failed")
+
+        return SimpleNamespace(commit=commit)
+
+    monkeypatch.setattr(gpu, "_modal", lambda: SimpleNamespace(Volume=SimpleNamespace(from_name=from_name)))
+    monkeypatch.setattr(gpu, "modal_permitted", permit)
+    gpu.modal_commit(Settings())()
+    assert events == [("commit", "safecut-audit", True)]
+    with pytest.raises(RuntimeError, match="commit failed"):
+        gpu.modal_commit(Settings(audit_gpu_volume="broken"))()
+
+
+def test_the_handoff_copy_never_carries_the_uploads_file_name(tmp_path: Path) -> None:
+    from safecut.contracts import Job, dump  # noqa: PLC0415 -- imported in the test that uses it
+
+    job_dir = prepared(tmp_path)
+    job = load(job_dir / "job.json", Job)
+    dump(job.model_copy(update={"source": "Amina_birthday_party.mov"}), job_dir / "job.json")
+    name = handoff(job_dir, lambda: None).put(job_dir, "4" * 64)
+    copied = (handoff_root(job_dir) / name / "job.json").read_text()
+    assert "Amina" not in copied
+    assert load(handoff_root(job_dir) / name / "job.json", Job).frames == job.frames  # what the GPU needs is kept

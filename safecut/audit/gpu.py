@@ -54,7 +54,7 @@ from safecut.audit.detectors import (
     verify_egoblur,
 )
 from safecut.config import Settings
-from safecut.contracts import ContractError, CostLine, Job, append_cost_line, load, now_utc
+from safecut.contracts import ContractError, CostLine, Job, append_cost_line, dump, load, now_utc
 from safecut.meta.budget import Caller, CapLimit, LocalLedger, job_limit
 from safecut.meta.errors import BudgetExceeded
 from safecut.render import REDACTED, file_sha256
@@ -274,6 +274,8 @@ class GpuMeter:
 
 #: How long a handoff commit may take before the scan gives up on the GPU (Modal retries a commit internally).
 HANDOFF_COMMIT_TIMEOUT_S = 120.0
+#: The ``source`` a handoff copy of ``job.json`` carries in place of the upload's own name.
+HANDOFF_SOURCE = "redacted.mp4"
 #: One file lock per container: the API and its demo-build child process write the same handoff mount.
 HANDOFF_LOCK = Path(tempfile.gettempdir()) / "safecut-handoff.lock"
 
@@ -320,7 +322,9 @@ class Handoff:
         with self._exclusive():
             if not (target / REDACTED).is_file():
                 target.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(job_dir / "job.json", target / "job.json")
+                # Only what the GPU reads the frames with: never the creator's own file name for their upload.
+                job = load(job_dir / "job.json", Job)
+                dump(job.model_copy(update={"source": HANDOFF_SOURCE}), target / "job.json")
                 partial = target / f".{REDACTED}.partial"
                 shutil.copyfile(job_dir / REDACTED, partial)
                 partial.replace(target / REDACTED)
