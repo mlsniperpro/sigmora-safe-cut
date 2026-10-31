@@ -11,6 +11,7 @@ import { SITE } from "@/lib/site";
 import { useReducedMotion } from "@/hooks/useReducedMotion";
 import { useRemoteCaptions } from "@/hooks/useRemoteCaptions";
 import { useReportMode } from "../mode";
+import { WakingNotice } from "../WakingNotice";
 import { PlayCircleIcon } from "../icons";
 
 type Version = "raw" | "safecut";
@@ -115,10 +116,13 @@ export function HeroPlayer({ onAuditor }: { onAuditor?: (audit: DemoResponse["au
             {captions && <track kind="captions" src={captions} srcLang="en" label="English" default />}
           </video>
         ) : (
-          <div className="relative flex h-full items-center justify-center text-sm text-white/80">
+          <div className="relative flex h-full flex-col items-center justify-center gap-2 px-3 text-center text-sm text-white/80">
             {/* eslint-disable-next-line @next/next/no-img-element -- a signed poster URL, like the video's own poster attribute */}
             {poster && <img src={poster} alt="" className="absolute inset-0 h-full w-full object-cover" />}
             {!failed && <span className="relative rounded bg-black/60 px-2 py-1">Loading the demo…</span>}
+            <div className="relative">
+              <WakingNotice className="rounded bg-black/60 px-2 py-1" />
+            </div>
           </div>
         )}
         {reduced && demo && !failed && !playing && (
