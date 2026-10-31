@@ -60,12 +60,13 @@ YUNET_FALLBACK_NOTE = (
 )
 #: A replayed or synthetic job whose audit ran EgoBlur on a GPU: the one model that really ran for this receipt.
 SYNTHETIC_GPU_NOTE = (
-    "Synthetic job: every model answer was replayed from synthetic data; the only model that ran was the audit's"
-    " detector, EgoBlur on a GPU."
+    "Synthetic job: every model answer was replayed from synthetic data; the only model called was the audit's"
+    " detector, EgoBlur on a GPU (the auditor named here is the one that answered)."
 )
 REPLAY_GPU_NOTE = (
     "Replay: every model answer was read back from a recording of an earlier run of this clip, except the audit's"
-    " detector, EgoBlur, which ran on a GPU for this receipt; the other models named are the ones that answered then."
+    " detector, EgoBlur, which was called on a GPU for this receipt (the auditor named here is the one that answered);"
+    " the other models named are the ones that answered then."
 )
 GPU_RECORD = Path("raw/audit/gpu.json")
 REPLAY_NOTE = (
@@ -175,7 +176,11 @@ def data_handling(job_dir: Path, models: dict[str, str], audit: Audit) -> DataHa
     # A model API that was paid (Meta, Baseten). The GPU auditor's Modal seconds are compute for our own detector:
     # they never make a replay "called the models", and they are named on their own (the *_GPU_NOTE variants).
     billed = any((line.usd > 0 or line.estimated) and line.provider != "modal" for line in lines)
-    on_gpu = audit.egoblur.device is not None and audit.egoblur.device.startswith("cuda:")
+    # EgoBlur ran on a GPU for this receipt, or a GPU call was made (and paid) even if YuNet then audited: either
+    # way "no model was called" would be false.
+    on_gpu = (audit.egoblur.device or "").startswith("cuda:") or any(
+        line.provider == "modal" and (line.usd > 0 or line.estimated) for line in lines
+    )
     sam_billed = (
         sam is not None
         and (job_dir / "cost.jsonl").exists()

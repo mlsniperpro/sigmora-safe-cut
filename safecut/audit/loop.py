@@ -505,7 +505,9 @@ def write_run(job_dir: Path, audit: Audit, state: State, detector: Detector) -> 
     path.parent.mkdir(parents=True, exist_ok=True)
     per_frame = state.seconds.get("detector", 0.0) / max(1, state.detector_calls)
     # The video this audit checked: a receipt only seals an audit that describes the video in the job now.
-    record = {"detector": detector.model, "device": device_of(detector), "redteam_model": state.redteam_model,
+    # A GPU detector's time is in its calls (pass 1 before the audit started): its own wall seconds, not this loop's.
+    gpu = {"gpu_calls": getattr(detector, "calls", 0), "gpu_wall_s": round(getattr(detector, "wall_s", 0.0), 3)}
+    record = {"detector": detector.model, "device": device_of(detector), **gpu, "redteam_model": state.redteam_model,
               "seconds": state.seconds,
               "detector_s_per_frame": per_frame, "frames_scanned": audit.frames_scanned,
               "video_sha256": file_sha256(job_dir / REDACTED)}  # fmt: skip

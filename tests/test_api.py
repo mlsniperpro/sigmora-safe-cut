@@ -1210,11 +1210,12 @@ def test_a_pinned_demo_is_rebuilt_when_its_recording_or_code_changes(
     _, svc = make_client()
     built: list[str] = []
 
-    def precompute(job_id: str, recording: Path, clip: Path) -> None:
+    def precompute(job_id: str, recording: Path, clip: Path, stamp: str) -> None:
+        # The real one builds beside the served demo and swaps it in, stamped (Service._precompute).
         built.append(job_id)
-        svc.store.create(mode="replay", job_id=job_id, pinned=True)
-        with svc.store.update(job_id) as state:
-            state.status, state.stage = "done", "done"
+        scratch = tmp_path / "scratch" / f"{len(built)}" / job_id
+        scratch.mkdir(parents=True)
+        svc.store.replace_pinned(job_id, scratch, demo_stamp=stamp)
 
     monkeypatch.setattr(svc, "_precompute", precompute)
     assert svc.build_demo_jobs() == ["demo"]

@@ -694,3 +694,50 @@ def test_a_stale_handoff_copy_is_discarded_before_the_retry(tmp_path: Path, weig
     detector.prefetch()
     assert removed == [fake.requests[0].job]  # the copy the GPU disagreed with went before the retry re-copied it
     assert detector.failure is None
+
+
+# ---------------------------------------------------------------------------------------------- round-4 audit fixes
+
+
+def test_the_estimate_counts_one_gpu_scan_per_audit_pass() -> None:
+    from safecut.api.access import GPU_SCANS_PER_JOB  # noqa: PLC0415
+    from safecut.audit.loop import MAX_PASSES  # noqa: PLC0415
+
+    assert GPU_SCANS_PER_JOB == MAX_PASSES
+
+
+def test_an_unreadable_render_is_refused_not_retried(tmp_path: Path, weights: Path) -> None:
+    job_dir = prepared(tmp_path)
+    srv = server(job_dir, weights)
+    box = handoff(job_dir, lambda: None)
+    name = box.put(job_dir, "2" * 64)
+    (handoff_root(job_dir) / name / "redacted.mp4").write_bytes(b"not a video")
+    request = {"job": name, "frames": [0], "model": "egoblur-gen2", "face_threshold": 0.5, "plate_threshold": 0.5}
+    assert srv.serve(request)["refused"] == "no_render"
+    (handoff_root(job_dir) / name / "job.json").write_text("{}")
+    assert srv.serve(request)["refused"] == "no_render"
+
+
+def test_a_paid_gpu_call_that_didnt_answer_still_isnt_no_model_called(tmp_path: Path, weights: Path) -> None:
+    """A synthetic job whose GPU scan was paid but timed out, so YuNet audited: the receipt doesn't say "no model was
+    called"; it names the call, and the YuNet note says why."""
+    job_dir = prepared(tmp_path)
+    settings = settings_for(tmp_path)
+    fake = FakeModal(server(job_dir, weights), ["timeout"])
+    audit_run(job_dir, replay=True, settings=settings, gpu_call=fake.call, gpu_commit=fake.commit)
+    assert audit_of(job_dir).egoblur.model == "yunet-face"
+    notes = sealed(job_dir, settings).data_handling.notes
+    assert SYNTHETIC_GPU_NOTE in notes
+    assert SYNTHETIC_NOTE not in notes
+    run = json.loads((job_dir / "raw/audit/run.json").read_text())
+    assert (run["detector"], run["gpu_calls"]) == ("yunet-face", 0)  # the audit that stands ran on YuNet
+
+
+def test_run_json_records_the_gpu_time(tmp_path: Path, weights: Path) -> None:
+    job_dir = prepared(tmp_path)
+    settings = settings_for(tmp_path)
+    fake = FakeModal(server(job_dir, weights))
+    audit_run(job_dir, replay=True, settings=settings, gpu_call=fake.call, gpu_commit=fake.commit)
+    run = json.loads((job_dir / "raw/audit/run.json").read_text())
+    assert run["gpu_calls"] == 1
+    assert run["gpu_wall_s"] > 0

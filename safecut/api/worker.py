@@ -207,13 +207,13 @@ class Worker:
         if timer is not None:
             timer.cancel()
 
-    def shutdown(self) -> None:
+    def shutdown(self, *, wait: bool = True) -> None:
         with self._lock:
             timers = list(self._timers.values())
             self._timers.clear()
         for timer in timers:
             timer.cancel()
-        self._pool.shutdown(wait=True, cancel_futures=True)
+        self._pool.shutdown(wait=wait, cancel_futures=True)
 
     # -- one action -------------------------------------------------------
 

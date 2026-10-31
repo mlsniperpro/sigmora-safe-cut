@@ -143,7 +143,8 @@ class Access:
         return grant
 
 
-#: The audit's passes (``safecut.audit.loop.MAX_PASSES``): each may scan on the GPU once.
+#: The audit's passes (``safecut.audit.loop.MAX_PASSES``; a test keeps them equal): each scans on the GPU once. A
+#: transient failure's one retry is reserved in the ledger call by call, so the caps hold it even past this estimate.
 GPU_SCANS_PER_JOB = 3
 
 

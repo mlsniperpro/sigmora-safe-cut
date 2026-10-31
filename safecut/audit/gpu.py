@@ -55,11 +55,11 @@ from safecut.audit.detectors import (
     verify_egoblur,
 )
 from safecut.config import Settings
-from safecut.contracts import CostLine, Job, append_cost_line, load, now_utc
+from safecut.contracts import ContractError, CostLine, Job, append_cost_line, load, now_utc
 from safecut.meta.budget import Caller, CapLimit, LocalLedger, job_limit
 from safecut.meta.errors import BudgetExceeded
 from safecut.render import REDACTED, file_sha256
-from safecut.render.video import read_frames
+from safecut.render.video import RenderError, read_frames
 
 log = logging.getLogger(__name__)
 
@@ -148,7 +148,10 @@ class GpuServer:
         video = job_dir / REDACTED
         if not (job_dir / "job.json").is_file() or not video.is_file():
             return _refused("no_render", f"{request.job} has no job.json or {REDACTED} on the handoff Volume")
-        job = load(job_dir / "job.json", Job)
+        try:
+            job = load(job_dir / "job.json", Job)
+        except ContractError as exc:
+            return _refused("no_render", f"{request.job}/job.json doesn't validate: {exc}")
         wanted = set(request.frames)
         if min(wanted) < 0 or max(wanted) >= job.frames:
             return _refused("bad_request", f"frames outside 0..{job.frames - 1}")
@@ -156,12 +159,17 @@ class GpuServer:
             detector = self._detector(request)
         except AuditorUnavailable as exc:
             return _refused("altered_weights" if "SHA-256" in str(exc) else "no_weights", str(exc))
-        sha = file_sha256(video)
         started = time.perf_counter()
         found: dict[int, list[WireDetection]] = {}
-        for index, frame in enumerate(read_frames(video, job)):
-            if index in wanted:
-                found[index] = [WireDetection(kind=d.kind, box=d.box, score=d.score) for d in detector.detect(frame)]
+        try:
+            sha = file_sha256(video)
+            for index, frame in enumerate(read_frames(video, job)):
+                if index in wanted:
+                    found[index] = [
+                        WireDetection(kind=d.kind, box=d.box, score=d.score) for d in detector.detect(frame)
+                    ]
+        except (RenderError, OSError) as exc:  # the same render fails the same way: refused, never retried
+            return _refused("no_render", f"{request.job}/{REDACTED} can't be read: {exc}"[:500])
         answer = GpuAnswer(
             model=request.model, gpu=gpu, video_sha256=sha, seconds=time.perf_counter() - started, frames=found
         )
@@ -363,6 +371,8 @@ class GpuDetector:
         #: Every GPU that answered (Modal may give a pass a T4 when no L4 is free).
         self.gpus: set[str] = set()
         self.calls = 0
+        #: Wall seconds spent in GPU calls (cold starts and the wire included): run.json's GPU timing.
+        self.wall_s = 0.0
 
     @property
     def model(self) -> AuditorModel:
@@ -440,6 +450,7 @@ class GpuDetector:
             raise GpuUnavailable("error", f"{type(exc).__name__}: {exc}"[:300]) from exc
         finally:
             self.calls += 1
+            self.wall_s += time.monotonic() - started
             self._meter.settle(call_id, time.monotonic() - started, self._model, rid)
         return self._read(raw, request, sha)
 
@@ -473,6 +484,13 @@ class GpuDetector:
 def _modal() -> Any:
     """The Modal client (the ``deploy`` group; present in every Modal container), imported only when used."""
     return importlib.import_module("modal")
+
+
+def off_loop[T](work: Callable[[], T]) -> T:
+    """Run a blocking Modal call on a thread of its own: re-check scans run inside the audit's event loop, where
+    Modal's blocking API warns (and the loop is blocked either way: the scan waits for its answer)."""
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="modal-call") as pool:
+        return pool.submit(work).result()
 
 
 def modal_host() -> str | None:
@@ -514,6 +532,9 @@ def modal_call(settings: Settings) -> RemoteCall:
     modal = _modal()
 
     def call(request: GpuRequest, timeout_s: float) -> tuple[dict[str, Any], str | None]:
+        return off_loop(lambda: _call(request, timeout_s))
+
+    def _call(request: GpuRequest, timeout_s: float) -> tuple[dict[str, Any], str | None]:
         with modal_permitted():
             function = modal.Function.from_name(settings.audit_gpu_app, settings.audit_gpu_function)
             handle = function.spawn(request.model_dump(mode="json"))
@@ -534,8 +555,11 @@ def modal_commit(settings: Settings) -> Callable[[], None]:
     modal = _modal()
 
     def commit() -> None:
-        with modal_permitted():
-            modal.Volume.from_name(settings.audit_gpu_volume).commit()
+        def run() -> None:
+            with modal_permitted():
+                modal.Volume.from_name(settings.audit_gpu_volume).commit()
+
+        off_loop(run)
 
     return commit
 

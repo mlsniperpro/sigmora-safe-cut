@@ -83,6 +83,19 @@ if [ "$code" = "401" ]; then ok "API: a wrong access code is refused (401)"; els
 
 # The demo job is precomputed in the background after a cold start (about a minute): wait for it before judging.
 deadline=$(( $(date +%s) + ${DEPLOY_DEMO_WAIT_S:-300} ))
+# A redeploy's container keeps serving the previous demo while it builds its own: wait until /healthz says the build
+# for this code is done, so the checks below judge this deploy's demo, never an earlier one.
+while [ "$(json health "['demos_building']")" = "True" ] && [ "$(date +%s)" -lt "$deadline" ]; do
+  sleep 5
+  fetch health "$API/healthz" >/dev/null
+done
+if [ "$(json health "['demos_building']")" = "False" ] && json health "['demos_current']" | grep -q "'$HERO'"; then
+  ok "API: the demo '$HERO' was built (or confirmed) by this deploy's code"
+elif [ "$(json health "['demos_building']")" = "False" ]; then
+  fail "API: this deploy's code didn't build the demo '$HERO' (the one served, if any, is an earlier deploy's)"
+else
+  fail "API: the demo build didn't finish within ${DEPLOY_DEMO_WAIT_S:-300} s"
+fi
 code="$(fetch demo "$API/v1/demo/$HERO")"
 while [ "$code" = "404" ] && [ "$(date +%s)" -lt "$deadline" ]; do
   sleep 5

@@ -126,7 +126,9 @@ class SafeCutApi:
 
     @modal.exit()
     def shutdown(self) -> None:
-        self.service.stop()
+        # Never wait for a running job here: a redeploy (recreate) waits for this container to go before starting
+        # the next, whose start resumes the job; a slow exit would let the two overlap.
+        self.service.stop(wait=False)
 
 
 @app.function(

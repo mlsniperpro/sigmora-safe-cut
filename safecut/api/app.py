@@ -48,7 +48,7 @@ from safecut.api.access import (
     check_caps,
     estimate_usd,
 )
-from safecut.api.store import ACTIVE, Failure, JobNotFound, JobState, JobStore, UploadSpec
+from safecut.api.store import ACTIVE, BUILDING, Failure, JobNotFound, JobState, JobStore, UploadSpec
 from safecut.api.urls import UPLOAD_TTL_S, Signer, expiry
 from safecut.api.views import Views, iso
 from safecut.api.worker import Worker
@@ -71,8 +71,6 @@ HEALTH_SWITCH = datetime(2026, 11, 5, tzinfo=UTC)
 STALL_LIMIT = timedelta(minutes=45)
 #: How often a demo job the GPU couldn't audit is built again (each rebuild takes the demo away for a minute).
 DEMO_GPU_RETRY = timedelta(hours=6)
-#: Where a demo job is built before it replaces the served one (beside the jobs; the store and its sweep skip it).
-BUILDING = ".building"
 #: ``hold``'s name for the demo build: the container stays up while it runs (it isn't a job action).
 DEMO_HOLD = "demo-build"
 #: Restarts a job may need (a redeploy, a preemption): one more and it is the job taking its container down.
@@ -181,6 +179,8 @@ class Service:
         self._start_lock = threading.Lock()
         self.started_monotonic = time.monotonic()
         self._demo_built = threading.Event()
+        #: Heroes whose served demo was built from this process's code and recordings (``/healthz``, deploy checks).
+        self.demos_current: set[str] = set()
 
     def start(self) -> bool:
         """Once per process, whichever comes first (the ASGI lifespan, or Modal's container start): resume the
@@ -196,15 +196,21 @@ class Service:
         self.worker.keep_up(DEMO_HOLD)  # building the demo isn't a job action: hold the container up for it too
         return True
 
+    @property
+    def demo_built(self) -> bool:
+        return self._demo_built.is_set()
+
     def _build_demos(self) -> None:
         try:
             self.build_demo_jobs()
         finally:
             self._demo_built.set()
 
-    def stop(self) -> None:
+    def stop(self, *, wait: bool = True) -> None:
+        """Stop the loops and the workers. ``wait=False`` (a container being replaced) doesn't wait for running jobs:
+        the next container resumes them from their last finished stage, and a quick exit keeps the two apart."""
         self._stop.set()
-        self.worker.shutdown()
+        self.worker.shutdown(wait=wait)
         self.paid_limiter.close()
         self.ledger.close()
 
@@ -327,6 +333,7 @@ class Service:
                 existing = self.store.get(job_id)
                 if existing.status == "done" and existing.demo_stamp == stamp and not self._retry_gpu(job_id, existing):
                     built.append(recording.name)
+                    self.demos_current.add(recording.name)
                     continue
             except JobNotFound:
                 pass
@@ -335,6 +342,7 @@ class Service:
             try:
                 self._precompute(job_id, recording, clip, stamp)
                 built.append(recording.name)
+                self.demos_current.add(recording.name)
             except Exception as exc:
                 log.warning("demo job %s not built (any earlier build is still served): %s", recording.name, exc)
         return built
@@ -369,15 +377,8 @@ class Service:
             if proc.returncode != 0:
                 raise pipeline.PipelineError(f"safecut run exited {proc.returncode}: {proc.stderr.strip()[-300:]}")
             synthetic = pipeline.recording_is_synthetic(scratch)
-            with contextlib.suppress(JobNotFound):
-                self.store.delete(job_id)
-            self.store.create(mode="replay", job_id=job_id, pinned=True)
-            target = self.store.path(job_id)
-            for entry in scratch.iterdir():
-                entry.rename(target / entry.name)
-            with self.store.update(job_id) as state:
-                state.status, state.stage = "done", "done"
-                state.synthetic, state.demo_stamp = synthetic, stamp
+            # One swap: readers see the old demo or the new one, never neither (JobStore.replace_pinned).
+            self.store.replace_pinned(job_id, scratch, synthetic=synthetic, demo_stamp=stamp)
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
 
@@ -918,6 +919,10 @@ async def healthz(svc: Svc) -> JSONResponse:
         # The API scales to zero: a small uptime on the first answer after a quiet spell proves a cold wake.
         "uptime_s": round(time.monotonic() - svc.started_monotonic, 1),
         "audit_gpu": svc.settings.audit_gpu,
+        # Whether this container's demo build has finished, and which demos match its code: a deploy check judges
+        # the demo built by the new code, never one an earlier deploy left on the Volume.
+        "demos_building": not svc.demo_built,
+        "demos_current": sorted(svc.demos_current),
     }
     return JSONResponse(body, status_code=200 if writable else 503)
 

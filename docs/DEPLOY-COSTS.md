@@ -52,7 +52,9 @@ and the receipt (`cost_usd_gpu`); the up-front check on `POST /start` adds the G
 - **Deploys stop the old container first (`modal deploy --strategy recreate`).** Modal's default, `rolling`, lets old
   containers drain while new ones start (modal 1.6.2 `app.py`, `deploy`); a running job's `hold` input would keep the
   old one draining while the new one's start resumed the same job, two writers on one Volume, paid twice. With
-  `recreate` a deploy is one restart: the job resumes once, from its last finished stage.
+  `recreate` Modal stops the old containers (waiting up to 40 s, modal 1.6.2 `runner.py`) before new work starts,
+  and the API's exit hook doesn't wait for running jobs, so the old one goes at once: a deploy is one restart, and
+  the job resumes once, from its last finished stage.
 - **The demo is rebuilt beside the one being served.** A new deploy's code, or a demo YuNet had to audit (retried at
   most every 6 hours), is built in a scratch folder and swapped in only when done; a failed build leaves the old demo
   up. The build has a ledger of its own (the owner's spend, under the job cap), so the service's ledger keeps one
@@ -68,7 +70,8 @@ and the receipt (`cost_usd_gpu`); the up-front check on `POST /start` adds the G
   import safecut.api.app; print(time.perf_counter() - t)"`). The web app waits up to 60 s for its first request, retries
   only idempotent calls, and says "Waking Safe Cut up" after 4 s (`web/src/lib/wake.ts`).
 - **GPU: L4 first, T4 as the fallback.** EgoBlur Gen 2 is two detector passes per frame; the L4 has several times
-  the T4's FP32 throughput for 1.36× the price, so it should cost less per clip as well as finish sooner. Modal's GPU
+  the T4's FP32 throughput (30.3 vs 8.1 TFLOPS: [L4](https://www.nvidia.com/en-us/data-center/l4/),
+  [T4](https://www.nvidia.com/en-us/data-center/tesla-t4/)) for 1.36× the price, so it should cost less per clip as well as finish sooner. Modal's GPU
   list (`gpu=["L4", "T4"]`) takes a T4 when no L4 is free; the price setting assumes the dearer L4.
 - **The render reaches the GPU through a handoff Volume.** The API copies the render to `safecut-audit` (under one
   lock), commits that Volume, and the GPU function reloads it and reads `redacted.mp4` itself; only frame numbers go
@@ -89,6 +92,8 @@ and the receipt (`cost_usd_gpu`); the up-front check on `POST /start` adds the G
 - A GPU that answers pass 1 and then fails a re-check makes the audit run again, whole, on YuNet, on the patched
   render: the red team is asked again about frames whose pixels changed, and those calls are paid. Rare, and bounded
   by the job and daily caps.
+- The up-front estimate counts one GPU scan per audit pass at its timeout; a transient failure's one retry is
+  reserved call by call, so the ledger's caps still hold it.
 - GPU dollars count against the same job, daily, code and pilot caps as Meta's (conservative: a cap protects the
   owner's total spend), and are shown apart on the receipt (`cost_usd_gpu`).
 

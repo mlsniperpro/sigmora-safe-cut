@@ -1,4 +1,4 @@
-AUDITED_COMMIT: d2fb444
+AUDITED_COMMIT: 56f8061
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -55,3 +55,36 @@ fix has a test that fails without it.
   container is held up while the demo builds (`test_the_container_stays_up_while_the_demo_job_builds`); BLOCKED.md
   and DEPLOY-COSTS figures and wording; the demo child gets the Modal client on `PYTHONPATH`
   (`test_the_demo_builds_child_can_import_modal_as_this_process_does`).
+
+## Round 3 (on 529fa8b): 1 high, 3 medium, 9 low. All closed or decided.
+
+- H1 Modal's default `rolling` deploy keeps the old container draining (a `hold` input lasts the job) while a new
+  one's start resumes the same job → `modal deploy --strategy recreate` (modal 1.6.2 `cli/run.py`, `app.py` deploy);
+  `test_the_deploy_workflow_proves_the_gpu_audit_and_a_cold_wake_after_deploying`.
+- M1 the demo was deleted before its rebuild → built in a scratch folder and swapped in (made atomic in round 4).
+- M2 the demo child shared the service's SQLite ledger → the child keeps a ledger of its own.
+- M3 the post-deploy smoke's child lacked `child_env`; an unresolved GPU audit couldn't be waived → both fixed.
+- Lows: a timed-out GPU call is cancelled with `terminate_containers=True`; a stale handoff copy is discarded before
+  the retry (`test_a_stale_handoff_copy_is_discarded_before_the_retry`); the cron's handoff sweep moved to
+  `safecut.api.store` (no pipeline import in a 128 MiB container); a ledger runbook line; unmeasured cold start
+  labelled an estimate; checklist names, mounts and counts corrected; the deploy job may take 60 minutes. Decided:
+  the GPU timeout stays 300 s until a deploy measures EgoBlur (the fallback is YuNet, named, never a hang).
+
+## Round 4 (on 56f8061): 0 high, 2 medium, 6 low. All closed.
+
+- M1 the demo "swap" deleted the old folder before renaming the new one in (23,266 misses measured by the reviewer)
+  → `JobStore.replace_pinned`: state written into the build, two renames under a swap lock that `get` honours on a
+  miss, the old job restored if the second rename fails
+  (`test_readers_never_see_the_demo_missing_while_it_is_swapped`: 0 misses over the reads of a full rebuild;
+  `test_a_swap_that_fails_halfway_puts_the_old_demo_back`; `test_the_served_demo_stays_up_while_it_is_rebuilt_and_if_the_rebuild_fails`).
+- M2 the deploy check could judge the previous deploy's demo → `/healthz` reports `demos_building` and
+  `demos_current`; `deploy-check.sh` waits for this code's build and fails on a demo only an earlier deploy built
+  (`test_deploy_check_judges_this_deploys_demo_never_an_earlier_one`).
+- Lows: the API's exit hook doesn't wait for running jobs (`stop(wait=False)`,
+  `test_a_replaced_container_stops_without_waiting_for_its_jobs`) and the `recreate` wording says what Modal does; a
+  paid GPU call that didn't answer still gets the GPU replay/synthetic note
+  (`test_a_paid_gpu_call_that_didnt_answer_still_isnt_no_model_called`); Modal calls run off the audit's event loop;
+  an unreadable render is refused, not retried (`test_an_unreadable_render_is_refused_not_retried`); the estimate is
+  tied to `MAX_PASSES` (`test_the_estimate_counts_one_gpu_scan_per_audit_pass`) and the docs say how retries are
+  reserved; `run.json` records `gpu_calls` and `gpu_wall_s`; stale `.building` folders are swept
+  (`test_the_sweep_removes_a_demo_build_a_dead_container_left`); FP32 sources linked; BLOCKED.md's cron output.

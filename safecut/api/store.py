@@ -138,6 +138,8 @@ class JobStore:
         self.root.mkdir(parents=True, exist_ok=True)
         self._locks: dict[str, threading.RLock] = {}
         self._guard = threading.Lock()
+        #: Held across the two renames of ``replace_pinned``; ``get`` takes it only when a job folder looks missing.
+        self._swap = threading.Lock()
 
     def path(self, job_id: str) -> Path:
         return self.root / job_id
@@ -183,7 +185,9 @@ class JobStore:
             raise JobNotFound(job_id)
         path = self.path(job_id) / STATE
         if not path.is_file():
-            raise JobNotFound(job_id)
+            with self._swap:  # a replace_pinned in its two renames: wait the microseconds, then look again
+                if not path.is_file():
+                    raise JobNotFound(job_id)
         try:
             state = load(path, JobState)
         except ContractError:
@@ -202,6 +206,32 @@ class JobStore:
             state.updated_at = datetime.now(UTC)
             if self.path(job_id).is_dir():
                 dump(JobState.model_validate(state.model_dump()), self.path(job_id) / STATE)
+
+    def replace_pinned(self, job_id: str, built: Path, *, now: datetime | None = None, **fields: object) -> JobState:
+        """Swap a fully built folder in as the pinned job ``job_id`` (the demo), replacing any earlier one: its state
+        is written into ``built`` first, then two renames under the swap lock, which ``get`` honours on a miss, so a
+        reader sees the old job or the new one, never neither. If the second rename fails the old job is put back."""
+        now = now or datetime.now(UTC)
+        state = JobState.model_validate(
+            {"job_id": job_id, "mode": "replay", "status": "done", "stage": "done", "created_at": now,
+             "updated_at": now, "deletes_at": self.deletes_at(now), "pinned": True, **fields}
+        )  # fmt: skip
+        dump(state, built / STATE)
+        target = self.path(job_id)
+        doomed = self.root / f"{DELETING}{job_id}-{secrets.token_hex(4)}"
+        with self._lock(job_id), self._swap:
+            had = target.exists()
+            if had:
+                target.rename(doomed)
+            try:
+                built.rename(target)
+            except BaseException:
+                if had:
+                    doomed.rename(target)
+                raise
+        if had:
+            _reap(doomed)
+        return state
 
     def delete(self, job_id: str) -> bool:
         """Remove the whole job directory (every upload, response, render and receipt). True if it existed."""
@@ -272,11 +302,19 @@ class JobStore:
                 removed.append(job_id)
         for leftover in self.root.glob(f"{DELETING}*"):
             _reap(leftover)  # a deletion a crash or a busy writer left half done
+        building = self.root / BUILDING
+        for leftover in building.iterdir() if building.is_dir() else ():
+            if _age(leftover, now) > BUILD_GRACE:
+                _reap(leftover)  # a demo build whose container died before it finished
         return removed
 
 
 #: A deleted job's directory while it's removed (never a valid job ID, so nothing serves it).
 DELETING = ".deleting-"
+#: Where a pinned demo job is built before ``replace_pinned`` swaps it in (``Service._precompute``); skipped by ``ids``.
+BUILDING = ".building"
+#: A build folder this old belongs to a container that died mid-build: the sweep removes it.
+BUILD_GRACE = timedelta(hours=2)
 STATELESS_GRACE = timedelta(minutes=1)
 
 

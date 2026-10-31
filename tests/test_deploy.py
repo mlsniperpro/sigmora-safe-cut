@@ -400,7 +400,8 @@ def health_stub(
     return server, f"http://127.0.0.1:{server.server_address[1]}"
 
 
-LIVE = {"status": "ok", "mode": "live", "key": True, "meta": "ok", "audit_gpu": True}
+LIVE = {"status": "ok", "mode": "live", "key": True, "meta": "ok", "audit_gpu": True, "demos_building": False,
+        "demos_current": ["demo"]}  # fmt: skip
 
 
 @pytest.mark.parametrize(
@@ -553,3 +554,26 @@ def test_the_gpu_optional_switch_reaches_every_gpu_check() -> None:
     broken = {**yunet, "exit": 1}
     assert post_deploy_problems(broken, gpu_required=False)  # a job that didn't run still fails the deploy
     assert "SAFECUT_DEPLOY_GPU_OPTIONAL" in (ROOT / "BLOCKED.md").read_text()
+
+
+@pytest.mark.parametrize(
+    ("health", "line"),
+    [
+        ({"demos_building": False, "demos_current": ["demo"]},
+         "ok    API: the demo 'demo' was built (or confirmed) by this deploy's code"),
+        ({"demos_building": False, "demos_current": []},
+         "FAIL  API: this deploy's code didn't build the demo 'demo' (the one served, if any, is an earlier deploy's)"),
+        ({"demos_building": True, "demos_current": []}, "FAIL  API: the demo build didn't finish within 0 s"),
+    ],
+)  # fmt: skip
+def test_deploy_check_judges_this_deploys_demo_never_an_earlier_one(health: dict[str, object], line: str) -> None:
+    """A redeploy keeps serving the previous demo while it builds its own: the check waits for this code's build, and a
+    demo only an earlier deploy built never passes it."""
+    egoblur = {"model": "egoblur-gen2", "faces": 0, "plates": 0, "device": "cuda:NVIDIA L4"}
+    demo = {"mode": "replay", "synthetic": True, "video_url": "/nowhere.mp4", "audit": {"egoblur": egoblur}}
+    server, url = health_stub({**LIVE, "uptime_s": 1.0, **health}, demo=demo)
+    try:
+        result = deploy_check(url, "-", replay_ok=False, yunet_ok=False, DEPLOY_DEMO_WAIT_S="0", SPOOF_N="1")
+    finally:
+        server.shutdown()
+    assert line in result.stdout, result.stdout

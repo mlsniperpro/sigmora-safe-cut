@@ -589,3 +589,109 @@ def test_the_demo_job_builds_through_the_real_child_process(tmp_path: Path) -> N
         assert (state.status, state.pinned, state.synthetic) == ("done", True, True)
     finally:
         svc.stop()
+
+
+# ---------------------------------------------------------------------------------------------- round-4 audit fixes
+
+
+def test_readers_never_see_the_demo_missing_while_it_is_swapped(tmp_path: Path) -> None:
+    """A thread reads the demo's state as /v1/demo does, nonstop, through a full rebuild and swap: never a miss."""
+    from safecut.api.store import JobNotFound  # noqa: PLC0415
+    from safecut.config import Settings  # noqa: PLC0415
+
+    svc = Service(Settings(replay=True, jobs_dir=str(tmp_path / "jobs")))
+    job_id = app_module.hero_job_id("demo")
+    try:
+        assert svc.build_demo_jobs() == ["demo"]
+        with svc.store.update(job_id) as state:
+            state.demo_stamp = "an older build"
+        misses, reads, stop = [0], [0], threading.Event()
+
+        def reader() -> None:
+            while not stop.is_set():
+                try:
+                    assert svc.store.get(job_id).status == "done"
+                except JobNotFound:
+                    misses[0] += 1
+                reads[0] += 1
+
+        thread = threading.Thread(target=reader)
+        thread.start()
+        try:
+            assert svc.build_demo_jobs() == ["demo"]
+        finally:
+            stop.set()
+            thread.join(10)
+        assert reads[0] > 1000
+        assert misses[0] == 0
+        assert svc.store.get(job_id).demo_stamp != "an older build"
+    finally:
+        svc.stop()
+
+
+def test_a_swap_that_fails_halfway_puts_the_old_demo_back(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import timedelta as td  # noqa: PLC0415
+
+    from safecut.api.store import BUILDING, JobStore  # noqa: PLC0415
+
+    store = JobStore(tmp_path, ttl=td(hours=24), cleanup_every=td(minutes=15))
+    job_id = store.create(mode="replay", pinned=True, demo_stamp="old").job_id
+    (store.path(job_id) / "receipt.json").write_text("{}")
+    built = tmp_path / BUILDING / job_id
+    built.mkdir(parents=True)
+    real = Path.rename
+
+    def failing(self: Path, target: Path) -> Path:
+        if self == built:
+            raise OSError("the Volume refused the rename")
+        return real(self, target)
+
+    monkeypatch.setattr(Path, "rename", failing)
+    with pytest.raises(OSError, match="refused"):
+        store.replace_pinned(job_id, built, demo_stamp="new")
+    monkeypatch.setattr(Path, "rename", real)
+    assert store.get(job_id).demo_stamp == "old"
+    assert (store.path(job_id) / "receipt.json").is_file()
+
+
+def test_the_sweep_removes_a_demo_build_a_dead_container_left(tmp_path: Path) -> None:
+    from safecut.api.store import BUILD_GRACE, BUILDING, JobStore  # noqa: PLC0415
+
+    store = JobStore(tmp_path, ttl=timedelta(hours=24), cleanup_every=timedelta(minutes=15))
+    stale = tmp_path / BUILDING / "j_stale0000000000000000"
+    fresh = tmp_path / BUILDING / "j_fresh0000000000000000"
+    for folder in (stale, fresh):
+        folder.mkdir(parents=True)
+    old = time.time() - BUILD_GRACE.total_seconds() - 60
+    os.utime(stale, (old, old))
+    store.sweep()
+    assert not stale.exists()
+    assert fresh.exists()
+
+
+def test_healthz_says_whether_this_containers_demo_is_built(make_service: Callable[..., Any]) -> None:
+    client, svc = make_service()
+    body = client.get("/healthz").json()
+    assert (body["demos_building"], body["demos_current"]) == (True, [])
+    svc.demos_current.add("demo")
+    svc._demo_built.set()  # pyright: ignore[reportPrivateUsage]
+    body = client.get("/healthz").json()
+    assert (body["demos_building"], body["demos_current"]) == (False, ["demo"])
+
+
+def test_a_replaced_container_stops_without_waiting_for_its_jobs(make_service: Callable[..., Any]) -> None:
+    client, svc = make_service()
+    job_id = upload_clip(client)
+    gate = threading.Event()
+    real = svc.worker._run_action  # pyright: ignore[reportPrivateUsage]
+
+    def slow(job: str, action: Any) -> None:
+        gate.wait(20)
+        real(job, action)
+
+    svc.worker._run_action = slow  # type: ignore[method-assign]  # pyright: ignore[reportPrivateUsage]
+    assert client.post(f"/v1/jobs/{job_id}/start").status_code == 202
+    started = time.monotonic()
+    svc.stop(wait=False)
+    assert time.monotonic() - started < 2  # the next container resumes the job; this one goes at once
+    gate.set()
