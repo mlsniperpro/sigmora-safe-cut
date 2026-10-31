@@ -244,7 +244,7 @@ def test_modal_app_defines_the_api_worker_volume_and_cron() -> None:
     assert "Service(settings, keepalive=_keepalive, wait_on_stop=False)" in source
 
 
-def test_the_api_scales_to_zero_and_never_runs_two_copies() -> None:
+def test_the_api_scales_to_zero_and_never_scales_out_to_two_copies() -> None:
     tree = modal_tree()
     api = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "SafeCutApi")
     kwargs = decorator_kwargs(api, "cls", tree)
@@ -316,7 +316,9 @@ def test_deploy_workflow_skips_without_secrets() -> None:
     workflow = (ROOT / ".github" / "workflows" / "deploy.yml").read_text()
     assert "::notice title=Deploy skipped::" in workflow
     assert workflow.count("if: steps.gate.outputs.run == 'true'") >= 5
-    assert "modal deploy --strategy recreate deploy/modal_app.py" in workflow  # never two API containers at once
+    assert (
+        "modal deploy --strategy recreate deploy/modal_app.py" in workflow
+    )  # a deploy overlaps two for seconds at most
 
 
 def test_deploy_never_runs_a_forks_code_with_the_secrets() -> None:

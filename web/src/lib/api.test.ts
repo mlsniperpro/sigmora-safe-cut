@@ -332,3 +332,10 @@ describe("MockBackend (integration through the client)", () => {
     await expect(client.review("result-audit-failed", { type: "hide", edit_id: "a", item_id: "i_4" })).rejects.toMatchObject({ status: 409, code: "read_only" });
   });
 });
+
+describe("documented bounds", () => {
+  it("waits for a cold start under Modal's own 150 s request limit, longer than a warm request", () => {
+    expect(COLD_START_TIMEOUT_MS).toBeLessThan(150_000);
+    expect(COLD_START_TIMEOUT_MS).toBeGreaterThan(REQUEST_TIMEOUT_MS);
+  });
+});

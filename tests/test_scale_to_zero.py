@@ -959,3 +959,32 @@ def test_a_keepalive_that_arrives_before_the_state_is_saved_still_holds(make_ser
     gate.set()
     wait_for(lambda: holds != [], "the hold to end", timeout_s=30)
     assert holds == ["review"]
+
+
+# ---------------------------------------------------------------------------------------------- round-19 audit fixes
+
+
+def test_the_documented_limits_hold_their_order() -> None:
+    """The numbers the docs state, and the order the design needs: a stalled job fails (45 min) inside one hold input
+    (55 min) inside the function's hour; a job that keeps dying fails on its fourth restart."""
+    assert timedelta(minutes=45) == STALL_LIMIT
+    assert STALL_LIMIT.total_seconds() < app_module.HOLD_LIMIT_S < 60 * 60
+    assert app_module.MAX_RESUMES == 3
+
+
+def test_a_re_queue_waiting_out_its_delay_also_holds_the_container(make_service: Callable[..., Any]) -> None:
+    """A retry_later job a restart finds is re-queued after its delay on a timer, which isn't an input: the
+    container is held up for it too, or it could sleep before the timer fires."""
+    held: list[str] = []
+    client, svc = make_service(keepalive=held.append)
+    job_id = upload_clip(client)
+    run_to(client, svc, job_id, "start", "review")
+    with svc.store.update(job_id) as state:
+        state.status, state.stage = "retry_later", "scene"
+        state.retry_at = datetime.now(UTC) + timedelta(minutes=5)
+        state.started_at = datetime.now(UTC)
+    held.clear()
+    assert svc.recover() == [job_id]
+    wait_for(lambda: held == [job_id], "the re-queue's keepalive", timeout_s=10)
+    assert svc.worker.tracking(job_id)  # the timer is pending
+    svc.worker.cancel(job_id)

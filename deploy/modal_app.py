@@ -1,9 +1,9 @@
 """The Safe Cut API on Modal (WP5 step 3; lane SAFECUT-MODAL): ``modal deploy deploy/modal_app.py``.
 
 - ``SafeCutApi``: the FastAPI app (``safecut.api.app``), **scaled to zero** when no one uses it. One container at
-  most: the per-IP rate limits and the spend ledger (SQLite on the Volume) are in-process, so the service never
-  runs a second copy that could double-spend. The pipeline runs in that container's worker threads
-  (``SAFECUT_WORKERS``). Modal scales a container down once it has had no input in flight for
+  most: the per-IP rate limits and the spend ledger (SQLite on the Volume) are in-process, so it never scales out
+  to a second copy (only a deploy's publish-then-stop can overlap two, briefly; docs/DEPLOY-COSTS.md). The
+  pipeline runs in that container's worker threads (``SAFECUT_WORKERS``). Modal scales a container down once it has had no input in flight for
   ``scaledown_window``, and a worker thread isn't an input: so every queued job action also spawns the class's own
   ``hold`` method, an input of this same container that lasts until the job stops (``Service.hold``). A started
   job finishes even if every browser tab closes. A container that dies mid-job anyway (a crash, a preemption) is
@@ -127,8 +127,8 @@ class SafeCutApi:
 
     @modal.exit()
     def shutdown(self) -> None:
-        # Never wait for a running job here: a redeploy (recreate) waits for this container to go before starting
-        # the next, whose start resumes the job; a slow exit would let the two overlap.
+        # Never wait for a running job here: a redeploy (recreate) publishes the new version, then stops this
+        # container (waiting up to 40 s); a quick exit keeps the overlap with the next, which resumes the job, short.
         self.service.stop(wait=False)
 
 

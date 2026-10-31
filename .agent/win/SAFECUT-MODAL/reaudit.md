@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 1b5db0f
+AUDITED_COMMIT: d124d7e
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -265,3 +265,14 @@ survivor equivalent.
   publishes first, then stops the old containers, waiting up to 40 s and only warning past that → DEPLOY-COSTS,
   BLOCKED.md and deploy.yml say so (the overlap is the seconds before the old API exits, which it does without
   waiting for jobs; pushes during judging are barred).
+
+## Round 19 (on d124d7e): 0 critical, 0 high, 0 medium, 3 low. All closed. Not clean.
+
+- L1 the "recreate stops it first" and "never two copies" wording survived in `deploy/modal_app.py` and a test name
+  → reworded (a deploy can overlap two briefly; it never scales out), the test renamed
+  (`test_the_api_scales_to_zero_and_never_scales_out_to_two_copies`), BLOCKED.md's number matches DEPLOY-COSTS.
+- L2 documented bounds weren't pinned → `AWAKE_FOR_MS < 300 s` (`wake.test.ts`), the cold timeout under Modal's
+  150 s and above the warm one (`api.test.ts`), `STALL_LIMIT` 45 min inside `HOLD_LIMIT_S` inside the hour and
+  `MAX_RESUMES` 3 (`test_the_documented_limits_hold_their_order`).
+- L3 the keepalive on the re-queue timer path was untested →
+  `test_a_re_queue_waiting_out_its_delay_also_holds_the_container`.

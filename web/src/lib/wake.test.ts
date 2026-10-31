@@ -81,3 +81,9 @@ describe("WakeTracker", () => {
     expect(listener).not.toHaveBeenCalled();
   });
 });
+
+describe("documented bounds", () => {
+  it("counts the API as awake for less than its 300 s idle window (deploy/modal_app.py API_SCALEDOWN_S)", () => {
+    expect(AWAKE_FOR_MS).toBeLessThan(300_000);
+  });
+});

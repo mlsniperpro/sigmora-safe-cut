@@ -6,7 +6,7 @@ judging criteria it moves, each with its evidence. `- [x]` done, `- [P]` waits o
 
 ## 1. Scale to zero
 
-- [x] `SafeCutApi`: `min_containers=0`, `max_containers=1`, `scaledown_window=300` (justified: longer than the 60 s per-minute rate window, short enough that a sleep's tail costs about half a cent). `tests/test_deploy.py::test_the_api_scales_to_zero_and_never_runs_two_copies`.
+- [x] `SafeCutApi`: `min_containers=0`, `max_containers=1`, `scaledown_window=300` (justified: longer than the 60 s per-minute rate window, short enough that a sleep's tail costs about half a cent). `tests/test_deploy.py::test_the_api_scales_to_zero_and_never_scales_out_to_two_copies`.
 - [x] Sized to one container's real work: 1 core, 2 GiB (was 2 cores, 4 GiB). Measured: the replay pipeline peaks at 210 MiB RSS and averages ~2.2 cores while rendering; Modal bills max(request, use) and lets a container burst past its request, so the request is the idle cost.
 - [x] A started job always finishes even if the tab closes: every queued action spawns the class's own `hold(job_id)` input (`Worker(keepalive=…)`, `Service.hold`), so Modal never scales the container down under it. Rejected alternatives recorded in `docs/DEPLOY-COSTS.md`.
 - [x] Proof by killing the container mid-job: `tests/test_scale_to_zero.py::test_a_job_finishes_when_its_container_is_killed_mid_analysis_and_mid_audit` (SIGKILL of a real uvicorn API mid-analysis and mid-audit; the restarted process finishes the job, `validate_job_dir` passes, the receipt verifies, every stage logs exactly one `done`, the interrupted audit started twice and the finished `track` once: no finished stage is paid for twice).
