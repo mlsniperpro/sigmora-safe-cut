@@ -1239,3 +1239,75 @@ def test_a_short_timeout_keeps_most_of_its_bound_for_the_scan(monkeypatch: pytes
         gpu.modal_call(Settings(audit_gpu=True))(GPU_REQUEST, 1.6)
     assert len(waited) == 1
     assert 1.6 * 0.7 <= waited[0] <= 1.6 * 0.75 + 0.01
+
+
+# ---------------------------------------------------------------------------------------------- round-29 audit fixes
+
+
+class BrokenLedger:
+    """A ledger whose reservation works and whose settle and release fail (a locked or full disk)."""
+
+    def __init__(self) -> None:
+        self.asked: list[str] = []
+
+    def reserve(self, *args: object) -> None:
+        self.asked.append("reserve")
+
+    def settle(self, call_id: str, usd: float) -> None:
+        self.asked.append("settle")
+        raise OSError("disk I/O error")
+
+    def release(self, call_id: str) -> None:
+        self.asked.append("release")
+        raise OSError("disk I/O error")
+
+
+def test_the_gpu_meter_never_raises_after_a_call(tmp_path: Path) -> None:
+    """``settle`` and ``release`` run in the GPU call's ``finally``: a ledger or ``cost.jsonl`` that fails there is
+    logged, never raised, so a scan's good answer is never swapped for an error (and a second, paid call)."""
+    ledger = BrokenLedger()
+    unwritable = tmp_path / "cost.jsonl"
+    unwritable.mkdir()  # a folder where the cost file goes: every append fails with an OSError
+    gauge = GpuMeter(settings_for(tmp_path), ledger, Caller.local(), "j_x-0123456789abcdef", unwritable)  # type: ignore[arg-type] -- a stand-in ledger, on purpose
+    gauge.reserve("gpu-1")
+    gauge.settle("gpu-1", 12.0, "egoblur-gen2", "fc-1")
+    gauge.reserve("gpu-2")
+    gauge.release("gpu-2")
+    assert ledger.asked == ["reserve", "settle", "reserve", "release"]
+
+
+def test_a_gpu_answer_that_isnt_an_object_is_an_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Handle:
+        object_id = "fc-list"
+
+        def get(self, timeout: float) -> list[object]:
+            del timeout
+            return ["not", "an", "answer"]
+
+    fake_modal, _ = stand_in_modal(lambda request: Handle())
+    monkeypatch.setattr(gpu, "_modal", lambda: fake_modal)
+    with pytest.raises(TypeError, match="answered a list"):
+        gpu.modal_call(Settings(audit_gpu=True))(GPU_REQUEST, 5.0)
+
+
+def test_a_cancel_that_fails_still_reports_the_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The cancel is best effort (Modal's own function timeout ends the scan): its failure never hides the timeout
+    the audit falls back on."""
+    cancels: list[bool] = []
+
+    class Handle:
+        object_id = "fc-stuck"
+
+        def get(self, timeout: float) -> dict[str, Any]:
+            del timeout
+            raise modal_timeout("no output")
+
+        def cancel(self, terminate_containers: bool = False) -> None:
+            cancels.append(terminate_containers)
+            raise ConnectionError("Modal control plane: 503")
+
+    fake_modal, modal_timeout = stand_in_modal(lambda request: Handle())
+    monkeypatch.setattr(gpu, "_modal", lambda: fake_modal)
+    with pytest.raises(TimeoutError, match="no output"):
+        gpu.modal_call(Settings(audit_gpu=True))(GPU_REQUEST, 5.0)
+    assert cancels == [True]

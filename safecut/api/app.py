@@ -52,7 +52,6 @@ from safecut.api.store import ACTIVE, BUILDING, Failure, JobNotFound, JobState, 
 from safecut.api.urls import UPLOAD_TTL_S, Signer, expiry
 from safecut.api.views import Views, iso
 from safecut.api.worker import Worker
-from safecut.audit import gpu_wanted
 from safecut.audit.gpu import child_env
 from safecut.config import Settings, load_settings
 from safecut.contracts import Audit, ContractError, Decisions, Intake, Job, Plan, Tracks, dump, load
@@ -339,7 +338,7 @@ class Service:
                 continue
             job_id = hero_job_id(recording.name)
             clip = Path(self.fixtures.parent.parent / data.source)
-            stamp = demo_stamp(recording, clip, audit_gpu=self.settings.audit_gpu)
+            stamp = demo_stamp(recording, clip, audit_gpu=self.settings.audit_on_gpu)
             try:
                 existing = self.store.get(job_id)
                 if existing.status == "done" and existing.demo_stamp == stamp and not self._retry_gpu(job_id, existing):
@@ -362,7 +361,7 @@ class Service:
         """A demo job built while the GPU auditor couldn't answer (its audit names YuNet) is built again, at most every
         :data:`DEMO_GPU_RETRY` so a GPU outage can't take the demo away on every wake. Never when the audit isn't
         meant for the GPU (``yunet-face`` runs here: its demo is on the CPU by design)."""
-        if not gpu_wanted(self.settings) or datetime.now(UTC) - state.created_at < DEMO_GPU_RETRY:
+        if not self.settings.audit_on_gpu or datetime.now(UTC) - state.created_at < DEMO_GPU_RETRY:
             return False
         try:
             device = load(self.store.path(job_id) / "audit.json", Audit).egoblur.device
@@ -933,7 +932,7 @@ async def healthz(svc: Svc) -> JSONResponse:
         "key": svc.settings.model_api_key is not None,
         # The API scales to zero: a small uptime on the first answer after a quiet spell proves a cold wake.
         "uptime_s": round(time.monotonic() - svc.started_monotonic, 1),
-        "audit_gpu": svc.settings.audit_gpu,
+        "audit_gpu": svc.settings.audit_on_gpu,
         # Whether this container's demo build has finished, and which demos match its code: a deploy check judges
         # the demo built by the new code, never one an earlier deploy left on the Volume.
         "demos_building": not svc.demo_built,

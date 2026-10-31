@@ -151,11 +151,12 @@ GPU_SCANS_PER_JOB = 3
 def estimate_usd(duration_s: float | None, settings: Settings | None = None) -> float:
     """PRE-A §9.2's worst case for a job of this length (the floor when the length is unknown), plus, with
     ``SAFECUT_AUDIT_GPU=1``, the GPU auditor's: every pass's scan at its timeout and the idle tail, at the GPU
-    container's hourly rate (the ledger then holds each call to its own reservation)."""
+    container's hourly rate (the ledger then holds each call to its own reservation). Not for ``yunet-face``, which
+    never calls the GPU (``Settings.audit_on_gpu``)."""
     meta = (
         ESTIMATE_FLOOR_USD if duration_s is None else max(ESTIMATE_FLOOR_USD, duration_s * ESTIMATE_PER_MINUTE_USD / 60)
     )
-    if settings is None or not settings.audit_gpu:
+    if settings is None or not settings.audit_on_gpu:
         return meta
     seconds = GPU_SCANS_PER_JOB * settings.audit_gpu_timeout_s + settings.audit_gpu_idle_s
     return meta + seconds * settings.audit_gpu_usd_per_hour / 3600

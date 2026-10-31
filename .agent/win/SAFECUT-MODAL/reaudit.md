@@ -393,3 +393,19 @@ below now fails its test (11 mutants, re-run after the fix).
 - L3 `_retry_gpu` rebuilt a `yunet-face` demo every six hours though the GPU is never meant to audit it → one
   predicate, `safecut.audit.gpu_wanted`, decides for both `choose_detector` and `_retry_gpu`
   (`test_a_yunet_demo_is_never_rebuilt_for_the_gpu_when_the_gpu_isnt_meant_to_audit`).
+
+## Round 29 (on 8142cb4): 0 critical, 0 high, 0 medium, 3 low. All closed. Not clean.
+
+Round 28's `_retry_gpu` predicate and reworked smoke tests were mutation-checked (killed). Full suite on 8142cb4:
+`1634 passed, 12 deselected`.
+
+- L1 the GPU predicate was only used in two of its six places: with `yunet-face` and `SAFECUT_AUDIT_GPU=1` (the API
+  image's default) the up-front estimate still reserved $0.245 of GPU per job, `/healthz` claimed the GPU auditor
+  and the demo carried the GPU stamp → one property, `Settings.audit_on_gpu` (replacing round 28's `gpu_wanted`), for
+  the detector, the audit record, the estimate, the demo's rebuild and stamp, and `/healthz`
+  (`test_a_yunet_auditor_is_never_priced_or_reported_as_the_gpu`).
+- L2 the GPU meter's never-raise paths, the non-object answer, a failing cancel, and a demo whose audit can't be read
+  were unpinned → `test_the_gpu_meter_never_raises_after_a_call`, `test_a_gpu_answer_that_isnt_an_object_is_an_error`,
+  `test_a_cancel_that_fails_still_reports_the_timeout`, `test_a_demo_whose_audit_cant_be_read_is_rebuilt`.
+- L3 `JobStore.get`'s corrupt-state fallback was unpinned → `test_a_corrupt_job_state_reads_as_not_found` (404, not
+  500). All 11 mutants named here fail their tests.

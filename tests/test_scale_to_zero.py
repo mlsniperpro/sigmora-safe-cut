@@ -1101,3 +1101,48 @@ def test_the_demo_build_runs_in_an_environment_that_reaches_modal(
     assert kwargs["env"]["SAFECUT_MODAL_PATH"] == "/modal-client"
     assert Path(kwargs["env"]["SAFECUT_JOBS_DIR"]).name.startswith("demo-ledger-")  # its own ledger
     assert kwargs["timeout"] == 900
+
+
+# ---------------------------------------------------------------------------------------------- round-29 audit fixes
+
+
+def test_a_yunet_auditor_is_never_priced_or_reported_as_the_gpu(make_service: Callable[..., Any]) -> None:
+    """``SAFECUT_EGOBLUR_MODEL=yunet-face`` audits here even with ``SAFECUT_AUDIT_GPU=1`` (the API image's default):
+    no GPU money is reserved up front, ``/healthz`` doesn't claim the GPU auditor, and the demo's stamp is the CPU
+    one."""
+    from safecut.api.access import estimate_usd  # noqa: PLC0415 -- imported in the test that uses it
+    from safecut.api.app import demo_stamp  # noqa: PLC0415 -- imported in the test that uses it
+
+    client, svc = make_service(audit_gpu=True, egoblur_model="yunet-face")
+    assert not svc.settings.audit_on_gpu
+    assert estimate_usd(60, svc.settings) == estimate_usd(60, None)
+    assert estimate_usd(60, svc.settings.model_copy(update={"egoblur_model": "egoblur-gen2"})) > estimate_usd(60, None)
+    assert client.get("/healthz").json()["audit_gpu"] is False
+    built: list[tuple[Path, Path, str]] = []
+    svc._precompute = lambda job_id, rec, src, stamp: built.append((rec, src, stamp))  # type: ignore[method-assign]  # pyright: ignore[reportPrivateUsage, reportAttributeAccessIssue] -- record the stamp, build nothing
+    svc.build_demo_jobs()
+    assert built
+    for recording, clip, stamp in built:  # the CPU stamp: no GPU in this build
+        assert stamp == demo_stamp(recording, clip) != demo_stamp(recording, clip, audit_gpu=True)
+
+
+def test_a_demo_whose_audit_cant_be_read_is_rebuilt(make_service: Callable[..., Any]) -> None:
+    from safecut.api.app import DEMO_GPU_RETRY  # noqa: PLC0415 -- imported in the test that uses it
+
+    _client, svc = make_service(audit_gpu=True)
+    job_id = svc.store.create(mode="replay", pinned=True).job_id  # no audit.json: can't tell what audited it
+    state = svc.store.get(job_id)
+    old = state.model_copy(update={"created_at": state.created_at - DEMO_GPU_RETRY - timedelta(minutes=1)})
+    assert svc._retry_gpu(job_id, old)  # pyright: ignore[reportPrivateUsage] -- the unit under test
+
+
+def test_a_corrupt_job_state_reads_as_not_found(make_service: Callable[..., Any]) -> None:
+    """A ``state.json`` that won't parse (a torn write a killed container left) is a 404, never a 500."""
+    from safecut.api.store import STATE, JobNotFound  # noqa: PLC0415 -- imported in the test that uses it
+
+    client, svc = make_service()
+    job_id = upload_clip(client)
+    (svc.store.path(job_id) / STATE).write_text("{not json")
+    with pytest.raises(JobNotFound):
+        svc.store.get(job_id)
+    assert client.get(f"/v1/jobs/{job_id}").status_code == 404

@@ -415,6 +415,12 @@ class Settings(BaseModel):
     r2_bucket: str | None = None
 
     @property
+    def audit_on_gpu(self) -> bool:
+        """Whether audits go to the GPU function: ``SAFECUT_AUDIT_GPU=1`` and a GPU model (``yunet-face`` runs here).
+        The one test for it: the detector, the up-front estimate, the demo's rebuilds and stamp, and ``/healthz``."""
+        return self.audit_gpu and self.egoblur_model != "yunet-face"
+
+    @property
     def delete_sam_responses(self) -> bool:
         return (not self.sam_send_store) if self.sam_delete_responses is None else self.sam_delete_responses
 
