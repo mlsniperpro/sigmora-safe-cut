@@ -1055,3 +1055,49 @@ def test_the_demo_hold_gives_up_at_its_limit(make_service: Callable[..., Any], m
         assert time.monotonic() - started < 3
     finally:
         gate.set()
+
+
+# ---------------------------------------------------------------------------------------------- round-28 audit fixes
+
+
+def test_a_yunet_demo_is_never_rebuilt_for_the_gpu_when_the_gpu_isnt_meant_to_audit(
+    make_service: Callable[..., Any],
+) -> None:
+    """``SAFECUT_EGOBLUR_MODEL=yunet-face`` audits here even with ``SAFECUT_AUDIT_GPU=1``: its demo is on the CPU by
+    design, so it isn't taken down for a rebuild every six hours."""
+    from safecut.api.app import DEMO_GPU_RETRY  # noqa: PLC0415 -- imported in the test that uses it
+    from safecut.contracts import Audit, dump  # noqa: PLC0415 -- imported in the test that uses it
+
+    _client, svc = make_service(audit_gpu=True, egoblur_model="yunet-face")
+    job_id = svc.store.create(mode="replay", pinned=True).job_id
+    audit = load(ROOT / "fixtures" / "contracts" / "j_example" / "audit.json", Audit)
+    dump(audit.model_copy(update={"egoblur": audit.egoblur.model_copy(update={"device": "cpu"})}),
+         svc.store.path(job_id) / "audit.json")  # fmt: skip
+    state = svc.store.get(job_id)
+    old = state.model_copy(update={"created_at": state.created_at - DEMO_GPU_RETRY - timedelta(minutes=1)})
+    assert not svc._retry_gpu(job_id, old)  # pyright: ignore[reportPrivateUsage] -- the unit under test
+
+
+def test_the_demo_build_runs_in_an_environment_that_reaches_modal(
+    make_service: Callable[..., Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The demo's child ``safecut run`` gets ``child_env``'s environment (the Modal client's folder, wherever the
+    container keeps it), its own ledger, and a bound; a failed build raises, so the served demo stays."""
+    from safecut import pipeline  # noqa: PLC0415 -- imported in the test that uses it
+
+    _client, svc = make_service()
+    ran: list[dict[str, Any]] = []
+
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        ran.append(kwargs)
+        return subprocess.CompletedProcess(argv, 1, stdout="", stderr="stopped by the test")
+
+    monkeypatch.setattr(app_module, "child_env", lambda env: {**env, "SAFECUT_MODAL_PATH": "/modal-client"})
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    recording = ROOT / "fixtures" / "jobs" / "demo"
+    with pytest.raises(pipeline.PipelineError, match="stopped by the test"):
+        svc._precompute("j_demo-0123456789abcdef", recording, recording / "clip.mp4", "stamp")  # pyright: ignore[reportPrivateUsage] -- the unit under test
+    [kwargs] = ran
+    assert kwargs["env"]["SAFECUT_MODAL_PATH"] == "/modal-client"
+    assert Path(kwargs["env"]["SAFECUT_JOBS_DIR"]).name.startswith("demo-ledger-")  # its own ledger
+    assert kwargs["timeout"] == 900

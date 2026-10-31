@@ -52,6 +52,7 @@ from safecut.api.store import ACTIVE, BUILDING, Failure, JobNotFound, JobState, 
 from safecut.api.urls import UPLOAD_TTL_S, Signer, expiry
 from safecut.api.views import Views, iso
 from safecut.api.worker import Worker
+from safecut.audit import gpu_wanted
 from safecut.audit.gpu import child_env
 from safecut.config import Settings, load_settings
 from safecut.contracts import Audit, ContractError, Decisions, Intake, Job, Plan, Tracks, dump, load
@@ -359,8 +360,9 @@ class Service:
 
     def _retry_gpu(self, job_id: str, state: JobState) -> bool:
         """A demo job built while the GPU auditor couldn't answer (its audit names YuNet) is built again, at most every
-        :data:`DEMO_GPU_RETRY` so a GPU outage can't take the demo away on every wake."""
-        if not self.settings.audit_gpu or datetime.now(UTC) - state.created_at < DEMO_GPU_RETRY:
+        :data:`DEMO_GPU_RETRY` so a GPU outage can't take the demo away on every wake. Never when the audit isn't
+        meant for the GPU (``yunet-face`` runs here: its demo is on the CPU by design)."""
+        if not gpu_wanted(self.settings) or datetime.now(UTC) - state.created_at < DEMO_GPU_RETRY:
             return False
         try:
             device = load(self.store.path(job_id) / "audit.json", Audit).egoblur.device

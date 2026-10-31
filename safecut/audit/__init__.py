@@ -129,6 +129,11 @@ def _available(model: str, weights: str, stamp: int | None, face: float, plate: 
     return True
 
 
+def gpu_wanted(settings: Settings) -> bool:
+    """Whether audits go to the GPU function: ``SAFECUT_AUDIT_GPU=1`` and a GPU model (``yunet-face`` runs here)."""
+    return settings.audit_gpu and settings.egoblur_model != "yunet-face"
+
+
 def choose_detector(
     job_dir: Path,
     settings: Settings,
@@ -140,7 +145,7 @@ def choose_detector(
     """EgoBlur on the Modal GPU when ``SAFECUT_AUDIT_GPU=1`` and it answers pass 1 (fetched here, before the red
     team spends anything); otherwise the local detector (YuNet in the slim API container). Returns the detector and,
     when the GPU was wanted but didn't answer, why (logged, and written to ``raw/audit/gpu.json``)."""
-    if not settings.audit_gpu or settings.egoblur_model == "yunet-face":
+    if not gpu_wanted(settings):
         return load_detector(settings), None
     try:
         job = load(job_dir / "job.json", Job)
@@ -230,6 +235,7 @@ __all__ = [
     "NoRedTeam",
     "auditor_available",
     "choose_detector",
+    "gpu_wanted",
     "replay_redteam",
     "run",
 ]

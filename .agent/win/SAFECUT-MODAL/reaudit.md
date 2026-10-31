@@ -370,3 +370,26 @@ The round-26 tests killed their mutants (the ledger check dropped, the switch fo
   exactly before a deploy, on the run's render (its SHA-256), through a handoff on the `/audit` Volume that it then
   closes. Fails when the condition is inverted, the close dropped, or the jobs Volume's commit passed.
 - L1 the ledger-folder check didn't rule out the jobs Volume → it must be under the temp root and not under `JOBS`.
+
+## Round 28 (on 79fb98b): 0 critical, 0 high, 3 medium, 3 low. All closed. Not clean.
+
+The reviewer mutated the Modal glue one function at a time (`cleanup`, `egoblur_detect`, the ledger smoke,
+`_keepalive`, the `SafeCutApi` methods, the local entrypoint): all killed but the survivors below. Each survivor
+below now fails its test (11 mutants, re-run after the fix).
+
+- M1 `pipeline_worker_smoke`'s result keys and its failed-run path were unpinned (a renamed key would fail or be
+  waived only on a live deploy; round 27's change had dropped the failed-run case) → the test runs four cases (GPU
+  audit on or off, the run passing or failing), checks the exact key set, and feeds the result through
+  `pre_deploy_problems` / `post_deploy_problems` (a healthy result has no problems; a failed run is reported, not
+  raised).
+- M2 the `child_env` wiring was unpinned at both call sites (in this sandbox it is the identity) → a stand-in
+  `child_env` must reach the child's environment in `pipeline_worker_smoke` and in the demo build
+  (`test_the_demo_build_runs_in_an_environment_that_reaches_modal`).
+- M3 `egoblur_detect` could gain Modal-level `retries` or a longer `timeout` unnoticed → no `retries`, a 10-minute
+  limit above the API's 300 s wait.
+- L1 the pre-deploy probe's request wasn't validated → it must pass `GpuRequest` (every frame, EgoBlur Gen 2).
+- L2 the probe's wait and the smoke's run timeout were unpinned → the probe waits `GPU_PROBE_TIMEOUT_S`, the run 15
+  minutes, both (with two handoff commits) inside the function's 25.
+- L3 `_retry_gpu` rebuilt a `yunet-face` demo every six hours though the GPU is never meant to audit it → one
+  predicate, `safecut.audit.gpu_wanted`, decides for both `choose_detector` and `_retry_gpu`
+  (`test_a_yunet_demo_is_never_rebuilt_for_the_gpu_when_the_gpu_isnt_meant_to_audit`).

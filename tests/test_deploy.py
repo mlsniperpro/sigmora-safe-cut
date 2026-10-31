@@ -25,6 +25,7 @@ import pytest
 from safecut import pipeline
 from safecut.api.app import demo_stamp, hero_job_id
 from safecut.api.store import JobStore
+from safecut.config import Settings
 from safecut.stages import Stage
 from tests.fake_stages import CLIP, fake_runner
 
@@ -304,6 +305,11 @@ def test_egoblur_runs_on_a_gpu_function_with_the_weights_and_the_handoff_volume(
     assert kwargs["min_containers"] == 0
     assert kwargs["max_containers"] == 4  # a burst of audits can't buy unbounded GPUs
     assert kwargs["scaledown_window"] <= 60
+    # No Modal-level retries: each attempt Modal bills is one the API reserved and priced (docs/DEPLOY-COSTS.md).
+    assert "retries" not in kwargs
+    # Its own limit outlasts the API's wait for it, so the API's bound (then a cancel) is the one that acts.
+    assert kwargs["timeout"] == "10 * 60"
+    assert Settings().audit_gpu_timeout_s < 10 * 60
     assert "audit.reload()" in ast.unparse(detect)  # sees the render the API committed
     source = MODAL_APP.read_text()
     assert 'Volume.from_name("safecut-audit"' in source
@@ -618,9 +624,10 @@ class _Call:
     def __init__(self, answer: dict[str, object] | Exception) -> None:
         self.answer = answer
         self.cancelled: list[bool] = []
+        self.waited: list[float | None] = []
 
-    def get(self, timeout: float) -> dict[str, object]:
-        del timeout
+    def get(self, timeout: float | None) -> dict[str, object]:
+        self.waited.append(timeout)
         if isinstance(self.answer, Exception):
             raise self.answer
         return self.answer
@@ -645,9 +652,11 @@ def test_the_pre_deploy_probe_reports_every_gpu_failure(
     """Every way the GPU probe can fail becomes a probe record (so SAFECUT_DEPLOY_GPU_OPTIONAL can waive it), never a
     crash of the smoke; a call it gives up on is cancelled with its container."""
     from deploy import modal_app  # noqa: PLC0415 -- the deploy group, imported where it is used
+    from safecut.audit.gpu import GpuRequest  # noqa: PLC0415 -- imported in the test that uses it
 
-    (tmp_path / "job.json").write_text(json.dumps({"frames": 1}))
+    (tmp_path / "job.json").write_text(json.dumps({"frames": 3}))
     calls: list[_Call] = []
+    requests: list[dict[str, object]] = []
 
     class Handoff:
         def put(self, out: Path, sha: str) -> str:
@@ -657,7 +666,7 @@ def test_the_pre_deploy_probe_reports_every_gpu_failure(
             return "smoke-0123456789abcdef"
 
     def spawner(request: dict[str, object]) -> _Call:
-        del request
+        requests.append(request)
         if isinstance(spawn, RuntimeError):
             raise spawn
         call = _Call(spawn if isinstance(spawn, (dict, Exception)) else {})
@@ -669,6 +678,11 @@ def test_the_pre_deploy_probe_reports_every_gpu_failure(
     assert {k: probe[k] for k in expected} == expected
     if expected.get("refused") in ("timeout", "no_gpu"):
         assert calls[0].cancelled == [True]
+    if not put_fails:  # what reached the GPU function is a request its server accepts: every frame, EgoBlur Gen 2
+        sent = GpuRequest.model_validate(requests[0])
+        assert (sent.job, sent.frames, sent.model) == ("smoke-0123456789abcdef", [0, 1, 2], "egoblur-gen2")
+    for call in calls:
+        assert call.waited == [modal_app.GPU_PROBE_TIMEOUT_S]  # bounded, never a wait without end
 
 
 @pytest.mark.parametrize(
@@ -989,19 +1003,17 @@ def test_the_pre_deploy_smoke_blocks_the_deploy_on_any_problem(
     assert warned is (optional == "1" and "gpu_probe" in worker)
 
 
-@pytest.mark.parametrize("audit_gpu", [False, True])
-def test_the_worker_smoke_reaches_the_deployed_gpu_only_when_asked(
-    monkeypatch: pytest.MonkeyPatch, audit_gpu: bool
-) -> None:
-    """``pipeline_worker_smoke`` runs ``safecut run`` in replay with its own ledger, and the GPU audit on exactly when
-    the post-deploy check asks for it; before a deploy it probes this image's own GPU function on the run's render,
-    through the handoff Volume, and closes the handoff."""
+SMOKE_KEYS = {"exit", "tail", "unresolved", "receipt", "redacted", "auditor", "auditor_device", "gpu_fallback"}
+
+
+def run_worker_smoke(monkeypatch: pytest.MonkeyPatch, *, audit_gpu: bool, run_ok: bool) -> Any:
+    """``pipeline_worker_smoke``'s raw function with a stand-in ``safecut run`` (writing a job's outputs, or failing),
+    handoff, probe, Volume and ``child_env``; returns the result, the run's argv and kwargs, and the probe's events."""
     import subprocess  # noqa: PLC0415 -- patched for this test
-    import tempfile  # noqa: PLC0415 -- imported in the test that uses it
-    from types import SimpleNamespace  # noqa: PLC0415 -- stand-ins, local to this test
+    from types import SimpleNamespace  # noqa: PLC0415 -- stand-ins, local to this helper
 
     from deploy import modal_app  # noqa: PLC0415 -- the deploy group, imported where it is used
-    from safecut.audit import gpu  # noqa: PLC0415 -- the handoff, replaced for this test
+    from safecut.audit import gpu  # noqa: PLC0415 -- the handoff and child_env, replaced for this test
 
     real_path = modal_app.Path
 
@@ -1009,14 +1021,18 @@ def test_the_worker_smoke_reaches_the_deployed_gpu_only_when_asked(
         path = real_path(*parts)
         return ROOT / path.relative_to("/root") if path.is_relative_to("/root") else path
 
-    ran: list[tuple[list[str], dict[str, str]]] = []
+    ran: list[tuple[list[str], dict[str, Any]]] = []
+    auditor = ("egoblur-gen2", "cuda:NVIDIA L4") if audit_gpu else ("yunet-face", "cpu")
 
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-        ran.append((argv, kwargs["env"]))
+        ran.append((argv, kwargs))
+        if not run_ok:
+            return subprocess.CompletedProcess(argv, 1, stdout="", stderr="Traceback: stopped by the test")
         out = Path(argv[argv.index("--out") + 1])
         out.mkdir(parents=True)
         (out / "audit.json").write_text(json.dumps({"unresolved": 0}))
-        (out / "receipt.json").write_text(json.dumps({"audit": {"auditor": "yunet-face", "auditor_device": "cpu"}}))
+        receipt = {"audit": {"auditor": auditor[0], "auditor_device": auditor[1]}}
+        (out / "receipt.json").write_text(json.dumps(receipt))
         (out / "redacted.mp4").write_bytes(b"render")
         return subprocess.CompletedProcess(argv, 0, stdout="done", stderr="")
 
@@ -1037,22 +1053,55 @@ def test_the_worker_smoke_reaches_the_deployed_gpu_only_when_asked(
     monkeypatch.setattr(modal_app, "Path", in_repo)
     monkeypatch.setattr(subprocess, "run", fake_run)
     monkeypatch.setattr(gpu, "Handoff", FakeHandoff)
+    monkeypatch.setattr(gpu, "child_env", lambda env: {**env, "SAFECUT_MODAL_PATH": "/modal-client"})
     monkeypatch.setattr(modal_app, "audit", volume)
     monkeypatch.setattr(modal_app, "_probe_gpu", fake_probe)
     result = modal_app.pipeline_worker_smoke._raw_f_(audit_gpu=audit_gpu)  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownVariableType] -- modal 1.6.2's raw function
-    [(argv, env)] = ran
+    [(argv, kwargs)] = ran
+    return SimpleNamespace(result=result, argv=argv, kwargs=kwargs, events=events, commit=volume.commit)
+
+
+@pytest.mark.parametrize(("audit_gpu", "run_ok"), [(False, True), (True, True), (False, False), (True, False)])
+def test_the_worker_smoke_reaches_the_deployed_gpu_only_when_asked(
+    monkeypatch: pytest.MonkeyPatch, audit_gpu: bool, run_ok: bool
+) -> None:
+    """``pipeline_worker_smoke`` runs ``safecut run`` in replay with its own ledger, in an environment that can reach
+    Modal (``child_env``), and the GPU audit on exactly when the post-deploy check asks for it; before a deploy it
+    probes this image's own GPU function on the run's render, through the handoff Volume, and closes the handoff. A
+    run that fails is reported (for the checks to judge), never a crash; its result is what the checks read."""
+    import tempfile  # noqa: PLC0415 -- imported in the test that uses it
+
+    from deploy import modal_app  # noqa: PLC0415 -- the deploy group, imported where it is used
+    from deploy.checks import post_deploy_problems, pre_deploy_problems  # noqa: PLC0415 -- the checks it feeds
+
+    smoke = run_worker_smoke(monkeypatch, audit_gpu=audit_gpu, run_ok=run_ok)
+    result, argv, kwargs, events = smoke.result, smoke.argv, smoke.kwargs, smoke.events
+    env = kwargs["env"]
     assert env["SAFECUT_AUDIT_GPU"] == ("1" if audit_gpu else "0")
+    assert env["SAFECUT_MODAL_PATH"] == "/modal-client"  # the child can import Modal wherever the client lives
     ledger_dir = Path(env["SAFECUT_JOBS_DIR"])  # its own ledger, off the jobs Volume
     assert ledger_dir.is_relative_to(tempfile.gettempdir())
     assert not ledger_dir.is_relative_to(modal_app.JOBS)
     assert argv[1:4] == ["-m", "safecut.cli", "run"]
     assert "--replay" in argv
-    assert result["exit"] == 0
-    assert result["auditor"] == "yunet-face"
-    if audit_gpu:  # after a deploy: the job's own audit used the deployed GPU; nothing is probed
+    assert kwargs["timeout"] == 15 * 60  # bounded inside the function's own 25 minutes, with the probe
+    assert modal_app.GPU_PROBE_TIMEOUT_S + 15 * 60 + 2 * 120 < 25 * 60  # and the probe's two handoff commits
+    if not run_ok:  # reported, not raised: the checks name it
+        assert set(result) == SMOKE_KEYS
+        assert result["exit"] == 1
+        assert "stopped by the test" in result["tail"]
         assert events == []
-        assert "gpu_probe" not in result
+        assert pre_deploy_problems(result)
+        assert post_deploy_problems(result, gpu_required=False)
+        return
+    assert result["exit"] == 0
+    if audit_gpu:  # after a deploy: the job's own audit used the deployed GPU; nothing is probed
+        assert set(result) == SMOKE_KEYS
+        assert events == []
+        assert post_deploy_problems(result) == []  # what the checks read is all there
     else:
+        assert set(result) == SMOKE_KEYS | {"gpu_probe"}
         render_sha = hashlib.sha256(b"render").hexdigest()
-        assert events == [("handoff", modal_app.AUDIT, volume.commit), ("probe", True, True, render_sha), ("close",)]
+        assert events == [("handoff", modal_app.AUDIT, smoke.commit), ("probe", True, True, render_sha), ("close",)]
         assert result["gpu_probe"] == {"refused": None, "gpu": "NVIDIA L4", "frames": 3}
+        assert pre_deploy_problems(result) == []
