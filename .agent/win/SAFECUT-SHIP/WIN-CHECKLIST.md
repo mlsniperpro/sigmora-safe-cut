@@ -116,6 +116,14 @@ Every E-line SHIP owns, every brief requirement, and the judging criteria, each 
 - [x] R9 lows: E11 `-z` and header paths, bearer tokens, single-stage CLI exit 6 (`test_the_single_stage_audit_command_exits_6_on_a_blocked_audit`).
 - [-] R9 L6 kept: `stage_reason: audit_patch` (the re-render is inside the audit stage).
 
+## Audit rounds 10-20 (`reaudit.md`)
+
+- [x] R10–R18: every medium fixed with a test or a doc change (test-run guards, EgoBlur on GPU only, CI time, the audio scope, the review hint, owner steps, poll cache, E10 percent styles, labels on prepared frames, pinned demo rebuild, report rounding).
+- [x] R19 and R20 clean on 7a533a6 (no critical, high or medium): `CLEAN_AUDITS_IN_A_ROW: 2`, `AUDITED_COMMIT: 7a533a6`.
+- [-] R19 lows kept with reasons (`reaudit.md`): state-schema rebuild edge, stamp scope, rebuild on deploy, cost rounding, retry progress.
+- [x] R20 lows: all docs, fixed.
+- [x] ENTRY: PASS on a fresh clone of origin/main at 7a533a6; break-it PASS at 7a533a6.
+
 ## Judging criteria
 
 - [P] Impact (30): real numbers need `MODEL_API_KEY`, the consented hero clips and the test split (BLOCKED.md); until then every run is synthetic and labelled so, and the docs quote no numbers.
