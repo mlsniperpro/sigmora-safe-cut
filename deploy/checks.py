@@ -42,10 +42,21 @@ def _gpu_problems(result: Mapping[str, object]) -> list[str]:
     return problems
 
 
-def post_deploy_problems(result: Mapping[str, object]) -> list[str]:
+def post_deploy_problems(result: Mapping[str, object], *, gpu_required: bool = True) -> list[str]:
     """After the deploy: a replay job run end to end through the deployed functions, its audit EgoBlur Gen 2 on a
-    GPU, named so in its receipt (``auditor`` and ``auditor_device``)."""
+    GPU, named so in its receipt (``auditor`` and ``auditor_device``). With ``gpu_required`` off, the GPU part only
+    warns (the job itself must still have run)."""
     problems = _run_problems(result)
+    gpu = _post_gpu_problems(result)
+    if not gpu_required:
+        for problem in gpu:
+            print(f"::warning title=GPU auditor::{problem} (accepted: SAFECUT_DEPLOY_GPU_OPTIONAL=1)")
+        return problems
+    return problems + gpu
+
+
+def _post_gpu_problems(result: Mapping[str, object]) -> list[str]:
+    problems: list[str] = []
     if result.get("auditor") != "egoblur-gen2":
         problems.append(f"the receipt names {result.get('auditor')!r}, not egoblur-gen2: the GPU audit didn't run")
     device = result.get("auditor_device")

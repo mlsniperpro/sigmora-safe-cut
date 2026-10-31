@@ -435,3 +435,90 @@ def test_active_lists_only_unpinned_jobs_mid_action(tmp_path: Path) -> None:
     with store.update(pinned) as state:
         state.status = "processing"
     assert sorted(store.get(j).status for j in store.active()) == ["processing", "rendering", "retry_later"]
+
+
+# ---------------------------------------------------------------------------------------------- round-2 audit fixes
+
+
+def test_the_container_stays_up_while_the_demo_job_builds(
+    make_service: Callable[..., Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Building the demo isn't a job action: start() asks for a hold of its own, which lasts until the build ends."""
+    held: list[str] = []
+    _client, svc = make_service(keepalive=held.append)
+    gate = threading.Event()
+    monkeypatch.setattr(svc, "recover", list)
+    monkeypatch.setattr(svc, "cleanup_loop", lambda: None)
+    monkeypatch.setattr(svc, "build_demo_jobs", lambda: gate.wait(10) and [])
+    svc.start()
+    wait_for(lambda: held == [app_module.DEMO_HOLD], "the demo build's keepalive", timeout_s=10)
+    result: list[str] = []
+    holder = threading.Thread(target=lambda: result.append(svc.hold(app_module.DEMO_HOLD)))
+    holder.start()
+    time.sleep(0.2)
+    assert holder.is_alive()
+    gate.set()
+    holder.join(10)
+    assert result == ["built"]
+
+
+def test_a_demo_the_gpu_couldnt_audit_is_rebuilt_but_not_on_every_wake(
+    make_service: Callable[..., Any], tmp_path: Path
+) -> None:
+    from safecut.api.app import DEMO_GPU_RETRY, demo_stamp  # noqa: PLC0415
+    from safecut.contracts import Audit, dump  # noqa: PLC0415
+
+    recording = ROOT / "fixtures" / "jobs" / "demo"
+    clip = ROOT / json.loads((recording / "raw" / "manifest.json").read_text())["source"]
+    assert demo_stamp(recording, clip) != demo_stamp(recording, clip, audit_gpu=True)
+    _client, svc = make_service(audit_gpu=True)
+    job_id = svc.store.create(mode="replay", pinned=True).job_id
+    audit = load(ROOT / "fixtures" / "contracts" / "j_example" / "audit.json", Audit)
+    dump(audit.model_copy(update={"egoblur": audit.egoblur.model_copy(update={"device": "cpu"})}),
+         svc.store.path(job_id) / "audit.json")  # fmt: skip
+    fresh = svc.store.get(job_id)
+    assert not svc._retry_gpu(job_id, fresh)  # pyright: ignore[reportPrivateUsage] -- built just now: kept
+    old = fresh.model_copy(update={"created_at": fresh.created_at - DEMO_GPU_RETRY - timedelta(minutes=1)})
+    assert svc._retry_gpu(job_id, old)  # pyright: ignore[reportPrivateUsage] -- YuNet, hours ago: try the GPU again
+    on_gpu = audit.model_copy(update={"egoblur": audit.egoblur.model_copy(update={"device": "cuda:NVIDIA L4"})})
+    dump(on_gpu, svc.store.path(job_id) / "audit.json")
+    assert not svc._retry_gpu(job_id, old)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_a_restarted_job_starts_its_resume_count_afresh(make_service: Callable[..., Any]) -> None:
+    client, svc = make_service()
+    job_id = upload_clip(client)
+    with svc.store.update(job_id) as state:
+        state.status, state.resumes = "failed", app_module.MAX_RESUMES
+    run_to(client, svc, job_id, "start", "review")
+    assert svc.store.get(job_id).resumes == 0
+
+
+def test_a_locked_limit_store_counts_in_memory_without_moving_the_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sqlite3  # noqa: PLC0415
+
+    path = tmp_path / "ratelimit.sqlite"
+    StoredRateLimiter(path).hit("paid", "203.0.113.5", limit=5, window_s=3600)
+
+    def locked(_path: Path) -> sqlite3.Connection:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(StoredRateLimiter, "_open", staticmethod(locked))
+    limiter = StoredRateLimiter(path)
+    limiter.hit("paid", "198.51.100.1", limit=1, window_s=3600)
+    with pytest.raises(ApiRefusal):
+        limiter.hit("paid", "198.51.100.1", limit=1, window_s=3600)
+    assert not list(tmp_path.glob("*.corrupt-*"))  # a transient error never throws the hour's window away
+
+
+def test_the_demo_builds_child_can_import_modal_as_this_process_does() -> None:
+    from safecut.audit.gpu import child_env  # noqa: PLC0415
+
+    env = child_env({"PYTHONPATH": "/somewhere"})
+    import modal  # noqa: PLC0415
+
+    folder = str(Path(modal.__file__).resolve().parent.parent)
+    assert env["PYTHONPATH"].split(os.pathsep) == ["/somewhere", folder]
+    assert child_env(env)["PYTHONPATH"] == env["PYTHONPATH"]  # added once

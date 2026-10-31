@@ -46,7 +46,7 @@ and the receipt (`cost_usd_gpu`); the up-front check on `POST /start` adds the G
   which Modal Volumes don't make safe), and the cron alone (a job would stall up to 15 minutes at a time). The cron
   stays as the backstop: it spawns `hold` for any job still mid-action, which wakes a container whose start
   re-queues it (`Service.recover`), resuming at the first stage whose output isn't fresh, so a finished stage is
-  never paid for twice. A job mid-action for 45 minutes fails as `internal` instead of holding a container up.
+  never paid for twice. A job found mid-action by a restart after 45 minutes, or on its fourth restart, fails as `internal` instead of waking a container again and again (a job still running in a live container is left to finish).
   Proven by `tests/test_scale_to_zero.py`: a local API is killed with SIGKILL mid-analysis and mid-audit; a fresh
   process finishes the job, its receipt verifies, and every stage logs exactly one `done`.
 - **`scaledown_window=300`.** Longer than the per-minute rate window (a sleep can't reset a window that's still

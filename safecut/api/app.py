@@ -13,6 +13,7 @@ import hashlib
 import importlib
 import ipaddress
 import logging
+import os
 import re
 import subprocess
 import sys
@@ -49,6 +50,7 @@ from safecut.api.store import ACTIVE, Failure, JobNotFound, JobState, JobStore, 
 from safecut.api.urls import UPLOAD_TTL_S, Signer, expiry
 from safecut.api.views import Views, iso
 from safecut.api.worker import Worker
+from safecut.audit.gpu import child_env
 from safecut.config import Settings, load_settings
 from safecut.contracts import Audit, ContractError, Decisions, Intake, Job, Plan, Tracks, dump, load
 from safecut.decide import REVIEW, policy_decisions
@@ -65,6 +67,10 @@ HEALTH_EVERY = timedelta(minutes=1)
 HEALTH_SWITCH = datetime(2026, 11, 5, tzinfo=UTC)
 #: One action runs a few minutes (a 60 s clip, live); one past this is stuck, not slow, and fails.
 STALL_LIMIT = timedelta(minutes=45)
+#: How often a demo job the GPU couldn't audit is built again (each rebuild takes the demo away for a minute).
+DEMO_GPU_RETRY = timedelta(hours=6)
+#: ``hold``'s name for the demo build: the container stays up while it runs (it isn't a job action).
+DEMO_HOLD = "demo-build"
 #: Restarts a job may need (a redeploy, a preemption): one more and it is the job taking its container down.
 MAX_RESUMES = 3
 #: How long one ``hold`` input waits: under the API function's 60-minute timeout (deploy/modal_app.py).
@@ -170,6 +176,7 @@ class Service:
         self._started = False
         self._start_lock = threading.Lock()
         self.started_monotonic = time.monotonic()
+        self._demo_built = threading.Event()
 
     def start(self) -> bool:
         """Once per process, whichever comes first (the ASGI lifespan, or Modal's container start): resume the
@@ -180,14 +187,22 @@ class Service:
                 return False
             self._started = True
         self.recover()
-        for target, name in ((self.cleanup_loop, "cleanup"), (self.build_demo_jobs, "demo")):
-            threading.Thread(target=target, name=name, daemon=True).start()
+        threading.Thread(target=self.cleanup_loop, name="cleanup", daemon=True).start()
+        threading.Thread(target=self._build_demos, name="demo", daemon=True).start()
+        self.worker.keep_up(DEMO_HOLD)  # building the demo isn't a job action: hold the container up for it too
         return True
+
+    def _build_demos(self) -> None:
+        try:
+            self.build_demo_jobs()
+        finally:
+            self._demo_built.set()
 
     def stop(self) -> None:
         self._stop.set()
         self.worker.shutdown()
         self.paid_limiter.close()
+        self.ledger.close()
 
     def hold(self, job_id: str, *, poll_s: float = 2.0, limit_s: float = HOLD_LIMIT_S) -> str:
         """Block while this process is working on the job, then return its status (``gone`` once deleted).
@@ -197,6 +212,9 @@ class Service:
         nothing here is moving (stranded by a container that went away) is resumed; one active past
         :data:`STALL_LIMIT` is failed, so no job, and no container, waits forever."""
         deadline = time.monotonic() + limit_s
+        if job_id == DEMO_HOLD:
+            self._demo_built.wait(limit_s)
+            return "built" if self._demo_built.is_set() else "building"
         idle_polls = 0
         while True:
             try:
@@ -300,10 +318,10 @@ class Service:
                 continue
             job_id = hero_job_id(recording.name)
             clip = Path(self.fixtures.parent.parent / data.source)
-            stamp = demo_stamp(recording, clip)
+            stamp = demo_stamp(recording, clip, audit_gpu=self.settings.audit_gpu)
             try:
                 existing = self.store.get(job_id)
-                if existing.status == "done" and existing.demo_stamp == stamp:
+                if existing.status == "done" and existing.demo_stamp == stamp and not self._retry_gpu(job_id, existing):
                     built.append(recording.name)
                     continue
                 self.store.delete(job_id)  # a re-recorded hero, a new clip or new code: built again
@@ -318,6 +336,17 @@ class Service:
                 log.warning("demo job %s not built: %s", recording.name, exc)
                 self.store.delete(job_id)
         return built
+
+    def _retry_gpu(self, job_id: str, state: JobState) -> bool:
+        """A demo job built while the GPU auditor couldn't answer (its audit names YuNet) is built again, at most every
+        :data:`DEMO_GPU_RETRY` so a GPU outage can't take the demo away on every wake."""
+        if not self.settings.audit_gpu or datetime.now(UTC) - state.created_at < DEMO_GPU_RETRY:
+            return False
+        try:
+            device = load(self.store.path(job_id) / "audit.json", Audit).egoblur.device
+        except (OSError, ContractError):
+            return True
+        return not (device or "").startswith("cuda:")
 
     def _precompute(self, job_id: str, recording: Path, clip: Path) -> None:
         """Run the hero job with ``safecut run --replay`` in a child process: the child blocks the network for
@@ -342,6 +371,7 @@ class Service:
             text=True,
             timeout=900,
             check=False,
+            env=child_env(os.environ),  # the audit's GPU path reaches Modal from the child too
         )
         if proc.returncode != 0:
             raise pipeline.PipelineError(f"safecut run exited {proc.returncode}: {proc.stderr.strip()[-300:]}")
@@ -594,9 +624,10 @@ def _parse_ip(host: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None
     return None
 
 
-def demo_stamp(recording: Path, clip: Path) -> str:
-    """What a pinned demo job was built from: every file of its recording (path and bytes), its clip, and the
-    ``safecut`` source. Any change (a retake under the same id, a contract change in a new deploy) rebuilds it."""
+def demo_stamp(recording: Path, clip: Path, *, audit_gpu: bool = False) -> str:
+    """What a pinned demo job was built from: every file of its recording (path and bytes), its clip, the
+    ``safecut`` source and whether its audit runs on the GPU. Any change (a retake under the same id, a contract
+    change in a new deploy, the GPU auditor switched on or off) rebuilds it."""
     package = Path(__file__).resolve().parent.parent
     labelled = [(f"raw:{p.relative_to(recording)}", p) for p in sorted(recording.rglob("*")) if p.is_file()]
     labelled.append(("clip", clip))
@@ -604,6 +635,8 @@ def demo_stamp(recording: Path, clip: Path) -> str:
         (f"code:{p.relative_to(package)}", p) for p in sorted(package.rglob("*.py")) if "__pycache__" not in p.parts
     ]
     digest = hashlib.sha256()
+    if audit_gpu:  # off leaves every earlier stamp as it was
+        digest.update(b"audit_gpu")
     for label, path in labelled:
         digest.update(label.encode())
         digest.update(path.read_bytes() if path.is_file() else b"missing")
@@ -678,6 +711,7 @@ def start(svc: Svc, job_id: str) -> JSONResponse:
         state.synthetic = pipeline.recording_is_synthetic(job_dir)
         state.duration_s = duration
         state.requeues = 0
+        state.resumes = 0
         updated = state.model_copy()
         svc.worker.submit(job_id, "analyse")
     return ack(updated)

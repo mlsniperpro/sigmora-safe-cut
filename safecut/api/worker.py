@@ -171,7 +171,7 @@ class Worker:
         with self._lock:
             future = self._pool.submit(self._run, job_id, action)
             self._running[job_id] = future
-        self._hold(job_id)
+        self.keep_up(job_id)
         return future
 
     def submit_later(self, job_id: str, action: Action, delay_s: float) -> None:
@@ -181,9 +181,9 @@ class Worker:
         with self._lock:
             self._timers[job_id] = timer
         timer.start()
-        self._hold(job_id)
+        self.keep_up(job_id)
 
-    def _hold(self, job_id: str) -> None:
+    def keep_up(self, job_id: str) -> None:
         """Ask the platform to keep this process up while the job runs, from a thread of its own: the request that
         queued the job (and the job's lock it holds) never waits on the platform. A failure is logged, never raised:
         the 15-minute cron resumes any job a sleeping container stranded."""
@@ -283,7 +283,7 @@ class Worker:
             if stage.name == "audit":
                 audit = load(job_dir / "audit.json", Audit)
                 if audit.blocked_reason in ("audit_failed", "over_budget"):
-                    self._set(job_dir.name, status="needs_you", stage="audit", stage_reason=None)
+                    self._set(job_dir.name, status="needs_you", stage="audit", stage_reason=None, resumes=0)
                     return
         # Publishing is gated by the cross-file checks (ARCHITECTURE §3): a job whose files disagree never ends done.
         validate_job_dir(job_dir)

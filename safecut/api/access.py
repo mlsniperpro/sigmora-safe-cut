@@ -233,9 +233,14 @@ class StoredRateLimiter:
         self._lock = threading.Lock()
         self._clock = clock
         self._fallback = RateLimiter()
+        self._db: sqlite3.Connection | None = None
         try:
             self._db = self._open(path)
-        except sqlite3.DatabaseError:
+        except sqlite3.OperationalError:
+            # Locked, or an I/O error: transient, never a reason to throw the hour's window away; this container
+            # counts in memory until its next start.
+            log.exception("rate-limit store %s won't open; counting in memory for this container", path)
+        except sqlite3.DatabaseError:  # "file is not a database", "malformed": the file itself is broken
             aside = path.with_name(f"{path.name}.corrupt-{int(clock())}")
             log.exception("rate-limit store %s won't open; moved aside to %s and started afresh", path, aside.name)
             for suffix in ("", "-wal", "-shm"):
@@ -264,8 +269,11 @@ class StoredRateLimiter:
     def hit(self, bucket: str, client: str, *, limit: int, window_s: float) -> None:
         """Count one request; ``429 rate_limited`` (with ``Retry-After``) when the window is full."""
         now = self._clock()
+        if self._db is None:
+            self._fallback.hit(bucket, client, limit=limit, window_s=window_s)
+            return
         try:
-            full, oldest = self._count(bucket, client, now, limit=limit, window_s=window_s)
+            full, oldest = self._count(self._db, bucket, client, now, limit=limit, window_s=window_s)
         except sqlite3.Error:
             log.exception("rate-limit store failed; this request is counted in memory")
             self._fallback.hit(bucket, client, limit=limit, window_s=window_s)
@@ -274,26 +282,29 @@ class StoredRateLimiter:
             wait = max(1, math.ceil(window_s - (now - oldest)))
             raise ApiRefusal(429, "rate_limited", "Too many tries in a short time.", retry_after_s=wait)
 
-    def _count(self, bucket: str, client: str, now: float, *, limit: int, window_s: float) -> tuple[bool, float]:
+    def _count(
+        self, db: sqlite3.Connection, bucket: str, client: str, now: float, *, limit: int, window_s: float
+    ) -> tuple[bool, float]:
         with self._lock:
-            self._db.execute("BEGIN IMMEDIATE")
+            db.execute("BEGIN IMMEDIATE")
             try:
-                self._db.execute("DELETE FROM hit WHERE bucket = ? AND at <= ?", (bucket, now - window_s))
-                rows = self._db.execute(
+                db.execute("DELETE FROM hit WHERE bucket = ? AND at <= ?", (bucket, now - window_s))
+                rows = db.execute(
                     "SELECT at FROM hit WHERE bucket = ? AND client = ? ORDER BY at", (bucket, client)
                 ).fetchall()
                 full = len(rows) >= limit
                 if not full:
-                    self._db.execute("INSERT INTO hit VALUES (?, ?, ?)", (bucket, client, now))
-                self._db.execute("COMMIT")
+                    db.execute("INSERT INTO hit VALUES (?, ?, ?)", (bucket, client, now))
+                db.execute("COMMIT")
             except BaseException:
-                self._db.execute("ROLLBACK")
+                db.execute("ROLLBACK")
                 raise
         return full, float(rows[0][0]) if rows else now
 
     def close(self) -> None:
         with self._lock:
-            self._db.close()
+            if self._db is not None:
+                self._db.close()
 
 
 __all__ = [

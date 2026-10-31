@@ -37,6 +37,8 @@ jobs:
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
       SAFECUT_API_URL: ${{ vars.SAFECUT_API_URL }}
       SAFECUT_WEB_URL: ${{ vars.SAFECUT_WEB_URL }}
+      # "1" only for a hotfix during a GPU outage: every GPU check warns instead of failing (BLOCKED.md).
+      SAFECUT_DEPLOY_GPU_OPTIONAL: ${{ vars.SAFECUT_DEPLOY_GPU_OPTIONAL }}
     steps:
       - name: Check for the Modal secrets
         id: gate
@@ -73,6 +75,7 @@ jobs:
         env:
           # Nothing has called the new API yet, and it keeps no warm container: its first answer must be a cold wake.
           DEPLOY_EXPECT_COLD: "1"
+          DEPLOY_YUNET_OK: ${{ vars.SAFECUT_DEPLOY_GPU_OPTIONAL }}
         run: |
           # A deploy is green only once its live URLs pass: the variables are an owner step (BLOCKED.md).
           if [ -z "$SAFECUT_API_URL" ] || [ -z "$SAFECUT_WEB_URL" ]; then

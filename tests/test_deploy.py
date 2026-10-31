@@ -533,3 +533,23 @@ def test_deploy_check_proves_the_api_containers_own_gpu_path(egoblur: dict[str, 
     finally:
         server.shutdown()
     assert line in result.stdout, result.stdout
+
+
+def test_the_gpu_optional_switch_reaches_every_gpu_check() -> None:
+    """One repository variable, for a hotfix during a GPU outage: the pre-deploy probe, the post-deploy job and the
+    URL check's demo audit all warn instead of failing; nothing else is relaxed."""
+    from deploy.checks import post_deploy_problems, pre_deploy_problems  # noqa: PLC0415
+
+    workflow = (ROOT / ".github" / "workflows" / "deploy.yml").read_text()
+    assert "SAFECUT_DEPLOY_GPU_OPTIONAL: ${{ vars.SAFECUT_DEPLOY_GPU_OPTIONAL }}" in workflow
+    assert "DEPLOY_YUNET_OK: ${{ vars.SAFECUT_DEPLOY_GPU_OPTIONAL }}" in workflow
+    assert 'os.environ.get("SAFECUT_DEPLOY_GPU_OPTIONAL")' in (ROOT / "deploy" / "verify_deploy.py").read_text()
+    assert 'os.environ.get("SAFECUT_DEPLOY_GPU_OPTIONAL")' in MODAL_APP.read_text()
+    ran = {"exit": 0, "unresolved": 0, "receipt": True, "redacted": True}
+    yunet = {**ran, "auditor": "yunet-face", "auditor_device": "cpu", "gpu_fallback": "timeout: x"}
+    assert len(post_deploy_problems(yunet)) == 3
+    assert post_deploy_problems(yunet, gpu_required=False) == []
+    assert pre_deploy_problems(ran, gpu_required=False) == []
+    broken = {**yunet, "exit": 1}
+    assert post_deploy_problems(broken, gpu_required=False)  # a job that didn't run still fails the deploy
+    assert "SAFECUT_DEPLOY_GPU_OPTIONAL" in (ROOT / "BLOCKED.md").read_text()

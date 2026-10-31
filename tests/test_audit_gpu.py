@@ -27,6 +27,14 @@ from safecut.decide import run as decide_run
 from safecut.guard import run as guard_run
 from safecut.meta.budget import Caller, LocalLedger
 from safecut.receipt import run as receipt_run
+from safecut.receipt.build import (
+    REPLAY_GPU_NOTE,
+    REPLAY_NOTE,
+    SYNTHETIC_GPU_NOTE,
+    SYNTHETIC_NOTE,
+    YUNET_FALLBACK_NOTE,
+    YUNET_NOTE,
+)
 from safecut.render import render
 from tests.safety_jobs import make_job
 
@@ -581,3 +589,83 @@ def test_the_cron_sweeps_handoff_folders_an_audit_left_behind(tmp_path: Path) ->
     assert gpu.sweep_handoff(tmp_path, older_than_s=3600, now=10_000) == [old.name]
     assert [p.name for p in tmp_path.iterdir()] == [fresh.name]
     assert gpu.sweep_handoff(tmp_path / "missing") == []
+
+
+# ---------------------------------------------------------------------------------------------- round-2 audit fixes
+
+
+@pytest.mark.parametrize("kind", ["synthetic", "replay"])
+def test_a_replayed_job_audited_on_the_gpu_keeps_its_label(tmp_path: Path, weights: Path, kind: str) -> None:
+    """The public demo is a synthetic replay audited on the GPU: its Modal seconds are not a model call, so its
+    receipt still says it was replayed, and names the one model that ran."""
+    from safecut.contracts import Intake, dump  # noqa: PLC0415
+
+    job_dir = prepared(tmp_path)
+    if kind == "synthetic":
+        (job_dir / "raw").mkdir(exist_ok=True)
+        (job_dir / "raw" / "manifest.json").write_text(json.dumps({"synthetic": True}))
+    else:
+        dump(Intake(source="clip.mp4", created_at=contracts.now_utc(), consented=False, mode="replay",
+                    code_kind=None, code_id=None), job_dir / "intake.json")  # fmt: skip
+    settings = settings_for(tmp_path)
+    fake = FakeModal(server(job_dir, weights))
+    audit_run(job_dir, replay=True, settings=settings, gpu_call=fake.call, gpu_commit=fake.commit)
+    assert gpu_lines(job_dir)  # Modal seconds were spent
+    if kind == "replay":  # the test job's red team is the synthetic oracle; as a recorded replay it isn't synthetic
+        (job_dir / "raw" / "redteam" / "synthetic_truth.json").unlink()
+    notes = sealed(job_dir, settings).data_handling.notes
+    expected = SYNTHETIC_GPU_NOTE if kind == "synthetic" else REPLAY_GPU_NOTE
+    assert expected in notes
+    assert SYNTHETIC_NOTE not in notes  # "no model was called" would be false: EgoBlur ran
+    assert REPLAY_NOTE not in notes
+
+
+def test_a_gpu_fallback_receipt_says_why_yunet_ran(tmp_path: Path, weights: Path) -> None:
+
+    job_dir = prepared(tmp_path)
+    settings = settings_for(tmp_path)
+    fake = FakeModal(server(job_dir, weights), ["timeout"])
+    audit_run(job_dir, replay=True, settings=settings, gpu_call=fake.call, gpu_commit=fake.commit)
+    notes = sealed(job_dir, settings).data_handling.notes
+    assert YUNET_FALLBACK_NOTE.format(reason="timeout") in notes
+    assert YUNET_NOTE not in notes  # the weights are installed; the GPU timed out
+
+
+def test_the_handoff_waits_for_another_process_writing_the_same_mount(tmp_path: Path) -> None:
+    """The API and its demo-build child share the handoff mount: one's commit must never meet the other's open file."""
+    import subprocess  # noqa: PLC0415
+    import sys  # noqa: PLC0415
+    import time  # noqa: PLC0415
+
+    job_dir = prepared(tmp_path)
+    lock = tmp_path / "handoff.lock"
+    holder = subprocess.Popen(  # noqa: S603 -- this interpreter, a fixed script
+        [sys.executable, "-c", "import fcntl, sys, time; f = open(sys.argv[1], 'a'); fcntl.flock(f, fcntl.LOCK_EX);"
+         " print('locked', flush=True); time.sleep(1.5)", str(lock)],
+        stdout=subprocess.PIPE, text=True,
+    )  # fmt: skip
+    assert holder.stdout is not None
+    assert holder.stdout.readline().strip() == "locked"
+    box = Handoff(tmp_path / "handoff", lambda: None, lock_file=lock)
+    started = time.monotonic()
+    box.put(job_dir, "0" * 64)
+    assert time.monotonic() - started >= 1.0  # waited for the other process to finish with the mount
+    holder.wait(10)
+
+
+def test_a_commit_that_hangs_falls_back_instead_of_holding_every_audit(tmp_path: Path, weights: Path) -> None:
+    import threading  # noqa: PLC0415
+
+    job_dir = prepared(tmp_path)
+    settings = settings_for(tmp_path)
+    fake = FakeModal(server(job_dir, weights))
+    stuck = threading.Event()
+    box = Handoff(handoff_root(job_dir), lambda: stuck.wait(30), commit_timeout_s=0.2, lock_file=tmp_path / "l")
+    detector = GpuDetector(job_dir, settings, fake.call, meter(job_dir, settings), handoff=box)
+    with pytest.raises(GpuUnavailable) as caught:
+        detector.prefetch()
+    stuck.set()
+    assert caught.value.reason == "timeout"
+    assert "handoff commit" in str(caught.value)
+    assert fake.requests == []
+    box.put(job_dir, "1" * 64)  # the lock was released: the next audit isn't blocked behind the hung one

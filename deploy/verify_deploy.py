@@ -8,6 +8,7 @@ fails unless the receipt names EgoBlur Gen 2 on a GPU. Needs ``MODAL_TOKEN_ID``/
 from __future__ import annotations
 
 import json
+import os
 import sys
 
 import modal
@@ -20,12 +21,13 @@ def main() -> int:
     smoke = modal.Function.from_name(APP_NAME, "pipeline_worker_smoke")
     result = smoke.remote(audit_gpu=True)
     print(json.dumps(result, indent=1, default=str))
-    problems = post_deploy_problems(result)
+    # SAFECUT_DEPLOY_GPU_OPTIONAL=1 (a repository variable, for a hotfix during a GPU outage): the GPU part warns.
+    problems = post_deploy_problems(result, gpu_required=os.environ.get("SAFECUT_DEPLOY_GPU_OPTIONAL") != "1")
     for problem in problems:
         print(f"FAIL  {problem}")
     if problems:
         return 1
-    print(f"ok    replay job end to end; audited by {result['auditor']} on {result['auditor_device']}")
+    print(f"ok    replay job end to end; audited by {result['auditor']} on {result.get('auditor_device')}")
     return 0
 
 

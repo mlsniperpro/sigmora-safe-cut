@@ -21,15 +21,21 @@ SQLite files open on it.)
 
 from __future__ import annotations
 
+import fcntl
 import importlib
+import importlib.util
 import logging
+import os
 import re
 import shutil
+import tempfile
 import threading
 import time
 import uuid
-from collections.abc import Callable, Iterator
-from contextlib import AbstractContextManager, nullcontext
+from collections.abc import Callable, Generator, Iterator, Mapping
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeout
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from pathlib import Path
 from typing import Any, Literal, cast
 from urllib.parse import urlsplit
@@ -246,27 +252,52 @@ class GpuMeter:
         append_cost_line(line, self.cost_path)
 
 
+#: How long a handoff commit may take before the scan gives up on the GPU (Modal retries a commit internally).
+HANDOFF_COMMIT_TIMEOUT_S = 120.0
+#: One file lock per container: the API and its demo-build child process write the same handoff mount.
+HANDOFF_LOCK = Path(tempfile.gettempdir()) / "safecut-handoff.lock"
+
+
 class Handoff:
     """Where the GPU function reads a render: ``<root>/<job>-<render sha>/`` (``job.json`` and ``redacted.mp4``) on
-    a Volume of its own. Writes and commits go through one process-wide lock, so a commit (and the reload Modal does
-    after it) never meets a file this process has open there."""
+    a Volume of its own. Writes and commits hold one lock across threads and processes of this container, so a
+    commit (and the reload Modal does after it) never meets a file open there; a commit that hangs is abandoned after
+    ``commit_timeout_s`` as a :class:`TimeoutError`, so no scan waits on it forever."""
 
     _lock = threading.Lock()
 
-    def __init__(self, root: Path, commit: Callable[[], None]) -> None:
+    def __init__(
+        self,
+        root: Path,
+        commit: Callable[[], None],
+        *,
+        commit_timeout_s: float = HANDOFF_COMMIT_TIMEOUT_S,
+        lock_file: Path = HANDOFF_LOCK,
+    ) -> None:
         self.root = root
         self._commit = commit
+        self._commit_timeout_s = commit_timeout_s
+        self._lock_file = lock_file
         self._put: set[str] = set()
 
     @staticmethod
     def name(job_dir: Path, sha: str) -> str:
         return f"{re.sub(r'[^A-Za-z0-9_-]', '_', job_dir.name)[:100]}-{sha[:16]}"
 
+    @contextmanager
+    def _exclusive(self) -> Generator[None]:
+        with self._lock, self._lock_file.open("a") as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle, fcntl.LOCK_UN)
+
     def put(self, job_dir: Path, sha: str) -> str:
         """Copy the render (once per render) and commit; returns the folder name the GPU request names."""
         name = self.name(job_dir, sha)
         target = self.root / name
-        with self._lock:
+        with self._exclusive():
             if not (target / REDACTED).is_file():
                 target.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(job_dir / "job.json", target / "job.json")
@@ -274,12 +305,21 @@ class Handoff:
                 shutil.copyfile(job_dir / REDACTED, partial)
                 partial.replace(target / REDACTED)
             self._put.add(name)
-            self._commit()
+            self._bounded_commit()
         return name
+
+    def _bounded_commit(self) -> None:
+        pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="handoff-commit")
+        try:
+            pool.submit(self._commit).result(timeout=self._commit_timeout_s)
+        except FuturesTimeout as exc:
+            raise TimeoutError(f"the handoff commit took over {self._commit_timeout_s:.0f} s") from exc
+        finally:
+            pool.shutdown(wait=False)
 
     def close(self) -> None:
         """Remove every render this audit put there (Modal's background commit, or the next one, carries it)."""
-        with self._lock:
+        with self._exclusive():
             for name in self._put:
                 shutil.rmtree(self.root / name, ignore_errors=True)
             self._put.clear()
@@ -400,7 +440,9 @@ class GpuDetector:
                                  plate_threshold=self.settings.egoblur_plate_threshold)  # fmt: skip
             raw, rid = self._call(request, self.settings.audit_gpu_timeout_s)
         except TimeoutError as exc:
-            raise GpuUnavailable("timeout", f"no answer in {self.settings.audit_gpu_timeout_s:.0f} s") from exc
+            raise GpuUnavailable(
+                "timeout", str(exc) or f"no answer in {self.settings.audit_gpu_timeout_s:.0f} s"
+            ) from exc
         except Exception as exc:
             raise GpuUnavailable("error", f"{type(exc).__name__}: {exc}"[:300]) from exc
         finally:
@@ -453,6 +495,21 @@ def modal_permitted() -> AbstractContextManager[None]:
     return netguard.permitting(host) if host else nullcontext()
 
 
+def child_env(env: Mapping[str, str]) -> dict[str, str]:
+    """The environment for a child Python (``safecut run``) that must reach Modal as this process does. In a Modal
+    container the client is put on ``sys.path`` at startup, which a child may not repeat: its folder is passed on
+    ``PYTHONPATH``. Unchanged where no Modal client is importable."""
+    out = dict(env)
+    spec = importlib.util.find_spec("modal")
+    if spec is None or spec.origin is None:
+        return out
+    folder = str(Path(spec.origin).parent.parent)
+    paths = [p for p in out.get("PYTHONPATH", "").split(os.pathsep) if p]
+    if folder not in paths:
+        out["PYTHONPATH"] = os.pathsep.join([*paths, folder])
+    return out
+
+
 def modal_call(settings: Settings) -> RemoteCall:
     """The deployed GPU function, spawned and awaited with a bound; a timed-out call is cancelled."""
     modal = _modal()
@@ -503,6 +560,7 @@ __all__ = [
     "Handoff",
     "RemoteCall",
     "batches",
+    "child_env",
     "modal_call",
     "modal_commit",
     "modal_host",
