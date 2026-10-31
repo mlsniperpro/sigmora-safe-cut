@@ -741,3 +741,45 @@ def test_run_json_records_the_gpu_time(tmp_path: Path, weights: Path) -> None:
     run = json.loads((job_dir / "raw/audit/run.json").read_text())
     assert run["gpu_calls"] == 1
     assert run["gpu_wall_s"] > 0
+
+
+# ---------------------------------------------------------------------------------------------- round-6 audit fixes
+
+
+def test_a_job_waiting_on_the_gpu_never_keeps_a_finished_interpreter_alive() -> None:
+    """A container replaced mid-scan exits at once: the Modal call waits on a daemon thread, not an executor's."""
+    import subprocess  # noqa: PLC0415
+    import sys  # noqa: PLC0415
+    import time  # noqa: PLC0415
+
+    script = (
+        "import threading, time\n"
+        "from safecut.audit.gpu import off_loop\n"
+        "threading.Thread(target=lambda: off_loop(lambda: time.sleep(60)), daemon=True).start()\n"
+        "time.sleep(0.3)\n"
+        "print('exiting', flush=True)\n"
+    )
+    started = time.monotonic()
+    proc = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=60, check=False)  # noqa: S603
+    assert proc.returncode == 0, proc.stderr
+    assert time.monotonic() - started < 20  # not the 60 s call
+
+
+def test_on_daemon_answers_raises_and_times_out() -> None:
+    import threading  # noqa: PLC0415
+
+    assert gpu.on_daemon(lambda: 7) == 7
+
+    def failing() -> int:
+        raise ConnectionError("Modal unreachable")
+
+    with pytest.raises(ConnectionError, match="unreachable"):
+        gpu.on_daemon(failing)
+    gate = threading.Event()
+
+    def blocked() -> bool:
+        return gate.wait(30)
+
+    with pytest.raises(TimeoutError):
+        gpu.on_daemon(blocked, timeout_s=0.1)
+    gate.set()

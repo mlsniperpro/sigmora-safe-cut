@@ -34,8 +34,6 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Generator, Iterator, Mapping
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import TimeoutError as FuturesTimeout
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -318,13 +316,10 @@ class Handoff:
         return name
 
     def _bounded_commit(self) -> None:
-        pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="handoff-commit")
         try:
-            pool.submit(self._commit).result(timeout=self._commit_timeout_s)
-        except FuturesTimeout as exc:
+            on_daemon(self._commit, timeout_s=self._commit_timeout_s)
+        except TimeoutError as exc:
             raise TimeoutError(f"the handoff commit took over {self._commit_timeout_s:.0f} s") from exc
-        finally:
-            pool.shutdown(wait=False)
 
     def discard(self, name: str) -> None:
         """Remove one render, so the next ``put`` copies it afresh."""
@@ -486,11 +481,34 @@ def _modal() -> Any:
     return importlib.import_module("modal")
 
 
+def on_daemon[T](work: Callable[[], T], *, timeout_s: float | None = None) -> T:
+    """Run ``work`` on a daemon thread and wait for it (at most ``timeout_s``, else :class:`TimeoutError`, the work left
+    running). A daemon, because ``ThreadPoolExecutor``'s threads are joined at interpreter exit: a container being
+    replaced mid-scan must exit at once, like its job threads (``safecut.api.worker.DaemonPool``)."""
+    result: list[T] = []
+    error: list[BaseException] = []
+    done = threading.Event()
+
+    def run() -> None:
+        try:
+            result.append(work())
+        except BaseException as exc:
+            error.append(exc)
+        finally:
+            done.set()
+
+    threading.Thread(target=run, name="modal-call", daemon=True).start()
+    if not done.wait(timeout_s):
+        raise TimeoutError(f"no answer in {timeout_s:.0f} s")
+    if error:
+        raise error[0]
+    return result[0]
+
+
 def off_loop[T](work: Callable[[], T]) -> T:
     """Run a blocking Modal call on a thread of its own: re-check scans run inside the audit's event loop, where
     Modal's blocking API warns (and the loop is blocked either way: the scan waits for its answer)."""
-    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="modal-call") as pool:
-        return pool.submit(work).result()
+    return on_daemon(work)
 
 
 def modal_host() -> str | None:

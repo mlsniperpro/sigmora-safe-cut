@@ -1,4 +1,4 @@
-AUDITED_COMMIT: e3305d8
+AUDITED_COMMIT: e167e0d
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -103,3 +103,11 @@ fix has a test that fails without it.
   priced at the configured rate (all three copies regenerated); the GPU probe bounded at 5 minutes inside the
   smoke's 25; no Modal-level retries on `egoblur_detect` (every billed attempt is reserved and priced); a test renamed
   to what it shows.
+
+## Round 6 (on e167e0d): 0 critical, 0 high, 0 medium, 2 low. Both closed. Not counted as clean (it found something).
+
+- L1 the GPU call and the handoff commit waited on `ThreadPoolExecutor` threads, which are joined at interpreter exit,
+  so a container replaced mid-scan could linger up to the scan's timeout → `gpu.on_daemon` (a daemon thread and an
+  event) for both (`test_a_job_waiting_on_the_gpu_never_keeps_a_finished_interpreter_alive`,
+  `test_on_daemon_answers_raises_and_times_out`).
+- L2 this log's header lagged the round-5 diff → updated.
