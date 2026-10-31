@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 7962115
+AUDITED_COMMIT: e52c5be
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 2
@@ -455,3 +455,11 @@ mid-audit GPU failure can't report plates (YuNet is faces only, as its receipt n
 `egoblur-gen2` and 0.5 thresholds on purpose; `eval/RESULTS.md`'s worst-case line is Meta's part only (outside this
 lane); a Modal secret overriding the image's `SAFECUT_AUDIT_GPU=1` and the cron's `hold.spawn` need the first real
 deploy to confirm (BLOCKED.md).
+
+## After round 32: e52c5be (no audit needed: comment text only)
+
+The gate's own lint step runs the system ruff (0.16.9), older than the project's (0.17.2), and it wrapped two long
+`from deploy.checks import …  # noqa: PLC0415 -- …` lines in `tests/test_deploy.py` that 0.17.2 keeps whole. `e52c5be`
+shortens those two comments' reasons, nothing else: `git diff 7962115 e52c5be -- . ':(exclude).agent' ':(exclude)*.md'`
+is those two lines. Both ruff versions pass, and `tests/test_deploy.py` passes (62). The two clean audits (rounds 31
+and 32, on 7962115) cover this code; `AUDITED_COMMIT` names `e52c5be` so the gate's staleness check reads it.

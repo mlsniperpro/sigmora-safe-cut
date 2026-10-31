@@ -1,9 +1,10 @@
-TESTED_COMMIT: 7962115
+TESTED_COMMIT: e52c5be
 
 # SAFECUT-MODAL break-it
 
 What I did to break the lane's two halves (scale-to-zero and the GPU auditor), on `7962115` (the README run on
-`4783aeb`, which only adds an audit note), and what came back.
+`4783aeb`, which only adds an audit note), and what came back. `e52c5be` changes only two `noqa` comments' text in
+`tests/test_deploy.py` (see `reaudit.md`), which none of these runs reads.
 Every command runs from the repo root; outputs are quoted from the runs.
 
 ## 1. Kill soak: SIGKILL the scale-to-zero API mid-job, over and over
