@@ -87,6 +87,8 @@ class FakeModal:
             raise TimeoutError("no output")
         if fault == "error":
             raise ConnectionError("Modal control plane unreachable")
+        if fault == "unspawned":
+            raise gpu.NotSubmitted("NotFoundError: the GPU function isn't deployed")
         answer = self.server.serve(request.model_dump(mode="json"))
         if fault == "stale":
             answer = {**answer, "video_sha256": "0" * 64}
@@ -486,7 +488,7 @@ def test_auditor_availability_is_cached_until_the_weights_change(
 def test_replay_lets_only_the_modal_control_plane_through(monkeypatch: pytest.MonkeyPatch) -> None:
     """Replay refuses every remote host; the GPU auditor's ``permitting`` lets exactly Modal's host (and the
     addresses it resolved to) through, and only inside its scope."""
-    import socket  # noqa: PLC0415
+    import socket  # noqa: PLC0415 -- imported in the test that uses it
 
     resolved = {"api.modal.com": "203.0.113.7", "api.meta.ai": "203.0.113.9"}
 
@@ -587,7 +589,7 @@ def test_without_torch_the_weights_are_never_hashed(tmp_path: Path, monkeypatch:
 
 
 def test_the_cron_sweeps_handoff_folders_an_audit_left_behind(tmp_path: Path) -> None:
-    import os  # noqa: PLC0415
+    import os  # noqa: PLC0415 -- imported in the test that uses it
 
     old, fresh = tmp_path / "j_old-0123456789abcdef", tmp_path / "j_new-0123456789abcdef"
     for folder in (old, fresh):
@@ -606,7 +608,7 @@ def test_the_cron_sweeps_handoff_folders_an_audit_left_behind(tmp_path: Path) ->
 def test_a_replayed_job_audited_on_the_gpu_keeps_its_label(tmp_path: Path, weights: Path, kind: str) -> None:
     """The public demo is a synthetic replay audited on the GPU: its Modal seconds are not a model call, so its
     receipt still says it was replayed, and names the one model that ran."""
-    from safecut.contracts import Intake, dump  # noqa: PLC0415
+    from safecut.contracts import Intake, dump  # noqa: PLC0415 -- imported in the test that uses it
 
     job_dir = prepared(tmp_path)
     if kind == "synthetic":
@@ -641,9 +643,9 @@ def test_a_gpu_fallback_receipt_says_why_yunet_ran(tmp_path: Path, weights: Path
 
 def test_the_handoff_waits_for_another_process_writing_the_same_mount(tmp_path: Path) -> None:
     """The API and its demo-build child share the handoff mount: one's commit must never meet the other's open file."""
-    import subprocess  # noqa: PLC0415
-    import sys  # noqa: PLC0415
-    import time  # noqa: PLC0415
+    import subprocess  # noqa: PLC0415 -- imported in the test that uses it
+    import sys  # noqa: PLC0415 -- imported in the test that uses it
+    import time  # noqa: PLC0415 -- imported in the test that uses it
 
     job_dir = prepared(tmp_path)
     lock = tmp_path / "handoff.lock"
@@ -662,7 +664,7 @@ def test_the_handoff_waits_for_another_process_writing_the_same_mount(tmp_path: 
 
 
 def test_a_commit_that_hangs_falls_back_instead_of_holding_every_audit(tmp_path: Path, weights: Path) -> None:
-    import threading  # noqa: PLC0415
+    import threading  # noqa: PLC0415 -- imported in the test that uses it
 
     job_dir = prepared(tmp_path)
     settings = settings_for(tmp_path)
@@ -696,7 +698,7 @@ def test_a_stale_handoff_copy_is_discarded_before_the_retry(tmp_path: Path, weig
         removed.append(name)
         real(name)
 
-    box.discard = counting  # type: ignore[method-assign]
+    box.discard = counting  # type: ignore[method-assign] -- a stand-in for the test, on purpose
     detector = GpuDetector(job_dir, settings, fake.call, meter(job_dir, settings), handoff=box,
                            sleep=lambda _s: None)  # fmt: skip
     detector.prefetch()
@@ -708,8 +710,8 @@ def test_a_stale_handoff_copy_is_discarded_before_the_retry(tmp_path: Path, weig
 
 
 def test_the_estimate_counts_one_gpu_scan_per_audit_pass() -> None:
-    from safecut.api.access import GPU_SCANS_PER_JOB  # noqa: PLC0415
-    from safecut.audit.loop import MAX_PASSES  # noqa: PLC0415
+    from safecut.api.access import GPU_SCANS_PER_JOB  # noqa: PLC0415 -- imported in the test that uses it
+    from safecut.audit.loop import MAX_PASSES  # noqa: PLC0415 -- imported in the test that uses it
 
     assert GPU_SCANS_PER_JOB == MAX_PASSES
 
@@ -756,9 +758,9 @@ def test_run_json_records_the_gpu_time(tmp_path: Path, weights: Path) -> None:
 
 def test_a_job_waiting_on_the_gpu_never_keeps_a_finished_interpreter_alive() -> None:
     """A container replaced mid-scan exits at once: the Modal call waits on a daemon thread, not an executor's."""
-    import subprocess  # noqa: PLC0415
-    import sys  # noqa: PLC0415
-    import time  # noqa: PLC0415
+    import subprocess  # noqa: PLC0415 -- imported in the test that uses it
+    import sys  # noqa: PLC0415 -- imported in the test that uses it
+    import time  # noqa: PLC0415 -- imported in the test that uses it
 
     script = (
         "import threading, time\n"
@@ -768,13 +770,13 @@ def test_a_job_waiting_on_the_gpu_never_keeps_a_finished_interpreter_alive() -> 
         "print('exiting', flush=True)\n"
     )
     started = time.monotonic()
-    proc = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=60, check=False)  # noqa: S603
+    proc = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=60, check=False)  # noqa: S603 -- fixed argv: this interpreter and our own code
     assert proc.returncode == 0, proc.stderr
     assert time.monotonic() - started < 20  # not the 60 s call
 
 
 def test_on_daemon_answers_raises_and_times_out() -> None:
-    import threading  # noqa: PLC0415
+    import threading  # noqa: PLC0415 -- imported in the test that uses it
 
     assert gpu.on_daemon(lambda: 7) == 7
 
@@ -799,7 +801,7 @@ def test_on_daemon_answers_raises_and_times_out() -> None:
 @pytest.mark.parametrize("failure", [TimeoutError("no output"), ConnectionError("Modal client lost the server")])
 def test_a_gpu_call_we_stop_waiting_for_is_cancelled(monkeypatch: pytest.MonkeyPatch, failure: Exception) -> None:
     """Timed out or errored after the spawn: the scan is cancelled with its container, never left running unpriced."""
-    from types import SimpleNamespace  # noqa: PLC0415
+    from types import SimpleNamespace  # noqa: PLC0415 -- imported in the test that uses it
 
     cancelled: list[bool] = []
 
@@ -826,3 +828,49 @@ def test_a_gpu_call_we_stop_waiting_for_is_cancelled(monkeypatch: pytest.MonkeyP
     with pytest.raises(type(failure)):
         call(request, 1.0)
     assert cancelled == [True]
+
+
+# ---------------------------------------------------------------------------------------------- round-8 audit fixes
+
+
+def test_replay_reaches_every_host_of_modals_default_server_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    """modal 1.6.2's default ``server_url`` lists two hosts, comma-separated: both are let through, nothing else."""
+    import socket  # noqa: PLC0415 -- the guard patches it; imported where the test uses it
+    from types import SimpleNamespace  # noqa: PLC0415 -- a stand-in Modal config, local to this test
+
+    import modal.config  # noqa: PLC0415 -- the deploy group: its real default, not a copy
+
+    fake_modal = SimpleNamespace(config=SimpleNamespace(config={"server_url": modal.config.DEFAULT_SERVER_URL}))
+    monkeypatch.setattr(gpu, "_modal", lambda: fake_modal)
+    assert gpu.modal_hosts() == ["api.modal.com", "api.modal2.com"]
+    resolved = {"api.modal.com": "203.0.113.7", "api.modal2.com": "203.0.113.8", "api.meta.ai": "203.0.113.9"}
+
+    def fake_getaddrinfo(host: Any, port: Any, *args: Any, **kwargs: Any) -> Any:
+        del args, kwargs
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (resolved[host], port))]
+
+    netguard.block()
+    monkeypatch.setitem(netguard._original, "getaddrinfo", fake_getaddrinfo)  # pyright: ignore[reportPrivateUsage]
+    try:
+        with gpu.modal_permitted():
+            socket.getaddrinfo("api.modal.com", 443)
+            socket.getaddrinfo("api.modal2.com", 443)  # the client's fallback host too
+            with pytest.raises(netguard.NetworkBlocked):
+                socket.getaddrinfo("api.meta.ai", 443)
+        with pytest.raises(netguard.NetworkBlocked):
+            socket.getaddrinfo("api.modal.com", 443)
+    finally:
+        netguard.unblock()
+
+
+def test_a_call_that_never_reached_modal_costs_and_claims_nothing(tmp_path: Path, weights: Path) -> None:
+    job_dir = prepared(tmp_path)
+    settings = settings_for(tmp_path)
+    fake = FakeModal(server(job_dir, weights), ["unspawned", "unspawned"])
+    audit_run(job_dir, replay=True, settings=settings, gpu_call=fake.call, gpu_commit=fake.commit)
+    assert json.loads((job_dir / GPU_RECORD).read_text())["fallback"].startswith("error: not submitted:")
+    assert gpu_lines(job_dir) == []  # no GPU ran: nothing priced
+    assert LocalLedger(Path(settings.jobs_dir) / "ledger.sqlite").spent(f"job:{job_dir.name}") == 0
+    notes = sealed(job_dir, settings).data_handling.notes
+    assert SYNTHETIC_NOTE in notes
+    assert SYNTHETIC_GPU_NOTE not in notes

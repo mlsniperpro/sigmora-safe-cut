@@ -265,7 +265,7 @@ def test_hold_lasts_until_the_job_stops(make_service: Callable[..., Any]) -> Non
         gate.wait(10)
         real(job, action)
 
-    svc.worker._run_action = slow  # type: ignore[method-assign]  # pyright: ignore[reportPrivateUsage]
+    svc.worker._run_action = slow  # type: ignore[method-assign]  # pyright: ignore[reportPrivateUsage] -- a stand-in for the test, on purpose
     assert client.post(f"/v1/jobs/{job_id}/start").status_code == 202
     result: list[str] = []
     holder = threading.Thread(target=lambda: result.append(svc.hold(job_id, poll_s=0.02)))
@@ -302,7 +302,7 @@ def test_recover_never_runs_a_job_twice(make_service: Callable[..., Any]) -> Non
         gate.wait(10)
         real(job, action)
 
-    svc.worker._run_action = slow  # type: ignore[method-assign]  # pyright: ignore[reportPrivateUsage]
+    svc.worker._run_action = slow  # type: ignore[method-assign]  # pyright: ignore[reportPrivateUsage] -- a stand-in for the test, on purpose
     assert client.post(f"/v1/jobs/{job_id}/start").status_code == 202
     time.sleep(0.1)
     assert svc.recover() == []  # tracked by this process: left alone
@@ -392,7 +392,7 @@ def test_a_corrupt_limit_store_is_moved_aside_never_taking_the_api_down(tmp_path
 def test_the_api_only_sleeps_after_a_quiet_spell_longer_than_the_per_minute_window() -> None:
     """In memory on purpose: the container only sleeps after API_SCALEDOWN_S with no input at all, longer than the
     60 s window, so by the time a restart forgets a window that window has already closed."""
-    import ast  # noqa: PLC0415
+    import ast  # noqa: PLC0415 -- imported in the test that uses it
 
     tree = ast.parse((ROOT / "deploy" / "modal_app.py").read_text())
     scaledown = next(
@@ -438,7 +438,7 @@ def test_active_lists_only_unpinned_jobs_mid_action(tmp_path: Path) -> None:
     for status in ("created", "processing", "review", "rendering", "retry_later", "done", "failed", "needs_you"):
         job_id = store.create(mode="replay").job_id
         with store.update(job_id) as state:
-            state.status = status  # type: ignore[assignment]
+            state.status = status  # type: ignore[assignment] -- every status in turn, on purpose
     pinned = store.create(mode="replay", job_id="j_demo000000000000000000", pinned=True).job_id
     with store.update(pinned) as state:
         state.status = "processing"
@@ -473,8 +473,8 @@ def test_the_container_stays_up_while_the_demo_job_builds(
 def test_a_demo_the_gpu_couldnt_audit_is_rebuilt_but_not_on_every_wake(
     make_service: Callable[..., Any], tmp_path: Path
 ) -> None:
-    from safecut.api.app import DEMO_GPU_RETRY, demo_stamp  # noqa: PLC0415
-    from safecut.contracts import Audit, dump  # noqa: PLC0415
+    from safecut.api.app import DEMO_GPU_RETRY, demo_stamp  # noqa: PLC0415 -- imported in the test that uses it
+    from safecut.contracts import Audit, dump  # noqa: PLC0415 -- imported in the test that uses it
 
     recording = ROOT / "fixtures" / "jobs" / "demo"
     clip = ROOT / json.loads((recording / "raw" / "manifest.json").read_text())["source"]
@@ -505,7 +505,7 @@ def test_a_restarted_job_starts_its_resume_count_afresh(make_service: Callable[.
 def test_a_locked_limit_store_counts_in_memory_without_moving_the_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import sqlite3  # noqa: PLC0415
+    import sqlite3  # noqa: PLC0415 -- imported in the test that uses it
 
     path = tmp_path / "ratelimit.sqlite"
     StoredRateLimiter(path).hit("paid", "203.0.113.5", limit=5, window_s=3600)
@@ -526,9 +526,9 @@ def test_the_demo_builds_child_can_import_modal_as_this_process_does(
 ) -> None:
     """A Modal client outside site-packages (the runtime's own mount) reaches the child on PYTHONPATH; a client in
     site-packages never puts site-packages there, ahead of the standard library (a typing backport would shadow it)."""
-    import importlib.util  # noqa: PLC0415
+    import importlib.util  # noqa: PLC0415 -- imported in the test that uses it
 
-    from safecut.audit.gpu import child_env  # noqa: PLC0415
+    from safecut.audit.gpu import child_env  # noqa: PLC0415 -- imported in the test that uses it
 
     assert child_env({"PYTHONPATH": "/somewhere"}) == {"PYTHONPATH": "/somewhere"}  # this venv's modal: untouched
     mount = tmp_path / "pkg"
@@ -547,7 +547,7 @@ def test_the_served_demo_stays_up_while_it_is_rebuilt_and_if_the_rebuild_fails(
 ) -> None:
     """A rebuild (a new deploy's code, a GPU retry) runs beside the served demo: /v1/demo keeps answering throughout,
     and a build that fails leaves the old demo in place."""
-    from safecut.config import Settings  # noqa: PLC0415
+    from safecut.config import Settings  # noqa: PLC0415 -- imported in the test that uses it
 
     svc = Service(Settings(replay=True, jobs_dir=str(tmp_path / "jobs")))
     job_id = app_module.hero_job_id("demo")
@@ -580,7 +580,7 @@ def test_the_served_demo_stays_up_while_it_is_rebuilt_and_if_the_rebuild_fails(
 def test_the_demo_job_builds_through_the_real_child_process(tmp_path: Path) -> None:
     """The demo is built by a ``safecut run --replay`` child with the environment ``child_env`` gives it: it must
     come up (an environment that broke the child's imports once took the demo away)."""
-    from safecut.config import Settings  # noqa: PLC0415
+    from safecut.config import Settings  # noqa: PLC0415 -- imported in the test that uses it
 
     svc = Service(Settings(replay=True, jobs_dir=str(tmp_path / "jobs")))
     try:
@@ -596,8 +596,8 @@ def test_the_demo_job_builds_through_the_real_child_process(tmp_path: Path) -> N
 
 def test_readers_never_see_the_demo_missing_while_it_is_swapped(tmp_path: Path) -> None:
     """A thread reads the demo's state as /v1/demo does, nonstop, through a full rebuild and swap: never a miss."""
-    from safecut.api.store import JobNotFound  # noqa: PLC0415
-    from safecut.config import Settings  # noqa: PLC0415
+    from safecut.api.store import JobNotFound  # noqa: PLC0415 -- imported in the test that uses it
+    from safecut.config import Settings  # noqa: PLC0415 -- imported in the test that uses it
 
     svc = Service(Settings(replay=True, jobs_dir=str(tmp_path / "jobs")))
     job_id = app_module.hero_job_id("demo")
@@ -630,9 +630,9 @@ def test_readers_never_see_the_demo_missing_while_it_is_swapped(tmp_path: Path) 
 
 
 def test_a_swap_that_fails_halfway_puts_the_old_demo_back(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from datetime import timedelta as td  # noqa: PLC0415
+    from datetime import timedelta as td  # noqa: PLC0415 -- imported in the test that uses it
 
-    from safecut.api.store import BUILDING, JobStore  # noqa: PLC0415
+    from safecut.api.store import BUILDING, JobStore  # noqa: PLC0415 -- imported in the test that uses it
 
     store = JobStore(tmp_path, ttl=td(hours=24), cleanup_every=td(minutes=15))
     job_id = store.create(mode="replay", pinned=True, demo_stamp="old").job_id
@@ -655,7 +655,7 @@ def test_a_swap_that_fails_halfway_puts_the_old_demo_back(tmp_path: Path, monkey
 
 
 def test_the_sweep_removes_a_demo_build_a_dead_container_left(tmp_path: Path) -> None:
-    from safecut.api.store import BUILD_GRACE, BUILDING, JobStore  # noqa: PLC0415
+    from safecut.api.store import BUILD_GRACE, BUILDING, JobStore  # noqa: PLC0415 -- imported in the test that uses it
 
     store = JobStore(tmp_path, ttl=timedelta(hours=24), cleanup_every=timedelta(minutes=15))
     stale = tmp_path / BUILDING / "j_stale0000000000000000"
@@ -689,7 +689,7 @@ def test_a_replaced_container_stops_without_waiting_for_its_jobs(make_service: C
         gate.wait(20)
         real(job, action)
 
-    svc.worker._run_action = slow  # type: ignore[method-assign]  # pyright: ignore[reportPrivateUsage]
+    svc.worker._run_action = slow  # type: ignore[method-assign]  # pyright: ignore[reportPrivateUsage] -- a stand-in for the test, on purpose
     assert client.post(f"/v1/jobs/{job_id}/start").status_code == 202
     started = time.monotonic()
     svc.stop(wait=False)
@@ -703,7 +703,7 @@ def test_a_replaced_container_stops_without_waiting_for_its_jobs(make_service: C
 def test_a_replaced_container_closes_its_app_without_waiting_for_a_running_job(tmp_path: Path) -> None:
     """Modal ends the ASGI lifespan (which stops the service) before ``@modal.exit``: with ``wait_on_stop=False``
     closing the app mid-job is bounded, and the job stays mid-action on the Volume for the next container."""
-    from tests.test_api import recordings  # noqa: PLC0415
+    from tests.test_api import recordings  # noqa: PLC0415 -- imported in the test that uses it
 
     svc = Service(settings_for(tmp_path), fixtures=recordings(tmp_path), wait_on_stop=False)
     gate = threading.Event()
@@ -713,7 +713,7 @@ def test_a_replaced_container_closes_its_app_without_waiting_for_a_running_job(t
         gate.wait(30)
         real(job, action)
 
-    svc.worker._run_action = slow  # type: ignore[method-assign]  # pyright: ignore[reportPrivateUsage]
+    svc.worker._run_action = slow  # type: ignore[method-assign]  # pyright: ignore[reportPrivateUsage] -- a stand-in for the test, on purpose
     client = TestClient(create_app(service=svc, background=False))
     client.__enter__()
     job_id = upload_clip(client)
@@ -738,14 +738,14 @@ def test_job_threads_never_keep_a_finished_interpreter_alive() -> None:
         "print('stopped', flush=True)\n"
     )
     started = time.monotonic()
-    proc = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=30, check=False)  # noqa: S603
+    proc = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=30, check=False)  # noqa: S603 -- fixed argv: this interpreter and our own code
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "stopped"
     assert time.monotonic() - started < 15  # not the 60 s job
 
 
 def test_the_daemon_pool_runs_cancels_and_reports_like_an_executor() -> None:
-    from safecut.api.worker import DaemonPool  # noqa: PLC0415
+    from safecut.api.worker import DaemonPool  # noqa: PLC0415 -- imported in the test that uses it
 
     pool = DaemonPool(1, name="t")
     gate = threading.Event()
@@ -775,3 +775,27 @@ def test_the_daemon_pool_runs_cancels_and_reports_like_an_executor() -> None:
     with pytest.raises(ValueError, match="stage failed"):
         failed.result(5)
     other.shutdown(wait=True)
+
+
+def test_a_render_queued_after_a_long_review_is_resumed_not_failed_as_stalled(
+    make_service: Callable[..., Any],
+) -> None:
+    """The stall clock runs from when an action is queued: a job reviewed for hours, then sent to render just before
+    its container went away, is resumed by the next one."""
+    client, svc = make_service()
+    job_id = upload_clip(client)
+    run_to(client, svc, job_id, "start", "review")
+    with svc.store.update(job_id) as state:
+        state.started_at = datetime.now(UTC) - STALL_LIMIT - timedelta(hours=2)  # analysed long ago
+    gate = threading.Event()
+    real = svc.worker._run_action  # pyright: ignore[reportPrivateUsage]
+
+    def held(job: str, action: Any) -> None:
+        gate.wait(20)
+        real(job, action)
+
+    svc.worker._run_action = held  # type: ignore[method-assign]  # pyright: ignore[reportPrivateUsage] -- a stand-in action
+    assert client.post(f"/v1/jobs/{job_id}/render").status_code == 202
+    assert datetime.now(UTC) - svc.store.get(job_id).started_at < timedelta(minutes=1)  # type: ignore[operator] -- set on queueing
+    gate.set()
+    svc.worker.wait(job_id)

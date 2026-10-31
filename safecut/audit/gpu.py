@@ -34,7 +34,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Generator, Iterator, Mapping
-from contextlib import AbstractContextManager, contextmanager, nullcontext
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from typing import Any, Literal, cast
 from urllib.parse import urlsplit
@@ -67,6 +67,11 @@ _JOB_NAME = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}$")
 RETRY_DELAY_S = 2.0
 RETRYABLE = frozenset({"error", "stale_volume"})
 GpuRefusal = Literal["no_weights", "altered_weights", "no_gpu", "bad_request", "no_render"]
+
+
+class NotSubmitted(RuntimeError):
+    """The GPU call failed before Modal accepted it (the control plane unreachable, the function not deployed): no
+    GPU ran, so nothing is priced or claimed."""
 
 
 class GpuUnavailable(RuntimeError):
@@ -250,6 +255,13 @@ class GpuMeter:
             self.ledger.settle(call_id, usd)
         except Exception:
             log.exception("ledger settle failed for a GPU audit call; the reservation will expire as a charge")
+
+    def release(self, call_id: str) -> None:
+        """A reserved call that never reached Modal: released, never priced. Never raises (as ``settle``)."""
+        try:
+            self.ledger.release(call_id)
+        except Exception:
+            log.exception("ledger release failed for an unsubmitted GPU call; the reservation will expire as a charge")
 
     def _line(self, *, stage: str, usd: float, units: dict[str, float], estimated: bool, rid: str | None,
               cap: Any = None, model: str | None = None) -> None:  # fmt: skip
@@ -442,8 +454,12 @@ class GpuDetector:
             raise GpuUnavailable("ledger", f"{type(exc).__name__}: {exc}"[:300]) from exc
         started = time.monotonic()
         rid: str | None = None
+        submitted = True
         try:
             raw, rid = self._call(request, self.settings.audit_gpu_timeout_s)
+        except NotSubmitted as exc:
+            submitted = False
+            raise GpuUnavailable("error", f"not submitted: {exc}"[:300]) from exc
         except TimeoutError as exc:
             raise GpuUnavailable(
                 "timeout", str(exc) or f"no answer in {self.settings.audit_gpu_timeout_s:.0f} s"
@@ -451,9 +467,12 @@ class GpuDetector:
         except Exception as exc:
             raise GpuUnavailable("error", f"{type(exc).__name__}: {exc}"[:300]) from exc
         finally:
-            self.calls += 1
-            self.wall_s += time.monotonic() - started
-            self._meter.settle(call_id, time.monotonic() - started, self._model, rid)
+            if submitted:
+                self.calls += 1
+                self.wall_s += time.monotonic() - started
+                self._meter.settle(call_id, time.monotonic() - started, self._model, rid)
+            else:  # no GPU ran: the reservation goes, and nothing is priced or claimed
+                self._meter.release(call_id)
         return self._read(raw, request, sha)
 
     def _read(self, raw: dict[str, Any], request: GpuRequest, sha: str) -> dict[int, list[Detection]]:
@@ -518,18 +537,22 @@ def off_loop[T](work: Callable[[], T]) -> T:
     return on_daemon(work)
 
 
-def modal_host() -> str | None:
-    """The Modal control plane's host, which the client must reach even in replay (it's compute, not a model)."""
+def modal_hosts() -> list[str]:
+    """The Modal control plane's hosts, which the client must reach even in replay (it's compute, not a model).
+    ``server_url`` may list several, comma-separated, and the client falls back across them (modal 1.6.2's default
+    is ``https://api.modal.com,https://api.modal2.com``)."""
     modal = _modal()
+    urls = str(modal.config.config.get("server_url") or "").split(",")
+    return [host for url in urls if (host := urlsplit(url.strip()).hostname)]
 
-    url = str(modal.config.config.get("server_url") or "")
-    return urlsplit(url).hostname
 
-
-def modal_permitted() -> AbstractContextManager[None]:
-    """Replay's network guard lets the Modal control plane through inside this scope (``netguard.permitting``)."""
-    host = modal_host()
-    return netguard.permitting(host) if host else nullcontext()
+@contextmanager
+def modal_permitted() -> Generator[None]:
+    """Replay's network guard lets every Modal control-plane host through in this scope (``netguard.permitting``)."""
+    with ExitStack() as stack:
+        for host in modal_hosts():
+            stack.enter_context(netguard.permitting(host))
+        yield
 
 
 def child_env(env: Mapping[str, str]) -> dict[str, str]:
@@ -561,8 +584,11 @@ def modal_call(settings: Settings) -> RemoteCall:
 
     def _call(request: GpuRequest, timeout_s: float) -> tuple[dict[str, Any], str | None]:
         with modal_permitted():
-            function = modal.Function.from_name(settings.audit_gpu_app, settings.audit_gpu_function)
-            handle = function.spawn(request.model_dump(mode="json"))
+            try:
+                function = modal.Function.from_name(settings.audit_gpu_app, settings.audit_gpu_function)
+                handle = function.spawn(request.model_dump(mode="json"))
+            except Exception as exc:
+                raise NotSubmitted(f"{type(exc).__name__}: {exc}") from exc
             try:
                 result: Any = handle.get(timeout=timeout_s)
             except (TimeoutError, modal.exception.TimeoutError) as exc:  # waited too long, or the function's own limit
@@ -616,11 +642,12 @@ __all__ = [
     "GpuServer",
     "GpuUnavailable",
     "Handoff",
+    "NotSubmitted",
     "RemoteCall",
     "batches",
     "child_env",
     "modal_call",
     "modal_commit",
-    "modal_host",
+    "modal_hosts",
     "modal_permitted",
 ]

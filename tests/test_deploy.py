@@ -288,7 +288,7 @@ def test_egoblur_runs_on_a_gpu_function_with_the_weights_and_the_handoff_volume(
 def test_the_gpu_price_matches_the_gpu_container() -> None:
     """``SAFECUT_AUDIT_GPU_USD_PER_HOUR`` prices the dearest GPU it may get (L4 $0.80/h) plus its cpu and memory at
     ``modal billing rates`` (CPU $0.0473 per core-hour, memory $0.008 per GiB-hour), and its idle tail matches."""
-    from safecut.config import Settings  # noqa: PLC0415
+    from safecut.config import Settings  # noqa: PLC0415 -- imported in the test that uses it
 
     tree = modal_tree()
     detect = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "egoblur_detect")
@@ -441,7 +441,7 @@ def test_deploy_check_waits_out_a_cold_start_longer_than_its_other_requests() ->
 
 
 def test_the_smoke_checks_name_what_failed() -> None:
-    from deploy.checks import ledger_problems, post_deploy_problems, pre_deploy_problems  # noqa: PLC0415
+    from deploy.checks import ledger_problems, post_deploy_problems, pre_deploy_problems  # noqa: PLC0415 -- imported in the test that uses it
 
     ran = {"exit": 0, "unresolved": 0, "receipt": True, "redacted": True}
     probe = {"gpu": "NVIDIA L4", "refused": None, "detail": None, "frames": 360}
@@ -478,7 +478,7 @@ def test_the_deploy_workflow_proves_the_gpu_audit_and_a_cold_wake_after_deployin
 
 def test_the_cost_tables_match_the_code_and_the_containers() -> None:
     """Every copy of the cost table is what ``python -m deploy.costs`` prints, and its sizes are the deployed ones."""
-    from deploy import costs  # noqa: PLC0415
+    from deploy import costs  # noqa: PLC0415 -- imported in the test that uses it
 
     table = costs.table()
     for doc in ("docs/DEPLOY-COSTS.md", "docs/SUBMISSION.md", "web/README.md"):
@@ -506,8 +506,8 @@ def test_the_cost_tables_match_the_code_and_the_containers() -> None:
         costs.GPU_SCALEDOWN_S,
     )
     # The ledger's per-job GPU reservation (safecut/api/access.py) is the table's worst case.
-    from safecut.api.access import GPU_SCANS_PER_JOB  # noqa: PLC0415
-    from safecut.config import Settings  # noqa: PLC0415
+    from safecut.api.access import GPU_SCANS_PER_JOB  # noqa: PLC0415 -- imported in the test that uses it
+    from safecut.config import Settings  # noqa: PLC0415 -- imported in the test that uses it
 
     settings = Settings()
     assert GPU_SCANS_PER_JOB * settings.audit_gpu_timeout_s + settings.audit_gpu_idle_s == costs.JOB_GPU_WORST_S
@@ -540,7 +540,7 @@ def test_deploy_check_proves_the_api_containers_own_gpu_path(egoblur: dict[str, 
 def test_the_gpu_optional_switch_reaches_every_gpu_check() -> None:
     """One repository variable, for a hotfix during a GPU outage: the pre-deploy probe, the post-deploy job and the
     URL check's demo audit all warn instead of failing; nothing else is relaxed."""
-    from deploy.checks import post_deploy_problems, pre_deploy_problems  # noqa: PLC0415
+    from deploy.checks import post_deploy_problems, pre_deploy_problems  # noqa: PLC0415 -- imported in the test that uses it
 
     workflow = (ROOT / ".github" / "workflows" / "deploy.yml").read_text()
     assert "SAFECUT_DEPLOY_GPU_OPTIONAL: ${{ vars.SAFECUT_DEPLOY_GPU_OPTIONAL }}" in workflow

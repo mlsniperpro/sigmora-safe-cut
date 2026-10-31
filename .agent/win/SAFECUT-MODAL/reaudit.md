@@ -1,4 +1,4 @@
-AUDITED_COMMIT: e0a9eac
+AUDITED_COMMIT: 9e21278
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -122,3 +122,18 @@ fix has a test that fails without it.
 - L1 a GPU call that errored after its spawn wasn't cancelled → `_cancel(handle)` on any exception
   (`test_a_gpu_call_we_stop_waiting_for_is_cancelled[timeout|error]`).
 - L2 `deploy-check.sh` read a failed poll as "the demo build is done" → only an explicit `False` ends the wait.
+
+## Round 8 (on 9e21278): 0 critical, 1 high, 2 medium, 3 low. All closed. Not clean.
+
+- H1 modal 1.6.2's default `server_url` is two comma-separated URLs (`modal/config.py` `DEFAULT_SERVER_URL`), which
+  the replay permit parsed into one junk host → `modal_hosts()` splits it and `modal_permitted()` lets each through
+  (`test_replay_reaches_every_host_of_modals_default_server_url`, with the real default).
+- M1 a call that failed before Modal accepted it (`from_name`/`spawn`) was still priced and claimed →
+  `NotSubmitted`: the reservation is released, nothing priced, counted or claimed
+  (`test_a_call_that_never_reached_modal_costs_and_claims_nothing`).
+- M2 the gate's "unjustified suppressions" scan flagged 52 bare `noqa`/`type: ignore` lines this lane added → each
+  carries its reason.
+- Lows: the pre-deploy probe reports any GPU error (so `SAFECUT_DEPLOY_GPU_OPTIONAL` can waive it); BLOCKED.md
+  says turning the GPU off needs the optional switch too; the stall clock starts when an action is queued (start,
+  render, audit, a re-queue), so a render after a long review is resumed, not failed
+  (`test_a_render_queued_after_a_long_review_is_resumed_not_failed_as_stalled`).

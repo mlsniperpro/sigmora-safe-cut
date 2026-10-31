@@ -308,6 +308,7 @@ class Service:
                         self.worker.submit_later(job_id, action, wait)
                     else:
                         state.status = "processing" if analysing else "rendering"
+                        state.started_at = now  # re-queued: its stall clock starts again
                         state.retry_at = None
                         self.worker.submit(job_id, action)
                     resumed.append(job_id)
@@ -715,6 +716,7 @@ def start(svc: Svc, job_id: str) -> JSONResponse:
                 raise ApiRefusal(422, "no_recording", "Demo mode can only replay the recorded demo clips.")
             pipeline.attach_recording(job_dir, recording)
         state.status, state.stage, state.failure = "processing", "queued", None
+        state.started_at = datetime.now(UTC)  # the stall clock runs from queueing, not from the last action
         state.synthetic = pipeline.recording_is_synthetic(job_dir)
         state.duration_s = duration
         state.requeues = 0
@@ -832,6 +834,7 @@ def render(svc: Svc, job_id: str) -> JSONResponse:
             check_caps(svc.settings, svc.ledger, grant, estimate=0.01)
         pipeline.approve(svc.store.path(job_id), how="review")
         state.status, state.stage, state.failure = "rendering", "render", None
+        state.started_at = datetime.now(UTC)  # a long review never makes a queued render look stalled
         updated = state.model_copy()
         svc.worker.submit(job_id, "publish")
     return ack(updated)
@@ -850,6 +853,7 @@ def audit(svc: Svc, job_id: str) -> JSONResponse:
         if state.mode == "live" and grant is not None:
             check_caps(svc.settings, svc.ledger, grant, estimate=0.01)
         state.status, state.stage, state.failure = "rendering", "audit", None
+        state.started_at = datetime.now(UTC)  # a long review never makes a queued audit look stalled
         updated = state.model_copy()
         svc.worker.submit(job_id, "audit")
     return ack(updated)

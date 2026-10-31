@@ -23,9 +23,9 @@ import httpx
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
 
-from safecut import contracts  # noqa: E402
-from safecut.pipeline import read_log  # noqa: E402
-from tests.test_scale_to_zero import CODE, LocalApi  # noqa: E402
+from safecut import contracts  # noqa: E402 -- after the sys.path insert above, on purpose
+from safecut.pipeline import read_log  # noqa: E402 -- after the sys.path insert above, on purpose
+from tests.test_scale_to_zero import CODE, LocalApi  # noqa: E402 -- after the sys.path insert above, on purpose
 
 N = int(os.environ.get("N", "5"))
 KILLS = int(os.environ.get("KILLS", "2"))

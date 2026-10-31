@@ -21,11 +21,11 @@ from hypothesis import strategies as st
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
 
-import pytest  # noqa: E402
+import pytest  # noqa: E402 -- after the sys.path insert above, on purpose
 
-from safecut.audit import GPU_RECORD, detectors  # noqa: E402
-from safecut.audit import run as audit_run  # noqa: E402
-from tests.test_audit_gpu import (  # noqa: E402
+from safecut.audit import GPU_RECORD, detectors  # noqa: E402 -- after the sys.path insert above, on purpose
+from safecut.audit import run as audit_run  # noqa: E402 -- after the sys.path insert above, on purpose
+from tests.test_audit_gpu import (  # noqa: E402 -- after the sys.path insert above, on purpose
     FACE,
     PLATE,
     FakeModal,
@@ -35,7 +35,7 @@ from tests.test_audit_gpu import (  # noqa: E402
     server,
     settings_for,
 )
-from tests.test_audit_loop import drop  # noqa: E402
+from tests.test_audit_loop import drop  # noqa: E402 -- after the sys.path insert above, on purpose
 
 EXAMPLES = int(os.environ.get("EXAMPLES", "200"))
 FAULTS = st.lists(st.sampled_from([None, None, "timeout", "error", "stale"]), max_size=6)
@@ -54,7 +54,7 @@ def check(faults: list[str | None], problem: str, leak: bool) -> None:
         root = Path(tmp)
         weights = root / "models" / "egoblur"
         weights.mkdir(parents=True)
-        import hashlib  # noqa: PLC0415
+        import hashlib  # noqa: PLC0415 -- imported in the test that uses it
 
         pins = {}
         for name in (FACE, PLATE):

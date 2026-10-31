@@ -249,8 +249,11 @@ def pipeline_worker_smoke(audit_gpu: bool = False) -> dict[str, object]:
             try:
                 probe = call.get(timeout=GPU_PROBE_TIMEOUT_S)
             except (TimeoutError, modal.exception.TimeoutError):
-                call.cancel()
+                call.cancel(terminate_containers=True)
                 probe = {"refused": "timeout", "detail": f"no GPU answer in {GPU_PROBE_TIMEOUT_S} s"}
+            except Exception as exc:  # a crash in the GPU image: reported, so SAFECUT_DEPLOY_GPU_OPTIONAL can waive it
+                call.cancel(terminate_containers=True)
+                probe = {"refused": "error", "detail": f"{type(exc).__name__}: {exc}"[:300]}
             result["gpu_probe"] = {"gpu": probe.get("gpu"), "refused": probe.get("refused"),
                                    "detail": probe.get("detail"), "frames": len(probe.get("frames") or {})}  # fmt: skip
         finally:
