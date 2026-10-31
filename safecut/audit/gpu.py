@@ -28,6 +28,7 @@ import logging
 import os
 import re
 import shutil
+import site
 import tempfile
 import threading
 import time
@@ -497,16 +498,21 @@ def modal_permitted() -> AbstractContextManager[None]:
 
 def child_env(env: Mapping[str, str]) -> dict[str, str]:
     """The environment for a child Python (``safecut run``) that must reach Modal as this process does. In a Modal
-    container the client is put on ``sys.path`` at startup, which a child may not repeat: its folder is passed on
-    ``PYTHONPATH``. Unchanged where no Modal client is importable."""
+    container the client may live outside the interpreter's own site-packages (a mount the runtime adds at
+    startup), which a child may not repeat: that folder, and only such a folder, is passed on ``PYTHONPATH``. A
+    site-packages folder never is: ``PYTHONPATH`` precedes the standard library, so it could shadow it (a ``typing``
+    backport there would)."""
     out = dict(env)
     spec = importlib.util.find_spec("modal")
     if spec is None or spec.origin is None:
         return out
-    folder = str(Path(spec.origin).parent.parent)
+    folder = Path(spec.origin).resolve().parent.parent
+    standard = {Path(p).resolve() for p in (*site.getsitepackages(), site.getusersitepackages())}
+    if folder in standard:
+        return out
     paths = [p for p in out.get("PYTHONPATH", "").split(os.pathsep) if p]
-    if folder not in paths:
-        out["PYTHONPATH"] = os.pathsep.join([*paths, folder])
+    if str(folder) not in paths:
+        out["PYTHONPATH"] = os.pathsep.join([*paths, str(folder)])
     return out
 
 

@@ -513,12 +513,36 @@ def test_a_locked_limit_store_counts_in_memory_without_moving_the_file(
     assert not list(tmp_path.glob("*.corrupt-*"))  # a transient error never throws the hour's window away
 
 
-def test_the_demo_builds_child_can_import_modal_as_this_process_does() -> None:
+def test_the_demo_builds_child_can_import_modal_as_this_process_does(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A Modal client outside site-packages (the runtime's own mount) reaches the child on PYTHONPATH; a client in
+    site-packages never puts site-packages there, ahead of the standard library (a typing backport would shadow it)."""
+    import importlib.util  # noqa: PLC0415
+
     from safecut.audit.gpu import child_env  # noqa: PLC0415
 
+    assert child_env({"PYTHONPATH": "/somewhere"}) == {"PYTHONPATH": "/somewhere"}  # this venv's modal: untouched
+    mount = tmp_path / "pkg"
+    (mount / "modal").mkdir(parents=True)
+    (mount / "modal" / "__init__.py").write_text("")
+    spec = importlib.util.spec_from_file_location("modal", mount / "modal" / "__init__.py")
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: spec if name == "modal" else None)
     env = child_env({"PYTHONPATH": "/somewhere"})
-    import modal  # noqa: PLC0415
-
-    folder = str(Path(modal.__file__).resolve().parent.parent)
-    assert env["PYTHONPATH"].split(os.pathsep) == ["/somewhere", folder]
+    assert env["PYTHONPATH"].split(os.pathsep) == ["/somewhere", str(mount.resolve())]
     assert child_env(env)["PYTHONPATH"] == env["PYTHONPATH"]  # added once
+    assert child_env({}) == {"PYTHONPATH": str(mount.resolve())}
+
+
+def test_the_demo_job_builds_through_the_real_child_process(tmp_path: Path) -> None:
+    """The demo is built by a ``safecut run --replay`` child with the environment ``child_env`` gives it: it must
+    come up (an environment that broke the child's imports once took the demo away)."""
+    from safecut.config import Settings  # noqa: PLC0415
+
+    svc = Service(Settings(replay=True, jobs_dir=str(tmp_path / "jobs")))
+    try:
+        assert svc.build_demo_jobs() == ["demo"]
+        state = svc.store.get(app_module.hero_job_id("demo"))
+        assert (state.status, state.pinned, state.synthetic) == ("done", True, True)
+    finally:
+        svc.stop()
