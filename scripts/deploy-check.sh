@@ -85,7 +85,8 @@ if [ "$code" = "401" ]; then ok "API: a wrong access code is refused (401)"; els
 deadline=$(( $(date +%s) + ${DEPLOY_DEMO_WAIT_S:-300} ))
 # A redeploy's container keeps serving the previous demo while it builds its own: wait until /healthz says the build
 # for this code is done, so the checks below judge this deploy's demo, never an earlier one.
-while [ "$(json health "['demos_building']")" = "True" ] && [ "$(date +%s)" -lt "$deadline" ]; do
+# Anything but an explicit False (a poll that timed out, a partial body) means keep waiting.
+while [ "$(json health "['demos_building']")" != "False" ] && [ "$(date +%s)" -lt "$deadline" ]; do
   sleep 5
   fetch health "$API/healthz" >/dev/null
 done

@@ -546,8 +546,15 @@ def test_a_handoff_commit_that_fails_is_retried_then_falls_back(tmp_path: Path, 
     audit_run(job_dir, replay=True, settings=settings_for(tmp_path), gpu_call=fake.call, gpu_commit=refusing)
     assert len(commits) == 2  # once, then the one retry
     assert fake.requests == []  # never asked the GPU about a render it might not see
-    assert json.loads((job_dir / GPU_RECORD).read_text())["fallback"].startswith("error: RuntimeError")
+    assert json.loads((job_dir / GPU_RECORD).read_text())["fallback"].startswith("error: handoff: RuntimeError")
     assert list(handoff_root(job_dir).iterdir()) == []  # the copy is removed on the way out
+    # No GPU ran: nothing priced, nothing reserved, and the receipt never says EgoBlur was called.
+    assert gpu_lines(job_dir) == []
+    settings = settings_for(tmp_path)
+    assert LocalLedger(Path(settings.jobs_dir) / "ledger.sqlite").spent(f"job:{job_dir.name}") == 0
+    notes = sealed(job_dir, settings).data_handling.notes
+    assert SYNTHETIC_NOTE in notes
+    assert SYNTHETIC_GPU_NOTE not in notes
 
 
 def test_the_handoff_copies_each_render_once_and_names_every_gpu(tmp_path: Path, weights: Path) -> None:
@@ -673,6 +680,7 @@ def test_a_commit_that_hangs_falls_back_instead_of_holding_every_audit(tmp_path:
     assert caught.value.reason == "timeout"
     assert "handoff commit" in str(caught.value)
     assert fake.requests == []
+    assert not (job_dir / "cost.jsonl").exists() or gpu_lines(job_dir) == []  # a hung commit isn't GPU time
     box.put(job_dir, "1" * 64)  # the lock was released: the next audit isn't blocked behind the hung one
 
 
@@ -783,3 +791,38 @@ def test_on_daemon_answers_raises_and_times_out() -> None:
     with pytest.raises(TimeoutError):
         gpu.on_daemon(blocked, timeout_s=0.1)
     gate.set()
+
+
+# ---------------------------------------------------------------------------------------------- round-7 audit fixes
+
+
+@pytest.mark.parametrize("failure", [TimeoutError("no output"), ConnectionError("Modal client lost the server")])
+def test_a_gpu_call_we_stop_waiting_for_is_cancelled(monkeypatch: pytest.MonkeyPatch, failure: Exception) -> None:
+    """Timed out or errored after the spawn: the scan is cancelled with its container, never left running unpriced."""
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    cancelled: list[bool] = []
+
+    class Handle:
+        object_id = "fc-1"
+
+        def get(self, timeout: float) -> dict[str, Any]:
+            del timeout
+            raise failure
+
+        def cancel(self, terminate_containers: bool = False) -> None:
+            cancelled.append(terminate_containers)
+
+    function = SimpleNamespace(spawn=lambda request: Handle())
+    fake_modal = SimpleNamespace(
+        Function=SimpleNamespace(from_name=lambda app, name: function),
+        exception=SimpleNamespace(TimeoutError=type("ModalTimeout", (Exception,), {})),
+        config=SimpleNamespace(config={"server_url": "https://api.modal.com"}),
+    )
+    monkeypatch.setattr(gpu, "_modal", lambda: fake_modal)
+    call = gpu.modal_call(Settings(audit_gpu=True))
+    request = GpuRequest(job="j_x-0123456789abcdef", frames=[0], model="egoblur-gen2", face_threshold=0.5,
+                         plate_threshold=0.5)  # fmt: skip
+    with pytest.raises(type(failure)):
+        call(request, 1.0)
+    assert cancelled == [True]

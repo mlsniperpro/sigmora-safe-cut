@@ -1,4 +1,4 @@
-AUDITED_COMMIT: e167e0d
+AUDITED_COMMIT: e0a9eac
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -111,3 +111,14 @@ fix has a test that fails without it.
   event) for both (`test_a_job_waiting_on_the_gpu_never_keeps_a_finished_interpreter_alive`,
   `test_on_daemon_answers_raises_and_times_out`).
 - L2 this log's header lagged the round-5 diff → updated.
+
+## Round 7 (on e0a9eac): 0 critical, 0 high, 2 medium, 2 low. All closed. Not clean.
+
+- M1 a handoff failure before any GPU call was still reserved and priced (`provider: modal` lines), so a synthetic
+  receipt said EgoBlur was "the only model called" → the handoff runs before the reservation; only a submitted call
+  is reserved, priced or counted (`test_a_handoff_commit_that_fails_is_retried_then_falls_back` now asserts no
+  cost lines, nothing in the ledger, and the plain synthetic note).
+- M2 `break-it.md` didn't exist yet → written from the break-it runs on the final commit.
+- L1 a GPU call that errored after its spawn wasn't cancelled → `_cancel(handle)` on any exception
+  (`test_a_gpu_call_we_stop_waiting_for_is_cancelled[timeout|error]`).
+- L2 `deploy-check.sh` read a failed poll as "the demo build is done" → only an explicit `False` ends the wait.

@@ -422,6 +422,17 @@ class GpuDetector:
         return self._attempt(sha, frames)
 
     def _attempt(self, sha: str, frames: list[int]) -> dict[int, list[Detection]]:
+        # The render must be on the handoff Volume, committed, before the GPU reads it. Free: nothing is reserved,
+        # priced or claimed until a call is actually made.
+        try:
+            name = self.handoff.put(self.job_dir, sha)
+        except TimeoutError as exc:
+            raise GpuUnavailable("timeout", str(exc)) from exc
+        except Exception as exc:
+            raise GpuUnavailable("error", f"handoff: {type(exc).__name__}: {exc}"[:300]) from exc
+        request = GpuRequest(job=name, frames=frames, model=self._model,
+                             face_threshold=self.settings.egoblur_face_threshold,
+                             plate_threshold=self.settings.egoblur_plate_threshold)  # fmt: skip
         call_id = f"gpu-{self._meter.job_id}-{uuid.uuid4().hex}"
         try:
             self._meter.reserve(call_id)
@@ -432,10 +443,6 @@ class GpuDetector:
         started = time.monotonic()
         rid: str | None = None
         try:
-            # The render must be on the handoff Volume, committed, before the GPU reads it.
-            request = GpuRequest(job=self.handoff.put(self.job_dir, sha), frames=frames, model=self._model,
-                                 face_threshold=self.settings.egoblur_face_threshold,
-                                 plate_threshold=self.settings.egoblur_plate_threshold)  # fmt: skip
             raw, rid = self._call(request, self.settings.audit_gpu_timeout_s)
         except TimeoutError as exc:
             raise GpuUnavailable(
@@ -559,13 +566,23 @@ def modal_call(settings: Settings) -> RemoteCall:
             try:
                 result: Any = handle.get(timeout=timeout_s)
             except (TimeoutError, modal.exception.TimeoutError) as exc:  # waited too long, or the function's own limit
-                handle.cancel(terminate_containers=True)  # a stuck scan must not keep a GPU billing in the background
+                _cancel(handle)  # a stuck scan must not keep a GPU billing in the background
                 raise TimeoutError(str(exc)) from exc
+            except BaseException:
+                _cancel(handle)  # an error after the spawn: the scan we stop waiting for mustn't run on unpriced
+                raise
         if not isinstance(result, dict):
             raise TypeError(f"the GPU function answered a {type(result).__name__}")
         return cast(dict[str, Any], result), str(handle.object_id)
 
     return call
+
+
+def _cancel(handle: Any) -> None:
+    try:
+        handle.cancel(terminate_containers=True)
+    except Exception:
+        log.warning("couldn't cancel a GPU call; Modal's function timeout ends it", exc_info=True)
 
 
 def modal_commit(settings: Settings) -> Callable[[], None]:
