@@ -882,3 +882,49 @@ def test_the_api_imports_nothing_heavy() -> None:
     proc = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=120, check=False)  # noqa: S603 -- fixed argv: this interpreter and our own code
     assert proc.returncode == 0, proc.stderr[-500:]
     assert proc.stdout.strip() == "[]"
+
+
+# ---------------------------------------------------------------------------------------------- round-24 audit fixes
+
+
+@pytest.mark.parametrize(
+    ("result", "optional", "code"),
+    [
+        ({"auditor": "egoblur-gen2", "auditor_device": "cuda:NVIDIA L4"}, None, 0),
+        ({"auditor": "yunet-face", "auditor_device": "cpu", "gpu_fallback": "timeout: x"}, None, 1),
+        ({"auditor": "yunet-face", "auditor_device": "cpu", "gpu_fallback": "timeout: x"}, "1", 0),
+        ({"auditor": "egoblur-gen2", "auditor_device": "cuda:NVIDIA L4", "exit": 1}, "1", 1),
+    ],
+)
+def test_the_post_deploy_check_runs_the_deployed_job_with_the_gpu_audit(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], result: dict[str, Any], optional: str | None,
+    code: int,
+) -> None:  # fmt: skip
+    """``deploy.verify_deploy`` itself: it calls the deployed smoke with ``audit_gpu=True``, and its exit code is the
+    checks' verdict (a job that didn't run fails even with the GPU-optional switch)."""
+    import modal  # noqa: PLC0415 -- the deploy group, imported where it is used
+
+    from deploy import verify_deploy  # noqa: PLC0415 -- the deploy group, imported where it is used
+
+    calls: list[tuple[str, str, dict[str, object]]] = []
+    answer = {"exit": 0, "unresolved": 0, "receipt": True, "redacted": True, **result}
+
+    class Smoke:
+        def __init__(self, app: str, name: str) -> None:
+            self.where = (app, name)
+
+        def remote(self, **kwargs: object) -> dict[str, Any]:
+            calls.append((*self.where, kwargs))
+            return answer
+
+    monkeypatch.setattr(modal.Function, "from_name", Smoke)
+    if optional is None:
+        monkeypatch.delenv("SAFECUT_DEPLOY_GPU_OPTIONAL", raising=False)
+    else:
+        monkeypatch.setenv("SAFECUT_DEPLOY_GPU_OPTIONAL", optional)
+    assert verify_deploy.main() == code
+    assert calls == [("safecut", "pipeline_worker_smoke", {"audit_gpu": True})]
+    out = capsys.readouterr().out
+    assert ("FAIL" in out) is (code == 1)
+    if code == 0 and result["auditor"] == "egoblur-gen2":
+        assert "audited by egoblur-gen2 on cuda:NVIDIA L4" in out

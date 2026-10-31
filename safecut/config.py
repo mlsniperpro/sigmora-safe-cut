@@ -397,12 +397,13 @@ class Settings(BaseModel):
     #: The handoff Volume the render reaches the GPU through (``safecut.audit.gpu.Handoff``), mounted here.
     audit_gpu_volume: str = Field(default="safecut-audit", min_length=1)
     audit_gpu_handoff_dir: str = Field(default="/audit", min_length=1)
-    #: One scan on the GPU, cold start included (a 60 s clip: ~3,600 detector passes at ~20 ms on an L4, ~75 s of
-    #: model time, plus decode and a cold start; ``deploy/costs.py`` assumes 210 s for a whole job's audit).
+    #: One scan on the GPU, cold start included. Assumed, not measured: a 60 s clip is ~3,600 detector passes at
+    #: ~20 ms each (Meta quotes ~21 ms a frame on an unnamed GPU), ~75 s of model time, plus decode and a cold start;
+    #: ``deploy/costs.py`` assumes 210 s for a whole job's audit.
     audit_gpu_timeout_s: float = Field(default=300.0, gt=0, le=1800)
     #: The GPU function's container per hour at ``modal billing rates``: L4 $0.80 + 2 cores × $0.0473 + 6 GiB ×
-    #: $0.008 = $0.94 (deploy/modal_app.py sizes it; a T4 fallback costs less). An estimate: Modal bills by the
-    #: second, cold start and idle included.
+    #: $0.008 = $0.94, rounded up to $0.95 (deploy/modal_app.py sizes it; a T4 fallback costs less). An estimate:
+    #: Modal bills by the second, cold start and idle included.
     audit_gpu_usd_per_hour: float = Field(default=0.95, ge=0)
     #: The GPU container's ``scaledown_window``: idle seconds billed after the audit's last call.
     audit_gpu_idle_s: float = Field(default=30.0, ge=0)

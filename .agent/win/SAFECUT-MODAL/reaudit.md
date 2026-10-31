@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 6437b5a
+AUDITED_COMMIT: f6f8945
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -329,3 +329,14 @@ test ran 12 times under CPU stress without a flake.
   quarters of it; fails with the cap removed or a whole-bound margin).
 - L2 the demo hold's time limit was untested → `test_the_demo_hold_gives_up_at_its_limit`.
 - L3 two comments disagreed on a clip's GPU model time → `safecut/config.py` uses `deploy/costs.py`'s derivation.
+
+## Round 24 (on f6f8945): 0 critical, 0 high, 0 medium, 2 low. All closed. Not clean.
+
+The round-23 tests killed every margin and deadline mutant (and 8 more `gpu.py` mutants); they passed 6 of 6 under
+8 CPU hogs. Every cited test id resolves against the collected 1,618.
+
+- L1 `safecut/config.py` stated the assumed GPU time per pass as fact, and $0.94 beside a $0.95 default →
+  "assumed, not measured" (Meta's ~21 ms is on an unnamed GPU) and "rounded up to $0.95".
+- L2 `deploy.verify_deploy.main` was only checked by text → `test_the_post_deploy_check_runs_the_deployed_job_with_the_gpu_audit`
+  (a stand-in `modal.Function`: called with `audit_gpu=True`, exit 0 or 1 by the checks, the GPU-optional switch
+  relaxing only the GPU part; fails without `audit_gpu=True`, without the exit code, or with the switch inverted).
