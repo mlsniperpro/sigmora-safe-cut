@@ -15,8 +15,10 @@ import ipaddress
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections.abc import AsyncGenerator, Awaitable, Callable
@@ -69,6 +71,8 @@ HEALTH_SWITCH = datetime(2026, 11, 5, tzinfo=UTC)
 STALL_LIMIT = timedelta(minutes=45)
 #: How often a demo job the GPU couldn't audit is built again (each rebuild takes the demo away for a minute).
 DEMO_GPU_RETRY = timedelta(hours=6)
+#: Where a demo job is built before it replaces the served one (beside the jobs; the store and its sweep skip it).
+BUILDING = ".building"
 #: ``hold``'s name for the demo build: the container stays up while it runs (it isn't a job action).
 DEMO_HOLD = "demo-build"
 #: Restarts a job may need (a redeploy, a preemption): one more and it is the job taking its container down.
@@ -324,17 +328,15 @@ class Service:
                 if existing.status == "done" and existing.demo_stamp == stamp and not self._retry_gpu(job_id, existing):
                     built.append(recording.name)
                     continue
-                self.store.delete(job_id)  # a re-recorded hero, a new clip or new code: built again
             except JobNotFound:
                 pass
+            # A re-recorded hero, a new clip, new code, or a demo the GPU couldn't audit: built again, beside the one
+            # being served, which keeps serving until the new one is done (and stays if the build fails).
             try:
-                self._precompute(job_id, recording, clip)
-                with self.store.update(job_id) as state:
-                    state.demo_stamp = stamp
+                self._precompute(job_id, recording, clip, stamp)
                 built.append(recording.name)
             except Exception as exc:
-                log.warning("demo job %s not built: %s", recording.name, exc)
-                self.store.delete(job_id)
+                log.warning("demo job %s not built (any earlier build is still served): %s", recording.name, exc)
         return built
 
     def _retry_gpu(self, job_id: str, state: JobState) -> bool:
@@ -348,36 +350,36 @@ class Service:
             return True
         return not (device or "").startswith("cuda:")
 
-    def _precompute(self, job_id: str, recording: Path, clip: Path) -> None:
-        """Run the hero job with ``safecut run --replay`` in a child process: the child blocks the network for
-        its whole life, and a live API's own threads are never blocked by it."""
-        self.store.create(mode="replay", job_id=job_id, pinned=True)
-        job_dir = self.store.path(job_id)
-        proc = subprocess.run(  # noqa: S603 -- fixed argv: this interpreter, our own CLI, our own paths
-            [
-                sys.executable,
-                "-m",
-                "safecut.cli",
-                "run",
-                str(clip),
-                "--out",
-                str(job_dir),
-                "--replay",
-                "--replay-from",
-                str(recording),
-                "--auto-approve-policy",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=900,
-            check=False,
-            env=child_env(os.environ),  # the audit's GPU path reaches Modal from the child too
-        )
-        if proc.returncode != 0:
-            raise pipeline.PipelineError(f"safecut run exited {proc.returncode}: {proc.stderr.strip()[-300:]}")
-        with self.store.update(job_id) as state:
-            state.status, state.stage = "done", "done"
-            state.synthetic = pipeline.recording_is_synthetic(job_dir)
+    def _precompute(self, job_id: str, recording: Path, clip: Path, stamp: str) -> None:
+        """Run the hero job with ``safecut run --replay`` in a child process (the child blocks the network for its
+        whole life, and a live API's own threads are never blocked by it), into a scratch folder beside the store;
+        only a finished build replaces the served demo, in one quick swap. The child keeps a ledger of its own: the
+        demo is the owner's spend under the job cap alone, and the service's ledger keeps one writer."""
+        scratch = self.store.root / BUILDING / job_id
+        shutil.rmtree(scratch, ignore_errors=True)  # a build a dead container left half done
+        scratch.mkdir(parents=True)
+        try:
+            with tempfile.TemporaryDirectory(prefix="demo-ledger-") as ledger:
+                env = child_env({**os.environ, "SAFECUT_JOBS_DIR": ledger})  # the GPU path reaches Modal from it too
+                proc = subprocess.run(  # noqa: S603 -- fixed argv: this interpreter, our own CLI, our own paths
+                    [sys.executable, "-m", "safecut.cli", "run", str(clip), "--out", str(scratch), "--replay",
+                     "--replay-from", str(recording), "--auto-approve-policy"],
+                    capture_output=True, text=True, timeout=900, check=False, env=env,
+                )  # fmt: skip
+            if proc.returncode != 0:
+                raise pipeline.PipelineError(f"safecut run exited {proc.returncode}: {proc.stderr.strip()[-300:]}")
+            synthetic = pipeline.recording_is_synthetic(scratch)
+            with contextlib.suppress(JobNotFound):
+                self.store.delete(job_id)
+            self.store.create(mode="replay", job_id=job_id, pinned=True)
+            target = self.store.path(job_id)
+            for entry in scratch.iterdir():
+                entry.rename(target / entry.name)
+            with self.store.update(job_id) as state:
+                state.status, state.stage = "done", "done"
+                state.synthetic, state.demo_stamp = synthetic, stamp
+        finally:
+            shutil.rmtree(scratch, ignore_errors=True)
 
     # -- health ----------------------------------------------------------------
 

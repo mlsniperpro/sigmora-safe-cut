@@ -318,25 +318,17 @@ class Handoff:
         finally:
             pool.shutdown(wait=False)
 
+    def discard(self, name: str) -> None:
+        """Remove one render, so the next ``put`` copies it afresh."""
+        with self._exclusive():
+            shutil.rmtree(self.root / name, ignore_errors=True)
+
     def close(self) -> None:
         """Remove every render this audit put there (Modal's background commit, or the next one, carries it)."""
         with self._exclusive():
             for name in self._put:
                 shutil.rmtree(self.root / name, ignore_errors=True)
             self._put.clear()
-
-
-def sweep_handoff(root: Path, *, older_than_s: float = 3600.0, now: float | None = None) -> list[str]:
-    """Remove handoff folders an audit left behind (a container that died mid-audit); the cleanup cron runs it."""
-    if not root.is_dir():
-        return []
-    cutoff = (time.time() if now is None else now) - older_than_s
-    removed: list[str] = []
-    for folder in sorted(root.iterdir()):
-        if folder.is_dir() and folder.stat().st_mtime < cutoff:
-            shutil.rmtree(folder, ignore_errors=True)
-            removed.append(folder.name)
-    return removed
 
 
 class GpuDetector:
@@ -462,6 +454,7 @@ class GpuDetector:
         if answer.model != request.model:
             raise GpuUnavailable("bad_answer", f"asked for {request.model}, {answer.model} answered")
         if answer.video_sha256 != sha:
+            self.handoff.discard(request.job)  # copied again on the retry, never trusted twice
             raise GpuUnavailable("stale_volume", "the GPU read another version of the render (Volume not reloaded)")
         if set(answer.frames) != set(request.frames):
             raise GpuUnavailable("bad_answer", "the GPU didn't answer exactly the frames it was asked for")
@@ -527,7 +520,7 @@ def modal_call(settings: Settings) -> RemoteCall:
             try:
                 result: Any = handle.get(timeout=timeout_s)
             except (TimeoutError, modal.exception.TimeoutError) as exc:  # waited too long, or the function's own limit
-                handle.cancel()
+                handle.cancel(terminate_containers=True)  # a stuck scan must not keep a GPU billing in the background
                 raise TimeoutError(str(exc)) from exc
         if not isinstance(result, dict):
             raise TypeError(f"the GPU function answered a {type(result).__name__}")
@@ -571,5 +564,4 @@ __all__ = [
     "modal_commit",
     "modal_host",
     "modal_permitted",
-    "sweep_handoff",
 ]

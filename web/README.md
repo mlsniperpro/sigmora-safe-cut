@@ -75,8 +75,8 @@ Captions on the hero and result videos come from the API's signed `captions.vtt`
 
 ## The API sleeps when idle (cold start)
 
-The API on Modal scales to zero, so the first request after a quiet spell waits while a container starts (about 10
-to 40 s). The client treats that as a designed state (`src/lib/wake.ts`, `src/lib/api.ts`): while the API isn't
+The API on Modal scales to zero, so the first request after a quiet spell waits while a container starts (an
+estimated 10 to 40 s; `scripts/deploy-check.sh` prints the real wait after a deploy). The client treats that as a designed state (`src/lib/wake.ts`, `src/lib/api.ts`): while the API isn't
 known to be awake a request may wait 60 s (15 s once it has answered in the last two minutes), GETs and the code
 check retry on a timeout, other POSTs never do (a timed-out one may still have run), and after 4 s a polite status
 line says "Waking Safe Cut up". The Playwright run (`pnpm e2e`) holds the first requests to check that line, axe,

@@ -144,8 +144,7 @@ def cleanup() -> dict[str, list[str]]:
     """Delete every unpinned job older than ``SAFECUT_JOB_TTL_HOURS`` (24 h) from the Volume and any render an audit
     left on the handoff Volume, and wake the API for any job still mid-action (a no-op input when it is already
     working on it)."""
-    from safecut.api.store import JobStore  # noqa: PLC0415 -- inside the container
-    from safecut.audit.gpu import sweep_handoff  # noqa: PLC0415 -- inside the container
+    from safecut.api.store import JobStore, sweep_handoff  # noqa: PLC0415 -- inside the container
     from safecut.config import load_settings  # noqa: PLC0415 -- inside the container
 
     settings = load_settings()
@@ -209,14 +208,16 @@ def pipeline_worker_smoke(audit_gpu: bool = False) -> dict[str, object]:
     import sys  # noqa: PLC0415 -- inside the container
     import tempfile  # noqa: PLC0415 -- inside the container
 
-    from safecut.audit.gpu import Handoff  # noqa: PLC0415 -- inside the container
+    from safecut.audit.gpu import Handoff, child_env  # noqa: PLC0415 -- inside the container
     from safecut.render import file_sha256  # noqa: PLC0415 -- inside the container
 
     manifest = json.loads(Path("/root/fixtures/jobs/demo/raw/manifest.json").read_text())
     clip = Path("/root") / manifest["source"]
     out = Path(tempfile.mkdtemp()) / "smoke"
     # The smoke's own ledger, off the jobs Volume: the API container is that Volume's one SQLite writer.
-    env = {**os.environ, "SAFECUT_AUDIT_GPU": "1" if audit_gpu else "0", "SAFECUT_JOBS_DIR": tempfile.mkdtemp()}
+    env = child_env(
+        {**os.environ, "SAFECUT_AUDIT_GPU": "1" if audit_gpu else "0", "SAFECUT_JOBS_DIR": tempfile.mkdtemp()}
+    )
     proc = subprocess.run(  # noqa: S603 -- fixed argv: this interpreter, our CLI, our paths
         [sys.executable, "-m", "safecut.cli", "run", str(clip), "--out", str(out), "--replay",
          "--replay-from", "/root/fixtures/jobs/demo", "--auto-approve-policy"],

@@ -49,6 +49,14 @@ and the receipt (`cost_usd_gpu`); the up-front check on `POST /start` adds the G
   never paid for twice. A job found mid-action by a restart after 45 minutes, or on its fourth restart, fails as `internal` instead of waking a container again and again (a job still running in a live container is left to finish).
   Proven by `tests/test_scale_to_zero.py`: a local API is killed with SIGKILL mid-analysis and mid-audit; a fresh
   process finishes the job, its receipt verifies, and every stage logs exactly one `done`.
+- **Deploys stop the old container first (`modal deploy --strategy recreate`).** Modal's default, `rolling`, lets old
+  containers drain while new ones start (modal 1.6.2 `app.py`, `deploy`); a running job's `hold` input would keep the
+  old one draining while the new one's start resumed the same job, two writers on one Volume, paid twice. With
+  `recreate` a deploy is one restart: the job resumes once, from its last finished stage.
+- **The demo is rebuilt beside the one being served.** A new deploy's code, or a demo YuNet had to audit (retried at
+  most every 6 hours), is built in a scratch folder and swapped in only when done; a failed build leaves the old demo
+  up. The build has a ledger of its own (the owner's spend, under the job cap), so the service's ledger keeps one
+  writer.
 - **`scaledown_window=300`.** Longer than the per-minute rate window (a sleep can't reset a window that's still
   open) and long enough that a judge reading a result between clicks finds the API awake; each sleep costs at most
   the quiet tail in the table.
@@ -56,7 +64,8 @@ and the receipt (`cost_usd_gpu`); the up-front check on `POST /start` adds the G
   moved to SQLite on the jobs Volume beside the spend ledger (`StoredRateLimiter`), so a wake never hands a
   client a fresh hour. The daily USD cap was already in the ledger on the Volume. Both are tested across a restart.
 - **Cold start.** The API's import path went from ~1.06 s to ~0.74 s by importing scipy only where the binding
-  stages need it (measured locally, three runs each). The web app waits up to 60 s for its first request, retries
+  stages need it (measured in this sandbox, three runs each, with `python -c "import time; t = time.perf_counter();
+  import safecut.api.app; print(time.perf_counter() - t)"`). The web app waits up to 60 s for its first request, retries
   only idempotent calls, and says "Waking Safe Cut up" after 4 s (`web/src/lib/wake.ts`).
 - **GPU: L4 first, T4 as the fallback.** EgoBlur Gen 2 is two detector passes per frame; the L4 has several times
   the T4's FP32 throughput for 1.36× the price, so it should cost less per clip as well as finish sooner. Modal's GPU
@@ -85,8 +94,14 @@ and the receipt (`cost_usd_gpu`); the up-front check on `POST /start` adds the G
 
 ## Where it would break first
 
+- The spend ledger is SQLite on the jobs Volume. If a torn snapshot ever leaves it unreadable, the API refuses to
+  start (it fails closed: no spend without a ledger). The fix is the owner's: `modal volume get safecut-jobs
+  jobs/ledger.sqlite` to keep a copy, then `modal volume rm safecut-jobs jobs/ledger.sqlite` (the day's caps then
+  start from zero, so lower `SAFECUT_DAILY_USD_CAP` for that day).
+
 - One API container serves everyone: past `SAFECUT_MAX_ACTIVE_JOBS` (8) concurrent jobs, start and render answer
   429. That is the design (one ledger writer), not an accident.
-- A cold start adds 10 to 40 s to the first request after a quiet spell; the web app says so.
+- A cold start adds time to the first request after a quiet spell (an estimate of 10 to 40 s until a deploy
+  measures it: the deploy check prints the first request's wait); the web app says so.
 - A burst of audits queues on the GPU function; each scan waits at most `SAFECUT_AUDIT_GPU_TIMEOUT_S` (300 s)
   before the audit falls back to YuNet.

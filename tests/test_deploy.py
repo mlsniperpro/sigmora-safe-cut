@@ -303,7 +303,7 @@ def test_deploy_workflow_skips_without_secrets() -> None:
     workflow = (ROOT / ".github" / "workflows" / "deploy.yml").read_text()
     assert "::notice title=Deploy skipped::" in workflow
     assert workflow.count("if: steps.gate.outputs.run == 'true'") >= 5
-    assert "modal deploy deploy/modal_app.py" in workflow
+    assert "modal deploy --strategy recreate deploy/modal_app.py" in workflow  # never two API containers at once
 
 
 def test_deploy_never_runs_a_forks_code_with_the_secrets() -> None:
@@ -464,7 +464,7 @@ def test_the_deploy_workflow_proves_the_gpu_audit_and_a_cold_wake_after_deployin
     steps = workflow.split("    steps:\n", 1)[1]
     smoke, deploy, verify, urls = (
         steps.index("uv run modal run deploy/modal_app.py"),
-        steps.index("uv run modal deploy deploy/modal_app.py"),
+        steps.index("uv run modal deploy --strategy recreate deploy/modal_app.py"),
         steps.index("uv run python -m deploy.verify_deploy"),
         steps.index("bash scripts/deploy-check.sh"),
     )

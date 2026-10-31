@@ -17,6 +17,7 @@ import pytest
 
 from safecut import contracts, netguard, pipeline
 from safecut.api.access import estimate_usd
+from safecut.api.store import sweep_handoff
 from safecut.audit import GPU_RECORD, auditor_available, detectors, gpu
 from safecut.audit import run as audit_run
 from safecut.audit.detectors import AuditorModel, Detector, YuNet
@@ -586,9 +587,9 @@ def test_the_cron_sweeps_handoff_folders_an_audit_left_behind(tmp_path: Path) ->
         folder.mkdir()
         (folder / "redacted.mp4").write_bytes(b"x")
     os.utime(old, (1_000, 1_000))
-    assert gpu.sweep_handoff(tmp_path, older_than_s=3600, now=10_000) == [old.name]
+    assert sweep_handoff(tmp_path, older_than_s=3600, now=10_000) == [old.name]
     assert [p.name for p in tmp_path.iterdir()] == [fresh.name]
-    assert gpu.sweep_handoff(tmp_path / "missing") == []
+    assert sweep_handoff(tmp_path / "missing") == []
 
 
 # ---------------------------------------------------------------------------------------------- round-2 audit fixes
@@ -660,7 +661,11 @@ def test_a_commit_that_hangs_falls_back_instead_of_holding_every_audit(tmp_path:
     settings = settings_for(tmp_path)
     fake = FakeModal(server(job_dir, weights))
     stuck = threading.Event()
-    box = Handoff(handoff_root(job_dir), lambda: stuck.wait(30), commit_timeout_s=0.2, lock_file=tmp_path / "l")
+
+    def hung() -> None:
+        stuck.wait(30)
+
+    box = Handoff(handoff_root(job_dir), hung, commit_timeout_s=0.2, lock_file=tmp_path / "l")
     detector = GpuDetector(job_dir, settings, fake.call, meter(job_dir, settings), handoff=box)
     with pytest.raises(GpuUnavailable) as caught:
         detector.prefetch()
@@ -669,3 +674,23 @@ def test_a_commit_that_hangs_falls_back_instead_of_holding_every_audit(tmp_path:
     assert "handoff commit" in str(caught.value)
     assert fake.requests == []
     box.put(job_dir, "1" * 64)  # the lock was released: the next audit isn't blocked behind the hung one
+
+
+def test_a_stale_handoff_copy_is_discarded_before_the_retry(tmp_path: Path, weights: Path) -> None:
+    job_dir = prepared(tmp_path)
+    settings = settings_for(tmp_path)
+    fake = FakeModal(server(job_dir, weights), ["stale", None])
+    box = handoff(job_dir, fake.commit)
+    removed: list[str] = []
+    real = box.discard
+
+    def counting(name: str) -> None:
+        removed.append(name)
+        real(name)
+
+    box.discard = counting  # type: ignore[method-assign]
+    detector = GpuDetector(job_dir, settings, fake.call, meter(job_dir, settings), handoff=box,
+                           sleep=lambda _s: None)  # fmt: skip
+    detector.prefetch()
+    assert removed == [fake.requests[0].job]  # the copy the GPU disagreed with went before the retry re-copied it
+    assert detector.failure is None

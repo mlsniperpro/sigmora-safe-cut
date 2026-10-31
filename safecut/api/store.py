@@ -305,5 +305,19 @@ def _age(path: Path, now: datetime) -> timedelta:
         return timedelta(0)
 
 
+def sweep_handoff(root: Path, *, older_than_s: float = 3600.0, now: float | None = None) -> list[str]:
+    """Remove the GPU auditor's handoff folders an audit left behind (a container that died mid-audit). The cleanup cron
+    runs it; it lives here, not in ``safecut.audit``, so the cron's small container never imports the pipeline."""
+    if not root.is_dir():
+        return []
+    cutoff = (time.time() if now is None else now) - older_than_s
+    removed: list[str] = []
+    for folder in sorted(root.iterdir()):
+        if folder.is_dir() and folder.stat().st_mtime < cutoff:
+            shutil.rmtree(folder, ignore_errors=True)
+            removed.append(folder.name)
+    return removed
+
+
 def _valid_id(job_id: str) -> bool:
     return re.fullmatch(JOB_ID_PATTERN, job_id) is not None

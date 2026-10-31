@@ -401,7 +401,15 @@ def test_the_per_minute_limit_cant_be_reset_by_a_sleep() -> None:
         if isinstance(n, ast.Assign) and any(getattr(t, "id", None) == "API_SCALEDOWN_S" for t in n.targets)
     )
     assert scaledown > 60
-    assert isinstance(Service(settings_for(Path("/tmp/unused-jobs"))).limiter, RateLimiter)  # noqa: S108
+
+
+def test_the_per_minute_limit_is_in_memory(tmp_path: Path) -> None:
+    svc = Service(settings_for(tmp_path))
+    try:
+        assert isinstance(svc.limiter, RateLimiter)
+        assert isinstance(svc.paid_limiter, StoredRateLimiter)
+    finally:
+        svc.stop()
 
 
 def test_a_restart_never_resets_the_paid_limit_through_the_api(make_service: Callable[..., Any]) -> None:
@@ -532,6 +540,41 @@ def test_the_demo_builds_child_can_import_modal_as_this_process_does(
     assert env["PYTHONPATH"].split(os.pathsep) == ["/somewhere", str(mount.resolve())]
     assert child_env(env)["PYTHONPATH"] == env["PYTHONPATH"]  # added once
     assert child_env({}) == {"PYTHONPATH": str(mount.resolve())}
+
+
+def test_the_served_demo_stays_up_while_it_is_rebuilt_and_if_the_rebuild_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A rebuild (a new deploy's code, a GPU retry) runs beside the served demo: /v1/demo keeps answering throughout,
+    and a build that fails leaves the old demo in place."""
+    from safecut.config import Settings  # noqa: PLC0415
+
+    svc = Service(Settings(replay=True, jobs_dir=str(tmp_path / "jobs")))
+    job_id = app_module.hero_job_id("demo")
+    try:
+        assert svc.build_demo_jobs() == ["demo"]
+        with svc.store.update(job_id) as state:
+            state.demo_stamp = "an older build"
+        during: list[str] = []
+        real = subprocess.run
+
+        def failing(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            during.append(svc.store.get(job_id).status)  # what /v1/demo serves while the child runs
+            return subprocess.CompletedProcess(args, 1, "", "the child failed")
+
+        monkeypatch.setattr(app_module.subprocess, "run", failing)
+        assert svc.build_demo_jobs() == []
+        monkeypatch.setattr(app_module.subprocess, "run", real)
+        assert during == ["done"]
+        kept = svc.store.get(job_id)
+        assert (kept.status, kept.demo_stamp) == ("done", "an older build")
+        assert (svc.store.path(job_id) / "receipt.json").is_file()
+        assert not (svc.store.root / app_module.BUILDING / job_id).exists()  # the scratch build is cleaned up
+        assert svc.build_demo_jobs() == ["demo"]  # and the next good build replaces it
+        assert svc.store.get(job_id).demo_stamp != "an older build"
+        contracts.validate_job_dir(svc.store.path(job_id))
+    finally:
+        svc.stop()
 
 
 def test_the_demo_job_builds_through_the_real_child_process(tmp_path: Path) -> None:

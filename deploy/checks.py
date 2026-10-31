@@ -6,11 +6,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 
-def _run_problems(result: Mapping[str, object]) -> list[str]:
+def _run_problems(result: Mapping[str, object], *, unresolved: bool = True) -> list[str]:
     problems: list[str] = []
     if result.get("exit") != 0:
         problems.append(f"safecut run exited {result.get('exit')}: {result.get('tail')}")
-    if result.get("unresolved") != 0:
+    if unresolved and result.get("unresolved") != 0:
         problems.append(f"the audit left {result.get('unresolved')} unresolved")
     if result.get("receipt") is not True or result.get("redacted") is not True:
         problems.append("no receipt.json or redacted.mp4")
@@ -46,8 +46,11 @@ def post_deploy_problems(result: Mapping[str, object], *, gpu_required: bool = T
     """After the deploy: a replay job run end to end through the deployed functions, its audit EgoBlur Gen 2 on a
     GPU, named so in its receipt (``auditor`` and ``auditor_device``). With ``gpu_required`` off, the GPU part only
     warns (the job itself must still have run)."""
-    problems = _run_problems(result)
-    gpu = _post_gpu_problems(result)
+    problems = _run_problems(result, unresolved=False)
+    # Unverifiable before a real deploy: EgoBlur on the drawn synthetic clip. An audit it couldn't clear counts with the
+    # GPU's problems (so the GPU-optional switch covers it); the pre-deploy smoke's YuNet audit must always be clear.
+    gpu = [f"the GPU audit left {result.get('unresolved')} unresolved"] if result.get("unresolved") != 0 else []
+    gpu += _post_gpu_problems(result)
     if not gpu_required:
         for problem in gpu:
             print(f"::warning title=GPU auditor::{problem} (accepted: SAFECUT_DEPLOY_GPU_OPTIONAL=1)")

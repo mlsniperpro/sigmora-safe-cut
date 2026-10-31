@@ -23,7 +23,8 @@ concurrency:
 jobs:
   modal:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # A first deploy builds two images (one with torch) and waits for a cold GPU: allow it.
+    timeout-minutes: 60
     # `branches: [main]` matches a PR's head branch name too, so a fork's PR from its own `main` would pass it:
     # deploy only a push to this repository's main (the secrets never run a fork's code).
     if: >-
@@ -66,7 +67,10 @@ jobs:
         run: uv run modal run deploy/modal_app.py
       - name: Deploy the API, the GPU auditor, the worker smoke and the deletion cron (only after the smoke passed)
         if: steps.gate.outputs.run == 'true'
-        run: uv run modal deploy deploy/modal_app.py
+        # recreate, not the default rolling: a running job's hold input would keep the old container draining while
+        # a new one's start resumed the same job (two writers, paid twice). Recreate stops the old one first; the
+        # new one resumes its jobs once, as after any restart.
+        run: uv run modal deploy --strategy recreate deploy/modal_app.py
       - name: Prove one replay job end to end on the deployed app, audited by EgoBlur on the GPU
         if: steps.gate.outputs.run == 'true'
         run: uv run python -m deploy.verify_deploy
