@@ -5,6 +5,7 @@ group (Modal) isn't in the default install; ``scripts/entry-check.sh`` E7 import
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import os
 import shutil
@@ -993,10 +994,14 @@ def test_the_worker_smoke_reaches_the_deployed_gpu_only_when_asked(
     monkeypatch: pytest.MonkeyPatch, audit_gpu: bool
 ) -> None:
     """``pipeline_worker_smoke`` runs ``safecut run`` in replay with its own ledger, and the GPU audit on exactly when
-    the post-deploy check asks for it (the pre-deploy smoke probes this image's GPU function on its own)."""
+    the post-deploy check asks for it; before a deploy it probes this image's own GPU function on the run's render,
+    through the handoff Volume, and closes the handoff."""
     import subprocess  # noqa: PLC0415 -- patched for this test
+    import tempfile  # noqa: PLC0415 -- imported in the test that uses it
+    from types import SimpleNamespace  # noqa: PLC0415 -- stand-ins, local to this test
 
     from deploy import modal_app  # noqa: PLC0415 -- the deploy group, imported where it is used
+    from safecut.audit import gpu  # noqa: PLC0415 -- the handoff, replaced for this test
 
     real_path = modal_app.Path
 
@@ -1008,14 +1013,46 @@ def test_the_worker_smoke_reaches_the_deployed_gpu_only_when_asked(
 
     def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         ran.append((argv, kwargs["env"]))
-        return subprocess.CompletedProcess(argv, 1, stdout="", stderr="stopped by the test")
+        out = Path(argv[argv.index("--out") + 1])
+        out.mkdir(parents=True)
+        (out / "audit.json").write_text(json.dumps({"unresolved": 0}))
+        (out / "receipt.json").write_text(json.dumps({"audit": {"auditor": "yunet-face", "auditor_device": "cpu"}}))
+        (out / "redacted.mp4").write_bytes(b"render")
+        return subprocess.CompletedProcess(argv, 0, stdout="done", stderr="")
 
+    events: list[tuple[object, ...]] = []
+
+    class FakeHandoff:
+        def __init__(self, root: Path, commit: object) -> None:
+            events.append(("handoff", str(root), commit))
+
+        def close(self) -> None:
+            events.append(("close",))
+
+    def fake_probe(handoff: object, out: Path, sha: str) -> dict[str, object]:
+        events.append(("probe", isinstance(handoff, FakeHandoff), (out / "redacted.mp4").is_file(), sha))
+        return {"refused": None, "gpu": "NVIDIA L4", "frames": 3}
+
+    volume = SimpleNamespace(commit=lambda: None)
     monkeypatch.setattr(modal_app, "Path", in_repo)
     monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(gpu, "Handoff", FakeHandoff)
+    monkeypatch.setattr(modal_app, "audit", volume)
+    monkeypatch.setattr(modal_app, "_probe_gpu", fake_probe)
     result = modal_app.pipeline_worker_smoke._raw_f_(audit_gpu=audit_gpu)  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownVariableType] -- modal 1.6.2's raw function
     [(argv, env)] = ran
     assert env["SAFECUT_AUDIT_GPU"] == ("1" if audit_gpu else "0")
-    assert env["SAFECUT_JOBS_DIR"] != os.environ.get("SAFECUT_JOBS_DIR")  # its own ledger, off the jobs Volume
+    ledger_dir = Path(env["SAFECUT_JOBS_DIR"])  # its own ledger, off the jobs Volume
+    assert ledger_dir.is_relative_to(tempfile.gettempdir())
+    assert not ledger_dir.is_relative_to(modal_app.JOBS)
     assert argv[1:4] == ["-m", "safecut.cli", "run"]
     assert "--replay" in argv
-    assert result["exit"] == 1  # the run's outcome is reported, for the checks to judge
+    assert result["exit"] == 0
+    assert result["auditor"] == "yunet-face"
+    if audit_gpu:  # after a deploy: the job's own audit used the deployed GPU; nothing is probed
+        assert events == []
+        assert "gpu_probe" not in result
+    else:
+        render_sha = hashlib.sha256(b"render").hexdigest()
+        assert events == [("handoff", modal_app.AUDIT, volume.commit), ("probe", True, True, render_sha), ("close",)]
+        assert result["gpu_probe"] == {"refused": None, "gpu": "NVIDIA L4", "frames": 3}

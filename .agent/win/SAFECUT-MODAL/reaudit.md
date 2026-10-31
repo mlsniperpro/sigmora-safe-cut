@@ -360,3 +360,13 @@ and the blob at HEAD confirmed nothing changed, and no commit carries it.)
   a GPU problem into a warning) and `test_the_worker_smoke_reaches_the_deployed_gpu_only_when_asked` (the raw
   function with a stand-in `subprocess.run`: replay, its own ledger, the GPU audit exactly when asked). All five
   mutants named above, plus a pre-deploy smoke that asks for the deployed GPU path, now fail.
+
+## Round 27 (on d8af516): 0 critical, 0 high, 1 medium, 1 low. All closed. Not clean.
+
+The round-26 tests killed their mutants (the ledger check dropped, the switch forced, the GPU env hard-wired).
+
+- M1 the pre-deploy GPU probe inside `pipeline_worker_smoke` was still unpinned (the stand-in run wrote no audit, so
+  the probe block never ran) → the stand-in run now writes the job's outputs, and the test checks the probe runs
+  exactly before a deploy, on the run's render (its SHA-256), through a handoff on the `/audit` Volume that it then
+  closes. Fails when the condition is inverted, the close dropped, or the jobs Volume's commit passed.
+- L1 the ledger-folder check didn't rule out the jobs Volume → it must be under the temp root and not under `JOBS`.
