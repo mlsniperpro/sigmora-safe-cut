@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 64b38b1
+AUDITED_COMMIT: e9690c3
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -241,3 +241,17 @@ The round-15 `hold` fix was mutation-checked (its test failed 3 of 3 with the fi
 - M2 `gpu.modal_commit` had no test → `test_the_handoff_commit_commits_the_handoff_volume_inside_the_permit`.
 - L1 the handoff copy of `job.json` carried the upload's own file name → the copy's `source` is a neutral name
   (`test_the_handoff_copy_never_carries_the_uploads_file_name`); the privacy page says so.
+
+## Round 17 (on e9690c3): 0 critical, 0 high, 1 medium, 2 low. All closed. Not clean.
+
+No wrong behaviour; gaps in the proof, found by mutation.
+
+- M1 the boot test didn't pin that `boot` keeps the service on the instance → it asserts `api.service` and runs
+  `hold` through the booted object.
+- L1 `egoblur_detect` and `ledger_smoke` bodies never ran in a test (swapped `GpuServer` arguments, a reload after
+  serving) → `test_the_gpu_function_reloads_the_handoff_then_serves_from_it` (call order and constructor arguments),
+  `test_the_ledger_smoke_proves_the_ledger_and_the_limiter`.
+- L2 nothing pinned the cold-start import cut → `test_the_api_imports_nothing_heavy` (no scipy, torch or Modal on
+  `import safecut.api.app`, in a fresh interpreter).
+- Noted by the reviewer and closed too: a handoff folder's age now refreshes on every reuse, so an audit longer
+  than the sweep's 35 minutes never loses its render mid-scan (`test_each_render_is_copied_to_the_handoff_once`).

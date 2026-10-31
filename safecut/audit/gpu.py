@@ -328,6 +328,8 @@ class Handoff:
                 partial = target / f".{REDACTED}.partial"
                 shutil.copyfile(job_dir / REDACTED, partial)
                 partial.replace(target / REDACTED)
+            else:
+                os.utime(target)  # in use again: the cron's sweep ages folders by this, never mid-audit
             self._put.add(name)
             self._bounded_commit()
         return name

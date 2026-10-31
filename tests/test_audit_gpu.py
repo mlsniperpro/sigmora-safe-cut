@@ -1012,8 +1012,12 @@ def test_each_render_is_copied_to_the_handoff_once(tmp_path: Path, weights: Path
     import time  # noqa: PLC0415 -- imported in the test that uses it
 
     time.sleep(0.01)
+    import os  # noqa: PLC0415 -- imported in the test that uses it
+
+    os.utime(copied.parent, (1_000, 1_000))  # long in use: the sweep would take it
     assert box.put(job_dir, "3" * 64) == name
     assert copied.stat().st_mtime_ns == first  # not copied again
+    assert copied.parent.stat().st_mtime > 1_000_000  # but its age refreshed, so the sweep never takes it mid-audit
 
 
 def test_a_gpu_call_is_reserved_at_its_worst_case_with_the_idle_tail(tmp_path: Path) -> None:

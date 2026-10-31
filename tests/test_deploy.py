@@ -751,6 +751,11 @@ def test_boot_refuses_weak_secrets_and_otherwise_starts_a_held_service(monkeypat
     monkeypatch.setattr(api_app, "production_problems", lambda settings: [])
     _method("boot")(api)
     assert made == [{"keepalive": modal_app._keepalive, "wait_on_stop": False}, {"started": True}]  # pyright: ignore[reportPrivateUsage] -- the hook under test
+    assert isinstance(api.service, FakeService)  # kept on the instance: hold, api and shutdown all use it
+    held: list[str] = []
+    api.service.hold = lambda job_id: held.append(job_id) or "done"  # type: ignore[attr-defined] -- the booted service, extended for the check
+    assert _method("hold")(api, "j_2") == "done"
+    assert held == ["j_2"]
 
 
 def test_the_keepalive_spawns_this_containers_hold_inside_the_modal_permit(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -809,3 +814,50 @@ def test_the_cron_sweeps_jobs_and_handoffs_commits_and_wakes_jobs_mid_action(
     assert not old.exists()
     assert woken == [active]
     assert calls == ["jobs.reload", "jobs.commit", "audit.reload", "audit.commit"]
+
+
+def test_the_gpu_function_reloads_the_handoff_then_serves_from_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """egoblur_detect: the Volume is reloaded before every request, and one GpuServer per container reads renders from
+    the handoff mount with the weights from the models mount."""
+    from types import SimpleNamespace  # noqa: PLC0415 -- stand-ins, local to this test
+
+    from deploy import modal_app  # noqa: PLC0415 -- the deploy group, imported where it is used
+    from safecut.audit import gpu  # noqa: PLC0415 -- patched where the function imports from
+
+    events: list[object] = []
+
+    class FakeServer:
+        def __init__(self, root: Path, weights: Path) -> None:
+            events.append(("server", root, weights))
+
+        def serve(self, request: dict[str, Any]) -> dict[str, Any]:
+            events.append(("serve", request["job"]))
+            return {"gpu": "NVIDIA L4"}
+
+    monkeypatch.setattr(gpu, "GpuServer", FakeServer)
+    monkeypatch.setattr(modal_app, "audit", SimpleNamespace(reload=lambda: events.append("reload")))
+    monkeypatch.setattr(modal_app, "_server", None)
+    raw = modal_app.egoblur_detect._raw_f_  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownVariableType] -- modal 1.6.2's raw function
+    assert raw({"job": "a"}) == {"gpu": "NVIDIA L4"}
+    raw({"job": "b"})
+    assert events == ["reload", ("server", Path(modal_app.AUDIT), Path(modal_app.WEIGHTS)), ("serve", "a"),
+                      "reload", ("serve", "b")]  # fmt: skip
+
+
+def test_the_ledger_smoke_proves_the_ledger_and_the_limiter(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from deploy import modal_app  # noqa: PLC0415 -- the deploy group, imported where it is used
+
+    monkeypatch.setattr(modal_app, "JOBS", str(tmp_path))
+    result = modal_app.ledger_smoke._raw_f_()  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType] -- modal 1.6.2's raw function
+    assert result == {"ok": True, "spent": pytest.approx(0.2), "limiter_remembers": True}
+    assert list(tmp_path.iterdir()) == []  # it cleans up after itself on the Volume
+
+
+def test_the_api_imports_nothing_heavy() -> None:
+    """Cold start (the brief): importing the API leaves scipy, torch and Modal to the code that needs them."""
+    script = "import sys, safecut.api.app; print(sorted(m for m in ('scipy', 'torch', 'modal') if m in sys.modules))"
+    proc = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=120, check=False)  # noqa: S603 -- fixed argv: this interpreter and our own code
+    assert proc.returncode == 0, proc.stderr[-500:]
+    assert proc.stdout.strip() == "[]"
