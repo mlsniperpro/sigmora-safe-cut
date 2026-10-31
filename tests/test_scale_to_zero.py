@@ -1011,3 +1011,28 @@ def test_a_keepalive_is_retried_briefly_before_the_job_is_left_to_the_cron(failu
     assert calls == ["j_1"] * min(failures + 1, 3)
     assert slept == list(worker.HOLD_RETRY_DELAYS_S[: min(failures, 2)])
     assert sum(worker.HOLD_RETRY_DELAYS_S) < 5  # bounded: the job's thread never waits long on the platform
+
+
+# ---------------------------------------------------------------------------------------------- round-22 audit fixes
+
+
+def test_the_demo_hold_ends_when_the_container_is_replaced(
+    make_service: Callable[..., Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Like a job's hold, the demo build's hold returns once the service stops: a replaced container's input doesn't
+    stay open until the build (or the hour) ends."""
+    _client, svc = make_service(keepalive=lambda job_id: None)
+    gate = threading.Event()
+    monkeypatch.setattr(svc, "recover", list)
+    monkeypatch.setattr(svc, "cleanup_loop", lambda: None)
+    monkeypatch.setattr(svc, "build_demo_jobs", lambda: gate.wait(20) and [])
+    svc.start()
+    result: list[str] = []
+    holder = threading.Thread(target=lambda: result.append(svc.hold(app_module.DEMO_HOLD, poll_s=0.05)))
+    holder.start()
+    time.sleep(0.2)
+    assert holder.is_alive()  # the build is still running
+    svc.stop(wait=False)
+    holder.join(5)
+    assert result == ["building"]
+    gate.set()

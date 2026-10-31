@@ -601,21 +601,30 @@ def child_env(env: Mapping[str, str]) -> dict[str, str]:
     return out
 
 
-#: How long the control plane may take, on top of the scan's own wait, to accept a call and to cancel one.
-CALL_MARGIN_S = 60.0
+#: Of a call's bound, the share kept back from the wait so a cancel after a timeout fits inside it too (at most a
+#: quarter of the bound, so a short configured timeout still leaves most of it to the scan).
+CANCEL_MARGIN_S = 15.0
 
 
 def modal_call(settings: Settings) -> RemoteCall:
     """The deployed GPU function, spawned and awaited with a bound; a timed-out call is cancelled. The whole call
-    (the lookup, the spawn, the wait and a cancel) is bounded too, at ``timeout_s + CALL_MARGIN_S``: a control plane
-    that stalls is a :class:`TimeoutError` (priced as a timeout, since the spawn may have gone through), never an
-    audit that waits forever."""
+    (the lookup, the spawn, the wait and a cancel) fits inside ``timeout_s``, the bound the meter reserves for: the
+    wait gets what's left after the spawn, less a margin for the cancel, and a control plane that stalls anyway is a
+    :class:`TimeoutError` at ``timeout_s`` (priced as a timeout, since the spawn may have gone through), never an
+    audit that waits forever. A spawn that only returns after the caller gave up is cancelled at once."""
     modal = _modal()
 
     def call(request: GpuRequest, timeout_s: float) -> tuple[dict[str, Any], str | None]:
-        return on_daemon(lambda: _call(request, timeout_s), timeout_s=timeout_s + CALL_MARGIN_S)
+        deadline = time.monotonic() + timeout_s
+        abandoned = threading.Event()
+        try:
+            return on_daemon(lambda: _call(request, deadline, abandoned), timeout_s=timeout_s)
+        except TimeoutError:
+            abandoned.set()
+            raise
 
-    def _call(request: GpuRequest, timeout_s: float) -> tuple[dict[str, Any], str | None]:
+    def _call(request: GpuRequest, deadline: float, abandoned: threading.Event) -> tuple[dict[str, Any], str | None]:
+        margin = min(CANCEL_MARGIN_S, (deadline - time.monotonic()) / 4)
         with ExitStack() as scope:
             try:  # everything before Modal accepts the call: nothing ran, nothing is priced
                 scope.enter_context(modal_permitted())
@@ -623,8 +632,11 @@ def modal_call(settings: Settings) -> RemoteCall:
                 handle = function.spawn(request.model_dump(mode="json"))
             except Exception as exc:
                 raise NotSubmitted(f"{type(exc).__name__}: {exc}") from exc
+            if abandoned.is_set():  # the caller stopped waiting (and fell back) before the spawn returned
+                _cancel(handle)
+                raise TimeoutError("the spawn returned after the call's bound")
             try:
-                result: Any = handle.get(timeout=timeout_s)
+                result: Any = handle.get(timeout=max(0.0, deadline - time.monotonic() - margin))
             except (TimeoutError, modal.exception.TimeoutError) as exc:  # waited too long, or the function's own limit
                 _cancel(handle)  # a stuck scan must not keep a GPU billing in the background
                 raise TimeoutError(str(exc)) from exc
@@ -668,7 +680,7 @@ def batches(detector: Detector, job_dir: Path, wanted: set[int]) -> Iterator[tup
 
 
 __all__ = [
-    "CALL_MARGIN_S",
+    "CANCEL_MARGIN_S",
     "MODAL_PATH_ENV",
     "GpuAnswer",
     "GpuDetector",

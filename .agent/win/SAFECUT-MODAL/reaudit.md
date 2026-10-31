@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 6fe0e04
+AUDITED_COMMIT: 1aea68a
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -120,7 +120,7 @@ fix has a test that fails without it.
   cost lines, nothing in the ledger, and the plain synthetic note).
 - M2 `break-it.md` didn't exist yet → written from the break-it runs on the final commit.
 - L1 a GPU call that errored after its spawn wasn't cancelled → `_cancel(handle)` on any exception
-  (`test_a_gpu_call_we_stop_waiting_for_is_cancelled[timeout|error]`).
+  (`test_a_gpu_call_we_stop_waiting_for_is_cancelled[failure0]` and `[failure1]`).
 - L2 `deploy-check.sh` read a failed poll as "the demo build is done" → only an explicit `False` ends the wait.
 
 ## Round 8 (on 9e21278): 0 critical, 1 high, 2 medium, 3 low. All closed. Not clean.
@@ -302,3 +302,19 @@ removed.
   with 0.5 s and 2 s backoff (`HOLD_RETRY_DELAYS_S`), then the cron →
   `test_a_keepalive_is_retried_briefly_before_the_job_is_left_to_the_cron`.
 - L4 `break-it.md` missing → written on the final commit, after the last audit.
+
+## Round 22 (on 1aea68a): 0 critical, 0 high, 0 medium, 5 low. All closed. Not clean.
+
+The round-21 tests were mutation-checked (every mutant killed).
+
+- L1 a cited parametrize id didn't exist → `[failure0]` and `[failure1]`.
+- L2 a spawn that returned after the call's bound still ran its scan, unwatched and unpriced → the caller marks the
+  call abandoned and a late spawn is cancelled at once → `test_a_spawn_that_returns_after_the_bound_is_cancelled`.
+- L3 round 21's margin let a call settle up to 60 s past what the meter reserved → the whole call now fits inside
+  `SAFECUT_AUDIT_GPU_TIMEOUT_S` itself (the wait keeps `CANCEL_MARGIN_S`, at most a quarter of the bound, for the
+  cancel), so the reservation, the estimate and the cost tables hold unchanged →
+  `test_a_timed_out_call_and_its_cancel_fit_inside_the_reserved_bound` (fails if the wait takes the whole bound).
+- L4 the demo build's hold ignored a stop, so a replaced container's input stayed open until the build ended →
+  it returns on stop, like a job's hold → `test_the_demo_hold_ends_when_the_container_is_replaced`.
+- L5 DEPLOY-COSTS said "after three restarts" in one place and "on its fourth restart" in another → both say the
+  fourth (the code: `MAX_RESUMES = 3` resumes, then a failure).

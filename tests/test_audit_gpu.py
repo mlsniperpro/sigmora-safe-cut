@@ -1086,7 +1086,7 @@ def test_the_handoff_copy_never_carries_the_uploads_file_name(tmp_path: Path) ->
 @pytest.mark.parametrize("stall", ["spawn", "cancel"])
 def test_a_control_plane_that_stalls_is_a_timeout_not_a_hung_audit(monkeypatch: pytest.MonkeyPatch, stall: str) -> None:
     """Only the wait used to be bounded: a spawn that never returns, or a cancel after a timeout that never returns,
-    held the audit (and its job) until the hold's limit. The whole call is bounded now."""
+    held the audit (and its job) until the hold's limit. The whole call is bounded now, by the timeout itself."""
     import threading  # noqa: PLC0415 -- imported in the test that uses it
     import time  # noqa: PLC0415 -- imported in the test that uses it
     from types import SimpleNamespace  # noqa: PLC0415 -- a stand-in Modal, local to this test
@@ -1117,7 +1117,6 @@ def test_a_control_plane_that_stalls_is_a_timeout_not_a_hung_audit(monkeypatch: 
         config=SimpleNamespace(config={"server_url": "https://api.modal.com"}),
     )
     monkeypatch.setattr(gpu, "_modal", lambda: fake_modal)
-    monkeypatch.setattr(gpu, "CALL_MARGIN_S", 0.2)
     request = GpuRequest(job="j_x-0123456789abcdef", frames=[0], model="egoblur-gen2", face_threshold=0.5,
                          plate_threshold=0.5)  # fmt: skip
     started = time.monotonic()
@@ -1127,3 +1126,86 @@ def test_a_control_plane_that_stalls_is_a_timeout_not_a_hung_audit(monkeypatch: 
         assert time.monotonic() - started < 5
     finally:
         gate.set()
+
+
+def stand_in_modal(spawn: Callable[[object], Any]) -> tuple[Any, type[Exception]]:
+    from types import SimpleNamespace  # noqa: PLC0415 -- a stand-in Modal, local to these tests
+
+    modal_timeout = type("ModalTimeout", (Exception,), {})
+    return SimpleNamespace(
+        Function=SimpleNamespace(from_name=lambda app, name: SimpleNamespace(spawn=spawn)),
+        exception=SimpleNamespace(TimeoutError=modal_timeout),
+        config=SimpleNamespace(config={"server_url": "https://api.modal.com"}),
+    ), modal_timeout
+
+
+GPU_REQUEST = GpuRequest(job="j_x-0123456789abcdef", frames=[0], model="egoblur-gen2", face_threshold=0.5,
+                         plate_threshold=0.5)  # fmt: skip
+
+
+def test_a_timed_out_call_and_its_cancel_fit_inside_the_reserved_bound(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The meter reserves for ``timeout_s``: the wait leaves room for the cancel, so a call that times out and is
+    cancelled is still settled inside its reservation."""
+    import threading  # noqa: PLC0415 -- imported in the test that uses it
+    import time  # noqa: PLC0415 -- imported in the test that uses it
+
+    waited: list[float] = []
+    cancelled = threading.Event()
+
+    class Handle:
+        object_id = "fc-1"
+
+        def get(self, timeout: float) -> dict[str, Any]:
+            waited.append(timeout)
+            time.sleep(timeout)
+            raise modal_timeout("no output")
+
+        def cancel(self, terminate_containers: bool = False) -> None:
+            del terminate_containers
+            time.sleep(0.2)  # the control plane takes a moment to stop it
+            cancelled.set()
+
+    fake_modal, modal_timeout = stand_in_modal(lambda request: Handle())
+    monkeypatch.setattr(gpu, "_modal", lambda: fake_modal)
+    monkeypatch.setattr(gpu, "CANCEL_MARGIN_S", 0.3)
+    started = time.monotonic()
+    with pytest.raises(TimeoutError, match="no output"):  # the scan's own timeout, not the outer bound
+        gpu.modal_call(Settings(audit_gpu=True))(GPU_REQUEST, 1.6)
+    elapsed = time.monotonic() - started
+    assert cancelled.is_set()
+    assert len(waited) == 1
+    assert waited[0] <= 1.6 - 0.3  # the wait left the cancel its margin inside the bound
+    assert elapsed < 1.6 + 0.4  # and the call ended about there (the slack is the scheduler's, under load)
+
+
+def test_a_spawn_that_returns_after_the_bound_is_cancelled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The audit has fallen back to YuNet by then: the late scan must not run unwatched and unpriced."""
+    import threading  # noqa: PLC0415 -- imported in the test that uses it
+
+    gate = threading.Event()
+    cancelled = threading.Event()
+    waited: list[float] = []
+
+    class Handle:
+        object_id = "fc-late"
+
+        def get(self, timeout: float) -> dict[str, Any]:
+            waited.append(timeout)
+            return {}
+
+        def cancel(self, terminate_containers: bool = False) -> None:
+            assert terminate_containers
+            cancelled.set()
+
+    def spawn(request: object) -> Handle:
+        del request
+        gate.wait(30)
+        return Handle()
+
+    fake_modal, _ = stand_in_modal(spawn)
+    monkeypatch.setattr(gpu, "_modal", lambda: fake_modal)
+    with pytest.raises(TimeoutError):
+        gpu.modal_call(Settings(audit_gpu=True))(GPU_REQUEST, 0.2)
+    gate.set()  # the control plane comes back: the spawn returns
+    assert cancelled.wait(5)
+    assert waited == []  # never waited on

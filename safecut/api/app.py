@@ -226,8 +226,9 @@ class Service:
         nothing here is moving (stranded by a container that went away) is resumed; one active past
         :data:`STALL_LIMIT` is failed, so no job, and no container, waits forever."""
         deadline = time.monotonic() + limit_s
-        if job_id == DEMO_HOLD:
-            self._demo_built.wait(limit_s)
+        if job_id == DEMO_HOLD:  # until the demo is built, the service stops (a replaced container) or the limit
+            while not self._demo_built.is_set() and not self._stop.is_set() and time.monotonic() <= deadline:
+                self._demo_built.wait(poll_s)
             return "built" if self._demo_built.is_set() else "building"
         idle_polls = 0
         while True:

@@ -38,7 +38,7 @@ judging criteria it moves, each with its evidence. `- [x]` done, `- [P]` waits o
 ## Quality bar
 
 - [x] Contracts: `EgoBlurSummary.device`, `ReceiptAudit.auditor_device`, `ReceiptBody.cost_usd_gpu`, `Provider` gains `modal`; `docs/ARCHITECTURE.md` §3.8–3.10 and §5 updated with them.
-- [x] Typed errors (`GpuUnavailable` with a reason), schema-validated GPU requests and answers (pydantic, `extra="forbid"`), every remote call bounded (`SAFECUT_AUDIT_GPU_TIMEOUT_S`, `FunctionCall.get(timeout)` then cancel; the whole call, spawn and cancel included, within `timeout + CALL_MARGIN_S`: `test_a_control_plane_that_stalls_is_a_timeout_not_a_hung_audit`; the handoff commit within 120 s), bounded retries, no silent fallback (logged, recorded in `gpu.json` and named in the receipt).
+- [x] Typed errors (`GpuUnavailable` with a reason), schema-validated GPU requests and answers (pydantic, `extra="forbid"`), every remote call bounded (`SAFECUT_AUDIT_GPU_TIMEOUT_S`, `FunctionCall.get(timeout)` then cancel; the whole call, spawn and cancel included, within that same timeout the meter reserves for, and a spawn that returns after it cancelled: `test_a_control_plane_that_stalls_is_a_timeout_not_a_hung_audit`, `test_a_timed_out_call_and_its_cancel_fit_inside_the_reserved_bound`, `test_a_spawn_that_returns_after_the_bound_is_cancelled`; the handoff commit within 120 s), bounded retries, no silent fallback (logged, recorded in `gpu.json` and named in the receipt).
 - [x] `deploy/` added to the repo's pyright include; ruff, ruff format, pyright clean.
 - [x] UI-SPEC §10.3 updated (cold start, timeouts).
 

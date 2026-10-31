@@ -92,7 +92,7 @@ and the receipt (`cost_usd_gpu`); the up-front check on `POST /start` adds the G
 - A finished stage is never run again after a restart, so its Meta calls are never repaid. The stage a kill
   interrupted does run again from its inputs, and its calls are paid again; the job cap bounds that, and a SIGKILL's
   open ledger reservation keeps counting as spent (failing closed: `LocalLedger` counts every reservation not
-  released). After three restarts the job fails.
+  released). On its fourth restart the job fails.
 - A GPU that answers pass 1 and then fails a re-check makes the audit run again, whole, on YuNet, on the patched
   render: the red team is asked again about frames whose pixels changed, and those calls are paid. Rare, and bounded
   by the job and daily caps.
