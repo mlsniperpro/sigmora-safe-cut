@@ -635,6 +635,8 @@ class EgoBlurSummary(Contract):
     model: Literal["egoblur-gen2", "egoblur-gen1", "yunet-face"]
     faces: NonNegativeInt | None
     plates: NonNegativeInt | None
+    #: Where the detector ran (``cpu``; ``cuda:<GPU name>`` on the Modal GPU function); null on older audits.
+    device: str | None = Field(default=None, min_length=1, max_length=128)
 
     @model_validator(mode="after")
     def _yunet_has_no_plates(self) -> EgoBlurSummary:
@@ -798,6 +800,17 @@ class ReceiptItem(DecisionItem):
 
 class ReceiptAudit(Contract):
     auditor: str
+    #: ``audit.egoblur.device``: where the auditor ran (``cuda:Tesla T4`` names the GPU).
+    auditor_device: str | None = Field(default=None, min_length=1, max_length=128)
+
+    @model_serializer(mode="wrap")
+    def _omit_no_device(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        # Added after receipts were first sealed: left out while null, so earlier receipts' hashes still hold.
+        data = cast(dict[str, Any], handler(self))
+        if data.get("auditor_device") is None:
+            data.pop("auditor_device", None)
+        return data
+
     frames_scanned: NonNegativeInt
     leaks_found: NonNegativeInt
     leaks_patched: NonNegativeInt
@@ -855,7 +868,17 @@ class ReceiptBody(Contract):
     cost_usd_estimated: float = Field(default=0, ge=0)
     #: Baseten spend (``provider: "baseten"`` cost lines), shown apart from the Meta ``cost_usd`` (PRE-A §3.8).
     cost_usd_baseten: float = Field(default=0, ge=0)
+    #: The GPU auditor's Modal seconds, priced (``provider: "modal"`` cost lines, all estimates), shown apart.
+    #: Added after receipts were first sealed: left out of the file (and the hash) while 0 (``_omit_no_gpu``).
+    cost_usd_gpu: float = Field(default=0, ge=0)
     prev_hash: str | None = Field(pattern=SHA256_PATTERN)
+
+    @model_serializer(mode="wrap")
+    def _omit_no_gpu(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data = cast(dict[str, Any], handler(self))
+        if not data.get("cost_usd_gpu"):
+            data.pop("cost_usd_gpu", None)
+        return data
 
 
 class Receipt(ReceiptBody):
@@ -1536,10 +1559,12 @@ def _check_receipt_cost(receipt: Receipt, job: Job, cost_path: Path) -> None:
             )
     meta, meta_estimated = measured_usd(lines, provider="meta")
     baseten, _ = measured_usd(lines, provider="baseten")
+    gpu_measured, gpu_estimated = measured_usd(lines, provider="modal")
     for name, got, want, label in (
         ("cost_usd", receipt.cost_usd, meta, "Meta"),
         ("cost_usd_estimated", receipt.cost_usd_estimated, meta_estimated, "Meta"),
         ("cost_usd_baseten", receipt.cost_usd_baseten, baseten, "Baseten"),
+        ("cost_usd_gpu", receipt.cost_usd_gpu, gpu_measured + gpu_estimated, "Modal GPU"),
     ):
         if abs(got - want) > _COST_TOLERANCE:
             raise ContractError(f"receipt.json {name} {got} != cost.jsonl {label} total {want}")
@@ -2332,6 +2357,10 @@ def _check_receipt_models(
     if audit is not None and receipt.audit.auditor != audit.egoblur.model:
         raise ContractError(
             f"receipt.json audit.auditor {receipt.audit.auditor!r} != audit.json {audit.egoblur.model!r}"
+        )
+    if audit is not None and receipt.audit.auditor_device != audit.egoblur.device:
+        raise ContractError(
+            f"receipt.json audit.auditor_device {receipt.audit.auditor_device!r} != audit.json {audit.egoblur.device!r}"
         )
     # AGENTS rule 9: the store claim covers every Meta model that ran (the auditor runs locally).
     asr = receipt.models.get("asr")

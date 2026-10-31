@@ -1,42 +1,424 @@
-"""WP4: the GPU auditor hook (a Modal function in deploy) round-trips frames losslessly and its answers are checked."""
+"""SAFECUT-MODAL: EgoBlur on a Modal GPU, through a fake Modal call. The GPU side (``GpuServer``) runs for real on the
+job's render; a stand-in detector (YuNet, labelled so) plays EgoBlur, since the weights and a GPU aren't here.
+
+Every branch of the fallback: success, timeout, error (retried once), missing weights, altered weights, no GPU, a
+cap, a stale Volume, and a GPU that answers pass 1 but not a re-check. The audit and the receipt always name the
+detector that actually ran."""
 
 from __future__ import annotations
 
+import hashlib
+import json
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
-import numpy as np
 import pytest
 
-from safecut.audit import auditor_available, detectors, gpu
-from safecut.audit.detectors import YuNet
+from safecut import contracts, netguard, pipeline
+from safecut.api.access import estimate_usd
+from safecut.audit import GPU_RECORD, auditor_available, detectors, gpu
+from safecut.audit import run as audit_run
+from safecut.audit.detectors import AuditorModel, Detector, YuNet
+from safecut.audit.gpu import GpuDetector, GpuMeter, GpuRequest, GpuServer, GpuUnavailable, Handoff
 from safecut.config import Settings
-from tests.safety_jobs import Scenario, frame_image
+from safecut.contracts import Audit, CostLine, Receipt, load, read_cost_lines
+from safecut.decide import run as decide_run
+from safecut.guard import run as guard_run
+from safecut.meta.budget import Caller, LocalLedger
+from safecut.receipt import run as receipt_run
+from safecut.render import render
+from tests.safety_jobs import make_job
+
+FACE, PLATE = "ego_blur_face_gen2.jit", "ego_blur_lp_gen2.jit"
 
 
-def test_a_remote_detector_sees_exactly_the_rendered_pixels() -> None:
-    frame = frame_image(Scenario(), 30)
-    assert (gpu.decode(gpu.encode(frame)) == frame).all()
-    local = YuNet()
-    remote = gpu.RemoteDetector("yunet-face", lambda png: gpu.detect_png(local, png), plates=False)
-    assert remote.model == "yunet-face"
-    assert not remote.detects_plates
-    assert remote.detect(frame) == local.detect(frame)
+@pytest.fixture
+def weights(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Stand-in weight files, pinned as if they were Meta's (the real hashes are pinned in detectors.py)."""
+    folder = tmp_path / "models" / "egoblur"
+    folder.mkdir(parents=True)
+    pins: dict[str, str] = {}
+    for name in (FACE, PLATE):
+        (folder / name).write_bytes(name.encode())
+        pins[name] = hashlib.sha256(name.encode()).hexdigest()
+    monkeypatch.setattr(detectors, "EGOBLUR_GEN2_SHA256", pins)
+    return folder
 
 
-def test_a_remote_answer_is_validated() -> None:
-    frame = np.zeros((20, 30, 3), dtype=np.uint8)
-    bad = gpu.RemoteDetector("egoblur-gen2", lambda _png: [{"kind": "cat", "box": [0, 0, 5, 5], "score": 0.9}])
-    with pytest.raises(ValueError, match="cat"):
-        bad.detect(frame)
-    outside = gpu.RemoteDetector("egoblur-gen2", lambda _png: [{"kind": "plate", "box": [40, 0, 50, 5], "score": 0.9}])
-    assert outside.detect(frame) == []
-    clipped = gpu.RemoteDetector(
-        "egoblur-gen2", lambda _png: [{"kind": "face", "box": [-2.5, 1.2, 9.1, 25], "score": 1}]
+def settings_for(tmp_path: Path, **extra: Any) -> Settings:
+    return Settings(audit_gpu=True, egoblur_model="egoblur-gen2", egoblur_weights_dir=str(tmp_path / "nowhere"),
+                    jobs_dir=str(tmp_path / "service"), audit_gpu_handoff_dir=str(tmp_path / "handoff"),
+                    **extra)  # fmt: skip
+
+
+def prepared(tmp_path: Path) -> Path:
+    job_dir = make_job(tmp_path)
+    decide_run(job_dir)
+    guard_run(job_dir)
+    render(job_dir)
+    return job_dir
+
+
+class FakeModal:
+    """``spawn().get(timeout)`` on a :class:`GpuServer`, with the faults a real call can meet."""
+
+    def __init__(self, server: GpuServer, faults: list[str | None] | None = None) -> None:
+        self.server = server
+        self.faults = list(faults or [])
+        self.requests: list[GpuRequest] = []
+        self.commits = 0
+        self.timeouts: list[float] = []
+
+    def call(self, request: GpuRequest, timeout_s: float) -> tuple[dict[str, Any], str | None]:
+        self.requests.append(request)
+        self.timeouts.append(timeout_s)
+        fault = self.faults.pop(0) if self.faults else None
+        if fault == "timeout":
+            raise TimeoutError("no output")
+        if fault == "error":
+            raise ConnectionError("Modal control plane unreachable")
+        answer = self.server.serve(request.model_dump(mode="json"))
+        if fault == "stale":
+            answer = {**answer, "video_sha256": "0" * 64}
+        return answer, f"fc-{len(self.requests)}"
+
+    def commit(self) -> None:
+        self.commits += 1
+
+
+def stand_in(model: AuditorModel, face: Path, plate: Path, face_t: float, plate_t: float) -> Detector:
+    """YuNet plays EgoBlur on the fake GPU (faces only): the wire, the Volume read and the fallbacks are real."""
+    del model, face, plate, plate_t
+    return YuNet(face_t)
+
+
+def handoff_root(job_dir: Path) -> Path:
+    """The handoff Volume's mount in these tests (``settings_for`` points the audit at the same folder)."""
+    return job_dir.parent / "handoff"
+
+
+def handoff(job_dir: Path, commit: Callable[[], None]) -> Handoff:
+    return Handoff(handoff_root(job_dir), commit)
+
+
+def server(job_dir: Path, weights_dir: Path, *, gpu_name: str | None = "Tesla T4") -> GpuServer:
+    """The GPU function's side: it reads renders from the handoff Volume, never the jobs folder."""
+    return GpuServer(handoff_root(job_dir), weights_dir, load=stand_in, gpu_name=lambda: gpu_name)
+
+
+def audit_of(job_dir: Path) -> Audit:
+    return load(job_dir / "audit.json", Audit)
+
+
+def gpu_lines(job_dir: Path) -> list[CostLine]:
+    return [line for line in read_cost_lines(job_dir / "cost.jsonl") if line.provider == "modal"]
+
+
+def sealed(job_dir: Path, settings: Settings) -> Receipt:
+    pipeline.approve(job_dir, how="auto_policy")
+    receipt_run(job_dir, settings=settings)
+    contracts.validate_job_dir(job_dir)
+    return load(job_dir / "receipt.json", Receipt)
+
+
+# ---------------------------------------------------------------------------------------------- success
+
+
+def test_egoblur_on_the_gpu_audits_and_the_receipt_names_the_gpu(tmp_path: Path, weights: Path) -> None:
+    job_dir = prepared(tmp_path)
+    settings = settings_for(tmp_path)
+    fake = FakeModal(server(job_dir, weights))
+    audit_run(job_dir, replay=True, settings=settings, gpu_call=fake.call, gpu_commit=fake.commit)
+    audit = audit_of(job_dir)
+    assert (audit.egoblur.model, audit.egoblur.device) == ("egoblur-gen2", "cuda:Tesla T4")
+    assert (audit.unresolved, audit.frames_scanned) == (0, 60)
+    # Pass 1 is one call for every frame, made before the red team runs; the Volume is committed before each call.
+    assert len(fake.requests) == fake.commits == 1
+    assert fake.requests[0].frames == list(range(60))
+    # The render went through the handoff Volume (named by job and render hash), and was removed after the audit.
+    assert fake.requests[0].job.startswith(f"{job_dir.name}-")
+    assert list(handoff_root(job_dir).iterdir()) == []
+    assert fake.timeouts == [settings.audit_gpu_timeout_s]
+    record = json.loads((job_dir / GPU_RECORD).read_text())
+    assert record == {"requested": True, "ran": "egoblur-gen2", "device": "cuda:Tesla T4", "fallback": None,
+                      "gpu_calls": 1}  # fmt: skip
+    run = json.loads((job_dir / "raw/audit/run.json").read_text())
+    assert (run["detector"], run["device"]) == ("egoblur-gen2", "cuda:Tesla T4")
+    (line,) = gpu_lines(job_dir)
+    assert (line.stage, line.model, line.estimated, line.request_id) == ("audit", "egoblur-gen2", True, "fc-1")
+    assert line.units["idle_s"] == settings.audit_gpu_idle_s
+    assert line.usd == pytest.approx(
+        (line.units["gpu_s"] + line.units["idle_s"]) * settings.audit_gpu_usd_per_hour / 3600, rel=1e-3
     )
-    (d,) = clipped.detect(frame)
-    assert d.box == (0, 1, 10, 20)
-    with pytest.raises(ValueError, match="decode"):
-        gpu.decode(b"not a png")
+    receipt = sealed(job_dir, settings)
+    assert (receipt.audit.auditor, receipt.audit.auditor_device) == ("egoblur-gen2", "cuda:Tesla T4")
+    assert receipt.models["auditor"] == "egoblur-gen2"
+    assert receipt.cost_usd_gpu == pytest.approx(line.usd)
+    assert "cuda:Tesla T4" in (job_dir / "receipt.html").read_text()
+    assert pipeline.job_spend(job_dir) == 0  # Meta's caps count Meta lines only; the GPU is in the ledger
+    ledger = LocalLedger(Path(settings.jobs_dir) / "ledger.sqlite")
+    assert ledger.spent(f"job:{job_dir.name}") == pytest.approx(line.usd)
+
+
+def test_a_leak_is_patched_and_rechecked_on_the_gpu(tmp_path: Path, weights: Path) -> None:
+    """The E4 injected leak, with the GPU auditing: each re-render is committed and re-scanned on the GPU, and the
+    idle tail is billed once per audit."""
+    from tests.test_audit_loop import drop  # noqa: PLC0415 -- the E4 test's own injector
+
+    job_dir = prepared(tmp_path)
+    drop(job_dir, "i_2", {30, 31, 32})
+    settings = settings_for(tmp_path)
+    fake = FakeModal(server(job_dir, weights))
+    audit_run(job_dir, replay=True, settings=settings, gpu_call=fake.call, gpu_commit=fake.commit)
+    audit = audit_of(job_dir)
+    assert audit.egoblur.model == "egoblur-gen2"
+    assert {30, 31, 32} <= {leak.frame for leak in audit.leaks if leak.detector == "egoblur"}
+    assert audit.unresolved == 0
+    assert audit.passes >= 2
+    assert len(fake.requests) >= 2  # the patched render is re-scanned on the GPU, not locally
+    assert fake.commits == len(fake.requests)
+    lines = gpu_lines(job_dir)
+    assert len(lines) == len(fake.requests)
+    assert [line.units["idle_s"] for line in lines] == [settings.audit_gpu_idle_s] + [0.0] * (len(lines) - 1)
+    assert sealed(job_dir, settings).audit.auditor_device == "cuda:Tesla T4"
+
+
+def test_a_transient_error_is_retried_once(tmp_path: Path, weights: Path) -> None:
+    job_dir = prepared(tmp_path)
+    fake = FakeModal(server(job_dir, weights), ["error"])
+    slept: list[float] = []
+    settings = settings_for(tmp_path)
+    detector = GpuDetector(job_dir, settings, fake.call, meter(job_dir, settings),
+                           handoff=handoff(job_dir, fake.commit), sleep=slept.append)  # fmt: skip
+    detector.prefetch()
+    assert len(fake.requests) == 2
+    assert slept == [gpu.RETRY_DELAY_S]
+    assert detector.failure is None
+    assert detector.device == "cuda:Tesla T4"
+    assert len(gpu_lines(job_dir)) == 2  # the failed attempt is priced too: Modal may have billed it
+
+
+# ---------------------------------------------------------------------------------------------- fallbacks
+
+
+def no_weights(tmp_path: Path, weights: Path) -> Path:
+    del weights
+    return tmp_path / "empty"
+
+
+def altered(tmp_path: Path, weights: Path) -> Path:
+    del tmp_path
+    (weights / PLATE).write_bytes(b"a truncated upload")
+    return weights
+
+
+def as_is(tmp_path: Path, weights: Path) -> Path:
+    del tmp_path
+    return weights
+
+
+Setup = tuple[list[str | None], Callable[[Path, Path], Path], str | None]
+
+
+@pytest.mark.parametrize(
+    ("setup", "reason"),
+    [
+        ((["timeout"], as_is, "Tesla T4"), "timeout"),
+        ((["error", "error"], as_is, "Tesla T4"), "error"),
+        ((["stale", "stale"], as_is, "Tesla T4"), "stale_volume"),
+        (([], no_weights, "Tesla T4"), "no_weights"),
+        (([], altered, "Tesla T4"), "altered_weights"),
+        (([], as_is, None), "no_gpu"),
+    ],
+)
+def test_the_audit_falls_back_to_yunet_and_says_so(tmp_path: Path, weights: Path, setup: Setup, reason: str) -> None:
+    faults, folder, gpu_name = setup
+    job_dir = prepared(tmp_path)
+    settings = settings_for(tmp_path)
+    fake = FakeModal(server(job_dir, folder(tmp_path, weights), gpu_name=gpu_name), faults)
+    audit_run(job_dir, replay=True, settings=settings, gpu_call=fake.call, gpu_commit=fake.commit)
+    audit = audit_of(job_dir)
+    assert (audit.egoblur.model, audit.egoblur.device, audit.egoblur.plates) == ("yunet-face", "cpu", None)
+    assert audit.unresolved == 0  # the audit still ran, whole, on YuNet
+    record = json.loads((job_dir / GPU_RECORD).read_text())
+    assert record["ran"] == "yunet-face"
+    assert record["fallback"].startswith(f"{reason}:")
+    receipt = sealed(job_dir, settings)
+    assert (receipt.audit.auditor, receipt.audit.auditor_device) == ("yunet-face", "cpu")
+    assert "egoblur" not in receipt.models["auditor"]
+
+
+def test_a_cap_that_cant_cover_the_gpu_falls_back_without_calling_it(tmp_path: Path, weights: Path) -> None:
+    job_dir = prepared(tmp_path)
+    settings = settings_for(tmp_path, job_usd_cap=0.001)  # below one call's worst case (300 s at $0.95/h)
+    fake = FakeModal(server(job_dir, weights))
+    audit_run(job_dir, replay=True, settings=settings, gpu_call=fake.call, gpu_commit=fake.commit)
+    assert fake.requests == []
+    assert audit_of(job_dir).egoblur.model == "yunet-face"
+    assert json.loads((job_dir / GPU_RECORD).read_text())["fallback"].startswith("over_budget:")
+    (stop,) = gpu_lines(job_dir)
+    assert (stop.stage, stop.cap, stop.usd) == ("budget:audit", "job", 0)
+
+
+def test_a_gpu_that_stops_mid_audit_reruns_the_whole_audit_on_yunet(tmp_path: Path, weights: Path) -> None:
+    """Pass 1 on the GPU, then the re-check of a patch times out: that audit can't pass (unscanned frames), so it
+    runs again, whole, on YuNet, and only YuNet is named (an EgoBlur plate count never survives into it)."""
+    from tests.test_audit_loop import drop  # noqa: PLC0415 -- the E4 test's own injector
+
+    job_dir = prepared(tmp_path)
+    drop(job_dir, "i_2", {30, 31, 32})
+    settings = settings_for(tmp_path)
+    fake = FakeModal(server(job_dir, weights), [None, "timeout"])
+    audit_run(job_dir, replay=True, settings=settings, gpu_call=fake.call, gpu_commit=fake.commit)
+    audit = audit_of(job_dir)
+    assert (audit.egoblur.model, audit.egoblur.device, audit.egoblur.plates) == ("yunet-face", "cpu", None)
+    assert audit.unresolved == 0
+    assert json.loads((job_dir / GPU_RECORD).read_text())["fallback"].startswith("timeout:")
+    assert sealed(job_dir, settings).audit.auditor == "yunet-face"
+
+
+def test_without_the_setting_the_gpu_is_never_called(tmp_path: Path, weights: Path) -> None:
+    job_dir = prepared(tmp_path)
+    fake = FakeModal(server(job_dir, weights))
+    settings = Settings(egoblur_model="egoblur-gen2", egoblur_weights_dir=str(tmp_path / "x"),
+                        jobs_dir=str(tmp_path / "service"))  # fmt: skip
+    audit_run(job_dir, replay=True, settings=settings, gpu_call=fake.call, gpu_commit=fake.commit)
+    assert fake.requests == []
+    assert not (job_dir / GPU_RECORD).exists()
+    assert audit_of(job_dir).egoblur.model == "yunet-face"
+
+
+def test_a_machine_without_modal_falls_back(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    job_dir = prepared(tmp_path)
+
+    def missing() -> Any:
+        raise ModuleNotFoundError("No module named 'modal'")
+
+    monkeypatch.setattr(gpu, "_modal", missing)
+    audit_run(job_dir, replay=True, settings=settings_for(tmp_path))
+    assert json.loads((job_dir / GPU_RECORD).read_text())["fallback"].startswith("no_modal:")
+
+
+# ---------------------------------------------------------------------------------------------- the wire
+
+
+def meter(job_dir: Path, settings: Settings) -> GpuMeter:
+    ledger = LocalLedger(tmp_ledger(job_dir))
+    return GpuMeter(settings, ledger, Caller.local(), job_dir.name, job_dir / "cost.jsonl")
+
+
+def tmp_ledger(job_dir: Path) -> Path:
+    return job_dir.parent / "ledger.sqlite"
+
+
+def test_the_gpu_server_checks_every_request(tmp_path: Path, weights: Path) -> None:
+    job_dir = prepared(tmp_path)
+    loads: list[str] = []
+
+    def counting(model: AuditorModel, face: Path, plate: Path, face_t: float, plate_t: float) -> Detector:
+        loads.append(model)
+        return stand_in(model, face, plate, face_t, plate_t)
+
+    srv = GpuServer(job_dir.parent, weights, load=counting, gpu_name=lambda: "NVIDIA L4")
+    base = {"job": job_dir.name, "frames": [0, 59], "model": "egoblur-gen2", "face_threshold": 0.5,
+            "plate_threshold": 0.5}  # fmt: skip
+    answer = srv.serve(base)
+    assert set(answer["frames"]) == {"0", "59"}
+    assert answer["gpu"] == "NVIDIA L4"
+    assert srv.serve(base)["video_sha256"] == answer["video_sha256"]
+    assert loads == ["egoblur-gen2"]  # the detectors load once per container
+    for bad, reason in (
+        ({**base, "job": "../etc"}, "bad_request"),
+        ({**base, "job": ".."}, "bad_request"),
+        ({**base, "frames": []}, "bad_request"),
+        ({**base, "frames": [60]}, "bad_request"),
+        ({**base, "frames": [-1]}, "bad_request"),
+        ({**base, "model": "yunet-face"}, "bad_request"),
+        ({**base, "extra": 1}, "bad_request"),
+        ({**base, "job": "j_missing"}, "no_render"),
+    ):
+        assert srv.serve(bad)["refused"] == reason, bad
+
+
+def test_the_gpu_answer_is_schema_checked(tmp_path: Path, weights: Path) -> None:
+    job_dir = prepared(tmp_path)
+    settings = settings_for(tmp_path)
+    real = server(job_dir, weights)
+
+    def answering(change: Callable[[dict[str, Any]], dict[str, Any]]) -> GpuDetector:
+        def call(request: GpuRequest, timeout_s: float) -> tuple[dict[str, Any], str | None]:
+            del timeout_s
+            return change(real.serve(request.model_dump(mode="json"))), None
+
+        return GpuDetector(job_dir, settings, call, meter(job_dir, settings), handoff=handoff(job_dir, lambda: None),
+                           sleep=lambda _s: None)  # fmt: skip
+
+    face = {"kind": "face", "box": [-2.5, 1.2, 9.1, 999], "score": 1}
+    clipped = answering(lambda a: {**a, "frames": {**a["frames"], "0": [face]}})
+    assert clipped.detect_frames(job_dir, {0})[0][0].box == (0, 1, 10, 240)  # clamped to the frame
+    for change in (
+        lambda a: {**a, "model": "egoblur-gen1"},
+        lambda a: {**a, "frames": {"0": []}},  # fewer frames than asked
+        lambda a: {**a, "frames": {**a["frames"], "0": [{**face, "kind": "cat"}]}},
+        lambda a: {**a, "frames": {**a["frames"], "0": [{**face, "score": 7}]}},
+        lambda a: {**a, "surprise": True},
+        lambda a: {"refused": "no_gpu", "detail": "x", "extra": 1},
+    ):
+        with pytest.raises(GpuUnavailable) as caught:
+            answering(change).detect_frames(job_dir, {0, 1})
+        assert caught.value.reason == "bad_answer"
+    detector = answering(lambda a: a)
+    with pytest.raises(TypeError, match="whole renders"):
+        detector.detect(None)
+    with pytest.raises(ValueError, match="audits"):
+        detector.detect_frames(tmp_path, {0})
+    assert detector.detect_frames(job_dir, set()) == {}
+
+
+def test_answers_are_cached_per_render(tmp_path: Path, weights: Path) -> None:
+    job_dir = prepared(tmp_path)
+    settings = settings_for(tmp_path)
+    fake = FakeModal(server(job_dir, weights))
+    detector = GpuDetector(
+        job_dir, settings, fake.call, meter(job_dir, settings), handoff=handoff(job_dir, fake.commit)
+    )
+    detector.prefetch()
+    detector.detect_frames(job_dir, {3, 4})
+    assert len(fake.requests) == 1  # served from pass 1's answers
+    (job_dir / "redacted.mp4").write_bytes((job_dir / "redacted.mp4").read_bytes() + b"\0")  # a new render
+    assert set(detector.detect_frames(job_dir, {3})) == {3}
+    assert len(fake.requests) == 2  # the new render's frames are asked for again
+    assert fake.requests[-1].frames == [3]  # only what this scan wanted
+
+
+def test_the_gpu_detector_needs_egoblur(tmp_path: Path) -> None:
+    job_dir = prepared(tmp_path)
+    settings = Settings(audit_gpu=True, egoblur_model="yunet-face", jobs_dir=str(tmp_path / "s"))
+    with pytest.raises(ValueError, match="yunet-face"):
+        GpuDetector(job_dir, settings, FakeModal(server(job_dir, tmp_path)).call, meter(job_dir, settings),
+                    handoff=handoff(job_dir, lambda: None))  # fmt: skip
+
+
+def test_the_up_front_estimate_includes_the_gpu() -> None:
+    plain = Settings()
+    on = Settings(audit_gpu=True)
+    assert estimate_usd(None, plain) == pytest.approx(1.12)
+    assert estimate_usd(60, plain) == pytest.approx(2.24)
+    extra = estimate_usd(60, on) - estimate_usd(60, plain)
+    # Three passes, each up to its timeout, and the idle tail, at the GPU container's hourly rate.
+    assert extra == pytest.approx((3 * on.audit_gpu_timeout_s + on.audit_gpu_idle_s) * on.audit_gpu_usd_per_hour / 3600)
+    assert estimate_usd(None, on) > estimate_usd(None, plain)
+
+
+# ---------------------------------------------------------------------------------------------- weights
+
+
+def test_egoblur_gen2_weights_are_pinned_to_the_owners_upload() -> None:
+    assert detectors.EGOBLUR_GEN2_SHA256 == {
+        FACE: "2ba183ff74a66752f6457846efb4379b351727d1c9eaef461ed4be8db18cc2e8",
+        PLATE: "1d6b3fc37fce4158d3b7d4a364290cfeeccc86a9cd84a376c443d560f11497f4",
+    }
 
 
 def test_auditor_available_says_whether_any_detector_can_run(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -45,10 +427,20 @@ def test_auditor_available_says_whether_any_detector_can_run(monkeypatch: pytest
     assert not auditor_available(Settings(egoblur_model="yunet-face"))
 
 
+def test_altered_egoblur_weights_fall_back_to_yunet_locally(tmp_path: Path) -> None:
+    for name in (FACE, PLATE):
+        (tmp_path / name).write_bytes(b"weights")
+    settings = Settings(egoblur_model="egoblur-gen2", egoblur_weights_dir=str(tmp_path))
+    assert detectors.load_detector(settings).model == "yunet-face"
+
+
 def test_egoblur_weights_without_torch_fall_back_to_yunet(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The docstring's promise: EgoBlur when it can run, else YuNet (recorded as ``yunet-face``), never a 503."""
-    for name in ("ego_blur_face_gen2.jit", "ego_blur_lp_gen2.jit"):
+    pins = {}
+    for name in (FACE, PLATE):
         (tmp_path / name).write_bytes(b"weights")
+        pins[name] = hashlib.sha256(b"weights").hexdigest()
+    monkeypatch.setattr(detectors, "EGOBLUR_GEN2_SHA256", pins)
 
     def no_torch(*_: object, **__: object) -> None:
         raise detectors.AuditorUnavailable("EgoBlur needs the audit dependency group")
@@ -77,3 +469,115 @@ def test_auditor_availability_is_cached_until_the_weights_change(
     (tmp_path / "gen2").mkdir()  # the folder changed (weights arriving): asked again
     assert auditor_available(settings)
     assert len(calls) == 2
+
+
+# ---------------------------------------------------------------------------------------------- replay guard
+
+
+def test_replay_lets_only_the_modal_control_plane_through(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Replay refuses every remote host; the GPU auditor's ``permitting`` lets exactly Modal's host (and the
+    addresses it resolved to) through, and only inside its scope."""
+    import socket  # noqa: PLC0415
+
+    resolved = {"api.modal.com": "203.0.113.7", "api.meta.ai": "203.0.113.9"}
+
+    def fake_getaddrinfo(host: Any, port: Any, *args: Any, **kwargs: Any) -> Any:
+        del args, kwargs
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (resolved[host], port))]
+
+    def fake_connect(self: socket.socket, address: Any) -> None:
+        del self, address
+
+    netguard.block()
+    monkeypatch.setitem(netguard._original, "getaddrinfo", fake_getaddrinfo)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setitem(netguard._original, "connect", fake_connect)  # pyright: ignore[reportPrivateUsage]
+    try:
+        with socket.socket() as sock:
+            with pytest.raises(netguard.NetworkBlocked):
+                socket.getaddrinfo("api.modal.com", 443)
+            with netguard.permitting("api.modal.com"):
+                ((*_, address),) = socket.getaddrinfo("api.modal.com", 443)
+                sock.connect(address)  # the address Modal's host resolved to
+                with pytest.raises(netguard.NetworkBlocked):
+                    socket.getaddrinfo("api.meta.ai", 443)  # Meta stays blocked
+                with pytest.raises(netguard.NetworkBlocked):
+                    sock.connect(("203.0.113.9", 443))
+            with pytest.raises(netguard.NetworkBlocked):
+                sock.connect(address)  # the scope closed
+        with pytest.raises(ValueError, match="remote host"):
+            netguard.permitting("localhost").__enter__()
+    finally:
+        netguard.unblock()
+
+
+# ---------------------------------------------------------------------------------------------- round-1 audit fixes
+
+
+def test_anything_that_stops_the_gpu_path_being_set_up_still_audits(tmp_path: Path, weights: Path) -> None:
+    """A job folder the GPU request can't name, a broken ledger: the audit runs on YuNet, never crashes the job."""
+    job_dir = prepared(tmp_path)
+    fake = FakeModal(server(job_dir, weights))
+    settings = settings_for(tmp_path).model_copy(update={"jobs_dir": str(tmp_path / "not-a-dir.sqlite" / "x")})
+    (tmp_path / "not-a-dir.sqlite").write_text("a file where the ledger's folder should be")
+    audit_run(job_dir, replay=True, settings=settings, gpu_call=fake.call, gpu_commit=fake.commit)
+    assert audit_of(job_dir).egoblur.model == "yunet-face"
+    assert json.loads((job_dir / GPU_RECORD).read_text())["fallback"].startswith("setup:")
+    assert fake.requests == []
+
+
+def test_a_handoff_commit_that_fails_is_retried_then_falls_back(tmp_path: Path, weights: Path) -> None:
+    job_dir = prepared(tmp_path)
+    fake = FakeModal(server(job_dir, weights))
+    commits: list[int] = []
+
+    def refusing() -> None:
+        commits.append(1)
+        raise RuntimeError("there are open files preventing the operation")
+
+    audit_run(job_dir, replay=True, settings=settings_for(tmp_path), gpu_call=fake.call, gpu_commit=refusing)
+    assert len(commits) == 2  # once, then the one retry
+    assert fake.requests == []  # never asked the GPU about a render it might not see
+    assert json.loads((job_dir / GPU_RECORD).read_text())["fallback"].startswith("error: RuntimeError")
+    assert list(handoff_root(job_dir).iterdir()) == []  # the copy is removed on the way out
+
+
+def test_the_handoff_copies_each_render_once_and_names_every_gpu(tmp_path: Path, weights: Path) -> None:
+    job_dir = prepared(tmp_path)
+    settings = settings_for(tmp_path)
+    names = iter(["NVIDIA L4", "Tesla T4"])
+    real = GpuServer(handoff_root(job_dir), weights, load=stand_in, gpu_name=lambda: next(names))
+    fake = FakeModal(real)
+    box = handoff(job_dir, fake.commit)
+    detector = GpuDetector(job_dir, settings, fake.call, meter(job_dir, settings), handoff=box)
+    detector.detect_frames(job_dir, {0})
+    detector.detect_frames(job_dir, {1})
+    (folder,) = handoff_root(job_dir).iterdir()  # one render, copied once, committed per call
+    assert (folder / "redacted.mp4").read_bytes() == (job_dir / "redacted.mp4").read_bytes()
+    assert fake.commits == 2
+    assert detector.device == "cuda:NVIDIA L4+Tesla T4"  # a pass on a T4 is named too
+    box.close()
+    assert list(handoff_root(job_dir).iterdir()) == []
+
+
+def test_without_torch_the_weights_are_never_hashed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in (FACE, PLATE):
+        (tmp_path / name).write_bytes(b"weights")
+    hashed: list[Path] = []
+    monkeypatch.setattr(detectors, "_sha256", lambda path: hashed.append(path) or detectors.YUNET_SHA256)
+    monkeypatch.setattr(detectors.importlib.util, "find_spec", lambda name: None)
+    settings = Settings(egoblur_model="egoblur-gen2", egoblur_weights_dir=str(tmp_path))
+    assert detectors.load_detector(settings).model == "yunet-face"
+    assert [p.name for p in hashed] == ["face_detection_yunet_2023mar.onnx"]  # only YuNet's own check
+
+
+def test_the_cron_sweeps_handoff_folders_an_audit_left_behind(tmp_path: Path) -> None:
+    import os  # noqa: PLC0415
+
+    old, fresh = tmp_path / "j_old-0123456789abcdef", tmp_path / "j_new-0123456789abcdef"
+    for folder in (old, fresh):
+        folder.mkdir()
+        (folder / "redacted.mp4").write_bytes(b"x")
+    os.utime(old, (1_000, 1_000))
+    assert gpu.sweep_handoff(tmp_path, older_than_s=3600, now=10_000) == [old.name]
+    assert [p.name for p in tmp_path.iterdir()] == [fresh.name]
+    assert gpu.sweep_handoff(tmp_path / "missing") == []

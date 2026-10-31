@@ -17,12 +17,16 @@ from __future__ import annotations
 
 import asyncio
 import functools
-from collections.abc import Sequence
+import json
+import logging
+from collections.abc import Callable, Sequence
 from contextlib import AsyncExitStack
 from pathlib import Path
 
 from safecut import open_weight, pipeline
-from safecut.audit.detectors import AuditorUnavailable, Detector, load_detector
+from safecut.audit import gpu
+from safecut.audit.detectors import AuditorUnavailable, Detector, device_of, load_detector
+from safecut.audit.gpu import GpuDetector, GpuMeter, GpuUnavailable, Handoff, RemoteCall
 from safecut.audit.loop import audit_job
 from safecut.audit.opinion import Ask
 from safecut.audit.opinion import attempted as opinion_attempted
@@ -32,11 +36,15 @@ from safecut.config import Settings, load_settings
 from safecut.contracts import Audit, Job, Plan, load
 from safecut.meta.budget import Caller
 from safecut.meta.client import MetaClient
+from safecut.render import write_atomic
 from safecut.render.draw import Frame
 
 AUDIT = "audit.json"
 RECORDED = Path("raw/redteam/frames.json")
 SYNTHETIC_TRUTH = Path("raw/redteam/synthetic_truth.json")
+GPU_RECORD = Path("raw/audit/gpu.json")
+
+log = logging.getLogger(__name__)
 
 
 class NoRedTeam:
@@ -121,6 +129,57 @@ def _available(model: str, weights: str, stamp: int | None, face: float, plate: 
     return True
 
 
+def choose_detector(
+    job_dir: Path, settings: Settings, *, call: RemoteCall | None = None, commit: Callable[[], None] | None = None
+) -> tuple[Detector, str | None]:
+    """EgoBlur on the Modal GPU when ``SAFECUT_AUDIT_GPU=1`` and it answers pass 1 (fetched here, before the red
+    team spends anything); otherwise the local detector (YuNet in the slim API container). Returns the detector and,
+    when the GPU was wanted but didn't answer, why (logged, and written to ``raw/audit/gpu.json``)."""
+    if not settings.audit_gpu or settings.egoblur_model == "yunet-face":
+        return load_detector(settings), None
+    try:
+        job = load(job_dir / "job.json", Job)
+        caller = pipeline.job_caller(job_dir, settings) if (job_dir / pipeline.INTAKE).exists() else Caller.local()
+        meter = GpuMeter(settings, pipeline.job_ledger(settings), caller, job.job_id, job_dir / "cost.jsonl")
+        handoff = Handoff(Path(settings.audit_gpu_handoff_dir), commit or gpu.modal_commit(settings))
+        detector = GpuDetector(job_dir, settings, call or gpu.modal_call(settings), meter, handoff=handoff)
+    except ImportError as exc:  # no Modal client here (a local run with SAFECUT_AUDIT_GPU=1)
+        return _local(settings, f"no_modal: {exc}")
+    except Exception as exc:  # anything else that stops the GPU path being set up: the audit still runs
+        return _local(settings, f"setup: {type(exc).__name__}: {exc}"[:300])
+    try:
+        detector.prefetch()
+    except Exception as exc:
+        handoff.close()
+        reason = str(exc) if isinstance(exc, GpuUnavailable) else f"error: {type(exc).__name__}: {exc}"[:300]
+        return _local(settings, reason)
+    return detector, None
+
+
+def _local(settings: Settings, reason: str) -> tuple[Detector, str]:
+    fallback = load_detector(settings)
+    log.warning("GPU auditor unavailable (%s): auditing with %s on this machine", reason, fallback.model)
+    return fallback, reason
+
+
+def _audit(job_dir: Path, settings: Settings, detector: Detector, redteam: RedTeam | None, client: MetaClient | None,
+           *, replay: bool) -> None:  # fmt: skip
+    if redteam is None and not replay:
+        asyncio.run(_live(job_dir, settings, detector, client))
+    else:
+        asyncio.run(audit_job(job_dir, detector=detector, redteam=redteam or replay_redteam(job_dir)))
+
+
+def _record(job_dir: Path, detector: Detector, wanted: bool, fallback: str | None) -> None:
+    """``raw/audit/gpu.json``: whether the GPU auditor was asked for, what ran, and why not when it didn't."""
+    if not wanted:
+        return
+    calls = detector.calls if isinstance(detector, GpuDetector) else 0
+    record = {"requested": True, "ran": detector.model, "device": device_of(detector), "fallback": fallback,
+              "gpu_calls": calls}  # fmt: skip
+    write_atomic(job_dir / GPU_RECORD, json.dumps(record, indent=1))
+
+
 def run(
     job_dir: Path,
     *,
@@ -129,16 +188,39 @@ def run(
     detector: Detector | None = None,
     redteam: RedTeam | None = None,
     client: MetaClient | None = None,
+    gpu_call: RemoteCall | None = None,
+    gpu_commit: Callable[[], None] | None = None,
 ) -> Path:
     """Write ``audit.json`` (and, after patches, ``decisions.json``, ``plan.json`` and the re-rendered video)."""
     settings = settings or load_settings()
-    detector = detector or load_detector(settings)
-    if redteam is None and not (replay or settings.replay):
-        asyncio.run(_live(job_dir, settings, detector, client))
-        return job_dir / AUDIT
-    chosen = redteam or replay_redteam(job_dir)
-    asyncio.run(audit_job(job_dir, detector=detector, redteam=chosen))
+    replay = replay or settings.replay
+    fallback: str | None = None
+    if detector is None:
+        detector, fallback = choose_detector(job_dir, settings, call=gpu_call, commit=gpu_commit)
+    try:
+        _audit(job_dir, settings, detector, redteam, client, replay=replay)
+    finally:
+        if isinstance(detector, GpuDetector):
+            detector.handoff.close()
+    if isinstance(detector, GpuDetector) and detector.failure is not None:
+        # The GPU answered pass 1 but not a re-check: those frames are unscanned, so the audit can't pass. It runs
+        # again, whole, on the local detector, which is then the one audit.json and the receipt name.
+        fallback = str(detector.failure)
+        detector = load_detector(settings)
+        log.warning("GPU auditor stopped mid-audit (%s): auditing again with %s", fallback, detector.model)
+        _audit(job_dir, settings, detector, redteam, client, replay=replay)
+    _record(job_dir, detector, settings.audit_gpu and settings.egoblur_model != "yunet-face", fallback)
     return job_dir / AUDIT
 
 
-__all__ = ["AUDIT", "RECORDED", "SYNTHETIC_TRUTH", "NoRedTeam", "auditor_available", "replay_redteam", "run"]
+__all__ = [
+    "AUDIT",
+    "GPU_RECORD",
+    "RECORDED",
+    "SYNTHETIC_TRUTH",
+    "NoRedTeam",
+    "auditor_available",
+    "choose_detector",
+    "replay_redteam",
+    "run",
+]

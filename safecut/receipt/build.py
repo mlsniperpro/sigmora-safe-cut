@@ -222,6 +222,7 @@ def build(
     lines = list(read_cost_lines(job_dir / "cost.jsonl")) if (job_dir / "cost.jsonl").exists() else []
     meta, meta_estimated = measured_usd(lines, provider="meta")
     baseten, _ = measured_usd(lines, provider="baseten")
+    gpu_measured, gpu_estimated = measured_usd(lines, provider="modal")
     if approved_at is None:
         # The receipt says the creator approved: only an approval on record (the pipeline's approval.json) says so.
         if not (job_dir / APPROVAL).exists():
@@ -232,6 +233,7 @@ def build(
         items=items,
         audit=ReceiptAudit(
             auditor=audit.egoblur.model,
+            auditor_device=audit.egoblur.device,
             frames_scanned=audit.frames_scanned,
             leaks_found=len(audit.leaks),
             leaks_patched=sum(leak.patched_item is not None for leak in audit.leaks),
@@ -246,6 +248,7 @@ def build(
         cost_usd=meta,
         cost_usd_estimated=meta_estimated,
         cost_usd_baseten=baseten,
+        cost_usd_gpu=gpu_measured + gpu_estimated,
         prev_hash=prev_hash,
     )
     return Receipt.seal(body)

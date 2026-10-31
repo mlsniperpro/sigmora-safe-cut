@@ -40,7 +40,7 @@ CodeKind = Literal["pilot", "recording", "judge", "public", "service", "owner", 
 AccessCodeKind = Literal["judge", "public", "pilot", "recording", "owner"]
 WindowKind = Literal["judge", "public", "service", "recording", "pilot", "owner"]
 CapKind = Literal["job", "test_line", "code", "pilot_pool", "daily", "baseten_job"]
-Provider = Literal["meta", "baseten"]
+Provider = Literal["meta", "baseten", "modal"]
 OpenWeightEffort = Literal["low", "medium", "high", "xhigh", "omit"]
 
 # Meta's documented Voice Transcribe languages (speech-to-text page, read 2026-10-25).
@@ -295,7 +295,9 @@ _JSON_FIELDS = frozenset(
         "cors_origins",
     }
 )
-_BOOL_FIELDS = frozenset({"replay", "sam_send_store", "sam_delete_responses", "open_weight_grid_ok", "trust_proxy"})
+_BOOL_FIELDS = frozenset(
+    {"replay", "sam_send_store", "sam_delete_responses", "open_weight_grid_ok", "trust_proxy", "audit_gpu"}
+)
 _TRUE = frozenset({"1", "true", "yes", "on"})
 _FALSE = frozenset({"0", "false", "no", "off"})
 
@@ -387,6 +389,22 @@ class Settings(BaseModel):
     egoblur_weights_dir: str = "/models/egoblur"
     egoblur_face_threshold: float = Field(default=0.5, gt=0, lt=1)
     egoblur_plate_threshold: float = Field(default=0.5, gt=0, lt=1)
+    #: ``SAFECUT_AUDIT_GPU=1``: the detector runs as EgoBlur on the Modal GPU function ``audit_gpu_function`` of the
+    #: deployed app ``audit_gpu_app``, reading the render from the jobs Volume; YuNet runs whenever it can't.
+    audit_gpu: bool = False
+    audit_gpu_app: str = Field(default="safecut", min_length=1)
+    audit_gpu_function: str = Field(default="egoblur_detect", min_length=1)
+    #: The handoff Volume the render reaches the GPU through (``safecut.audit.gpu.Handoff``), mounted here.
+    audit_gpu_volume: str = Field(default="safecut-audit", min_length=1)
+    audit_gpu_handoff_dir: str = Field(default="/audit", min_length=1)
+    #: One scan on the GPU, cold start included (a 60 s clip: ~40 s of model time, plus decode and a cold start).
+    audit_gpu_timeout_s: float = Field(default=300.0, gt=0, le=1800)
+    #: The GPU function's container per hour at ``modal billing rates``: L4 $0.80 + 2 cores × $0.0473 + 6 GiB ×
+    #: $0.008 = $0.94 (deploy/modal_app.py sizes it; a T4 fallback costs less). An estimate: Modal bills by the
+    #: second, cold start and idle included.
+    audit_gpu_usd_per_hour: float = Field(default=0.95, ge=0)
+    #: The GPU container's ``scaledown_window``: idle seconds billed after the audit's last call.
+    audit_gpu_idle_s: float = Field(default=30.0, ge=0)
 
     # Upload storage (WP5). Secrets, all optional until WP5 needs them.
     r2_account_id: str | None = None

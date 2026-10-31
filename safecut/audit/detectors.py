@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import importlib.util
 import logging
 import math
 from dataclasses import dataclass
@@ -41,6 +42,12 @@ YUNET_TOP_K = 5000
 #: egoblur-gen2.md: Gen 2's own NMS default (the code's 0.5; the README's 0.3 is out of date), Gen 1's 0.3.
 EGOBLUR_NMS = {"egoblur-gen2": 0.5, "egoblur-gen1": 0.3}
 EGOBLUR_RESIZE = {"min_size_test": 1200, "max_size_test": 1200}
+#: The Gen 2 TorchScript files from Meta's gated download, as uploaded to the ``safecut-models`` Volume (owner,
+#: 2026-10-31). A file that doesn't match is never loaded.
+EGOBLUR_GEN2_SHA256 = {
+    "ego_blur_face_gen2.jit": "2ba183ff74a66752f6457846efb4379b351727d1c9eaef461ed4be8db18cc2e8",
+    "ego_blur_lp_gen2.jit": "1d6b3fc37fce4158d3b7d4a364290cfeeccc86a9cd84a376c443d560f11497f4",
+}
 
 
 class AuditorUnavailable(RuntimeError):
@@ -64,6 +71,12 @@ class Detector(Protocol):
     def detect(self, frame: Frame) -> list[Detection]: ...
 
 
+def device_of(detector: Detector) -> str | None:
+    """Where the detector ran: ``cpu``, ``cuda:0`` (a local GPU) or ``cuda:<GPU name>`` (the Modal GPU function)."""
+    device = getattr(detector, "device", None)
+    return device if isinstance(device, str) else None
+
+
 def to_box(xyxy: tuple[float, float, float, float], width: int, height: int) -> BoxT | None:
     """A float detector box as a half-open int box: ``floor`` the corner, ``ceil`` the far corner, clamped."""
     x1, y1, x2, y2 = xyxy
@@ -71,7 +84,22 @@ def to_box(xyxy: tuple[float, float, float, float], width: int, height: int) -> 
 
 
 def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def verify_egoblur(face: Path, plate: Path, model: AuditorModel) -> None:
+    """Refuse Gen 2 weights whose SHA-256 isn't Meta's (a truncated upload, the wrong file). Gen 1 has no pinned
+    hashes here: it only ever runs on a machine the owner set up by hand."""
+    if model != "egoblur-gen2":
+        return
+    for path in (face, plate):
+        expected = EGOBLUR_GEN2_SHA256.get(path.name)
+        if expected is None or _sha256(path) != expected:
+            raise AuditorUnavailable(f"EgoBlur weights altered or unknown: {path.name} (SHA-256 mismatch)")
 
 
 class YuNet:
@@ -86,6 +114,10 @@ class YuNet:
     @property
     def model(self) -> AuditorModel:
         return "yunet-face"
+
+    @property
+    def device(self) -> str:
+        return "cpu"
 
     @property
     def detects_plates(self) -> bool:
@@ -198,15 +230,22 @@ def load_detector(settings: Settings) -> Detector:
     """EgoBlur when it is asked for and installed; otherwise the bundled YuNet (recorded as ``yunet-face``)."""
     if settings.egoblur_model != "yunet-face":
         files = egoblur_weights(Path(settings.egoblur_weights_dir), settings.egoblur_model)
+        if files is not None and importlib.util.find_spec("torch") is None:
+            # No torch here (the slim API container): don't hash hundreds of MB of weights only to fall back.
+            log.warning(
+                "EgoBlur needs the audit dependency group: auditing with YuNet (faces only; plates by the red team)"
+            )
+            return YuNet(settings.egoblur_face_threshold)
         if files is not None:
             try:
+                verify_egoblur(*files, settings.egoblur_model)
                 return EgoBlur(
                     settings.egoblur_model,
                     *files,
                     face_threshold=settings.egoblur_face_threshold,
                     plate_threshold=settings.egoblur_plate_threshold,
                 )
-            except AuditorUnavailable as exc:  # weights but no torch: YuNet, recorded as such, like missing weights
+            except AuditorUnavailable as exc:  # altered weights, or no torch: YuNet, recorded as such, like missing
                 log.warning("EgoBlur can't load (%s): auditing with YuNet (faces only; plates by the red team)", exc)
                 return YuNet(settings.egoblur_face_threshold)
         log.warning(
