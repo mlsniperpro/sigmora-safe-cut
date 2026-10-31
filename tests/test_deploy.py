@@ -928,3 +928,94 @@ def test_the_post_deploy_check_runs_the_deployed_job_with_the_gpu_audit(
     assert ("FAIL" in out) is (code == 1)
     if code == 0 and result["auditor"] == "egoblur-gen2":
         assert "audited by egoblur-gen2 on cuda:NVIDIA L4" in out
+
+
+# ---------------------------------------------------------------------------------------------- round-26 audit fixes
+
+
+HEALTHY_SMOKE = {"exit": 0, "unresolved": 0, "receipt": True, "redacted": True,
+                 "gpu_probe": {"refused": None, "gpu": "NVIDIA L4", "frames": 3}}  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ({}, {"ok": True}, None, False),
+        ({}, {"ok": False, "error": "OperationalError: disk I/O error"}, None, True),
+        ({"gpu_probe": {"refused": "no_weights", "detail": "missing"}}, {"ok": True}, None, True),
+        ({"gpu_probe": {"refused": "no_weights", "detail": "missing"}}, {"ok": True}, "1", False),
+        ({"exit": 1, "tail": "Traceback"}, {"ok": True}, "1", True),
+        ({}, {"ok": False, "error": "x"}, "1", True),
+    ],
+)
+def test_the_pre_deploy_smoke_blocks_the_deploy_on_any_problem(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    case: tuple[dict[str, Any], dict[str, Any], str | None, bool],
+) -> None:
+    """``modal run deploy/modal_app.py`` itself (the workflow's gate before ``modal deploy``): the worker smoke runs
+    without the deployed GPU path, the ledger smoke runs too, and any problem raises; the GPU-optional switch only
+    turns a GPU problem into a warning."""
+    from types import SimpleNamespace  # noqa: PLC0415 -- stand-ins, local to this test
+
+    from deploy import modal_app  # noqa: PLC0415 -- the deploy group, imported where it is used
+
+    worker, ledger, optional, blocks = case
+    asked: list[tuple[str, dict[str, object]]] = []
+
+    def stand_in(name: str, answer: dict[str, Any]) -> Any:
+        def remote(**kwargs: object) -> dict[str, Any]:
+            asked.append((name, kwargs))
+            return answer
+
+        return SimpleNamespace(remote=remote)
+
+    monkeypatch.setattr(modal_app, "pipeline_worker_smoke", stand_in("worker", {**HEALTHY_SMOKE, **worker}))
+    monkeypatch.setattr(modal_app, "ledger_smoke", stand_in("ledger", ledger))
+    if optional is None:
+        monkeypatch.delenv("SAFECUT_DEPLOY_GPU_OPTIONAL", raising=False)
+    else:
+        monkeypatch.setenv("SAFECUT_DEPLOY_GPU_OPTIONAL", optional)
+    smoke = modal_app.smoke.info.raw_f
+    assert smoke is not None
+    if blocks:
+        with pytest.raises(SystemExit, match="smoke run failed"):
+            smoke()
+    else:
+        assert smoke() is None
+    assert asked == [("worker", {}), ("ledger", {})]  # before a deploy: this image's own GPU function is probed
+    warned = "::warning title=GPU auditor::" in capsys.readouterr().out
+    assert warned is (optional == "1" and "gpu_probe" in worker)
+
+
+@pytest.mark.parametrize("audit_gpu", [False, True])
+def test_the_worker_smoke_reaches_the_deployed_gpu_only_when_asked(
+    monkeypatch: pytest.MonkeyPatch, audit_gpu: bool
+) -> None:
+    """``pipeline_worker_smoke`` runs ``safecut run`` in replay with its own ledger, and the GPU audit on exactly when
+    the post-deploy check asks for it (the pre-deploy smoke probes this image's GPU function on its own)."""
+    import subprocess  # noqa: PLC0415 -- patched for this test
+
+    from deploy import modal_app  # noqa: PLC0415 -- the deploy group, imported where it is used
+
+    real_path = modal_app.Path
+
+    def in_repo(*parts: Any) -> Path:  # the image's /root is the repo here
+        path = real_path(*parts)
+        return ROOT / path.relative_to("/root") if path.is_relative_to("/root") else path
+
+    ran: list[tuple[list[str], dict[str, str]]] = []
+
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        ran.append((argv, kwargs["env"]))
+        return subprocess.CompletedProcess(argv, 1, stdout="", stderr="stopped by the test")
+
+    monkeypatch.setattr(modal_app, "Path", in_repo)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    result = modal_app.pipeline_worker_smoke._raw_f_(audit_gpu=audit_gpu)  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownVariableType] -- modal 1.6.2's raw function
+    [(argv, env)] = ran
+    assert env["SAFECUT_AUDIT_GPU"] == ("1" if audit_gpu else "0")
+    assert env["SAFECUT_JOBS_DIR"] != os.environ.get("SAFECUT_JOBS_DIR")  # its own ledger, off the jobs Volume
+    assert argv[1:4] == ["-m", "safecut.cli", "run"]
+    assert "--replay" in argv
+    assert result["exit"] == 1  # the run's outcome is reported, for the checks to judge

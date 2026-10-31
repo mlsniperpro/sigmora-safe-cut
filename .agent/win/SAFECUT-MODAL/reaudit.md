@@ -349,3 +349,14 @@ the 1,622 collected; cost tables, BLOCKED.md's caps and the weight hashes reprod
 re-measured at 0.70–0.75 s and a replay run's RSS at 206 MiB, against the claimed 0.74 s and 210 MiB. (The
 reviewer's mutation script briefly edited `deploy/verify_deploy.py` in place and restored it at once; `git status`
 and the blob at HEAD confirmed nothing changed, and no commit carries it.)
+
+## Round 26 (on 2b6548b, code as 55cb6ca): 0 critical, 0 high, 1 medium, 0 low. Closed. Not clean.
+
+- M1 the pre-deploy gate's own glue (`modal_app.smoke`, the workflow's `modal run`) had no behavioural test: dropping
+  the ledger check, printing instead of raising, or inverting the GPU-optional switch all kept CI green; nor was
+  `pipeline_worker_smoke`'s `SAFECUT_AUDIT_GPU` wiring pinned →
+  `test_the_pre_deploy_smoke_blocks_the_deploy_on_any_problem` (the raw local entrypoint with stand-in remote
+  functions: a healthy run passes; a broken ledger, a refused GPU probe or a failed job raises; the switch only turns
+  a GPU problem into a warning) and `test_the_worker_smoke_reaches_the_deployed_gpu_only_when_asked` (the raw
+  function with a stand-in `subprocess.run`: replay, its own ledger, the GPU audit exactly when asked). All five
+  mutants named above, plus a pre-deploy smoke that asks for the deployed GPU path, now fail.
