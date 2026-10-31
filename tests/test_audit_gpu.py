@@ -1311,3 +1311,23 @@ def test_a_cancel_that_fails_still_reports_the_timeout(monkeypatch: pytest.Monke
     with pytest.raises(TimeoutError, match="no output"):
         gpu.modal_call(Settings(audit_gpu=True))(GPU_REQUEST, 5.0)
     assert cancels == [True]
+
+
+# ---------------------------------------------------------------------------------------------- round-30 audit fixes
+
+
+def test_a_yunet_auditor_never_reaches_or_records_the_gpu(tmp_path: Path) -> None:
+    """``SAFECUT_EGOBLUR_MODEL=yunet-face`` with ``SAFECUT_AUDIT_GPU=1`` (the API image's default): the audit runs
+    here, calls no GPU, and writes no ``gpu.json`` (the GPU was never meant to audit it)."""
+    job_dir = prepared(tmp_path)
+    settings = settings_for(tmp_path).model_copy(update={"egoblur_model": "yunet-face"})
+    calls: list[object] = []
+
+    def call(request: GpuRequest, timeout_s: float) -> tuple[dict[str, Any], str | None]:
+        calls.append(request)
+        raise AssertionError("the GPU must not be called")
+
+    audit_run(job_dir, replay=True, settings=settings, gpu_call=call, gpu_commit=lambda: calls.append("commit"))
+    assert calls == []
+    assert not (job_dir / GPU_RECORD).exists()
+    assert load(job_dir / "audit.json", Audit).egoblur.model == "yunet-face"

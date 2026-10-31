@@ -813,24 +813,23 @@ def test_a_render_queued_after_a_long_review_is_resumed_not_failed_as_stalled(
     with svc.store.update(job_id) as state:
         state.started_at = datetime.now(UTC) - STALL_LIMIT - timedelta(hours=2)  # analysed long ago
     gate = threading.Event()
-    real = svc.worker._run_action  # pyright: ignore[reportPrivateUsage]
 
-    def held(job: str, action: Any) -> None:
+    def dies(job: str, action: Any) -> None:  # the container goes before the render starts: it never runs here
+        del job, action
         gate.wait(20)
-        real(job, action)
 
-    svc.worker._run_action = held  # type: ignore[method-assign]  # pyright: ignore[reportPrivateUsage] -- a stand-in action
+    svc.worker._run_action = dies  # type: ignore[method-assign]  # pyright: ignore[reportPrivateUsage] -- a stand-in action
     assert client.post(f"/v1/jobs/{job_id}/render").status_code == 202
     assert datetime.now(UTC) - svc.store.get(job_id).started_at < timedelta(minutes=1)  # type: ignore[operator] -- set on queueing
     # The container goes before the render starts; the next one's recover resumes it rather than failing it.
-    svc.worker.shutdown(wait=False)  # drops the queued render, as a container going away does
-    gate.set()
+    svc.worker.shutdown(wait=False)  # as a container going away does: nothing of the render ran or will run here
     successor = Service(svc.settings, fixtures=svc.fixtures)
     try:
         assert successor.recover() == [job_id]
         successor.worker.wait(job_id)
         assert successor.store.get(job_id).status == "done"
     finally:
+        gate.set()
         successor.stop()
 
 
@@ -1146,3 +1145,52 @@ def test_a_corrupt_job_state_reads_as_not_found(make_service: Callable[..., Any]
     with pytest.raises(JobNotFound):
         svc.store.get(job_id)
     assert client.get(f"/v1/jobs/{job_id}").status_code == 404
+
+
+# ---------------------------------------------------------------------------------------------- round-30 audit fixes
+
+
+def test_hold_waits_two_polls_before_it_resumes_a_job(
+    make_service: Callable[..., Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A re-queue is briefly untracked (its timer has fired, its thread isn't up yet): one idle poll is that gap, so
+    ``hold`` resumes only after two in a row, and never runs a job twice."""
+    client, svc = make_service()
+    job_id = upload_clip(client)
+    with svc.store.update(job_id) as state:
+        state.status, state.stage = "processing", "track"
+    seen = iter([False])  # untracked once (the gap), then tracked
+    resumed: list[str | None] = []
+    monkeypatch.setattr(svc.worker, "tracking", lambda job: next(seen, True))
+    monkeypatch.setattr(svc, "recover", lambda only=None: resumed.append(only) or [])
+    svc.hold(job_id, poll_s=0.01, limit_s=0.3)
+    assert resumed == []
+
+
+@pytest.mark.parametrize("action", ["start", "render", "audit"])
+def test_a_retry_starts_the_resume_count_afresh(
+    make_service: Callable[..., Any], monkeypatch: pytest.MonkeyPatch, action: str
+) -> None:
+    """A job that failed as "stopped 4 times at render" and is tried again gets its resumes back, as a fresh start
+    does: one more container going away resumes it instead of failing it at once."""
+    from safecut.api.store import Failure  # noqa: PLC0415 -- imported in the test that uses it
+
+    client, svc = make_service()
+    job_id = upload_clip(client)
+    if action != "start":
+        run_to(client, svc, job_id, "start", "review")
+    with svc.store.update(job_id) as state:
+        if action == "start":
+            state.status = "failed"
+        elif action == "render":
+            state.status, state.failure = "failed", Failure(stage="render", reason="internal")
+        else:
+            state.status, state.stage = "needs_you", "audit"
+        state.resumes = app_module.MAX_RESUMES
+    gate = threading.Event()
+    monkeypatch.setattr(svc.worker, "_run_action", lambda job, act: gate.wait(20))  # held: read the queued state
+    try:
+        assert client.post(f"/v1/jobs/{job_id}/{action}").status_code == 202
+        assert svc.store.get(job_id).resumes == 0
+    finally:
+        gate.set()

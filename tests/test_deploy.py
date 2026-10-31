@@ -450,6 +450,8 @@ LIVE = {"status": "ok", "mode": "live", "key": True, "meta": "ok", "audit_gpu": 
     [
         ({**LIVE, "uptime_s": 1.0}, 1.5, "1", "ok    API woke from a cold start: answered in"),
         ({**LIVE, "uptime_s": 900.0}, 0.0, "1", "FAIL  API was already up 900.0 s: no cold start right after"),
+        # Woken a minute earlier by someone else: not this request's cold start (the margin is seconds, not minutes).
+        ({**LIVE, "uptime_s": 60.0}, 0.0, "1", "FAIL  API was already up 60.0 s: no cold start right after"),
         ({**LIVE, "uptime_s": 900.0}, 0.0, "", "ok    API already awake (up 900.0 s)"),
         (LIVE, 0.0, "", "FAIL  API /healthz has no uptime_s"),
         ({**LIVE, "uptime_s": 1.0}, 0.0, "", "ok    API audits with EgoBlur on the GPU function"),

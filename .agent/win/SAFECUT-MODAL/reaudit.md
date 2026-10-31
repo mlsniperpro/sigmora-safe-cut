@@ -409,3 +409,22 @@ Round 28's `_retry_gpu` predicate and reworked smoke tests were mutation-checked
   `test_a_cancel_that_fails_still_reports_the_timeout`, `test_a_demo_whose_audit_cant_be_read_is_rebuilt`.
 - L3 `JobStore.get`'s corrupt-state fallback was unpinned → `test_a_corrupt_job_state_reads_as_not_found` (404, not
   500). All 11 mutants named here fail their tests.
+
+## Round 30 (on 71354e3): 0 critical, 0 high, 1 medium, 4 low. All closed. Not clean.
+
+The round-29 tests killed five of the seven `audit_on_gpu` consumer mutants; about 30 more glue mutants were killed.
+Full suite on 71354e3: `1640 passed, 12 deselected`.
+
+- M1 `test_a_render_queued_after_a_long_review_is_resumed_not_failed_as_stalled` was flaky (reproduced under load):
+  its stand-in "dead" container still ran the render after the gate opened, racing the successor on one job folder →
+  the old container's action never runs (as a container that went away); 9 of 9 runs pass with three at once.
+- L1 `hold`'s two-poll guard was unpinned → `test_hold_waits_two_polls_before_it_resumes_a_job` (untracked once,
+  then tracked: no resume; fails with a one-poll guard).
+- L2 a retried render or audit kept its resume count, so a job failed as "stopped 4 times" failed again at the next
+  container loss → `render` and `audit` reset it as `start` does; all three pinned
+  (`test_a_retry_starts_the_resume_count_afresh[start|render|audit]`, each failing without its reset).
+- L3 the deploy check's cold-wake margin was unpinned → a container up 60 s with no wait must fail
+  `DEPLOY_EXPECT_COLD=1`.
+- L4 round 29's "audit record" claim was unpinned (`_record` could take `audit_gpu` again) →
+  `test_a_yunet_auditor_never_reaches_or_records_the_gpu` (an audit run with `yunet-face` and `SAFECUT_AUDIT_GPU=1`:
+  no GPU call, no `gpu.json`).

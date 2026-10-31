@@ -841,6 +841,7 @@ def render(svc: Svc, job_id: str) -> JSONResponse:
         pipeline.approve(svc.store.path(job_id), how="review")
         state.status, state.stage, state.failure = "rendering", "render", None
         state.started_at = datetime.now(UTC)  # a long review never makes a queued render look stalled
+        state.resumes = 0  # a retry after "stopped N times" starts its resume count afresh, as start does
         updated = state.model_copy()
         svc.worker.submit(job_id, "publish")
     return ack(updated)
@@ -860,6 +861,7 @@ def audit(svc: Svc, job_id: str) -> JSONResponse:
             check_caps(svc.settings, svc.ledger, grant, estimate=0.01)
         state.status, state.stage, state.failure = "rendering", "audit", None
         state.started_at = datetime.now(UTC)  # a long review never makes a queued audit look stalled
+        state.resumes = 0
         updated = state.model_copy()
         svc.worker.submit(job_id, "audit")
     return ack(updated)
