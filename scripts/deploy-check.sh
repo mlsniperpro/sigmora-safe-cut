@@ -57,6 +57,17 @@ elif [ "${DEPLOY_EXPECT_COLD:-}" = "1" ]; then
 else
   ok "API already awake (up ${uptime} s); no cold start this time"
 fi
+# Every start asks Modal to hold the container up while the demo builds: the same call that keeps a judge's job alive.
+keepalive="$(json health "['keepalive']")"
+if [ "$keepalive" = "True" ]; then
+  ok "API: its keepalive reached Modal (a started job holds the container up)"
+elif [ "$keepalive" = "False" ]; then
+  fail "API: its keepalive failed (SafeCutApi.hold.spawn): a job could be stranded when the container sleeps"
+elif [ "${DEPLOY_EXPECT_COLD:-}" = "1" ]; then
+  fail "API: no keepalive was tried after the cold start (is the API built with Service(keepalive=...)?)"
+else
+  ok "API: no keepalive tried (${keepalive:-not reported}): not on Modal, or not yet"
+fi
 if [ "$(json health "['audit_gpu']")" = "True" ]; then
   ok "API audits with EgoBlur on the GPU function (SAFECUT_AUDIT_GPU on; YuNet only when it can't answer)"
 elif [ "${DEPLOY_YUNET_OK:-}" = "1" ]; then

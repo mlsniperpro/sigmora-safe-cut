@@ -213,6 +213,8 @@ def test_every_queued_action_asks_to_keep_the_container_up(make_service: Callabl
     run_to(client, svc, job_id, "render", "done")
     wait_for(lambda: len(held) == 2, "both keepalives", timeout_s=10)  # spawned from threads of their own
     assert held == [job_id, job_id]
+    wait_for(lambda: svc.worker.keepalive_ok is True, "the keepalive's outcome", timeout_s=10)
+    assert client.get("/healthz").json()["keepalive"] is True
 
 
 def test_a_slow_keepalive_never_holds_up_the_request(make_service: Callable[..., Any]) -> None:
@@ -251,8 +253,11 @@ def test_a_failing_keepalive_never_fails_the_request(make_service: Callable[...,
         raise ConnectionError(f"Modal unreachable for {job_id}")
 
     client, svc = make_service(keepalive=broken)
+    assert client.get("/healthz").json()["keepalive"] is None  # none tried yet
     job_id = upload_clip(client)
     run_to(client, svc, job_id, "start", "review")  # 202, and the job still runs
+    wait_for(lambda: svc.worker.keepalive_ok is False, "the keepalive's outcome", timeout_s=10)
+    assert client.get("/healthz").json()["keepalive"] is False  # and a deploy check sees it
 
 
 def test_hold_lasts_until_the_job_stops(make_service: Callable[..., Any]) -> None:

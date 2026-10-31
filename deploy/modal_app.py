@@ -145,8 +145,8 @@ class SafeCutApi:
 )
 def cleanup() -> dict[str, list[str]]:
     """Delete every unpinned job older than ``SAFECUT_JOB_TTL_HOURS`` (24 h) from the Volume and any render an audit
-    left on the handoff Volume, and wake the API for any job still mid-action (a no-op input when it is already
-    working on it)."""
+    left on the handoff Volume, and wake the API for any job still mid-action (when it is already working on it,
+    one more input that waits with the others until the job stops)."""
     from safecut.api.store import JobStore, sweep_handoff  # noqa: PLC0415 -- inside the container
     from safecut.config import load_settings  # noqa: PLC0415 -- inside the container
 

@@ -209,6 +209,9 @@ class Worker:
         #: Called with the job's ID whenever an action is queued: on Modal it opens an input that holds the
         #: scale-to-zero container up until the job stops (deploy/modal_app.py ``SafeCutApi.hold``).
         self._keepalive = keepalive
+        #: Whether the last keepalive reached the platform (None: none tried yet). ``/healthz`` reports it, and a
+        #: deploy check fails on False: a keepalive that never works would let a sleeping container strand jobs.
+        self.keepalive_ok: bool | None = None
         self.access = Access(settings)
         self._pool = DaemonPool(max_workers or settings.workers, name="job")
         self._running: dict[str, Future[None]] = {}
@@ -249,9 +252,12 @@ class Worker:
         the 15-minute cron resumes any job a sleeping container stranded."""
         if self._keepalive is None:
             return
-        thread = threading.Thread(target=_spawn_hold, args=(self._keepalive, job_id), name=f"hold-{job_id}",
+        thread = threading.Thread(target=self._record_hold, args=(self._keepalive, job_id), name=f"hold-{job_id}",
                                   daemon=True)  # fmt: skip
         thread.start()
+
+    def _record_hold(self, keepalive: Callable[[str], None], job_id: str) -> None:
+        self.keepalive_ok = _spawn_hold(keepalive, job_id)
 
     def wait(self, job_id: str, timeout: float = 120) -> None:
         """Block until the job's current action finishes (tests and the CLI's ``serve --once``)."""
@@ -380,12 +386,14 @@ class Worker:
         self.submit(job_id, action)
 
 
-def _spawn_hold(keepalive: Callable[[str], None], job_id: str) -> None:
+def _spawn_hold(keepalive: Callable[[str], None], job_id: str) -> bool:
     try:
         keepalive(job_id)
     except Exception:
         log.warning("keepalive for job %s failed; the cron will resume it if the container sleeps", job_id,
                     exc_info=True)  # fmt: skip
+        return False
+    return True
 
 
 def stage_index(name: str | None) -> int:

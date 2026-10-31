@@ -402,7 +402,7 @@ def health_stub(
 
 
 LIVE = {"status": "ok", "mode": "live", "key": True, "meta": "ok", "audit_gpu": True, "demos_building": False,
-        "demos_current": ["demo"]}  # fmt: skip
+        "demos_current": ["demo"], "keepalive": True}  # fmt: skip
 
 
 @pytest.mark.parametrize(
@@ -635,3 +635,24 @@ def test_the_pre_deploy_probe_reports_every_gpu_failure(
     assert {k: probe[k] for k in expected} == expected
     if expected.get("refused") in ("timeout", "no_gpu"):
         assert calls[0].cancelled == [True]
+
+
+@pytest.mark.parametrize(
+    ("keepalive", "expect_cold", "line"),
+    [
+        (True, "1", "ok    API: its keepalive reached Modal"),
+        (False, "", "FAIL  API: its keepalive failed (SafeCutApi.hold.spawn)"),
+        (None, "1", "FAIL  API: no keepalive was tried after the cold start"),
+        (None, "", "ok    API: no keepalive tried"),
+    ],
+)
+def test_deploy_check_proves_the_keepalive_reaches_modal(keepalive: bool | None, expect_cold: str, line: str) -> None:
+    """The call that keeps a started job's container up is the same one every start makes for the demo build: a real
+    deploy proves it reached Modal."""
+    server, url = health_stub({**LIVE, "uptime_s": 1.0, "keepalive": keepalive})
+    try:
+        result = deploy_check(url, "-", replay_ok=False, yunet_ok=False, DEPLOY_DEMO_WAIT_S="0", SPOOF_N="1",
+                              DEPLOY_EXPECT_COLD=expect_cold)  # fmt: skip
+    finally:
+        server.shutdown()
+    assert line in result.stdout, result.stdout

@@ -1,4 +1,4 @@
-AUDITED_COMMIT: fc77dfc
+AUDITED_COMMIT: 0788906
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -173,3 +173,14 @@ fix has a test that fails without it.
 - L3 the permit-failure path and `_probe_gpu` were untested; the smoke's `finally` committed unguarded →
   `test_a_permit_that_fails_is_not_submitted`, `test_the_pre_deploy_probe_reports_every_gpu_failure` (5 cases), and
   the extra commit dropped (`Handoff.close` commits best effort).
+
+## Round 11 (on 0788906): 0 critical, 0 high, 0 medium, 3 low. All closed. Not clean.
+
+- L1 "within the hour" had no margin for the cron's latency → copies older than 35 minutes are swept: 35 + 15
+  leaves ten minutes (`test_the_sweep_keeps_the_privacy_pages_hour` asserts the margin).
+- L2 stale wording (the handoff docstring's "hourly", the cron's "no-op" hold, the ARCHITECTURE contract paragraph
+  missing `cost_usd_gpu` and `auditor_device`, the web test count) → corrected.
+- L3 nothing proved the keepalive (`SafeCutApi.hold.spawn`) works on Modal → the worker records the last outcome,
+  `/healthz` reports `keepalive`, and `deploy-check.sh` fails on `false` (or, right after a deploy, on none tried:
+  every start's demo-build hold is the probe) (`test_deploy_check_proves_the_keepalive_reaches_modal`; the keepalive
+  tests assert the recorded outcome).

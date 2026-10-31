@@ -341,7 +341,7 @@ class Handoff:
 
     def close(self) -> None:
         """Remove every render this audit put there, and commit the removal (best effort: a commit that fails is
-        logged, and Modal's background commit or the cron's hourly sweep removes the copy instead)."""
+        logged, and Modal's background commit or the 15-minute cron's sweep removes the copy instead)."""
         with self._exclusive():
             if not self._put:
                 return

@@ -931,6 +931,8 @@ async def healthz(svc: Svc) -> JSONResponse:
         # the demo built by the new code, never one an earlier deploy left on the Volume.
         "demos_building": not svc.demo_built,
         "demos_current": sorted(svc.demos_current),
+        # Whether the last keepalive (the container holding itself up for a job) reached Modal; null before any.
+        "keepalive": svc.worker.keepalive_ok,
     }
     return JSONResponse(body, status_code=200 if writable else 503)
 

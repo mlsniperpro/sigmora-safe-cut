@@ -952,6 +952,6 @@ def test_the_sweep_keeps_the_privacy_pages_hour() -> None:
 
     source = (ROOT / "deploy" / "modal_app.py").read_text()
     period = int(re.search(r"schedule=modal\.Period\(minutes=(\d+)\)", source).group(1))  # type: ignore[union-attr] -- the cron exists (test_deploy)
-    assert HANDOFF_GRACE_S + period * 60 <= 3600
+    assert HANDOFF_GRACE_S + period * 60 + 10 * 60 <= 3600  # ten minutes left for the cron's own latency
     privacy = (ROOT / "web" / "src" / "app" / "privacy" / "page.tsx").read_text()
     assert "within the hour if the check is cut short" in privacy
