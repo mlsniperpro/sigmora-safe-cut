@@ -483,7 +483,7 @@ def test_deploy_check_waits_out_a_cold_start_longer_than_its_other_requests() ->
 
 
 def test_the_smoke_checks_name_what_failed() -> None:
-    from deploy.checks import ledger_problems, post_deploy_problems, pre_deploy_problems  # noqa: PLC0415 -- imported in the test that uses it
+    from deploy.checks import ledger_problems, post_deploy_problems, pre_deploy_problems  # noqa: PLC0415 -- per test
 
     ran = {"exit": 0, "unresolved": 0, "receipt": True, "redacted": True}
     probe = {"gpu": "NVIDIA L4", "refused": None, "detail": None, "frames": 360}
@@ -582,7 +582,7 @@ def test_deploy_check_proves_the_api_containers_own_gpu_path(egoblur: dict[str, 
 def test_the_gpu_optional_switch_reaches_every_gpu_check() -> None:
     """One repository variable, for a hotfix during a GPU outage: the pre-deploy probe, the post-deploy job and the
     URL check's demo audit all warn instead of failing; nothing else is relaxed."""
-    from deploy.checks import post_deploy_problems, pre_deploy_problems  # noqa: PLC0415 -- imported in the test that uses it
+    from deploy.checks import post_deploy_problems, pre_deploy_problems  # noqa: PLC0415 -- imported here, used here
 
     workflow = (ROOT / ".github" / "workflows" / "deploy.yml").read_text()
     assert "SAFECUT_DEPLOY_GPU_OPTIONAL: ${{ vars.SAFECUT_DEPLOY_GPU_OPTIONAL }}" in workflow
