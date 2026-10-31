@@ -661,17 +661,21 @@ def test_deploy_check_proves_the_keepalive_reaches_modal(keepalive: bool | None,
 def test_deploy_check_waits_for_the_keepalives_outcome_after_a_cold_wake() -> None:
     """The keepalive runs on its own thread after the container starts: the first /healthz may say null. The check
     waits for the outcome instead of failing a healthy deploy."""
-    answers = [{**LIVE, "uptime_s": 1.0, "keepalive": None}]
+    # null (the spawn hasn't answered), then a gateway error between polls, then the outcome.
+    answers: list[dict[str, object] | None] = [{**LIVE, "uptime_s": 1.0, "keepalive": None}, None,
+                                               {**LIVE, "uptime_s": 3.0, "keepalive": True}]  # fmt: skip
 
     class Waking(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
-            body = answers[0] if self.path == "/healthz" else {}
-            if self.path == "/healthz":
-                answers[0] = {**LIVE, "uptime_s": 3.0, "keepalive": True}  # the spawn has reached Modal by now
-            self.send_response(200 if self.path == "/healthz" else 404)
-            self.send_header("Content-Type", "application/json")
+            if self.path != "/healthz":
+                self.send_response(404)
+                self.end_headers()
+                return
+            body = answers.pop(0) if len(answers) > 1 else answers[0]
+            self.send_response(200 if body is not None else 503)
+            self.send_header("Content-Type", "application/json" if body is not None else "text/plain")
             self.end_headers()
-            self.wfile.write(json.dumps(body).encode())
+            self.wfile.write(json.dumps(body).encode() if body is not None else b"upstream connect error")
 
         def log_message(self, format: str, *args: object) -> None:  # the base class's own parameter name
             del format, args

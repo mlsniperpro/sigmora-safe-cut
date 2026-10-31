@@ -91,8 +91,10 @@ while [ "$(json health "['demos_building']")" != "False" ] && [ "$(date +%s)" -l
   fetch health "$API/healthz" >/dev/null
 done
 # Every start asks Modal to hold the container up while the demo builds: the same call that keeps a judge's job alive.
-# It runs on a thread of its own, so the first answer after a cold wake may predate it: wait for its outcome too.
-while [ "$(json health "['keepalive']")" = "None" ] && [ "$(date +%s)" -lt "$deadline" ]; do
+# It runs on a thread of its own, so the first answer after a cold wake may predate it: wait for its outcome too (an
+# explicit True or False; a null, a gateway error or a partial body means keep waiting).
+keepalive_known() { case "$(json health "['keepalive']")" in True | False) return 0 ;; *) return 1 ;; esac; }
+while ! keepalive_known && [ "$(date +%s)" -lt "$deadline" ]; do
   sleep 2
   fetch health "$API/healthz" >/dev/null
 done

@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 39ae67d
+AUDITED_COMMIT: 128a87a
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -191,3 +191,10 @@ fix has a test that fails without it.
   keepalive thread reaches Modal, so a healthy deploy could fail → the check waits (up to `DEPLOY_DEMO_WAIT_S`)
   for an outcome, after the demo-build wait (`test_deploy_check_waits_for_the_keepalives_outcome_after_a_cold_wake`:
   a stub that answers null first, then true).
+
+## Round 13 (on 128a87a): 0 critical, 0 high, 0 medium, 2 low. Both closed. Not clean.
+
+- L1 the keepalive wait ended on any unparseable poll (a gateway 503) → it waits for an explicit True or False, as
+  the demo wait does (the test's stub now answers null, then a 503, then true).
+- L2 the drop of a box wholly outside the frame lost its test with the old `RemoteDetector` tests → a case in
+  `test_the_gpu_answer_is_schema_checked`.

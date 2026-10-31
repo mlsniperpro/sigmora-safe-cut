@@ -372,6 +372,9 @@ def test_the_gpu_answer_is_schema_checked(tmp_path: Path, weights: Path) -> None
     face = {"kind": "face", "box": [-2.5, 1.2, 9.1, 999], "score": 1}
     clipped = answering(lambda a: {**a, "frames": {**a["frames"], "0": [face]}})
     assert clipped.detect_frames(job_dir, {0})[0][0].box == (0, 1, 10, 240)  # clamped to the frame
+    off_frame = {"kind": "face", "box": [400, 400, 410, 410], "score": 0.9}  # wholly outside the 320 x 240 frame
+    dropped = answering(lambda a: {**a, "frames": {**a["frames"], "0": [off_frame]}})
+    assert dropped.detect_frames(job_dir, {0})[0] == []  # dropped, never a box-less detection
     for change in (
         lambda a: {**a, "model": "egoblur-gen1"},
         lambda a: {**a, "frames": {"0": []}},  # fewer frames than asked
