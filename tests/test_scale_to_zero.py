@@ -1036,3 +1036,22 @@ def test_the_demo_hold_ends_when_the_container_is_replaced(
     holder.join(5)
     assert result == ["building"]
     gate.set()
+
+
+# ---------------------------------------------------------------------------------------------- round-23 audit fixes
+
+
+def test_the_demo_hold_gives_up_at_its_limit(make_service: Callable[..., Any], monkeypatch: pytest.MonkeyPatch) -> None:
+    """A demo build that never ends doesn't hold the container past the hold's limit (the job holds' rule too)."""
+    _client, svc = make_service(keepalive=lambda job_id: None)
+    gate = threading.Event()
+    monkeypatch.setattr(svc, "recover", list)
+    monkeypatch.setattr(svc, "cleanup_loop", lambda: None)
+    monkeypatch.setattr(svc, "build_demo_jobs", lambda: gate.wait(20) and [])
+    svc.start()
+    try:
+        started = time.monotonic()
+        assert svc.hold(app_module.DEMO_HOLD, poll_s=0.01, limit_s=0.3) == "building"
+        assert time.monotonic() - started < 3
+    finally:
+        gate.set()

@@ -1209,3 +1209,33 @@ def test_a_spawn_that_returns_after_the_bound_is_cancelled(monkeypatch: pytest.M
     gate.set()  # the control plane comes back: the spawn returns
     assert cancelled.wait(5)
     assert waited == []  # never waited on
+
+
+# ---------------------------------------------------------------------------------------------- round-23 audit fixes
+
+
+def test_a_short_timeout_keeps_most_of_its_bound_for_the_scan(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The cancel's margin is at most a quarter of the bound: a timeout shorter than ``CANCEL_MARGIN_S`` still
+    waits about three quarters of it for the scan, never zero."""
+    import time  # noqa: PLC0415 -- imported in the test that uses it
+
+    waited: list[float] = []
+
+    class Handle:
+        object_id = "fc-short"
+
+        def get(self, timeout: float) -> dict[str, Any]:
+            waited.append(timeout)
+            time.sleep(timeout)
+            raise modal_timeout("no output")
+
+        def cancel(self, terminate_containers: bool = False) -> None:
+            del terminate_containers
+
+    fake_modal, modal_timeout = stand_in_modal(lambda request: Handle())
+    monkeypatch.setattr(gpu, "_modal", lambda: fake_modal)
+    assert gpu.CANCEL_MARGIN_S > 1.6  # the default margin: longer than this whole bound
+    with pytest.raises(TimeoutError, match="no output"):
+        gpu.modal_call(Settings(audit_gpu=True))(GPU_REQUEST, 1.6)
+    assert len(waited) == 1
+    assert 1.6 * 0.7 <= waited[0] <= 1.6 * 0.75 + 0.01

@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 1aea68a
+AUDITED_COMMIT: 6437b5a
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -318,3 +318,14 @@ The round-21 tests were mutation-checked (every mutant killed).
   it returns on stop, like a job's hold → `test_the_demo_hold_ends_when_the_container_is_replaced`.
 - L5 DEPLOY-COSTS said "after three restarts" in one place and "on its fourth restart" in another → both say the
   fourth (the code: `MAX_RESUMES = 3` resumes, then a failure).
+
+## Round 23 (on 6437b5a): 0 critical, 0 high, 0 medium, 3 low. All closed. Not clean.
+
+The round-22 tests were mutation-checked (14 of 17 mutants killed; the three survivors are L1 and L2), and the bound
+test ran 12 times under CPU stress without a flake.
+
+- L1 the cancel margin's quarter cap was untested (the test's margin never hit it) →
+  `test_a_short_timeout_keeps_most_of_its_bound_for_the_scan` (default margin, 1.6 s bound: the wait is about three
+  quarters of it; fails with the cap removed or a whole-bound margin).
+- L2 the demo hold's time limit was untested → `test_the_demo_hold_gives_up_at_its_limit`.
+- L3 two comments disagreed on a clip's GPU model time → `safecut/config.py` uses `deploy/costs.py`'s derivation.
