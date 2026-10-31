@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 8237813
+AUDITED_COMMIT: 4f6f52f
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -218,3 +218,12 @@ Each now has a test that fails on the mutant.
 Also (d5b5efd, found by a full-suite run under load): the healthy-deployment fixture waits for its demo build before
 the check's short wait, and the keepalive wait runs only where a keepalive always comes (`DEPLOY_EXPECT_COLD=1`);
 the deploy-check tests pass under four CPU hogs.
+
+## Round 15 (on 4f6f52f): 0 critical, 0 high, 0 medium, 1 low. Closed. Not clean.
+
+Every round-14 test was mutation-checked by the reviewer (each fails on its mutant); 25 of 27 GPU-path mutants
+read were killed, and the two survivors were equivalent mutants.
+
+- L1 a keepalive's `hold` could read the job's state before the request that queued it had saved "processing", and
+  return at once on the stale "created" → `hold` waits on any job this process is tracking, whatever its state says
+  (`test_a_keepalive_that_arrives_before_the_state_is_saved_still_holds`, reproduced with a zero-latency keepalive).

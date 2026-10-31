@@ -235,9 +235,13 @@ class Service:
                 state = self.store.get(job_id)
             except JobNotFound:
                 return "gone"
-            if state.status not in ACTIVE:
+            tracked = self.worker.tracking(job_id)
+            # Not active and nothing here will move it: the job has stopped. (Queued but not yet written as active:
+            # the keepalive can arrive before the request that queued the job has saved its state, so a tracked job
+            # is waited on whatever its state says.)
+            if state.status not in ACTIVE and not tracked:
                 return state.status
-            idle_polls = 0 if self.worker.tracking(job_id) else idle_polls + 1
+            idle_polls = 0 if tracked else idle_polls + 1
             if idle_polls >= 2:  # two polls apart, so an action between its timer and its thread isn't caught
                 self.recover(only=job_id)
                 idle_polls = 0

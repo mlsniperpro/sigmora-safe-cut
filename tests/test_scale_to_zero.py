@@ -932,3 +932,30 @@ def test_the_stored_limit_uses_wall_clock_time(tmp_path: Path) -> None:
     StoredRateLimiter(path).hit("paid", "203.0.113.5", limit=5, window_s=3600)
     (at,) = sqlite3.connect(path).execute("SELECT at FROM hit").fetchone()
     assert abs(at - time.time()) < 60
+
+
+# ---------------------------------------------------------------------------------------------- round-15 audit fixes
+
+
+def test_a_keepalive_that_arrives_before_the_state_is_saved_still_holds(make_service: Callable[..., Any]) -> None:
+    """The hold input can reach this container before the request that queued the job has saved "processing": it
+    must still last until the job stops, never return on the stale "created"."""
+    holds: list[str] = []
+    started = threading.Event()
+    client, svc = make_service(keepalive=lambda job: (started.set(), holds.append(svc.hold(job, poll_s=0.01))))
+    job_id = upload_clip(client)
+    gate = threading.Event()
+    real = svc.worker._run_action  # pyright: ignore[reportPrivateUsage] -- held so the race window stays open
+
+    def held(job: str, action: Any) -> None:
+        gate.wait(20)
+        real(job, action)
+
+    svc.worker._run_action = held  # type: ignore[method-assign]  # pyright: ignore[reportPrivateUsage] -- a stand-in action
+    assert client.post(f"/v1/jobs/{job_id}/start").status_code == 202
+    assert started.wait(10)
+    time.sleep(0.3)
+    assert holds == []  # still holding while the job is queued or running
+    gate.set()
+    wait_for(lambda: holds != [], "the hold to end", timeout_s=30)
+    assert holds == ["review"]
