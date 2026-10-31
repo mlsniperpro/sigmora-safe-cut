@@ -1,4 +1,4 @@
-AUDITED_COMMIT: 128a87a
+AUDITED_COMMIT: 8237813
 OPEN_CRITICAL: 0
 OPEN_HIGH: 0
 CLEAN_AUDITS_IN_A_ROW: 0
@@ -198,3 +198,23 @@ fix has a test that fails without it.
   the demo wait does (the test's stub now answers null, then a 503, then true).
 - L2 the drop of a box wholly outside the frame lost its test with the old `RemoteDetector` tests → a case in
   `test_the_gpu_answer_is_schema_checked`.
+
+## Round 14 (on 8237813): 0 critical, 0 high, 2 medium, 2 low. All closed. Not clean.
+
+No wrong behaviour; the reviewer mutated a scratch copy and found tests that stayed green with a feature broken.
+Each now has a test that fails on the mutant.
+
+- M1 the receipt's `auditor_device` and `cost_usd_gpu` cross-checks had no negative test →
+  `test_a_receipt_that_claims_another_device_or_gpu_cost_never_validates` (a re-sealed forgery of each fails
+  `validate_job_dir`).
+- M2 the GPU term in the up-front cap checks was tested only as a function →
+  `test_the_up_front_cap_check_counts_the_gpu[False|True]` (a judge's start and a pilot's job creation refused only
+  with the GPU on).
+- L1 the stall-rule test passed without the rule → asserts the stage, the detail and that nothing was re-queued.
+- L2 five unpinned behaviours → `test_each_render_is_copied_to_the_handoff_once`,
+  `test_a_gpu_call_is_reserved_at_its_worst_case_with_the_idle_tail`, `test_switching_the_gpu_audit_on_rebuilds_the_demo`,
+  `test_a_re_queued_job_restarts_its_stall_clock`, `test_the_stored_limit_uses_wall_clock_time`.
+
+Also (d5b5efd, found by a full-suite run under load): the healthy-deployment fixture waits for its demo build before
+the check's short wait, and the keepalive wait runs only where a keepalive always comes (`DEPLOY_EXPECT_COLD=1`);
+the deploy-check tests pass under four CPU hogs.

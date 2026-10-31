@@ -325,6 +325,9 @@ def test_a_stalled_job_fails_instead_of_holding_the_container_forever(make_servi
     assert svc.hold(job_id, poll_s=0.01, limit_s=60) == "failed"
     failed = client.get(f"/v1/jobs/{job_id}").json()
     assert failed["failure"]["reason"] == "internal"
+    assert failed["failure"]["stage"] == "roles"  # failed by the stall rule where it stalled, never re-run
+    assert "stalled" in svc.store.get(job_id).failure.detail  # type: ignore[union-attr] -- set by the stall rule
+    assert not svc.worker.tracking(job_id)
     assert svc.store.active() == []
 
 
@@ -842,3 +845,90 @@ def test_queueing_an_audit_starts_its_stall_clock(make_service: Callable[..., An
     assert client.post(f"/v1/jobs/{job_id}/audit").status_code == 202
     assert datetime.now(UTC) - svc.store.get(job_id).started_at < timedelta(minutes=1)  # type: ignore[operator] -- set on queueing
     svc.worker.wait(job_id)
+
+
+# ---------------------------------------------------------------------------------------------- round-14 audit fixes
+
+
+@pytest.mark.parametrize("audit_gpu", [False, True])
+def test_the_up_front_cap_check_counts_the_gpu(make_service: Callable[..., Any], audit_gpu: bool) -> None:
+    """Meta's $1.12 floor fits what is left; Meta's plus the GPU's worst case ($1.37) doesn't. A judge's start
+    ($1.70 of a $3 day spent) and a pilot code's job creation ($4.70 of its $6 spent) are refused only with the GPU
+    audit on."""
+    from pydantic import SecretStr  # noqa: PLC0415 -- imported in the test that uses it
+
+    from safecut.pipeline import code_id  # noqa: PLC0415 -- imported in the test that uses it
+    from tests.test_api import PILOT, _spend  # noqa: PLC0415 -- the API suite's ledger helper and pilot code
+
+    client, svc = make_service(replay=False, model_api_key=SecretStr("sk-test"), daily_usd_cap=3.0, audit_gpu=audit_gpu)
+    job_id = upload_clip(client)
+    _spend(svc, f"daily:{datetime.now(UTC).date().isoformat()}", 1.70)
+    _spend(svc, f"code:{code_id(PILOT)}", 4.70, "code")
+    body = {"code": PILOT, "size_bytes": 10, "content_type": "video/mp4", "file_name": "a.mp4"}
+    created = client.post("/v1/jobs", json=body)
+    started = client.post(f"/v1/jobs/{job_id}/start")
+    if audit_gpu:
+        assert (created.status_code, created.json()["error"]["code"]) == (429, "code_cap")
+        assert (started.status_code, started.json()["error"]["code"]) == (429, "daily_cap")
+    else:
+        assert created.status_code == 201
+        assert started.status_code == 202
+        svc.worker.wait(job_id)
+
+
+def test_a_re_queued_job_restarts_its_stall_clock(make_service: Callable[..., Any]) -> None:
+    client, svc = make_service()
+    job_id = upload_clip(client)
+    run_to(client, svc, job_id, "start", "review")
+    long_ago = datetime.now(UTC) - timedelta(minutes=30)
+    with svc.store.update(job_id) as state:
+        state.status, state.stage, state.started_at = "processing", "track", long_ago
+    gate = threading.Event()
+    real = svc.worker._run_action  # pyright: ignore[reportPrivateUsage] -- held so the re-queued state can be read
+
+    def held(job: str, action: Any) -> None:
+        gate.wait(20)
+        real(job, action)
+
+    svc.worker._run_action = held  # type: ignore[method-assign]  # pyright: ignore[reportPrivateUsage] -- a stand-in action
+    assert svc.recover() == [job_id]
+    assert svc.store.get(job_id).started_at > long_ago + timedelta(minutes=29)  # type: ignore[operator] -- set on re-queue
+    gate.set()
+    svc.worker.wait(job_id)
+
+
+def test_switching_the_gpu_audit_on_rebuilds_the_demo(tmp_path: Path) -> None:
+    from safecut.config import Settings  # noqa: PLC0415 -- imported in the test that uses it
+
+    built: list[bool] = []
+
+    def make(audit_gpu: bool) -> Service:
+        svc = Service(Settings(replay=True, jobs_dir=str(tmp_path / "jobs"), audit_gpu=audit_gpu))
+
+        def precompute(job_id: str, recording: Path, clip: Path, stamp: str) -> None:
+            del recording, clip
+            built.append(audit_gpu)
+            scratch = tmp_path / "scratch" / str(len(built)) / job_id
+            scratch.mkdir(parents=True)
+            svc.store.replace_pinned(job_id, scratch, demo_stamp=stamp)
+
+        svc._precompute = precompute  # type: ignore[method-assign]  # pyright: ignore[reportPrivateUsage] -- a stand-in build
+        return svc
+
+    for audit_gpu in (False, False, True):
+        svc = make(audit_gpu)
+        try:
+            assert svc.build_demo_jobs() == ["demo"]
+        finally:
+            svc.stop()
+    assert built == [False, True]  # reused while the setting stayed; rebuilt when the GPU audit was switched on
+
+
+def test_the_stored_limit_uses_wall_clock_time(tmp_path: Path) -> None:
+    """Monotonic clocks restart with each machine: a window kept across containers must be in wall time."""
+    import sqlite3  # noqa: PLC0415 -- imported in the test that uses it
+
+    path = tmp_path / "ratelimit.sqlite"
+    StoredRateLimiter(path).hit("paid", "203.0.113.5", limit=5, window_s=3600)
+    (at,) = sqlite3.connect(path).execute("SELECT at FROM hit").fetchone()
+    assert abs(at - time.time()) < 60

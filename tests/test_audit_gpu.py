@@ -958,3 +958,75 @@ def test_the_sweep_keeps_the_privacy_pages_hour() -> None:
     assert HANDOFF_GRACE_S + period * 60 + 10 * 60 <= 3600  # ten minutes left for the cron's own latency
     privacy = (ROOT / "web" / "src" / "app" / "privacy" / "page.tsx").read_text()
     assert "within the hour if the check is cut short" in privacy
+
+
+# ---------------------------------------------------------------------------------------------- round-14 audit fixes
+
+
+def _reseal(job_dir: Path, change: Callable[[dict[str, Any]], None]) -> None:
+    """Edit a sealed receipt and seal it again (a valid hash over the edit), as a forger would."""
+    from safecut.contracts import ReceiptBody, receipt_hash  # noqa: PLC0415 -- imported in the test that uses it
+
+    path = job_dir / "receipt.json"
+    data = json.loads(path.read_text())
+    change(data)
+    data.pop("hash")
+    data["hash"] = receipt_hash(ReceiptBody.model_validate(data))
+    path.write_text(json.dumps(data))
+
+
+def test_a_receipt_that_claims_another_device_or_gpu_cost_never_validates(tmp_path: Path, weights: Path) -> None:
+    """validate_job_dir holds the receipt to audit.json's device and to cost.jsonl's Modal lines: a receipt claiming
+    EgoBlur on a GPU that audit.json doesn't record, or a GPU cost the cost lines don't add up to, never publishes."""
+    job_dir = prepared(tmp_path)
+    settings = settings_for(tmp_path)
+    fake = FakeModal(server(job_dir, weights))
+    audit_run(job_dir, replay=True, settings=settings, gpu_call=fake.call, gpu_commit=fake.commit)
+    sealed(job_dir, settings)
+    original = (job_dir / "receipt.json").read_text()
+
+    def other_device(data: dict[str, Any]) -> None:
+        data["audit"]["auditor_device"] = "cuda:NVIDIA H100"
+
+    _reseal(job_dir, other_device)
+    with pytest.raises(contracts.ContractError, match="auditor_device"):
+        contracts.validate_job_dir(job_dir)
+    (job_dir / "receipt.json").write_text(original)
+
+    def other_cost(data: dict[str, Any]) -> None:
+        data["cost_usd_gpu"] = round(data["cost_usd_gpu"] + 1.0, 6)
+
+    _reseal(job_dir, other_cost)
+    with pytest.raises(contracts.ContractError, match="cost_usd_gpu"):
+        contracts.validate_job_dir(job_dir)
+    (job_dir / "receipt.json").write_text(original)
+    contracts.validate_job_dir(job_dir)  # the untouched receipt still validates
+
+
+def test_each_render_is_copied_to_the_handoff_once(tmp_path: Path, weights: Path) -> None:
+    job_dir = prepared(tmp_path)
+    box = handoff(job_dir, lambda: None)
+    name = box.put(job_dir, "3" * 64)
+    copied = handoff_root(job_dir) / name / "redacted.mp4"
+    first = copied.stat().st_mtime_ns
+    import time  # noqa: PLC0415 -- imported in the test that uses it
+
+    time.sleep(0.01)
+    assert box.put(job_dir, "3" * 64) == name
+    assert copied.stat().st_mtime_ns == first  # not copied again
+
+
+def test_a_gpu_call_is_reserved_at_its_worst_case_with_the_idle_tail(tmp_path: Path) -> None:
+    job_dir = prepared(tmp_path)
+    settings = settings_for(tmp_path)
+    reserved: list[float] = []
+
+    class Ledger(LocalLedger):
+        def reserve(self, call_id: str, job_id: str | None, usd: float, limits: Any) -> None:
+            reserved.append(usd)
+            super().reserve(call_id, job_id, usd, limits)
+
+    box = GpuMeter(settings, Ledger(tmp_path / "l.sqlite"), Caller.local(), job_dir.name, job_dir / "cost.jsonl")
+    box.reserve("c1")
+    expected = (settings.audit_gpu_timeout_s + settings.audit_gpu_idle_s) * settings.audit_gpu_usd_per_hour / 3600
+    assert reserved == [pytest.approx(expected)]
