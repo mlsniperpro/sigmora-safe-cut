@@ -3,8 +3,9 @@
 - ``SafeCutApi``: the FastAPI app (``safecut.api.app``), **scaled to zero** when no one uses it. One container at
   most: the per-IP rate limits and the spend ledger (SQLite on the Volume) are in-process, so it never scales out
   to a second copy (only a deploy's publish-then-stop can overlap two, briefly; docs/DEPLOY-COSTS.md). The
-  pipeline runs in that container's worker threads (``SAFECUT_WORKERS``). Modal scales a container down once it has had no input in flight for
-  ``scaledown_window``, and a worker thread isn't an input: so every queued job action also spawns the class's own
+  pipeline runs in that container's worker threads (``SAFECUT_WORKERS``). Modal scales a container down once it
+  has had no input in flight for ``scaledown_window``, and a worker thread isn't an input: so every queued job
+  action also spawns the class's own
   ``hold`` method, an input of this same container that lasts until the job stops (``Service.hold``). A started
   job finishes even if every browser tab closes. A container that dies mid-job anyway (a crash, a preemption) is
   replaced on the next input, and its start re-queues every job left mid-action (``Service.recover``).
