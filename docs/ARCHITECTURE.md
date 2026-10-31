@@ -114,7 +114,7 @@ Children are `locked: true` and `hide`; the creator can't un-hide them (DESIGN �
 
 ### 3.8 `audit.json` (audit)
 ```json
-{"frames_scanned": 900, "egoblur": {"model": "egoblur-gen2", "faces": 1, "plates": 0},
+{"frames_scanned": 900, "egoblur": {"model": "egoblur-gen2", "faces": 1, "plates": 0, "device": "cuda:NVIDIA L4"},
  "leaks": [{"frame": 401, "box": [x1, y1, x2, y2], "kind": "face", "detector": "egoblur|redteam|redteam_open", "patched_item": "p_1"}],
  "redteam": [{"frame": 0, "finding": "none"}, {"frame": 30, "finding": "none"}, /* … one entry per frame sent: pass 1's full 1 fps set (≥ frames // sample_step = 30 frames), kept across later passes */],
  "unresolved": 0, "passes": 2,
@@ -127,7 +127,7 @@ Publishing is allowed only when `unresolved == 0`.
 ```json
 {"job_id": "j_01",
  "items": [{/* every decisions.items field, compared one by one */ "item_id": "i_1", …, "thumbnail": "thumbs/i_1.jpg"}],
- "audit": {"auditor": "egoblur-gen2", "frames_scanned": 900, "leaks_found": 1, "leaks_patched": 1, "unresolved": 0,
+ "audit": {"auditor": "egoblur-gen2", "auditor_device": "cuda:NVIDIA L4", "frames_scanned": 900, "leaks_found": 1, "leaks_patched": 1, "unresolved": 0,
            "passes": 2, "blocked_reason": null},
  "models": {"scene": "muse-spark-1.3", "roles": "muse-spark-1.3", "sam": "sam-3.1", "asr": "muse-voice-transcribe-1.0",
             "redteam": "muse-spark-1.3", "auditor": "egoblur-gen2"},
@@ -136,11 +136,12 @@ Publishing is allowed only when `unresolved == 0`.
                    "no_store_param": ["muse-voice-transcribe-1.0"], "files_deleted": true,
                    "responses_delete_requested": 0, "notes": []},
  "approved_by": "creator", "approved_at": "…", "cost_usd": 0.91, "cost_usd_estimated": 0,
- "cost_usd_baseten": 0, "prev_hash": "…", "hash": "sha256(prev_hash + canonical_json(body))"}
+ "cost_usd_baseten": 0, "cost_usd_gpu": 0.06, "prev_hash": "…", "hash": "sha256(prev_hash + canonical_json(body))"}
 ```
+`audit.auditor_device` (`audit.json`'s `egoblur.device`) and `cost_usd_gpu` (the `provider: "modal"` cost lines) were added after receipts were first sealed: each is left out of the file, and so of the hashed body, while null or 0, so every earlier receipt still verifies.
 
 ### 3.10 `cost.jsonl`
-One line per API attempt: `{"ts", "provider", "job_id", "stage", "model", "attempt", "units", "usd", "estimated", "request_id", "cap", "code_kind", "code_id"}`. `estimated: true` marks an attempt whose billing is unknown (accepted, then lost); reported figures sum only `estimated: false` lines. A call whose worst-case estimate doesn't fit a cap is never sent and writes one `budget:<stage>` line naming the `cap`. `job_id` is null only on `system` lines (`/healthz`, the startup probe).
+One line per API attempt (and per GPU audit call: `provider: "modal"`, its Modal seconds priced at `SAFECUT_AUDIT_GPU_USD_PER_HOUR`, always `estimated: true`, counted in the ledger's caps and in the receipt's `cost_usd_gpu`, never in the Meta totals): `{"ts", "provider", "job_id", "stage", "model", "attempt", "units", "usd", "estimated", "request_id", "cap", "code_kind", "code_id"}`. `estimated: true` marks an attempt whose billing is unknown (accepted, then lost); reported figures sum only `estimated: false` lines. A call whose worst-case estimate doesn't fit a cap is never sent and writes one `budget:<stage>` line naming the `cap`. `job_id` is null only on `system` lines (`/healthz`, the startup probe).
 
 ### 3.11 `files.json`
 A JSON array, one entry per upload: `[{"name": "sam_proxy.mp4", "sha256": "…", "file_id": "file-…", "purpose": "user_data", "created_at": "…Z", "deleted_at": null, "orphan": false}]`. Written before the file is used; `deleted_at` is set when `DELETE /v1/files/{id}` succeeds (or answers `file_not_found`). An upload that may have left a copy without an ID (a cancel, a timeout, any failed attempt but a breaker refusal, even one followed by a successful retry) adds a `file_id: null, orphan: true` entry, because a copy can land after the immediate listing; the orphan is resolved (`deleted_at` set) once a `/files` listing found and deleted every unrecorded copy of its name (`FileStore.reconcile_orphans`, run by `delete_all`). `files_deleted: true` needs every entry, orphans included, to have `deleted_at` set.
@@ -188,7 +189,7 @@ Endpoint: `https://api.meta.ai/v1` (OpenAI-compatible Responses, Files, ASR). Th
 
 ## 5. Runtime and deployment
 
-- **API + worker:** Modal (`deploy/modal_app.py`), CPU containers with ffmpeg, plus a small GPU function for EgoBlur if CPU is too slow (measure first). Job artifacts go in a Modal Volume and are **deleted 24 h after the job** (a cron). Uploads go through a presigned URL straight to storage, capped at ≤60 s and ≤150 MB.
+- **API + worker:** Modal (`deploy/modal_app.py`): one CPU container with ffmpeg that scales to zero when idle (each queued job holds it up through an input of its own until the job stops), plus a GPU function for EgoBlur that reads the render from the jobs Volume (`SAFECUT_AUDIT_GPU`; YuNet runs when it can't answer). Sizes, decisions and cost: `docs/DEPLOY-COSTS.md`. Job artifacts go in a Modal Volume and are **deleted 24 h after the job** (a cron). Uploads go through a presigned URL straight to storage, capped at ≤60 s and ≤150 MB.
 - **Web:** Next.js on Vercel at a custom domain (the owner's Vercel team blocks public `*.vercel.app` aliases). The owner and Claude set the domain and env.
 - **Public demo:** the landing page plays the precomputed hero results (labelled). "Try it" needs a judge access code (`SAFECUT_ACCESS_CODES`), is rate-limited per IP, and stops at `SAFECUT_DAILY_USD_CAP`.
 - **Replay mode** (`SAFECUT_REPLAY=1`): stages read saved API responses from the job directory instead of calling Meta. It's used for tests, the live-finals fallback (labelled "demo mode"), and cost-free UI work.

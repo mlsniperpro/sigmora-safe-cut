@@ -16,6 +16,7 @@ import time
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -117,12 +118,18 @@ def web_server(csp: bool) -> tuple[ThreadingHTTPServer, str]:
     return server, f"http://127.0.0.1:{server.server_address[1]}"
 
 
-def deploy_check(*args: str, replay_ok: bool = True, **extra: str) -> subprocess.CompletedProcess[str]:
-    """The API under test runs in demo mode (no Meta key in tests), which the check accepts only when told to."""
+def deploy_check(
+    *args: str, replay_ok: bool = True, yunet_ok: bool = True, **extra: str
+) -> subprocess.CompletedProcess[str]:
+    """The API under test runs in demo mode (no Meta key in tests) and audits on CPU (no GPU here), which the check
+    accepts only when told to."""
     # The fixture's API has built its demo job before the check runs, so the cold-start wait stays short here.
-    env = {k: v for k, v in os.environ.items() if k != "DEPLOY_REPLAY_OK"} | {"DEPLOY_DEMO_WAIT_S": "5"} | extra
+    flags = ("DEPLOY_REPLAY_OK", "DEPLOY_YUNET_OK", "DEPLOY_EXPECT_COLD")
+    env = {k: v for k, v in os.environ.items() if k not in flags} | {"DEPLOY_DEMO_WAIT_S": "5"} | extra
     if replay_ok:
         env["DEPLOY_REPLAY_OK"] = "1"
+    if yunet_ok:
+        env["DEPLOY_YUNET_OK"] = "1"
     return subprocess.run(  # noqa: S603 -- fixed argv: bash and our script
         [BASH, str(ROOT / "scripts" / "deploy-check.sh"), *args],
         capture_output=True,
@@ -166,15 +173,130 @@ def test_deploy_check_fails_loudly(api: str) -> None:
     assert deploy_check().returncode == 2
 
 
+MODAL_APP = ROOT / "deploy" / "modal_app.py"
+
+
+def modal_tree() -> ast.Module:
+    return ast.parse(MODAL_APP.read_text())
+
+
+def constants(tree: ast.Module) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            try:
+                out[node.targets[0].id] = ast.literal_eval(node.value)
+            except ValueError:
+                continue
+    return out
+
+
+def decorator_kwargs(node: ast.FunctionDef | ast.ClassDef, name: str, tree: ast.Module) -> dict[str, Any]:
+    """The keyword arguments of ``@app.<name>(...)`` on ``node``, module constants resolved."""
+    known = constants(tree)
+    for deco in node.decorator_list:
+        if isinstance(deco, ast.Call) and isinstance(deco.func, ast.Attribute) and deco.func.attr == name:
+            out: dict[str, Any] = {}
+            for kw in deco.keywords:
+                assert kw.arg is not None
+                value = kw.value
+                if isinstance(value, ast.Name) and value.id in known:
+                    out[kw.arg] = known[value.id]
+                else:
+                    try:
+                        out[kw.arg] = ast.literal_eval(value)
+                    except ValueError:
+                        out[kw.arg] = ast.unparse(value)
+            return out
+    raise AssertionError(f"{node.name} has no @app.{name}(...)")
+
+
 def test_modal_app_defines_the_api_worker_volume_and_cron() -> None:
-    tree = ast.parse((ROOT / "deploy" / "modal_app.py").read_text())
+    tree = modal_tree()
     functions = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
-    assert {"api", "cleanup", "pipeline_worker_smoke"} <= functions.keys()
-    source = (ROOT / "deploy" / "modal_app.py").read_text()
-    assert "@modal.asgi_app(" in source
+    classes = {n.name: n for n in tree.body if isinstance(n, ast.ClassDef)}
+    assert {"cleanup", "egoblur_detect", "pipeline_worker_smoke", "ledger_smoke"} <= functions.keys()
+    api = classes["SafeCutApi"]
+    methods = {n.name: n for n in api.body if isinstance(n, ast.FunctionDef)}
+    assert {"boot", "api", "hold", "shutdown"} <= methods.keys()
+    decorators = {name: [ast.unparse(d) for d in m.decorator_list] for name, m in methods.items()}
+    assert decorators["boot"] == ["modal.enter()"]
+    assert decorators["api"] == ["modal.asgi_app(label='safecut-api')"]
+    assert decorators["hold"] == ["modal.method()"]
+    assert decorators["shutdown"] == ["modal.exit()"]
+    source = MODAL_APP.read_text()
     assert 'Volume.from_name("safecut-jobs"' in source
-    assert "schedule=modal.Period(minutes=15)" in source
-    assert "max_containers=1" in source  # one API container: in-process limits and ledger (module docstring)
+    assert 'Volume.from_name("safecut-models"' in source
+    assert "return create_app(service=self.service)" in source
+    assert "Service(settings, keepalive=_keepalive)" in source  # every queued action holds the container up
+
+
+def test_the_api_scales_to_zero_and_never_runs_two_copies() -> None:
+    tree = modal_tree()
+    api = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "SafeCutApi")
+    kwargs = decorator_kwargs(api, "cls", tree)
+    assert kwargs["min_containers"] == 0  # sleeps when no one uses it
+    assert kwargs["max_containers"] == 1  # one container: in-process limits, one SQLite ledger writer
+    # Longer than the per-minute rate window (a sleep can't reset an open window) and than the web app's awake
+    # window would need, short enough that an idle tail costs cents.
+    assert 60 < kwargs["scaledown_window"] <= 600
+    assert (kwargs["cpu"], kwargs["memory"]) == (1.0, 2048)
+    assert kwargs["timeout"] == "60 * 60"
+    concurrent = [ast.unparse(d) for d in api.decorator_list if "concurrent" in ast.unparse(d)]
+    assert concurrent == ["modal.concurrent(max_inputs=64)"]  # hold inputs share the one container
+
+
+def test_the_cron_runs_on_the_smallest_container_and_wakes_stranded_jobs() -> None:
+    tree = modal_tree()
+    cleanup = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "cleanup")
+    kwargs = decorator_kwargs(cleanup, "function", tree)
+    assert (kwargs["cpu"], kwargs["memory"], kwargs["min_containers"]) == (0.125, 128, 0)
+    assert kwargs["scaledown_window"] <= 2
+    assert kwargs["schedule"] == "modal.Period(minutes=15)"
+    body = ast.unparse(cleanup)
+    assert "store.sweep()" in body
+    assert "store.active()" in body
+    assert "_api().hold.spawn(job_id)" in body
+
+
+def test_egoblur_runs_on_a_gpu_function_with_the_weights_and_the_handoff_volume() -> None:
+    tree = modal_tree()
+    detect = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "egoblur_detect")
+    kwargs = decorator_kwargs(detect, "function", tree)
+    assert kwargs["gpu"] == ["L4", "T4"]
+    assert kwargs["image"] == "gpu_image"
+    # The render arrives on the handoff Volume: committing the jobs Volume from the API would reload it, which Modal
+    # refuses while the API holds the ledger's SQLite files open there.
+    assert kwargs["volumes"] == "{AUDIT: audit, '/models': models}"
+    assert kwargs["min_containers"] == 0
+    assert kwargs["max_containers"] == 4  # a burst of audits can't buy unbounded GPUs
+    assert kwargs["scaledown_window"] <= 60
+    assert "audit.reload()" in ast.unparse(detect)  # sees the render the API committed
+    source = MODAL_APP.read_text()
+    assert 'Volume.from_name("safecut-audit"' in source
+    api = next(n for n in modal_tree().body if isinstance(n, ast.ClassDef) and n.name == "SafeCutApi")
+    assert decorator_kwargs(api, "cls", modal_tree())["volumes"] == "{'/data': jobs, AUDIT: audit}"
+    source = MODAL_APP.read_text()
+    assert 'uv_sync(str(ROOT), groups=["audit"], frozen=True)' in source  # torch only in the GPU image
+    api_image = source.split("gpu_image = (")[0].split("image = (", 1)[1]
+    assert ".uv_sync(str(ROOT), frozen=True)" in api_image  # the API container stays slim: no audit group, no torch
+    assert "groups=" not in api_image
+    assert '"SAFECUT_AUDIT_GPU": "1"' in api_image
+
+
+def test_the_gpu_price_matches_the_gpu_container() -> None:
+    """``SAFECUT_AUDIT_GPU_USD_PER_HOUR`` prices the dearest GPU it may get (L4 $0.80/h) plus its cpu and memory at
+    ``modal billing rates`` (CPU $0.0473 per core-hour, memory $0.008 per GiB-hour), and its idle tail matches."""
+    from safecut.config import Settings  # noqa: PLC0415
+
+    tree = modal_tree()
+    detect = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "egoblur_detect")
+    kwargs = decorator_kwargs(detect, "function", tree)
+    hourly = 0.80 + kwargs["cpu"] * 0.0473 + kwargs["memory"] / 1024 * 0.008
+    settings = Settings()
+    assert settings.audit_gpu_usd_per_hour >= hourly
+    assert settings.audit_gpu_usd_per_hour - hourly < 0.05
+    assert settings.audit_gpu_idle_s == kwargs["scaledown_window"]
 
 
 def test_deploy_workflow_skips_without_secrets() -> None:
@@ -250,3 +372,164 @@ def test_the_image_ships_every_data_file_the_package_reads() -> None:
     dropped = [str(p.relative_to(ROOT)) for p in data if matcher(p.relative_to(ROOT / "safecut"))]
     assert dropped == []
     assert matcher(Path("scout/__pycache__/x.cpython-312.pyc"))
+
+
+def health_stub(
+    body: dict[str, object], delay_s: float = 0.0, demo: dict[str, object] | None = None
+) -> tuple[ThreadingHTTPServer, str]:
+    """A stand-in API whose /healthz answers ``body`` after ``delay_s`` (a container waking up), and whose demo job
+    (when given) answers ``demo``."""
+    pages = {"/healthz": body, **({"/v1/demo/demo": demo} if demo is not None else {})}
+
+    class Health(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            if self.path == "/healthz":
+                time.sleep(delay_s)
+            found = pages.get(self.path.split("?")[0])
+            payload = json.dumps(found).encode() if found is not None else b"{}"
+            self.send_response(200 if found is not None else 404)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, format: str, *args: object) -> None:  # the base class's own parameter name
+            del format, args
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Health)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, f"http://127.0.0.1:{server.server_address[1]}"
+
+
+LIVE = {"status": "ok", "mode": "live", "key": True, "meta": "ok", "audit_gpu": True}
+
+
+@pytest.mark.parametrize(
+    ("body", "delay_s", "expect_cold", "line"),
+    [
+        ({**LIVE, "uptime_s": 1.0}, 1.5, "1", "ok    API woke from a cold start: answered in"),
+        ({**LIVE, "uptime_s": 900.0}, 0.0, "1", "FAIL  API was already up 900.0 s: no cold start right after"),
+        ({**LIVE, "uptime_s": 900.0}, 0.0, "", "ok    API already awake (up 900.0 s)"),
+        (LIVE, 0.0, "", "FAIL  API /healthz has no uptime_s"),
+        ({**LIVE, "uptime_s": 1.0}, 0.0, "", "ok    API audits with EgoBlur on the GPU function"),
+        ({**LIVE, "uptime_s": 1.0, "audit_gpu": False}, 0.0, "", "FAIL  API doesn't audit on the GPU"),
+    ],
+)
+def test_deploy_check_proves_a_cold_wake_and_the_gpu_audit(
+    body: dict[str, object], delay_s: float, expect_cold: str, line: str
+) -> None:
+    server, url = health_stub(body, delay_s)
+    try:
+        result = deploy_check(url, "-", replay_ok=False, yunet_ok=False, DEPLOY_DEMO_WAIT_S="0",
+                              DEPLOY_EXPECT_COLD=expect_cold, SPOOF_N="1")  # fmt: skip
+    finally:
+        server.shutdown()
+    assert line in result.stdout, result.stdout
+
+
+def test_deploy_check_waits_out_a_cold_start_longer_than_its_other_requests() -> None:
+    server, url = health_stub({**LIVE, "uptime_s": 0.5}, delay_s=3.0)
+    try:
+        slow = deploy_check(url, "-", replay_ok=False, yunet_ok=False, DEPLOY_DEMO_WAIT_S="0", SPOOF_N="1",
+                            DEPLOY_WAKE_TIMEOUT_S="1")  # fmt: skip
+        patient = deploy_check(url, "-", replay_ok=False, yunet_ok=False, DEPLOY_DEMO_WAIT_S="0", SPOOF_N="1")
+    finally:
+        server.shutdown()
+    assert "FAIL  API /healthz answered 000" in slow.stdout
+    assert "ok    API woke from a cold start" in patient.stdout
+
+
+def test_the_smoke_checks_name_what_failed() -> None:
+    from deploy.checks import ledger_problems, post_deploy_problems, pre_deploy_problems  # noqa: PLC0415
+
+    ran = {"exit": 0, "unresolved": 0, "receipt": True, "redacted": True}
+    probe = {"gpu": "NVIDIA L4", "refused": None, "detail": None, "frames": 360}
+    assert pre_deploy_problems({**ran, "gpu_probe": probe}) == []
+    assert pre_deploy_problems(ran) == ["the GPU function wasn't probed"]
+    refused = pre_deploy_problems({**ran, "gpu_probe": {**probe, "refused": "altered_weights", "detail": "x"}})
+    assert refused == ["the GPU function refused: altered_weights (x)"]
+    assert "no GPU or no frames" in pre_deploy_problems({**ran, "gpu_probe": {**probe, "frames": 0}})[0]
+    assert len(pre_deploy_problems({"exit": 1, "unresolved": 2, "receipt": False, "gpu_probe": probe})) == 3
+    on_gpu = {**ran, "auditor": "egoblur-gen2", "auditor_device": "cuda:NVIDIA L4"}
+    assert post_deploy_problems(on_gpu) == []
+    fell_back = post_deploy_problems({**ran, "auditor": "yunet-face", "auditor_device": "cpu"})
+    assert len(fell_back) == 2
+    assert "not egoblur-gen2" in fell_back[0]
+    assert "not a named GPU" in fell_back[1]
+    assert ledger_problems({"ok": True}) == []
+    assert ledger_problems({"ok": False, "error": "x"})
+
+
+def test_the_deploy_workflow_proves_the_gpu_audit_and_a_cold_wake_after_deploying() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "deploy.yml").read_text()
+    steps = workflow.split("    steps:\n", 1)[1]
+    smoke, deploy, verify, urls = (
+        steps.index("uv run modal run deploy/modal_app.py"),
+        steps.index("uv run modal deploy deploy/modal_app.py"),
+        steps.index("uv run python -m deploy.verify_deploy"),
+        steps.index("bash scripts/deploy-check.sh"),
+    )
+    assert smoke < deploy < verify < urls
+    assert 'DEPLOY_EXPECT_COLD: "1"' in workflow
+    assert "SAFECUT_DEPLOY_AUDIT" not in workflow  # torch never goes into the API image
+    assert workflow.count("if: steps.gate.outputs.run == 'true'") >= 6
+
+
+def test_the_cost_tables_match_the_code_and_the_containers() -> None:
+    """Every copy of the cost table is what ``python -m deploy.costs`` prints, and its sizes are the deployed ones."""
+    from deploy import costs  # noqa: PLC0415
+
+    table = costs.table()
+    for doc in ("docs/DEPLOY-COSTS.md", "docs/SUBMISSION.md", "web/README.md"):
+        assert f"```text\n{table}\n```" in (ROOT / doc).read_text(), doc
+    tree = modal_tree()
+    known = constants(tree)
+    api = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "SafeCutApi")
+    by_name = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+    api_kw = decorator_kwargs(api, "cls", tree)
+    cron_kw = decorator_kwargs(by_name["cleanup"], "function", tree)
+    gpu_kw = decorator_kwargs(by_name["egoblur_detect"], "function", tree)
+    assert (api_kw["cpu"], api_kw["memory"], known["API_SCALEDOWN_S"]) == (
+        costs.API_CPU,
+        costs.API_GIB * 1024,
+        costs.API_SCALEDOWN_S,
+    )
+    assert (cron_kw["cpu"], cron_kw["memory"], cron_kw["scaledown_window"]) == (
+        costs.CRON_CPU,
+        costs.CRON_GIB * 1024,
+        costs.CRON_SCALEDOWN_S,
+    )
+    assert (gpu_kw["cpu"], gpu_kw["memory"], known["GPU_SCALEDOWN_S"]) == (
+        costs.GPU_CPU,
+        costs.GPU_GIB * 1024,
+        costs.GPU_SCALEDOWN_S,
+    )
+    # The ledger's per-job GPU reservation (safecut/api/access.py) is the table's worst case.
+    from safecut.api.access import GPU_SCANS_PER_JOB  # noqa: PLC0415
+    from safecut.config import Settings  # noqa: PLC0415
+
+    settings = Settings()
+    assert GPU_SCANS_PER_JOB * settings.audit_gpu_timeout_s + settings.audit_gpu_idle_s == costs.JOB_GPU_WORST_S
+    assert costs.hourly(costs.GPU_CPU, costs.GPU_GIB, "L4") <= settings.audit_gpu_usd_per_hour
+
+
+@pytest.mark.parametrize(
+    ("egoblur", "line"),
+    [
+        ({"model": "egoblur-gen2", "faces": 0, "plates": 0, "device": "cuda:NVIDIA L4"},
+         "ok    API: the demo job, built in the API container, was audited by egoblur-gen2 on cuda:NVIDIA L4"),
+        ({"model": "yunet-face", "faces": 0, "plates": None, "device": "cpu"},
+         "FAIL  API: the demo job was audited by yunet-face on cpu, not EgoBlur on a GPU"),
+        ({"model": "egoblur-gen2", "faces": 0, "plates": 0},
+         "FAIL  API: the demo job was audited by egoblur-gen2 on an unnamed device"),
+    ],
+)  # fmt: skip
+def test_deploy_check_proves_the_api_containers_own_gpu_path(egoblur: dict[str, object], line: str) -> None:
+    """The demo job is built inside the API container at startup, through the same handoff and GPU function as a
+    judge's job: its audit is the post-deploy proof that path works there, not just in a smoke container."""
+    demo = {"mode": "replay", "synthetic": True, "video_url": "/nowhere.mp4", "audit": {"egoblur": egoblur}}
+    server, url = health_stub({**LIVE, "uptime_s": 1.0}, demo=demo)
+    try:
+        result = deploy_check(url, "-", replay_ok=False, yunet_ok=False, DEPLOY_DEMO_WAIT_S="0", SPOOF_N="1")
+    finally:
+        server.shutdown()
+    assert line in result.stdout, result.stdout

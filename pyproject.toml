@@ -72,7 +72,7 @@ markers = [
 ]
 
 [tool.pyright]
-include = ["safecut", "tests", "scripts", "eval"]
+include = ["safecut", "tests", "scripts", "eval", "deploy"]
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
 strict = ["safecut", "scripts", "eval"]

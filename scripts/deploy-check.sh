@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # scripts/deploy-check.sh <api-url> <web-url|-> [hero-id]: smoke-test a deployed Safe Cut.
 #
-# Checks the API (health, CORS for the web origin, the demo job, refusals) and the web app (pages, security
-# headers). Pass "-" as the web URL to check the API alone. The API must run live with MODEL_API_KEY set, unless
-# DEPLOY_REPLAY_OK=1. Every request is bounded (curl -m 20). Prints one
-# "ok"/"FAIL" line per check and ends with DEPLOY: PASS or DEPLOY: FAIL (<n>); exits 0 only on PASS.
+# Checks the API (health, a cold wake, the GPU audit, CORS for the web origin, the demo job, refusals) and the web
+# app (pages, security headers). Pass "-" as the web URL to check the API alone. The API must run live with
+# MODEL_API_KEY set, unless DEPLOY_REPLAY_OK=1, and audit on the GPU (SAFECUT_AUDIT_GPU), unless DEPLOY_YUNET_OK=1.
+# The API scales to zero: the first request may wait for a container (up to DEPLOY_WAKE_TIMEOUT_S, 150 s, Modal's
+# own limit); DEPLOY_EXPECT_COLD=1 (right after a deploy) fails unless that request woke a fresh container. Every
+# other request is bounded (curl -m 20). Prints one "ok"/"FAIL" line per check and ends with DEPLOY: PASS or
+# DEPLOY: FAIL (<n>); exits 0 only on PASS.
 set -uo pipefail
 
 API="${1:-}"
@@ -32,11 +35,34 @@ header() { grep -i "^$2:" "$TMP/$1.head" | tail -1 | cut -d: -f2- | tr -d '\r' |
 json() { python3 -c "import json,sys; print(json.load(open(sys.argv[1]))$2)" "$TMP/$1.body" 2>/dev/null; }
 
 # ---------------------------------------------------------------- API
-code="$(fetch health "$API/healthz")"
+# The first request may wake the API from zero: it waits as long as Modal holds a request, and says how long.
+wake="$(curl -sS -m "${DEPLOY_WAKE_TIMEOUT_S:-150}" -o "$TMP/health.body" -D "$TMP/health.head" \
+  -w '%{http_code} %{time_total}' "$API/healthz" 2>"$TMP/health.err" || echo "000 0")"
+code="${wake%% *}"
+waited="${wake##* }"
 if [ "$code" = "200" ] && [ "$(json health "['status']")" = "ok" ]; then
-  ok "API /healthz: ok (mode $(json health "['mode']"), meta $(json health "['meta']"))"
+  ok "API /healthz: ok in ${waited} s (mode $(json health "['mode']"), meta $(json health "['meta']"))"
 else
   fail "API /healthz answered $code: $(head -c 200 "$TMP/health.body" 2>/dev/null)"
+fi
+# A container whose uptime fits inside the first request's wait started for that request: a cold wake.
+uptime="$(json health "['uptime_s']")"
+cold="$(python3 -c "import sys; print(float(sys.argv[1]) <= float(sys.argv[2]) + 5)" "${uptime:-x}" "$waited" 2>/dev/null)"
+if [ -z "$uptime" ]; then
+  fail "API /healthz has no uptime_s: this isn't the scale-to-zero API"
+elif [ "$cold" = "True" ]; then
+  ok "API woke from a cold start: answered in ${waited} s by a container up ${uptime} s"
+elif [ "${DEPLOY_EXPECT_COLD:-}" = "1" ]; then
+  fail "API was already up ${uptime} s: no cold start right after the deploy (is min_containers still above 0?)"
+else
+  ok "API already awake (up ${uptime} s); no cold start this time"
+fi
+if [ "$(json health "['audit_gpu']")" = "True" ]; then
+  ok "API audits with EgoBlur on the GPU function (SAFECUT_AUDIT_GPU on; YuNet only when it can't answer)"
+elif [ "${DEPLOY_YUNET_OK:-}" = "1" ]; then
+  ok "API audits with YuNet on CPU (audit_gpu $(json health "['audit_gpu']")), accepted by DEPLOY_YUNET_OK=1"
+else
+  fail "API doesn't audit on the GPU (audit_gpu $(json health "['audit_gpu']")): set SAFECUT_AUDIT_GPU=1"
 fi
 # A deployment the judges can use runs live with its Meta key; a demo-mode deployment passes only when asked to
 # (DEPLOY_REPLAY_OK=1, e.g. after the judging window, or this script's own tests).
@@ -69,6 +95,17 @@ if [ "$code" = "200" ] && [ "$(json demo "['mode']")" = "replay" ]; then
   vcode="$(fetch video -r 0-1023 "$video_url")"
   if [ "$vcode" = "206" ] || [ "$vcode" = "200" ]; then ok "API: the demo's signed video URL serves bytes ($vcode)"
   else fail "API: the demo's signed video URL answered $vcode"; fi
+  # The API container builds the demo job at startup through its own audit path (the handoff Volume, the GPU
+  # function): its audit names what actually ran there.
+  dmodel="$(json demo "['audit']['egoblur']['model']")"
+  ddevice="$(json demo "['audit']['egoblur'].get('device') or ''")"
+  if [ "$dmodel" = "egoblur-gen2" ] && [[ "$ddevice" == cuda:* ]]; then
+    ok "API: the demo job, built in the API container, was audited by $dmodel on $ddevice"
+  elif [ "${DEPLOY_YUNET_OK:-}" = "1" ]; then
+    ok "API: the demo job was audited by $dmodel on ${ddevice:-an unnamed device}, accepted by DEPLOY_YUNET_OK=1"
+  else
+    fail "API: the demo job was audited by $dmodel on ${ddevice:-an unnamed device}, not EgoBlur on a GPU (its raw/audit/gpu.json says why)"
+  fi
 else
   fail "API: /v1/demo/$HERO answered $code (is the demo job built? see the api container's logs)"
 fi

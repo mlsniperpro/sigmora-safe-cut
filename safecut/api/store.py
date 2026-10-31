@@ -27,6 +27,8 @@ STATE = "state.json"
 JOB_ID_PATTERN = r"^j_[A-Za-z0-9_-]{22}$"
 
 JobStatus = Literal["created", "processing", "retry_later", "review", "rendering", "done", "needs_you", "failed"]
+#: A job in one of these is being worked on: ``Service.recover`` resumes it after a restart.
+ACTIVE: tuple[JobStatus, ...] = ("processing", "rendering", "retry_later")
 StageName = Literal[
     "queued",
     "prepare",
@@ -107,6 +109,9 @@ class JobState(BaseModel):
     started_at: datetime | None = None
     #: How many times a ``retry_later`` job was re-queued (once at most, UI-SPEC §8 request 1).
     requeues: int = 0
+    #: Restarts that found this job mid-action (``Service.recover``); reset when an action finishes. A job that keeps
+    #: taking its container down with it fails after ``MAX_RESUMES`` instead of waking a new one forever.
+    resumes: int = Field(default=0, ge=0)
     #: The clip length in seconds, once known (for the cap estimate and ``eta_s``).
     duration_s: float | None = None
     #: A replay of synthetic recordings (the drawn test clip): every response says so (AGENTS rule 9).
@@ -230,6 +235,18 @@ class JobStore:
 
     def ids(self) -> list[str]:
         return sorted(p.name for p in self.root.iterdir() if p.is_dir() and _valid_id(p.name))
+
+    def active(self) -> list[str]:
+        """Jobs mid-action on disk (not pinned demo jobs): what a container that went to sleep may have left."""
+        found: list[str] = []
+        for job_id in self.ids():
+            try:
+                state = self.get(job_id)
+            except (JobNotFound, ContractError):
+                continue
+            if not state.pinned and state.status in ACTIVE:
+                found.append(job_id)
+        return found
 
     def sweep(self, *, now: datetime | None = None) -> list[str]:
         """The 24 h deletion job: remove every unpinned job created more than the TTL ago (and any directory

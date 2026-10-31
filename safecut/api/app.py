@@ -17,6 +17,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -40,10 +41,11 @@ from safecut.api.access import (
     ApiRefusal,
     Grant,
     RateLimiter,
+    StoredRateLimiter,
     check_caps,
     estimate_usd,
 )
-from safecut.api.store import Failure, JobNotFound, JobState, JobStore, UploadSpec
+from safecut.api.store import ACTIVE, Failure, JobNotFound, JobState, JobStore, UploadSpec
 from safecut.api.urls import UPLOAD_TTL_S, Signer, expiry
 from safecut.api.views import Views, iso
 from safecut.api.worker import Worker
@@ -61,6 +63,14 @@ log = logging.getLogger("safecut.api")
 HEALTH_EVERY_EARLY = timedelta(minutes=5)
 HEALTH_EVERY = timedelta(minutes=1)
 HEALTH_SWITCH = datetime(2026, 11, 5, tzinfo=UTC)
+#: One action runs a few minutes (a 60 s clip, live); one past this is stuck, not slow, and fails.
+STALL_LIMIT = timedelta(minutes=45)
+#: Restarts a job may need (a redeploy, a preemption): one more and it is the job taking its container down.
+MAX_RESUMES = 3
+#: How long one ``hold`` input waits: under the API function's 60-minute timeout (deploy/modal_app.py).
+HOLD_LIMIT_S = 55 * 60.0
+#: The paid-action rate limit's SQLite file, beside the spend ledger on the jobs Volume.
+RATE_DB = "ratelimit.sqlite"
 
 StatusProbe = Callable[[], Awaitable[str]]
 
@@ -132,6 +142,7 @@ class Service:
         worker: Worker | None = None,
         status_probe: StatusProbe | None = None,
         fixtures: Path = pipeline.FIXTURE_JOBS,
+        keepalive: Callable[[str], None] | None = None,
     ) -> None:
         self.settings = settings
         self.store = store or JobStore(
@@ -139,12 +150,15 @@ class Service:
             ttl=timedelta(hours=settings.job_ttl_hours),
             cleanup_every=timedelta(minutes=settings.cleanup_interval_min),
         )
-        self.worker = worker or Worker(self.store, settings)
+        self.worker = worker or Worker(self.store, settings, keepalive=keepalive)
         #: Jobs whose upload is streaming right now (one PUT per job at a time).
         self.uploading: set[str] = set()
         self.uploads_lock = threading.Lock()
         self.access = Access(settings)
+        #: Per-minute limits live in memory (a container only restarts after a quiet spell longer than their
+        #: window); the per-hour paid-action limit is on the jobs Volume, so a scale-to-zero restart can't reset it.
         self.limiter = RateLimiter()
+        self.paid_limiter = StoredRateLimiter(Path(settings.jobs_dir) / RATE_DB)
         self.ledger = pipeline.job_ledger(settings)
         secret = settings.url_secret.get_secret_value().encode() if settings.url_secret else None
         self.signer = Signer(secret, settings.public_url)
@@ -153,10 +167,50 @@ class Service:
         self.fixtures = fixtures
         self._health: tuple[datetime, str] | None = None
         self._stop = threading.Event()
+        self._started = False
+        self._start_lock = threading.Lock()
+        self.started_monotonic = time.monotonic()
+
+    def start(self) -> bool:
+        """Once per process, whichever comes first (the ASGI lifespan, or Modal's container start): resume the
+        jobs a previous container left mid-action, and start the deletion loop and the demo-job build. Returns
+        whether this call did it."""
+        with self._start_lock:
+            if self._started:
+                return False
+            self._started = True
+        self.recover()
+        for target, name in ((self.cleanup_loop, "cleanup"), (self.build_demo_jobs, "demo")):
+            threading.Thread(target=target, name=name, daemon=True).start()
+        return True
 
     def stop(self) -> None:
         self._stop.set()
         self.worker.shutdown()
+        self.paid_limiter.close()
+
+    def hold(self, job_id: str, *, poll_s: float = 2.0, limit_s: float = HOLD_LIMIT_S) -> str:
+        """Block while this process is working on the job, then return its status (``gone`` once deleted).
+
+        On Modal this runs as an input of the API container itself (``SafeCutApi.hold``): a container with an
+        input in flight isn't scaled down, and a worker thread alone isn't an input. A job active on disk that
+        nothing here is moving (stranded by a container that went away) is resumed; one active past
+        :data:`STALL_LIMIT` is failed, so no job, and no container, waits forever."""
+        deadline = time.monotonic() + limit_s
+        idle_polls = 0
+        while True:
+            try:
+                state = self.store.get(job_id)
+            except JobNotFound:
+                return "gone"
+            if state.status not in ACTIVE:
+                return state.status
+            idle_polls = 0 if self.worker.tracking(job_id) else idle_polls + 1
+            if idle_polls >= 2:  # two polls apart, so an action between its timer and its thread isn't caught
+                self.recover(only=job_id)
+                idle_polls = 0
+            if self._stop.wait(poll_s) or time.monotonic() > deadline:
+                return state.status
 
     @property
     def mode(self) -> Literal["live", "replay"]:
@@ -174,16 +228,31 @@ class Service:
             except Exception:
                 log.exception("cleanup sweep failed")
 
-    def recover(self) -> list[str]:
-        """After a restart (a redeploy, a crash) no thread is working on any job: re-queue every job that was
-        mid-action, from where its files say it stopped (stages are idempotent and resume from ``job_log.jsonl``),
-        so a poller never waits forever on a status nothing will change. Returns the re-queued IDs."""
+    def recover(self, *, only: str | None = None) -> list[str]:
+        """After a restart (a redeploy, a crash, a scale-to-zero sleep) no thread is working on any job: re-queue
+        every job that was mid-action, from where its files say it stopped (stages are idempotent and resume from
+        ``job_log.jsonl``, so a stage that finished is never paid for twice), so a poller never waits forever on a
+        status nothing will change. A job this process is still moving is left alone, and one active past
+        :data:`STALL_LIMIT` fails as ``internal`` instead. Returns the re-queued IDs."""
         resumed: list[str] = []
-        for job_id in self.store.ids():
+        now = datetime.now(UTC)
+        for job_id in [only] if only is not None else self.store.ids():
             try:
                 with self.store.update(job_id) as state:
-                    if state.pinned or state.status not in ("processing", "rendering", "retry_later"):
+                    if state.pinned or state.status not in ACTIVE or self.worker.tracking(job_id):
                         continue
+                    stalled = state.started_at is not None and now - state.started_at > STALL_LIMIT
+                    if stalled or state.resumes >= MAX_RESUMES:
+                        state.status, state.retry_at = "failed", None
+                        detail = (
+                            f"stalled: still at {state.stage} {STALL_LIMIT} after it started"
+                            if stalled
+                            else f"stopped {state.resumes + 1} times at {state.stage} (its container went away)"
+                        )
+                        state.failure = Failure(stage=state.stage, reason="internal", detail=detail)
+                        log.warning("job %s failed at %s: %s", job_id, state.stage, detail)
+                        continue
+                    state.resumes += 1
                     analysing = state.status == "processing" or (
                         state.status == "retry_later" and state.stage not in ("render", "audit", "receipt")
                     )
@@ -376,7 +445,7 @@ def _limit(request: Request, svc: Service, *, paid: bool) -> None:
     client = svc.client_ip(request)
     svc.limiter.hit("api", client, limit=svc.settings.rate_limit_per_min, window_s=60)
     if paid:
-        svc.limiter.hit("paid", client, limit=svc.settings.paid_actions_per_hour, window_s=3600)
+        svc.paid_limiter.hit("paid", client, limit=svc.settings.paid_actions_per_hour, window_s=3600)
 
 
 def _api_limit(request: Request, svc: Svc) -> None:
@@ -427,7 +496,7 @@ def create_job(svc: Svc, body: CreateBody, authorization: Annotated[str | None, 
     if body.content_type not in ("video/mp4", "video/quicktime"):
         raise ApiRefusal(415, "unsupported_media", "Safe Cut takes MP4 or MOV video files.")
     if grant.kind in ("pilot", "recording", "owner"):
-        check_caps(svc.settings, svc.ledger, grant, estimate=estimate_usd(None))
+        check_caps(svc.settings, svc.ledger, grant, estimate=estimate_usd(None, svc.settings))
     now = datetime.now(UTC)
     upload_expires = now + timedelta(seconds=UPLOAD_TTL_S)
     state = svc.store.create(
@@ -584,7 +653,9 @@ def start(svc: Svc, job_id: str) -> JSONResponse:
                     svc.settings,
                     svc.ledger,
                     grant,
-                    estimate=estimate_usd(min(duration, MAX_DURATION_S) if duration is not None else None),
+                    estimate=estimate_usd(
+                        min(duration, MAX_DURATION_S) if duration is not None else None, svc.settings
+                    ),
                 )
         if not (job_dir / INTAKE).is_file():
             dump(
@@ -808,6 +879,9 @@ async def healthz(svc: Svc) -> JSONResponse:
         "meta": meta,
         "jobs_dir": "ok" if writable else "missing",
         "key": svc.settings.model_api_key is not None,
+        # The API scales to zero: a small uptime on the first answer after a quiet spell proves a cold wake.
+        "uptime_s": round(time.monotonic() - svc.started_monotonic, 1),
+        "audit_gpu": svc.settings.audit_gpu,
     }
     return JSONResponse(body, status_code=200 if writable else 503)
 
@@ -840,16 +914,11 @@ def create_app(settings: Settings | None = None, *, service: Service | None = No
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
-        threads: list[threading.Thread] = []
         blocking = svc.settings.replay and not netguard.active()
         if blocking:
             netguard.block()  # a replay deployment never reaches the network, in any thread
         if background:
-            svc.recover()
-            threads.append(threading.Thread(target=svc.cleanup_loop, name="cleanup", daemon=True))
-            threads.append(threading.Thread(target=svc.build_demo_jobs, name="demo", daemon=True))
-            for thread in threads:
-                thread.start()
+            svc.start()
         try:
             yield
         finally:

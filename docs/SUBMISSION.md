@@ -32,7 +32,7 @@ It is a production service: an API with access codes, service keys for Sigmora, 
 
 ## Meta models used
 
-SAM 3.1 · Muse Spark (`muse-spark-1.3`, and `muse-spark-1.2` as the speech fallback) · Muse Voice Transcribe · ⟨owner: keep only if the Baseten steps in BLOCKED.md are done and it ran: Muse Spark Open on Baseten (`meta-models/muse-spark-open-1026`, the optional open-weight audit opinion)⟩ · EgoBlur Gen 2 (Meta's open face and plate detector, as the every-frame auditor on a GPU machine with its gated weights; the deployed service has no GPU, so its audit runs the bundled YuNet face detector with plates left to the red team, and `audit.json` and the receipt name the detector that ran). What each one does: README, "What each Meta model does here".
+SAM 3.1 · Muse Spark (`muse-spark-1.3`, and `muse-spark-1.2` as the speech fallback) · Muse Voice Transcribe · ⟨owner: keep only if the Baseten steps in BLOCKED.md are done and it ran: Muse Spark Open on Baseten (`meta-models/muse-spark-open-1026`, the optional open-weight audit opinion)⟩ · EgoBlur Gen 2 (Meta's open face and plate detector, the every-frame auditor of the rendered video, on a Modal GPU; if the GPU can't answer, the bundled YuNet face detector runs instead with plates left to the red team, and `audit.json` and the receipt name the detector, and the GPU, that actually ran). What each one does: README, "What each Meta model does here".
 
 ## Links
 
@@ -47,7 +47,7 @@ SAM 3.1 · Muse Spark (`muse-spark-1.3`, and `muse-spark-1.2` as the speech fall
 
 ## Testing instructions for judges
 
-1. Open https://safecut.sigmora.org. The landing page plays the demo job, labelled as a demo: until the owner records the hero clips, it is a synthetic test clip (drawn shapes, scripted answers), and the page says so. The Raw / Safe Cut toggle compares the original and the result.
+1. Open https://safecut.sigmora.org. The service sleeps when no one is using it, so the first request after a quiet spell may take up to a minute while it wakes (the page says so). The landing page plays the demo job, labelled as a demo: until the owner records the hero clips, it is a synthetic test clip (drawn shapes, scripted answers), and the page says so. The Raw / Safe Cut toggle compares the original and the result.
 2. Press **Try it** and enter the access code ⟨owner: type the judge code here in the form itself, never in this file: the repo is public⟩. It works ⟨owner: from Nov 5 00:00, or the opening you set in `SAFECUT_CODE_WINDOWS`⟩ to Nov 10 23:59 UTC, within a daily spend cap.
 3. Upload a clip of up to ⟨owner: 60 seconds, or 30 if you kept the default daily cap (BLOCKED.md)⟩ and 150 MB (MP4 or MOV), tick the rights box and press Start. Safe Cut redacts the picture only: the audio is kept as recorded (the receipt says so).
 4. When the review panel appears, open **Why?** on any item to see the numbered keyframe and the three votes. Try:
@@ -61,3 +61,19 @@ SAM 3.1 · Muse Spark (`muse-spark-1.3`, and `muse-spark-1.2` as the speech fall
 6. **Delete everything now** removes the clip, the result and the receipt at once. Otherwise they are deleted after 24 hours.
 
 To run it offline from the repo instead (no account, no network), follow the README's "Run it yourself": one `uv sync`, then `safecut run … --replay`.
+
+## Running cost
+
+The service scales to zero: when no one uses it, only the 15-minute deletion job runs. Estimates from Modal's
+published rates and the container sizes in `deploy/modal_app.py`, not a measured bill (the method and the
+assumptions: `docs/DEPLOY-COSTS.md`; `python -m deploy.costs` prints this table). Meta's spend per clip is separate.
+
+```text
+Modal cost (estimate)        What runs                                                 USD  per
+Idle, before (always on)     API, 2 cores + 4 GiB, all day                          3.0384  day
+Idle, now (scaled to zero)   cleanup cron only, 96 runs of ~14 s                    0.0026  day
+A visit's quiet tail         API stays up 300 s after the last request              0.0053  visit
+One 60 s clip, API           ~300 s of the API container                            0.0053  clip
+One 60 s clip, GPU audit     ~210 s on an L4, plus its 30 s tail                    0.0628  clip
+One clip, GPU worst case     what the ledger reserves: 930 s on an L4               0.2435  clip
+```

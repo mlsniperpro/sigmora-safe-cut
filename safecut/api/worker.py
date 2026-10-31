@@ -142,9 +142,13 @@ class Worker:
         *,
         max_workers: int | None = None,
         clock: Callable[[], datetime] | None = None,
+        keepalive: Callable[[str], None] | None = None,
     ) -> None:
         self.store = store
         self.settings = settings
+        #: Called with the job's ID whenever an action is queued: on Modal it opens an input that holds the
+        #: scale-to-zero container up until the job stops (deploy/modal_app.py ``SafeCutApi.hold``).
+        self._keepalive = keepalive
         self.access = Access(settings)
         self._pool = ThreadPoolExecutor(max_workers=max_workers or settings.workers, thread_name_prefix="job")
         self._running: dict[str, Future[None]] = {}
@@ -157,11 +161,18 @@ class Worker:
             future = self._running.get(job_id)
             return future is not None and not future.done()
 
+    def tracking(self, job_id: str) -> bool:
+        """Whether this process will still move the job: an action running or queued, or its re-queue pending."""
+        with self._lock:
+            future = self._running.get(job_id)
+            return (future is not None and not future.done()) or job_id in self._timers
+
     def submit(self, job_id: str, action: Action) -> Future[None]:
         with self._lock:
             future = self._pool.submit(self._run, job_id, action)
             self._running[job_id] = future
-            return future
+        self._hold(job_id)
+        return future
 
     def submit_later(self, job_id: str, action: Action, delay_s: float) -> None:
         """The one re-queue, ``delay_s`` from now; it re-checks the job's code when it fires (``_requeue``)."""
@@ -170,6 +181,17 @@ class Worker:
         with self._lock:
             self._timers[job_id] = timer
         timer.start()
+        self._hold(job_id)
+
+    def _hold(self, job_id: str) -> None:
+        """Ask the platform to keep this process up while the job runs, from a thread of its own: the request that
+        queued the job (and the job's lock it holds) never waits on the platform. A failure is logged, never raised:
+        the 15-minute cron resumes any job a sleeping container stranded."""
+        if self._keepalive is None:
+            return
+        thread = threading.Thread(target=_spawn_hold, args=(self._keepalive, job_id), name=f"hold-{job_id}",
+                                  daemon=True)  # fmt: skip
+        thread.start()
 
     def wait(self, job_id: str, timeout: float = 120) -> None:
         """Block until the job's current action finishes (tests and the CLI's ``serve --once``)."""
@@ -227,7 +249,7 @@ class Worker:
                     job_id, status="processing", stage="queued", failure=None, retry_at=None, started_at=self._now()
                 )
                 pipeline.analyse(job_dir, replay=replay, settings=self.settings, on_stage=on_stage)
-                self._set(job_id, status="review", stage="review", stage_reason=None)
+                self._set(job_id, status="review", stage="review", stage_reason=None, resumes=0)
             else:
                 self._set(
                     job_id,
@@ -265,7 +287,7 @@ class Worker:
                     return
         # Publishing is gated by the cross-file checks (ARCHITECTURE §3): a job whose files disagree never ends done.
         validate_job_dir(job_dir)
-        self._set(job_dir.name, status="done", stage="done", stage_reason=None)
+        self._set(job_dir.name, status="done", stage="done", stage_reason=None, resumes=0)
 
     def _fail(self, job_id: str, action: Action, failure: Failure, *, transient: bool) -> None:
         try:
@@ -296,6 +318,14 @@ class Worker:
                 self._set(job_id, status="failed", failure=Failure(stage=state.stage, reason="code_not_active"))
                 return
         self.submit(job_id, action)
+
+
+def _spawn_hold(keepalive: Callable[[str], None], job_id: str) -> None:
+    try:
+        keepalive(job_id)
+    except Exception:
+        log.warning("keepalive for job %s failed; the cron will resume it if the container sleeps", job_id,
+                    exc_info=True)  # fmt: skip
 
 
 def stage_index(name: str | None) -> int:

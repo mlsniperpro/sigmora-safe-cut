@@ -10,16 +10,21 @@ reviewing and deleting a job need only its link.
 from __future__ import annotations
 
 import hmac
+import logging
 import math
+import sqlite3
 import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from safecut.config import AccessCode, Settings
 from safecut.meta.budget import LocalLedger
 from safecut.pipeline import code_id
+
+log = logging.getLogger(__name__)
 
 #: PRE-A §9.2 / §10.3: a job's worst-case estimate is max($1.12, seconds × $2.24 / 60).
 ESTIMATE_FLOOR_USD = 1.12
@@ -138,11 +143,21 @@ class Access:
         return grant
 
 
-def estimate_usd(duration_s: float | None) -> float:
-    """PRE-A §9.2's worst case for a job of this length (the floor when the length is unknown)."""
-    if duration_s is None:
-        return ESTIMATE_FLOOR_USD
-    return max(ESTIMATE_FLOOR_USD, duration_s * ESTIMATE_PER_MINUTE_USD / 60)
+#: The audit's passes (``safecut.audit.loop.MAX_PASSES``): each may scan on the GPU once.
+GPU_SCANS_PER_JOB = 3
+
+
+def estimate_usd(duration_s: float | None, settings: Settings | None = None) -> float:
+    """PRE-A §9.2's worst case for a job of this length (the floor when the length is unknown), plus, with
+    ``SAFECUT_AUDIT_GPU=1``, the GPU auditor's: every pass's scan at its timeout and the idle tail, at the GPU
+    container's hourly rate (the ledger then holds each call to its own reservation)."""
+    meta = (
+        ESTIMATE_FLOOR_USD if duration_s is None else max(ESTIMATE_FLOOR_USD, duration_s * ESTIMATE_PER_MINUTE_USD / 60)
+    )
+    if settings is None or not settings.audit_gpu:
+        return meta
+    seconds = GPU_SCANS_PER_JOB * settings.audit_gpu_timeout_s + settings.audit_gpu_idle_s
+    return meta + seconds * settings.audit_gpu_usd_per_hour / 3600
 
 
 def next_midnight(now: datetime) -> datetime:
@@ -204,6 +219,83 @@ class RateLimiter:
                 self._hits = {k: v for k, v in self._hits.items() if v and now - v[-1] < window_s}
 
 
+class StoredRateLimiter:
+    """:class:`RateLimiter`'s sliding window, kept in SQLite on the jobs Volume beside the spend ledger, for limits
+    whose window outlasts a container: the API scales to zero, and a fresh container must not hand a client a
+    fresh hour. Wall-clock times, since a monotonic clock restarts with the process.
+
+    Its state is disposable, and the service must not go down with it: a file that won't open (left malformed by a
+    container that died mid-write) is moved aside and started afresh, and a query that fails falls back to an
+    in-memory window for that request, logged."""
+
+    def __init__(self, path: Path, *, clock: Callable[[], float] = time.time) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
+        self._clock = clock
+        self._fallback = RateLimiter()
+        try:
+            self._db = self._open(path)
+        except sqlite3.DatabaseError:
+            aside = path.with_name(f"{path.name}.corrupt-{int(clock())}")
+            log.exception("rate-limit store %s won't open; moved aside to %s and started afresh", path, aside.name)
+            for suffix in ("", "-wal", "-shm"):
+                part = path.with_name(path.name + suffix)
+                if part.exists():
+                    part.replace(aside.with_name(aside.name + suffix))
+            self._db = self._open(path)
+
+    @staticmethod
+    def _open(path: Path) -> sqlite3.Connection:
+        db = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None)
+        try:
+            db.executescript(
+                """
+                PRAGMA journal_mode=WAL;
+                CREATE TABLE IF NOT EXISTS hit (bucket TEXT NOT NULL, client TEXT NOT NULL, at REAL NOT NULL);
+                CREATE INDEX IF NOT EXISTS hit_by_key ON hit(bucket, client, at);
+                """
+            )
+            db.execute("SELECT COUNT(*) FROM hit").fetchone()
+        except sqlite3.DatabaseError:
+            db.close()
+            raise
+        return db
+
+    def hit(self, bucket: str, client: str, *, limit: int, window_s: float) -> None:
+        """Count one request; ``429 rate_limited`` (with ``Retry-After``) when the window is full."""
+        now = self._clock()
+        try:
+            full, oldest = self._count(bucket, client, now, limit=limit, window_s=window_s)
+        except sqlite3.Error:
+            log.exception("rate-limit store failed; this request is counted in memory")
+            self._fallback.hit(bucket, client, limit=limit, window_s=window_s)
+            return
+        if full:
+            wait = max(1, math.ceil(window_s - (now - oldest)))
+            raise ApiRefusal(429, "rate_limited", "Too many tries in a short time.", retry_after_s=wait)
+
+    def _count(self, bucket: str, client: str, now: float, *, limit: int, window_s: float) -> tuple[bool, float]:
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                self._db.execute("DELETE FROM hit WHERE bucket = ? AND at <= ?", (bucket, now - window_s))
+                rows = self._db.execute(
+                    "SELECT at FROM hit WHERE bucket = ? AND client = ? ORDER BY at", (bucket, client)
+                ).fetchall()
+                full = len(rows) >= limit
+                if not full:
+                    self._db.execute("INSERT INTO hit VALUES (?, ?, ?)", (bucket, client, now))
+                self._db.execute("COMMIT")
+            except BaseException:
+                self._db.execute("ROLLBACK")
+                raise
+        return full, float(rows[0][0]) if rows else now
+
+    def close(self) -> None:
+        with self._lock:
+            self._db.close()
+
+
 __all__ = [
     "MAX_DURATION_S",
     "MAX_UPLOAD_BYTES",
@@ -211,6 +303,7 @@ __all__ = [
     "ApiRefusal",
     "Grant",
     "RateLimiter",
+    "StoredRateLimiter",
     "check_caps",
     "code_id",
     "estimate_usd",

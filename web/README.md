@@ -72,3 +72,24 @@ Vercel builds `web/` on every push to `main`; nothing deploys from a sandbox. Pr
 The API must list the site's origin in `SAFECUT_CORS_ORIGINS` (it does by default: `https://safecut.sigmora.org`). Security headers (CSP, HSTS, nosniff, Permissions-Policy, `noindex` on job pages) are in `next.config.ts`; the CSP allows media and API calls to any https origin, plus the exact loopback origin a local build was made for. After a deploy, `bash scripts/deploy-check.sh <api-url> https://safecut.sigmora.org` checks both (from the repo root).
 
 Captions on the hero and result videos come from the API's signed `captions.vtt` URL and are attached as blob URLs (`src/hooks/useRemoteCaptions.ts`); the API's CORS covers them.
+
+## The API sleeps when idle (cold start)
+
+The API on Modal scales to zero, so the first request after a quiet spell waits while a container starts (about 10
+to 40 s). The client treats that as a designed state (`src/lib/wake.ts`, `src/lib/api.ts`): while the API isn't
+known to be awake a request may wait 60 s (15 s once it has answered in the last two minutes), GETs and the code
+check retry on a timeout, other POSTs never do (a timed-out one may still have run), and after 4 s a polite status
+line says "Waking Safe Cut up". The Playwright run (`pnpm e2e`) holds the first requests to check that line, axe,
+and that the demo job opens at once after the wake.
+
+What the service costs on Modal, idle and per clip (estimates; how they're made: `docs/DEPLOY-COSTS.md`):
+
+```text
+Modal cost (estimate)        What runs                                                 USD  per
+Idle, before (always on)     API, 2 cores + 4 GiB, all day                          3.0384  day
+Idle, now (scaled to zero)   cleanup cron only, 96 runs of ~14 s                    0.0026  day
+A visit's quiet tail         API stays up 300 s after the last request              0.0053  visit
+One 60 s clip, API           ~300 s of the API container                            0.0053  clip
+One 60 s clip, GPU audit     ~210 s on an L4, plus its 30 s tail                    0.0628  clip
+One clip, GPU worst case     what the ledger reserves: 930 s on an L4               0.2435  clip
+```

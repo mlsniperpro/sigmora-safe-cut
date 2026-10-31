@@ -1,6 +1,8 @@
 name: deploy
 
-# Deploys the API to Modal after CI passes on main, then smoke-tests the deployed image and the live URLs.
+# Deploys the API to Modal after CI passes on main: smoke-tests the image first (a replay job, the ledger and the
+# EgoBlur GPU function on the weights Volume), deploys, then proves a replay job end to end through the deployed app
+# with its audit on the GPU, and checks the live URLs, starting with a cold wake of the scale-to-zero API.
 # Without the Modal secrets (an owner input, BLOCKED.md) it skips with a notice instead of failing.
 
 on:
@@ -35,8 +37,6 @@ jobs:
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
       SAFECUT_API_URL: ${{ vars.SAFECUT_API_URL }}
       SAFECUT_WEB_URL: ${{ vars.SAFECUT_WEB_URL }}
-      # Leave unset: "1" installs EgoBlur's audit group, which needs a GPU this CPU-only API doesn't have (BLOCKED.md).
-      SAFECUT_DEPLOY_AUDIT: ${{ vars.SAFECUT_DEPLOY_AUDIT }}
     steps:
       - name: Check for the Modal secrets
         id: gate
@@ -59,14 +59,20 @@ jobs:
       - name: Install the deploy tools
         if: steps.gate.outputs.run == 'true'
         run: uv sync --locked --python 3.12 --group deploy
-      - name: Smoke-test the image before it goes live (the synthetic demo job replayed, and the ledger on the Volume)
+      - name: Smoke-test the image before it goes live (the demo job replayed, the ledger, EgoBlur on the GPU)
         if: steps.gate.outputs.run == 'true'
         run: uv run modal run deploy/modal_app.py
-      - name: Deploy the API, worker smoke and deletion cron (only after the smoke passed)
+      - name: Deploy the API, the GPU auditor, the worker smoke and the deletion cron (only after the smoke passed)
         if: steps.gate.outputs.run == 'true'
         run: uv run modal deploy deploy/modal_app.py
-      - name: Check the live URLs
+      - name: Prove one replay job end to end on the deployed app, audited by EgoBlur on the GPU
         if: steps.gate.outputs.run == 'true'
+        run: uv run python -m deploy.verify_deploy
+      - name: Check the live URLs (the first request wakes the API from zero)
+        if: steps.gate.outputs.run == 'true'
+        env:
+          # Nothing has called the new API yet, and it keeps no warm container: its first answer must be a cold wake.
+          DEPLOY_EXPECT_COLD: "1"
         run: |
           # A deploy is green only once its live URLs pass: the variables are an owner step (BLOCKED.md).
           if [ -z "$SAFECUT_API_URL" ] || [ -z "$SAFECUT_WEB_URL" ]; then
