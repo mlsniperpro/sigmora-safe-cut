@@ -189,7 +189,7 @@ Endpoint: `https://api.meta.ai/v1` (OpenAI-compatible Responses, Files, ASR). Th
 
 ## 5. Runtime and deployment
 
-- **API + worker:** Modal (`deploy/modal_app.py`): one CPU container with ffmpeg that scales to zero when idle (each queued job holds it up through an input of its own until the job stops), plus a GPU function for EgoBlur that reads the render from the jobs Volume (`SAFECUT_AUDIT_GPU`; YuNet runs when it can't answer). Sizes, decisions and cost: `docs/DEPLOY-COSTS.md`. Job artifacts go in a Modal Volume and are **deleted 24 h after the job** (a cron). Uploads go through a presigned URL straight to storage, capped at ≤60 s and ≤150 MB.
+- **API + worker:** Modal (`deploy/modal_app.py`): one CPU container with ffmpeg that scales to zero when idle (each queued job holds it up through an input of its own until the job stops), plus a GPU function for EgoBlur that reads the render from a handoff Volume (`SAFECUT_AUDIT_GPU`; YuNet runs when it can't answer). Sizes, decisions and cost: `docs/DEPLOY-COSTS.md`. Job artifacts go in a Modal Volume and are **deleted 24 h after the job** (a cron). Uploads go through a presigned URL straight to storage, capped at ≤60 s and ≤150 MB.
 - **Web:** Next.js on Vercel at a custom domain (the owner's Vercel team blocks public `*.vercel.app` aliases). The owner and Claude set the domain and env.
 - **Public demo:** the landing page plays the precomputed hero results (labelled). "Try it" needs a judge access code (`SAFECUT_ACCESS_CODES`), is rate-limited per IP, and stops at `SAFECUT_DAILY_USD_CAP`.
 - **Replay mode** (`SAFECUT_REPLAY=1`): stages read saved API responses from the job directory instead of calling Meta. It's used for tests, the live-finals fallback (labelled "demo mode"), and cost-free UI work.

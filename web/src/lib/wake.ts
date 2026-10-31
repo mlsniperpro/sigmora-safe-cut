@@ -9,7 +9,7 @@
 
 /** A request that has waited this long, with the service not known to be awake, is a wake-up. */
 export const WAKING_AFTER_MS = 4_000;
-/** After an answer the service counts as awake this long. Longer than the API's idle window, so a lapse can only over-wait. */
+/** After an answer the service counts as awake this long: shorter than the API's 300 s idle window, so a request after a longer pause is given the cold-start wait (only ever an over-wait). */
 export const AWAKE_FOR_MS = 120_000;
 
 export class WakeTracker {

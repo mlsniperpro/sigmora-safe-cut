@@ -390,7 +390,7 @@ class Settings(BaseModel):
     egoblur_face_threshold: float = Field(default=0.5, gt=0, lt=1)
     egoblur_plate_threshold: float = Field(default=0.5, gt=0, lt=1)
     #: ``SAFECUT_AUDIT_GPU=1``: the detector runs as EgoBlur on the Modal GPU function ``audit_gpu_function`` of the
-    #: deployed app ``audit_gpu_app``, reading the render from the jobs Volume; YuNet runs whenever it can't.
+    #: deployed app ``audit_gpu_app``, reading the render from the handoff Volume; YuNet runs whenever it can't.
     audit_gpu: bool = False
     audit_gpu_app: str = Field(default="safecut", min_length=1)
     audit_gpu_function: str = Field(default="egoblur_detect", min_length=1)

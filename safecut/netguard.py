@@ -7,7 +7,7 @@ test), except the ports a configured HTTP(S) proxy listens on; everything else r
 ``connect``/``getaddrinfo`` time, so a stage that forgot its replay branch fails loudly instead of spending.
 
 One named exception: :func:`permitting` lets the Modal control plane through while the GPU auditor runs (our own
-compute on the jobs Volume, never a model API), and only that host and the addresses it resolved to.
+compute on our own renders, never a model API), and only that host and the addresses it resolved to.
 """
 
 from __future__ import annotations

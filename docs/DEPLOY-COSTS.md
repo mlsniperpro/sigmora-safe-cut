@@ -9,7 +9,7 @@ GPU. This page is the reasoning and the arithmetic; the code's own comments say 
 |---|---|---|
 | `SafeCutApi` (FastAPI, the pipeline's worker threads, YuNet fallback) | 1 core, 2 GiB; `min_containers=0`, `max_containers=1`, `scaledown_window=300` | From the first request after a quiet spell until 300 s after the last input |
 | `SafeCutApi.hold` | the same container (an input of it) | While a job is mid-action: Modal never scales down a container with an input in flight |
-| `egoblur_detect` (EgoBlur Gen 2, torch) | L4 (T4 when no L4 is free), 2 cores, 6 GiB; `scaledown_window=30` | One call per audit scan, reading the render from the jobs Volume |
+| `egoblur_detect` (EgoBlur Gen 2, torch) | L4 (T4 when no L4 is free), 2 cores, 6 GiB; `scaledown_window=30` | One call per audit scan, reading the render from the handoff Volume `safecut-audit` |
 | `cleanup` (24 h deletion, wakes stranded jobs) | 0.125 core, 128 MiB (Modal's default request, the smallest), `scaledown_window=2` | Every 15 minutes |
 
 ## Cost
@@ -61,13 +61,27 @@ and the receipt (`cost_usd_gpu`); the up-front check on `POST /start` adds the G
 - **GPU: L4 first, T4 as the fallback.** EgoBlur Gen 2 is two detector passes per frame; the L4 has several times
   the T4's FP32 throughput for 1.36× the price, so it should cost less per clip as well as finish sooner. Modal's GPU
   list (`gpu=["L4", "T4"]`) takes a T4 when no L4 is free; the price setting assumes the dearer L4.
-- **The render reaches the GPU through the Volume.** The API commits the jobs Volume, the GPU function reloads it
-  and reads `redacted.mp4` itself; only frame numbers go out and boxes come back, and the answer carries the
-  render's SHA-256, so a stale Volume view is caught and retried. The weights' SHA-256 is checked before use.
+- **The render reaches the GPU through a handoff Volume.** The API copies the render to `safecut-audit` (under one
+  lock), commits that Volume, and the GPU function reloads it and reads `redacted.mp4` itself; only frame numbers go
+  out and boxes come back, and the answer carries the render's SHA-256, so a stale Volume view is caught and
+  retried. Not the jobs Volume: in modal 1.6.2 `Volume.commit()` reloads the Volume afterwards, and a reload fails
+  while files are open on it, which the API always has (the ledger's and the limiter's SQLite files). The cron
+  removes any handoff an audit left behind. The weights' SHA-256 is checked before use.
 - **The audit always runs.** A timeout, an error (retried once), missing or altered weights, no GPU, or a cap that
   can't cover the call: YuNet runs instead, and `audit.json` (`egoblur.model`, `egoblur.device`), the
   receipt (`auditor`, `auditor_device`) and `raw/audit/gpu.json` say which ran and why. A GPU that drops out
   after pass 1 makes the audit run again, whole, on YuNet, so no audit mixes detectors.
+
+## What a crash or a fallback costs, honestly
+
+- A finished stage is never run again after a restart, so its Meta calls are never repaid. The stage a kill
+  interrupted does run again from its inputs, and its calls are paid again; the job cap bounds that, and a SIGKILL's
+  open ledger reservation counts as spent for 2.5 hours (failing closed). After three restarts the job fails.
+- A GPU that answers pass 1 and then fails a re-check makes the audit run again, whole, on YuNet, on the patched
+  render: the red team is asked again about frames whose pixels changed, and those calls are paid. Rare, and bounded
+  by the job and daily caps.
+- GPU dollars count against the same job, daily, code and pilot caps as Meta's (conservative: a cap protects the
+  owner's total spend), and are shown apart on the receipt (`cost_usd_gpu`).
 
 ## Where it would break first
 
