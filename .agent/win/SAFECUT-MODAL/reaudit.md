@@ -340,3 +340,12 @@ The round-23 tests killed every margin and deadline mutant (and 8 more `gpu.py` 
 - L2 `deploy.verify_deploy.main` was only checked by text → `test_the_post_deploy_check_runs_the_deployed_job_with_the_gpu_audit`
   (a stand-in `modal.Function`: called with `audit_gpu=True`, exit 0 or 1 by the checks, the GPU-optional switch
   relaxing only the GPU part; fails without `audit_gpu=True`, without the exit code, or with the switch inverted).
+
+## Round 25 (on 55cb6ca): 0 critical, 0 high, 0 medium, 0 low. CLEAN.
+
+The round-24 test killed all 7 mutants of `verify_deploy.main` (the `audit_gpu=True` flag, the exit code, the FAIL
+line, the function name, the switch both ways). Gate scans clean on the added lines; every cited id resolves against
+the 1,622 collected; cost tables, BLOCKED.md's caps and the weight hashes reproduce; the cold-start import
+re-measured at 0.70–0.75 s and a replay run's RSS at 206 MiB, against the claimed 0.74 s and 210 MiB. (The
+reviewer's mutation script briefly edited `deploy/verify_deploy.py` in place and restored it at once; `git status`
+and the blob at HEAD confirmed nothing changed, and no commit carries it.)
