@@ -201,8 +201,8 @@ def _load_egoblur(model: AuditorModel, face: Path, plate: Path, face_t: float, p
 
 
 def _cuda_name() -> str | None:
-    import torch  # noqa: PLC0415 -- the GPU image's audit group; never imported by the API
-
+    # The GPU image's audit group; never imported by the API, and absent where CI type-checks without that group.
+    torch: Any = importlib.import_module("torch")
     return str(torch.cuda.get_device_name(0)) if torch.cuda.is_available() else None
 
 
