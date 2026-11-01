@@ -348,18 +348,38 @@ def test_deploy_workflow_skips_without_secrets() -> None:
 
 
 def test_deploy_never_runs_a_forks_code_with_the_secrets() -> None:
-    """`workflow_run`'s `branches: [main]` also matches a fork PR whose head branch is called main; the job must
-    require a push to this repository's own main before the Modal secrets meet the checked-out code."""
+    """The deploy runs only on a push to this repository's own main (a fork can't push here) or by hand: no
+    `pull_request` or `workflow_run` trigger, whose branch filters a fork PR named main could match."""
     workflow = (ROOT / ".github" / "workflows" / "deploy.yml").read_text()
+    on = workflow.split("\non:\n", 1)[1].split("\npermissions:", 1)[0]
+    assert "pull_request" not in on
+    assert "workflow_run" not in workflow
+    assert "  push:\n    branches: [main]\n" in on
     block = workflow.split("\n    if: >-\n", 1)[1].split("\n    env:\n", 1)[0]
     condition = " ".join(block.split())
-    for clause in (
-        "github.event.workflow_run.conclusion == 'success'",
-        "github.event.workflow_run.event == 'push'",
-        "github.event.workflow_run.head_branch == 'main'",
-        "github.event.workflow_run.head_repository.full_name == github.repository",
-    ):
-        assert clause in condition
+    assert condition == (
+        "github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')"
+    )
+
+
+def test_the_deploy_runs_the_release_blocking_checks_before_anything_goes_live() -> None:
+    """GitHub Actions is for deployment only (AGENTS.md): there is no CI workflow, so the deploy job itself runs
+    the checks a red main must not get past, before the smoke test and the deploy."""
+    workflows = sorted(p.name for p in (ROOT / ".github" / "workflows").iterdir())
+    assert workflows == ["deploy.yml"]
+    workflow = (ROOT / ".github" / "workflows" / "deploy.yml").read_text()
+    steps = workflow.split("    steps:\n", 1)[1]
+    checks = [
+        steps.index(command)
+        for command in (
+            "uv run ruff check",
+            "uv run ruff format --check .",
+            "uv run pyright",
+            'uv run pytest -m "not live"',
+            "uv run python eval/report.py --check",
+        )
+    ]
+    assert max(checks) < steps.index("uv run modal run deploy/modal_app.py")
 
 
 def test_deploy_check_fails_a_deployment_judges_cant_use(api: str) -> None:

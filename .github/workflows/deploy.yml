@@ -1,15 +1,15 @@
 name: deploy
 
-# Deploys the API to Modal after CI passes on main: smoke-tests the image first (a replay job, the ledger and the
+# Deploys the API to Modal on every push to main. GitHub Actions is for deployment only (AGENTS.md), so there is no CI
+# workflow: this job runs the release-blocking checks itself (ruff, pyright, the offline pytest suite and the
+# eval/report.py --check), then smoke-tests the image (a replay job, the ledger and the
 # EgoBlur GPU function on the weights Volume), deploys, then proves a replay job end to end through the deployed app
 # with its audit on the GPU, and checks the live URLs, starting with a cold wake of the scale-to-zero API.
 # Without the Modal secrets (an owner input, BLOCKED.md) it skips with a notice instead of failing.
 
 on:
-  # Only after CI passed on main: a red main is never deployed.
-  workflow_run:
-    workflows: [ci]
-    types: [completed]
+  # A red main is never deployed: the checks below run first, in this job.
+  push:
     branches: [main]
   workflow_dispatch:
 
@@ -23,16 +23,14 @@ concurrency:
 jobs:
   modal:
     runs-on: ubuntu-latest
-    # A first deploy builds two images (one with torch) and waits for a cold GPU: allow it.
-    timeout-minutes: 60
-    # `branches: [main]` matches a PR's head branch name too, so a fork's PR from its own `main` would pass it:
-    # deploy only a push to this repository's main (the secrets never run a fork's code).
+    # The offline suite (about 1,460 tests) runs 15 to 20 minutes, and a first deploy builds two images (one with
+    # torch) and waits for a cold GPU: allow both.
+    timeout-minutes: 90
+    # Only a push to this repository's own main (a fork can't push here) or a manual run: the secrets never run a
+    # fork's code. No pull-request trigger and no trigger on another workflow, ever.
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push' &&
-       github.event.workflow_run.head_branch == 'main' &&
-       github.event.workflow_run.head_repository.full_name == github.repository)
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
@@ -52,16 +50,22 @@ jobs:
           fi
       - uses: actions/checkout@v4
         if: steps.gate.outputs.run == 'true'
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: astral-sh/setup-uv@v6
         if: steps.gate.outputs.run == 'true'
         with:
           version: "0.11.32"
           enable-cache: true
-      - name: Install the deploy tools
+      - name: Install the dev and deploy tools (the audit group stays off; the tests use the replay stub)
         if: steps.gate.outputs.run == 'true'
-        run: uv sync --locked --python 3.12 --group deploy
+        run: uv sync --locked --python 3.12 --all-groups --no-group audit
+      - name: Release-blocking checks (lint, format, types, the offline tests, RESULTS.md matches the eval runs)
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          uv run ruff check --output-format=github .
+          uv run ruff format --check .
+          uv run pyright
+          uv run pytest -m "not live"
+          uv run python eval/report.py --check
       - name: Smoke-test the image before it goes live (the demo job replayed, the ledger, EgoBlur on the GPU)
         if: steps.gate.outputs.run == 'true'
         run: uv run modal run deploy/modal_app.py

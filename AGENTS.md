@@ -19,6 +19,7 @@ You have access to **this repo only**. Everything you need is in `docs/`. Read i
 11. **Tooling.** Python 3.12 with `uv` (never pip directly), `ruff`, `pytest` (+ `hypothesis` for pure logic). Web: Node 24, `pnpm` (never npm or yarn). ffmpeg comes from `imageio-ffmpeg` so it works without a system install.
 12. **Done means tested.** `uv run pytest` and `uv run ruff check` pass, and the web app passes `pnpm lint && pnpm typecheck && pnpm test`. Don't run a production build of the web app locally; Vercel builds it on push. Your PR description lists what you verified, what you couldn't (and why), and every live-call cost.
 13. **If you're blocked** (a missing key, a gated download, an API that behaves differently from the docs), write `BLOCKED.md` on your branch with exactly what you need, finish everything else you can, and stop. Don't fake a result.
+14. **GitHub Actions is for deployment only** (fleet contract: `algocracked/docs/SCHEDULING.md`). Never add a CI, test, lint, eval or scheduled workflow, not even a manual-only one, and never a `dependabot.yml`. Run the tests locally before you push. Tests that must block a release run inside the deploy job (`.github/workflows/deploy.yml`). Scheduled work goes to a Cloudflare Workers cron.
 
 ## Commit style
 

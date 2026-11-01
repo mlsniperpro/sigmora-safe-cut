@@ -44,7 +44,7 @@
 | **Meta tooling 25%** | Meta models doing things only they can, used deeply | The closed loop (SAM IDs → Muse role calls → new SAM prompts); deny-by-default from SAM's limits; 3× self-consistency; EgoBlur Gen 2 audit; Voice Transcribe evidence; the README table "what each Meta model does here" | WP1, WP2, WP4 |
 | **Technical depth 20%** | Hard parts solved, not glued | Set-of-Mark binding, the leak guard (back-fill, gap hold, crowd fallback), locked-grid pixelation (reversibility research), the hash-chained receipt, replay mode, the eval harness with frozen splits | WP3, WP4, WP7 |
 | **Demo 25%** | It works live and the video lands | The hero clips, the review panel with reasons, the context test (inbox hidden, menu clear), the re-entry guarantee, the audit catching a leak, publish via Sigmora | WP6, WP8, owner (footage, VO) |
-| **Startup: holds up in production** | A deployed, safe, observable service | Modal API + Vercel app on a custom domain; caps; 24 h deletion; `/healthz`; cost and latency per minute in the README; CI green; a Sigmora integration PR merged | WP5, WP6, Sigmora brief |
+| **Startup: holds up in production** | A deployed, safe, observable service | Modal API + Vercel app on a custom domain; caps; 24 h deletion; `/healthz`; cost and latency per minute in the README; deploy green (its checks run in the deploy job); a Sigmora integration PR merged | WP5, WP6, Sigmora brief |
 
 ## 4. Schedule (EAT) and who runs what
 
