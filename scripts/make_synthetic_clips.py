@@ -67,7 +67,10 @@ def write_clip(path: Path, *, fps: int, frames: int, audio: Path | None) -> None
     if audio is not None:
         cmd += ["-i", str(audio), "-c:a", "aac", "-b:a", "48k", "-shortest"]
     # One encoder thread: x264's output depends on the thread count, and the test regenerates byte for byte.
-    cmd += ["-threads", "1", "-c:v", "libx264", "-preset", "veryslow", "-crf", "30", "-pix_fmt", "yuv420p",
+    # No x264 assembly (asm=0): its AVX-512 paths encode the 30 fps clip differently from its other paths, so
+    # GitHub runners with and without AVX-512 disagreed. The C path gives the same pixels on every x86_64 host.
+    cmd += ["-threads", "1", "-c:v", "libx264", "-x264-params", "asm=0", "-preset", "veryslow", "-crf", "30",
+            "-pix_fmt", "yuv420p",
             "-g", str(fps), "-bf", "0", "-movflags", "+faststart", "-map_metadata", "-1", "-fflags", "+bitexact",
             "-flags:v", "+bitexact", "-flags:a", "+bitexact", str(path)]  # fmt: skip
     raw = b"".join(frame_image(i, fps).tobytes() for i in range(frames))
