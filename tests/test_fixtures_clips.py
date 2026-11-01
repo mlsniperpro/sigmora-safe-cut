@@ -1,5 +1,7 @@
 """The synthetic clips are what truth.json says, and the generator reproduces them: byte for byte from run to run,
-and frame for frame against the committed clips (container bytes may differ across ffmpeg builds; pixels must not)."""
+and frame for frame against the committed clips. The committed clips come from the Linux x86_64 ffmpeg that
+imageio-ffmpeg bundles (CI's platform): other platforms' bundled builds carry a different x264 and decode to
+different pixels, so regenerate the clips there (scripts/make_synthetic_clips.py) whenever they change."""
 
 from __future__ import annotations
 
