@@ -18,7 +18,7 @@ import urllib.request
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, cast, get_args
 
 import pytest
 
@@ -413,6 +413,21 @@ def test_the_image_ships_every_data_file_the_package_reads() -> None:
     dropped = [str(p.relative_to(ROOT)) for p in data if matcher(p.relative_to(ROOT / "safecut"))]
     assert dropped == []
     assert matcher(Path("scout/__pycache__/x.cpython-312.pyc"))
+
+
+def test_the_images_build_whatever_builder_version_the_workspace_moves_to() -> None:
+    """Modal moved the workspace to builder 2026.10, which modal 1.6.2 refuses before building anything (the first
+    deploy, 2026-11-01): the app pins a version the pinned client builds, so the workspace setting can't break it."""
+    from modal._image import (  # noqa: PLC0415 -- the deploy group's own resolver
+        ImageBuilderVersion,
+        _get_image_builder_version,  # pyright: ignore[reportPrivateUsage] -- what `modal run` and `modal deploy` call
+    )
+
+    from deploy import modal_app  # noqa: PLC0415 -- the deploy group, imported where it is used
+
+    assert modal_app.IMAGE_BUILDER_VERSION in get_args(ImageBuilderVersion)
+    assert os.environ["MODAL_IMAGE_BUILDER_VERSION"] == modal_app.IMAGE_BUILDER_VERSION
+    assert _get_image_builder_version(cast(ImageBuilderVersion, "2026.10")) == modal_app.IMAGE_BUILDER_VERSION
 
 
 def health_stub(

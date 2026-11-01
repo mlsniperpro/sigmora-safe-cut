@@ -28,11 +28,19 @@ and their cost: ``docs/DEPLOY-COSTS.md``.
 
 from __future__ import annotations
 
+import os
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, cast
 
 import modal
+
+#: The image builder version the images are built with, pinned here rather than taken from the workspace setting:
+#: Modal moved the workspace to 2026.10, which the pinned client (modal 1.6.2) refuses, and a newer client would
+#: quietly rebuild both images on a different base. Modal reads ``MODAL_IMAGE_BUILDER_VERSION`` when it loads an
+#: image, after this module is imported; set it in the environment to override.
+IMAGE_BUILDER_VERSION = "2025.06"
+os.environ.setdefault("MODAL_IMAGE_BUILDER_VERSION", IMAGE_BUILDER_VERSION)
 
 ROOT = Path(__file__).resolve().parent.parent
 JOBS = "/data/jobs"
