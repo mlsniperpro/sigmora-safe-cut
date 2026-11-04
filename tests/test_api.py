@@ -766,7 +766,10 @@ def test_flow_on_the_real_stages(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
             f"/v1/jobs/{job_id}/review", json={"type": "keep", "edit_id": "k", "item_id": child["item_id"]}
         )
         assert refused.status_code == 409  # a child is never kept, whatever the creator asks
-        needs = next(i for i in job["items"] if i["decision"] == "needs_you")
+        # Owner, 11-04: the policy decides the obvious cases itself, so there may be nothing in Needs you; the creator
+        # can still hide anyone not locked.
+        pending = [i for i in job["items"] if i["decision"] == "needs_you"]
+        needs = pending[0] if pending else next(i for i in job["items"] if i["decision"] == "keep")
         assert (
             client.post(
                 f"/v1/jobs/{job_id}/review", json={"type": "hide", "edit_id": "h", "item_id": needs["item_id"]}

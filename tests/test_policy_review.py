@@ -32,7 +32,7 @@ def base_tracks() -> Any:
         track("face:1", 0, 20, (10, 10, 30, 30)),
         track("face:2", 0, 20, (100, 10, 120, 30)),
         track("face:3", 0, 20, (200, 10, 220, 30)),
-        track("face:4", 25, 35, (10, 10, 30, 30), reentry_of="face:1"),
+        track("face:4", 25, 35, (10, 10, 30, 30), reentry_of="face:2"),  # a re-entry of a hidden person: undecided
     )
 
 
@@ -42,7 +42,7 @@ def base() -> Decisions:
         track("face:1", 0, 20, (10, 10, 30, 30)),
         track("face:2", 0, 20, (100, 10, 120, 30)),
         track("face:3", 0, 20, (200, 10, 220, 30)),
-        track("face:4", 25, 35, (10, 10, 30, 30), reentry_of="face:1"),
+        track("face:4", 25, 35, (10, 10, 30, 30), reentry_of="face:2"),  # a re-entry of a hidden person: undecided
     ]
     p = ("participant",) * 3
     rs = [

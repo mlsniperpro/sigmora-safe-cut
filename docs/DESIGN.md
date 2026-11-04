@@ -76,6 +76,9 @@ A point → pixels → inside the dilated (10%) track mask on that frame? Otherw
 - New ID appearing mid-clip = new person = hidden until the creator merges it into a participant (no biometric re-ID; the EU AI Act treats behavioural matching as biometric, [Recital 17](https://ai-act-service-desk.ec.europa.eu/en/ai-act/recital-17)).
 - Screens and documents: `hide` unless Muse Spark says the content is non-personal (menu, map, slide) **and** the creator confirms.
 
+### 2.5b Who is kept automatically (owner, 2026-11-04)
+A judge who approves without touching anything must get a correct video: over-hiding the interviewer breaks the creator's video. **Any single tie to the conversation keeps an adult clear**: most role checks (2 of 3) saying participant, an escalation ruling participant, the speech or introduction link, or the scene pass naming them the creator, interviewer, host or presenter (the reason records which tie). A **re-entry** of a kept person comes back kept. Only a child vote (never kept), a bystander majority, or no tie at all after escalation hides someone, and only missing evidence (no scene pass, unusable audio, a scene child unaccounted for) or a genuine split waits in Needs you. Fixtures: the live street and café jobs (`tests/fixtures/live_*policy_2026_11_04.json`, `tests/test_policy_conversation.py`).
+
 ### 2.6 Leak guard
 SAM 3 confirms new tracks only after about 15 frames and **zeroes masks for low-score masklets while the object is still there**, which causes leaked frames ([arXiv 2511.16719 App. B/C.3](https://arxiv.org/html/2511.16719)). So:
 - **Spatial padding:** faces 15% + 8 px (Sigmora's default padding today is 8%; raise it for faces).

@@ -664,11 +664,11 @@ def test_every_track_is_in_an_item(tmp_path: Path) -> None:
         c.validate_job_dir(job_dir)
 
 
-def test_only_a_unanimous_participant_is_kept_without_the_creator(tmp_path: Path) -> None:
+def test_only_a_participant_majority_is_kept_without_the_creator(tmp_path: Path) -> None:
     job_dir = _example(tmp_path)
-    doubt = {"role": "unsure", "votes": ["participant", "bystander", "participant"], "matches_participant": None}
+    doubt = {"role": "unsure", "votes": ["participant", "bystander", "unsure"], "matches_participant": None}
     _edit(job_dir, "roles.json", lambda d: next(t for t in d["tracks"] if t["track_id"] == "face:1").update(doubt))
-    with pytest.raises(c.ContractError, match="kept by model, but face:1 isn't a unanimous participant"):
+    with pytest.raises(c.ContractError, match="kept by model, but face:1 isn't a participant on most checks"):
         c.validate_job_dir(job_dir)
     _edit(job_dir, "decisions.json", lambda d: next(i for i in d["items"] if i["item_id"] == "i_1").update(
         {"decided_by": "creator"}))  # fmt: skip
@@ -974,11 +974,14 @@ def test_a_crowd_fill_covers_a_capped_concept(tmp_path: Path) -> None:
     ("change", "message"),
     [
         ({"votes": ["participant"] * 2}, "tracks.0.votes"),  # role-pass step 7 always writes three
-        ({"frames": [1]}, "kept by model, but face:1 isn't a unanimous participant"),
-        ({"failed_votes": 1}, "kept by model, but face:1 isn't a unanimous participant"),
+        # Owner, 11-04: a participant majority with no child vote is a tie; a child vote never is.
+        (
+            {"votes": ["participant", "participant", "child"], "role": "child", "matches_participant": None},
+            "isn't a participant on most checks|is kind child",
+        ),
     ],
 )
-def test_a_policy_keep_needs_three_votes_on_two_keyframes(tmp_path: Path, change: dict[str, Any], message: str) -> None:
+def test_a_policy_keep_needs_a_participant_majority(tmp_path: Path, change: dict[str, Any], message: str) -> None:
     job_dir = _example(tmp_path)
     _edit(job_dir, "roles.json", lambda d: next(t for t in d["tracks"] if t["track_id"] == "face:1").update(change))
     with pytest.raises(c.ContractError, match=message):
@@ -1167,14 +1170,6 @@ def test_a_policy_keep_respects_the_holds(tmp_path: Path, name: str, change: dic
         c.validate_job_dir(job_dir)
 
 
-def test_a_policy_keep_needs_a_speech_link(tmp_path: Path) -> None:
-    job_dir = _example(tmp_path)
-    _edit(job_dir, "roles.json", lambda d: next(t for t in d["tracks"] if t["track_id"] == "face:1").update(
-        {"matches_participant": None}))  # fmt: skip
-    with pytest.raises(c.ContractError, match="no_speech_link"):
-        c.validate_job_dir(job_dir)
-
-
 def test_a_keep_never_carries_a_hold(tmp_path: Path) -> None:
     job_dir = _example(tmp_path)
     _edit(job_dir, "decisions.json", lambda d: next(i for i in d["items"] if i["item_id"] == "i_1").update(
@@ -1316,17 +1311,13 @@ def test_a_text_hit_patched_by_its_own_audit_patch_needs_no_flag(tmp_path: Path)
     assert "audit.json" in c.validate_job_dir(job_dir)
 
 
-@pytest.mark.parametrize(("quote", "valid"), [("I'm", False), ("Im Amina", True)])
-def test_an_introduction_quote_is_normalised_as_pre_a_says(tmp_path: Path, quote: str, valid: bool) -> None:
-    # "I'm" is one word ("im"), so no evidence (P11c); "Im Amina" is in "hi im amina, and today…".
+@pytest.mark.parametrize("quote", ["I'm", "Im Amina"])
+def test_a_policy_keep_needs_no_speech_link_beside_its_votes(tmp_path: Path, quote: str) -> None:
+    # Owner, 11-04: the speech link is one tie among several; three participant votes keep the host either way.
     job_dir = _example(tmp_path)
     _edit(job_dir, "scene.json", lambda d: d["participants"][0].update(
         {"speaker": None, "introduced_in_turn": 0, "introduction_quote": quote}))  # fmt: skip
-    if valid:
-        assert "decisions.json" in c.validate_job_dir(job_dir)
-    else:
-        with pytest.raises(c.ContractError, match="no_speech_link"):
-            c.validate_job_dir(job_dir)
+    assert "decisions.json" in c.validate_job_dir(job_dir)
 
 
 def test_an_audit_patch_spans_its_finding(tmp_path: Path) -> None:

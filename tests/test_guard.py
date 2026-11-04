@@ -319,7 +319,11 @@ def test_property_backfill_and_gap_hold_hold(case: tuple[Tracks, Decisions, Plan
     for t in ts.tracks:
         item = owner[t.track_id]
 
+        others = contracts.live_frames(x for x in ts.tracks if x.track_id in items[item].track_ids and x is not t)
+
         def want(box: tuple[int, int, int, int], frame: int) -> tuple[int, int, int, int] | None:
+            if not t.first <= frame <= t.last and frame in others:  # noqa: B023 -- used within this iteration
+                return None  # DESIGN §2.6: another track of the item is live here; its live box is drawn instead
             return identity_box(t, box, items[item], ts=ts, p=p, frame=frame)  # noqa: B023 -- used within this iteration
 
         first_box, last_box = t.boxes[t.first], t.boxes[t.last]

@@ -26,6 +26,7 @@ from safecut.contracts import (
     Track,
     Tracks,
     Transcript,
+    in_conversation,
 )
 from safecut.decide.geometry import iou
 from safecut.decide.group import group_tracks, inside_share
@@ -177,20 +178,76 @@ def judge_person(track: Track, row: RoleTrack | None, inputs: Inputs, gates: _Ga
                        hold=_first_hold(gates, "no_roles"))  # fmt: skip
     if row.role == "bystander":
         return Verdict("hide", "model", f"bystander: {_evidence(row)}")
-    if row.role == "unsure":
+    # A tie (owner, 11-04): most checks say participant, or the escalation ruled participant; never a child vote.
+    majority = (row.votes.count("participant") >= 2 or (row.escalated and row.role == "participant")) and (
+        "child" not in row.votes
+    )
+    if row.role == "unsure" and not majority and row.votes.count("bystander") >= 2:
+        return Verdict("hide", "model", f"bystander: 2 of 3 checks ({_evidence(row)})")
+    if row.role == "unsure" and "participant" not in row.votes and row.escalated:
+        # Owner, 11-04: no check ties them to the conversation, even after escalation: a stranger, hidden.
+        return Verdict("hide", "model", f"no tie to the conversation: {_evidence(row)}")
+    if row.role == "unsure" and not majority:
         suggestion = f"; a closer look suggests {row.suggested_role}" if row.suggested_role else ""
         hold = None if row.escalated else _first_hold(gates, "no_roles")
         return Verdict("needs_you", "policy", f"checks didn't all agree{suggestion}", hold=hold)
-    seen = {f for f in row.frames if track.first <= f <= track.last}  # cited frames the track is actually on
-    if row.votes != ["participant"] * 3 or row.failed_votes or len(seen) < 2:
-        return Verdict("needs_you", "policy", "participant, but not on 3/3 votes over 2 keyframes")
-    if track.reentry_of is not None:
-        return Verdict("needs_you", "policy", "came back into view as a new ID: hidden until you merge it")
+    if not any(track.first <= f <= track.last for f in row.frames):  # votes about frames this track isn't on
+        return Verdict("needs_you", "policy", "participant, but the checks cited no frame this person is on")
+    return _participant(track, row, inputs, gates)
 
+
+def _participant(track: Track, row: RoleTrack, inputs: Inputs, gates: _Gates) -> Verdict:
+    """A person most role checks call participant (owner, 11-04: any tie to the conversation keeps an adult clear,
+    and a majority of the checks is itself a tie; a re-entry of a kept person comes back kept)."""
+    if track.reentry_of is not None:
+        original = _original(track, inputs)
+        if not _kept_by_policy(original, inputs, gates):
+            return Verdict("needs_you", "policy", "came back into view as a new ID: hidden until you merge it")
+        return Verdict(
+            "keep", "model", f"participant: came back into view, the same person as kept {original.track_id}"
+        )
+
+    # Owner, 11-04: any tie to the conversation keeps an adult clear (over-hiding the interviewer breaks the
+    # creator's video); a majority of the role checks saying participant is itself a tie. Only missing evidence
+    # (no scene pass, unusable audio, a scene child unaccounted for) still holds them for the creator.
     hold = _participant_hold(row, inputs, gates)
-    if hold is not None:
+    if hold is not None and hold != "no_speech_link":
         return Verdict("needs_you", "policy", _HOLD_REASONS[hold], hold=hold)
-    return Verdict("keep", "model", f"participant: {_evidence(row)}")
+    votes = f"{row.votes.count('participant')} of 3 checks say participant"
+    if hold is None:
+        return Verdict("keep", "model", f"participant: {_evidence(row)}")
+    if _runs_the_conversation(row, inputs):
+        return Verdict("keep", "model", f"participant: in the conversation, named by the scene pass ({votes})")
+    return Verdict("keep", "model", f"participant: {votes} ({_evidence(row)})")
+
+
+def _original(track: Track, inputs: Inputs) -> Track:
+    """The first track of a re-entry chain (``reentry_of`` followed back)."""
+    by_id = {t.track_id: t for t in inputs.tracks.tracks}
+    seen: set[str] = set()
+    while track.reentry_of is not None and track.reentry_of in by_id and track.track_id not in seen:
+        seen.add(track.track_id)
+        track = by_id[track.reentry_of]
+    return track
+
+
+def _kept_by_policy(track: Track, inputs: Inputs, gates: _Gates) -> bool:
+    """Whether the policy keeps this (original) track on its own: a re-entry follows it."""
+    if inputs.roles is None:  # pragma: no cover -- judge_person returns before any re-entry without roles
+        return False
+    row = next((r for r in inputs.roles.tracks if r.track_id == track.track_id), None)
+    return judge_person(track, row, inputs, gates).decision == "keep"
+
+
+def _runs_the_conversation(row: RoleTrack, inputs: Inputs) -> bool:
+    """The scene pass names the matched participant the creator, an interviewer, host or presenter."""
+    k, scene = row.matches_participant, inputs.scene
+    return (
+        scene is not None
+        and k is not None
+        and 0 <= k < len(scene.participants)
+        and in_conversation(scene.participants[k])
+    )
 
 
 _HOLD_REASONS: dict[Hold, str] = {

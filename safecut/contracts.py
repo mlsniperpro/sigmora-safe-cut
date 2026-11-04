@@ -376,6 +376,22 @@ class Transcript(Contract):
 # ---------------------------------------------------------------------------
 
 
+#: The scene pass's words for someone running the conversation (an interviewer, host or presenter, the one with the
+#: mic): such a participant is in the talk even when the transcript links no line to their face (owner, 11-04: the
+#: interviewer is mostly in profile with the mic up, so the speech-to-face link fails on every street run).
+CONVERSATION_ROLE = re.compile(
+    r"\b(interview(?:er|ing|s)?|microphone|mic|hosts?|hosting|presenter|co-presenter|presenting)\b"
+)
+
+
+def in_conversation(participant: Participant) -> bool:
+    """A scene participant who runs the conversation: the creator, or an interviewer, host or presenter (the scene
+    pass's description or evidence says so). An interviewee is not matched here: they have speech evidence."""
+    return participant.is_creator or bool(
+        CONVERSATION_ROLE.search(f"{participant.description} {participant.evidence}".lower())
+    )
+
+
 class Participant(Contract):
     description: str
     evidence: str
@@ -1336,7 +1352,24 @@ def _check_item(item: DecisionItem, job: Job, where: str) -> None:
             _check_frame(frame, job, where)
 
 
-def _check_item_tracks(item: DecisionItem, tracks: list[Track], where: str) -> None:
+def reentries_of_kept(decisions: Decisions, by_track: Mapping[str, Track]) -> frozenset[str]:
+    """Re-entry tracks whose original (followed back through ``reentry_of``) is in an item that is kept."""
+    kept = {t for i in decisions.items if i.decision == "keep" for t in i.track_ids}
+    out: set[str] = set()
+    for t in by_track.values():
+        seen: set[str] = set()
+        root = t
+        while root.reentry_of is not None and root.reentry_of in by_track and root.track_id not in seen:
+            seen.add(root.track_id)
+            root = by_track[root.reentry_of]
+        if t.reentry_of is not None and root.track_id in kept and root.track_id != t.track_id:
+            out.add(t.track_id)
+    return frozenset(out)
+
+
+def _check_item_tracks(
+    item: DecisionItem, tracks: list[Track], where: str, *, kept_roots: frozenset[str] = frozenset()
+) -> None:
     """An item is static exactly when all its tracks are (PRE-A §12; the UI tells static items apart). What policy
     or a model may keep: only face and person tracks (WP3: screens and documents never), never a re-entry (a
     re-acquired object starts hidden, ARCHITECTURE §3.2) and never a static track (PRE-A §12)."""
@@ -1350,7 +1383,8 @@ def _check_item_tracks(item: DecisionItem, tracks: list[Track], where: str) -> N
     for t in tracks:
         if t.concept not in ("face", "person"):
             raise ContractError(f"{where}: kept by {item.decided_by}, but {t.track_id} is a {t.concept}, not a person")
-        if t.reentry_of is not None:
+        if t.reentry_of is not None and t.track_id not in kept_roots:
+            # Owner, 11-04: a re-entry of someone the policy kept comes back kept; any other starts hidden.
             raise ContractError(f"{where}: kept by {item.decided_by}, but {t.track_id} is a re-entry (starts hidden)")
         if t.origin == "static":
             raise ContractError(f"{where}: kept by {item.decided_by}, but {t.track_id} is static (never auto-kept)")
@@ -1392,21 +1426,25 @@ def _check_decisions(decisions: Decisions, job: Job, tracks: Tracks | None, role
         if ruled and item.kind != "child":
             raise ContractError(f"{where}: track {ruled[0]} has a child vote or ruling, so the item is kind child")
         if item.decision == "keep" and item.decided_by != "creator" and roles is not None:
-            # WP3: only a unanimous participant (a person) is kept by policy or model; a screen, a never-judged
-            # track or any doubt needs the creator.
+            # Owner, 11-04: a person a majority of the role checks call participant (and none child) is kept by
+            # policy or model; a screen, a never-judged track or a minority needs the creator.
             if item.kind != "person":
                 raise ContractError(f"{where}: a {item.kind} item is never kept without the creator")
             doubtful = [
                 tid for tid in item.track_ids
-                if tid not in votes or votes[tid].role != "participant" or votes[tid].votes != ["participant"] * 3
-                or votes[tid].failed_votes
-                or len(set(votes[tid].frames)) < 2  # WP3: consistent on ≥ 2 keyframes
+                if tid not in votes
+                or "child" in votes[tid].votes
+                or not (
+                    votes[tid].votes.count("participant") >= 2
+                    or (votes[tid].escalated and votes[tid].role == "participant")
+                )
             ]  # fmt: skip
             if doubtful:
                 raise ContractError(
-                    f"{where}: kept by {item.decided_by}, but {doubtful[0]} isn't a unanimous participant"
+                    f"{where}: kept by {item.decided_by}, but {doubtful[0]} isn't a participant on most checks"
                 )
-        _check_item_tracks(item, [by_track[t] for t in item.track_ids if t in by_track], where)
+        _check_item_tracks(item, [by_track[t] for t in item.track_ids if t in by_track], where,
+                           kept_roots=reentries_of_kept(decisions, by_track))  # fmt: skip
         _check_item(item, job, where)
     if known is not None:
         # Deny by default: every track is in an item, so nothing found is left undecided (and unhidden).
@@ -2387,28 +2425,6 @@ def validate_job_dir(job_dir: str | Path) -> dict[str, BaseModel]:
     return loaded
 
 
-def _normal_words(text: str) -> str:
-    """PRE-A §12: lowercased, punctuation removed (so "I'm" is one word, "im"), spaces collapsed."""
-    return " ".join("".join(ch for ch in text.lower() if ch.isalnum() or ch.isspace()).split())
-
-
-def _speech_evidence(k: int | None, scene: Scene, transcript: Transcript) -> bool:
-    """PRE-A §12: participant ``k`` has a turn by its speaker, or an introduction quote (≥ 2 words) found in the
-    introducing turn's text, both normalised."""
-    if k is None or not 0 <= k < len(scene.participants):
-        return False
-    who = scene.participants[k]
-    if who.speaker is not None and any(t.speaker == who.speaker for t in transcript.turns):
-        return True
-    i, quote = who.introduced_in_turn, _normal_words(who.introduction_quote or "")
-    return (
-        i is not None
-        and i < len(transcript.turns)
-        and len(quote.split()) >= 2
-        and (quote in _normal_words(transcript.turns[i].text))
-    )
-
-
 def _check_auto_keeps(
     decisions: Decisions | None,
     job: Job,
@@ -2449,15 +2465,6 @@ def _check_auto_keeps(
         ]  # fmt: skip
         if len(scene.children) > len(children):
             raise ContractError(f"{where} the scene has an unmatched child (unmatched_child)")
-    if job.audio and usable and scene is not None and roles is not None and transcript is not None:
-        votes = {t.track_id: t for t in roles.tracks}
-        for item in auto:
-            for tid in item.track_ids:
-                if tid in votes and not _speech_evidence(votes[tid].matches_participant, scene, transcript):
-                    raise ContractError(
-                        f"decisions.json {item.item_id}: kept by {item.decided_by}, but {tid} has no speech or"
-                        " introduction evidence (no_speech_link)"
-                    )
 
 
 def _check_receipt_models(

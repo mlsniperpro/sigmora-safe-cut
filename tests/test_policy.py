@@ -113,9 +113,10 @@ def test_empty_evidence_still_gives_a_readable_reason() -> None:
 @pytest.mark.parametrize(
     ("votes", "escalated", "suggested", "hold", "reason"),
     [
-        (("participant", "participant", "bystander"), True, "participant", None, "a closer look suggests participant"),
-        (("participant", "participant", "bystander"), True, None, None, "checks didn't all agree"),
-        (("participant", "participant", "unsure"), False, None, "no_roles", "checks didn't all agree"),  # E3
+        # Owner, 11-04: a participant majority is a tie (kept); a split with no majority waits for the creator.
+        (("participant", "bystander", "unsure"), True, "participant", None, "a closer look suggests participant"),
+        (("participant", "bystander", "unsure"), True, None, None, "checks didn't all agree"),
+        (("participant", "unsure", "unsure"), False, None, "no_roles", "checks didn't all agree"),  # E3
     ],
 )
 def test_disputed_tracks_need_the_creator(
@@ -127,16 +128,31 @@ def test_disputed_tracks_need_the_creator(
     assert reason in got["reason"]
 
 
-def test_one_keyframe_is_not_enough() -> None:  # A2 (a row that says participant on one frame)
+def test_one_keyframe_is_enough_for_a_participant_majority() -> None:  # owner, 11-04: any tie keeps an adult
     r = row("face:1", *PARTICIPANT, frames=(5,), role="participant", matches_participant=0)
-    got = only(run(track("face:1", 0, 20), rs=[r]), "face:1")
-    assert got["decision"] == "needs_you"
-    assert "2 keyframes" in got["reason"]
+    assert only(run(track("face:1", 0, 20), rs=[r]), "face:1")["decision"] == "keep"
 
 
-def test_a_failed_vote_blocks_a_keep_even_with_a_participant_role() -> None:
-    r = row("face:1", *PARTICIPANT, failed_votes=1, matches_participant=0)
+def test_a_participant_split_waits_for_the_creator() -> None:
+    r = row("face:1", "participant", "bystander", "unsure", escalated=True)
     assert only(run(track("face:1", 0, 20), rs=[r]), "face:1")["decision"] == "needs_you"
+
+
+def test_a_bystander_majority_is_hidden() -> None:
+    r = row("face:1", "bystander", "bystander", "unsure", escalated=True)
+    got = only(run(track("face:1", 0, 20), rs=[r]), "face:1")
+    assert (got["decision"], got["reason"].startswith("bystander: 2 of 3")) == ("hide", True)
+
+
+def test_no_tie_after_escalation_is_hidden() -> None:
+    r = row("face:1", "unsure", "unsure", "unsure", escalated=True)
+    got = only(run(track("face:1", 0, 20), rs=[r]), "face:1")
+    assert (got["decision"], got["reason"].startswith("no tie to the conversation")) == ("hide", True)
+
+
+def test_a_failed_vote_does_not_block_a_participant_majority() -> None:  # owner, 11-04: a majority is a tie
+    r = row("face:1", *PARTICIPANT, failed_votes=1, matches_participant=0)
+    assert only(run(track("face:1", 0, 20), rs=[r]), "face:1")["decision"] == "keep"
 
 
 @pytest.mark.parametrize("votes", [("participant", "participant", "child"), ("child", "bystander", "unsure")])
@@ -165,14 +181,21 @@ def test_an_object_with_a_child_vote_is_a_child() -> None:
     assert only(run(track("screen:1", 0, 5), rs=[r]), "screen:1")["kind"] == "child"
 
 
-def test_a_reentry_is_hidden_until_the_creator_merges_it() -> None:
+def test_a_reentry_of_a_kept_person_comes_back_kept() -> None:  # owner, 11-04 (item F)
     a = track("face:1", 0, 10)
     b = track("face:2", 20, 30, reentry_of="face:1")
     got = run(a, b, rs=[matched("face:1", frames=(2, 8)), matched("face:2", frames=(22, 28))])
     assert only(got, "face:1")["decision"] == "keep"
     second = only(got, "face:2")
-    assert second["decision"] == "needs_you"
-    assert "merge" in second["reason"]
+    assert (second["decision"], "came back into view" in second["reason"]) == ("keep", True)
+
+
+def test_a_reentry_of_a_hidden_person_waits_for_the_creator() -> None:
+    a = track("face:1", 0, 10)
+    b = track("face:2", 20, 30, reentry_of="face:1")
+    got = run(a, b, rs=[row("face:1", *("bystander",) * 3), matched("face:2", frames=(22, 28))])
+    second = only(got, "face:2")
+    assert (second["decision"], "merge" in second["reason"]) == ("needs_you", True)
 
 
 def test_a_static_person_box_is_never_auto_kept() -> None:
@@ -249,7 +272,7 @@ def test_hold_precedence_writes_the_first_in_order() -> None:
 )
 def test_a_role_failure_still_writes_the_first_hold_in_order(kw: dict[str, Any], hold: str) -> None:
     failed = row("face:1", "unsure", "unsure", "unsure", failed_votes=3, escalated=False)
-    unescalated = row("face:2", "participant", "participant", "unsure", escalated=False)
+    unescalated = row("face:2", "participant", "unsure", "unsure", escalated=False)
     got = run(track("face:1", 0, 20), track("face:2", 0, 20, (200, 10, 240, 50)), rs=[failed, unescalated], **kw)
     assert (only(got, "face:1")["hold"], only(got, "face:2")["hold"]) == (hold, hold)
     assert only(got, "face:1")["reason"] == "the role check couldn't judge this person"
@@ -326,18 +349,20 @@ def test_introduction_evidence(quote: str | None, turn: int | None, kept: bool) 
         run(track("face:2", 0, 20), rs=[row("face:2", *PARTICIPANT, matches_participant=1)], scene=sc, transcript=tr),
         "face:2",
     )
-    assert got["decision"] == ("keep" if kept else "needs_you")
-    assert got["hold"] == (None if kept else "no_speech_link")
+    # Owner, 11-04: the speech link is one tie among several; three participant votes are another, so the
+    # participant is kept either way, and the reason says which tie kept them.
+    assert (got["decision"], got["hold"]) == ("keep", None)
+    assert ("3 of 3 checks" in got["reason"]) == (not kept)
 
 
-def test_votes_naming_different_participants_have_no_link() -> None:  # P8
+def test_votes_naming_different_participants_have_no_link_but_still_a_tie() -> None:  # P8
     got = only(run(track("face:1", 0, 20), rs=[row("face:1", *PARTICIPANT)]), "face:1")
-    assert got["hold"] == "no_speech_link"
+    assert (got["decision"], got["hold"], "3 of 3 checks" in got["reason"]) == ("keep", None, True)
 
 
-def test_an_empty_but_working_transcript_still_needs_evidence() -> None:  # P9c
+def test_an_empty_but_working_transcript_keeps_on_the_votes() -> None:  # P9c
     got = only(run(track("face:1", 0, 20), rs=[row("face:1", *PARTICIPANT)], transcript=transcript(turns=[])), "face:1")
-    assert got["hold"] == "no_speech_link"
+    assert (got["decision"], got["hold"]) == ("keep", None)
 
 
 def test_a_clip_without_audio_needs_no_speech() -> None:
@@ -474,21 +499,23 @@ def policy_inputs(draw: st.DrawFn) -> Inputs:
 @pytest.mark.entry("E4:non_participant_never_kept")
 @E4
 @given(policy_inputs())
-def test_property_nothing_but_a_unanimous_participant_is_kept(inputs: Inputs) -> None:
+def test_property_nothing_but_a_participant_majority_is_kept(inputs: Inputs) -> None:
     got = decide(inputs)
     rows = {r.track_id: r for r in inputs.roles.tracks} if inputs.roles else {}
     by_id = {t.track_id: t for t in inputs.tracks.tracks}
+    kept = {tid for item in got.items if item.decision == "keep" for tid in item.track_ids}
     for item in got.items:
         if item.decision != "keep":
             continue
         for tid in item.track_ids:
             r, t = rows[tid], by_id[tid]
-            assert r.role == "participant"
-            assert r.votes == ["participant"] * 3
-            assert not r.failed_votes
-            assert len(set(r.frames)) >= 2
+            # Owner, 11-04: a majority of the role checks say participant (a tie), none says child, and a
+            # re-entry is kept only when its original is.
+            assert r.votes.count("participant") >= 2 or (r.escalated and r.role == "participant")
+            assert "child" not in r.votes
+            assert any(t.first <= f <= t.last for f in r.frames)
             assert t.concept in ("face", "person")
-            assert t.reentry_of is None
+            assert t.reentry_of is None or t.reentry_of in kept
             assert t.origin == "sam"
             assert not t.child_phrase
 
@@ -519,12 +546,6 @@ def test_property_children_are_never_kept(inputs: Inputs) -> None:
                     for t in item.track_ids)  # fmt: skip
         if child:
             assert (item.kind, item.decision, item.locked) == ("child", "hide", True)
-
-
-@settings(max_examples=300, deadline=None)
-@given(st.text(max_size=40))
-def test_property_normal_words_matches_the_contract(text: str) -> None:
-    assert normal_words(text) == contracts._normal_words(text)
 
 
 def test_cited_frames_must_be_on_the_track() -> None:
