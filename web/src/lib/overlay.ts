@@ -9,8 +9,10 @@ export const MAX_REGIONS = 200;
 /** The guard's face padding (DESIGN §2.6): 15 % of the box each side plus 8 px. */
 const FACE_PAD = 0.15;
 const PAD_PX = 8;
-/** DESIGN §2.7: a face spans at most 6 mosaic cells. */
-const MAX_BLOCKS = 6;
+/** DESIGN §2.7: a face spans 4 mosaic cells (the guard's `MAX_BLOCKS`). */
+const MAX_BLOCKS = 4;
+/** The renderer's per-cell noise amplitude (draw.py `NOISE`), in levels. */
+const NOISE = 24;
 /** DESIGN §2.7: a head estimate is the top of a body box, min(0.22·h, 0.9·w) tall. */
 const HEAD_SHARE = 0.22;
 const HEAD_ASPECT = 0.9;
@@ -215,26 +217,46 @@ function paint(ctx: CanvasRenderingContext2D, video: CanvasImageSource | null, o
   }
 }
 
-/** Coarse cells locked to the item's grid, so they don't shift between frames (DESIGN §2.7), clipped to the
- * region's mask runs when it has them. */
+/** Coarse cells locked to the item's grid, so they don't shift between frames (DESIGN §2.7), as the renderer draws
+ * them: every cell is the region's mean colour plus a fixed per-cell noise (no cell keeps the face's own light and
+ * dark), clipped to the region's mask runs when it has them. */
 function drawPixelated(ctx: CanvasRenderingContext2D, video: CanvasImageSource, box: Box, [gx, gy, cell]: Grid, scale: number, mask: Run[] | null): void {
-  const x0 = gx + Math.floor((box[0] - gx) / cell) * cell;
-  const y0 = gy + Math.floor((box[1] - gy) / cell) * cell;
-  const cols = Math.max(1, Math.ceil((box[2] - x0) / cell));
-  const rows = Math.max(1, Math.ceil((box[3] - y0) / cell));
   scratch ??= document.createElement("canvas");
-  scratch.width = cols;
-  scratch.height = rows;
-  const small = scratch.getContext("2d");
+  scratch.width = 1;
+  scratch.height = 1;
+  const small = scratch.getContext("2d", { willReadFrequently: true });
   if (!small) return;
   small.imageSmoothingEnabled = true;
-  small.drawImage(video, x0, y0, cols * cell, rows * cell, 0, 0, cols, rows);
+  small.drawImage(video, box[0], box[1], Math.max(1, box[2] - box[0]), Math.max(1, box[3] - box[1]), 0, 0, 1, 1);
+  const [r, g, b] = small.getImageData(0, 0, 1, 1).data;
+  const x0 = gx + Math.floor((box[0] - gx) / cell) * cell;
+  const y0 = gy + Math.floor((box[1] - gy) / cell) * cell;
   ctx.save();
   ctx.beginPath();
   if (mask) for (const [x, y, h] of mask) ctx.rect(x * scale, y * scale, Math.ceil(scale) + 0.5, h * scale + 0.5);
   else ctx.rect(box[0] * scale, box[1] * scale, (box[2] - box[0]) * scale, (box[3] - box[1]) * scale);
   ctx.clip();
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(scratch, 0, 0, cols, rows, x0 * scale, y0 * scale, cols * cell * scale, rows * cell * scale);
+  for (let y = y0; y < box[3]; y += cell) {
+    for (let x = x0; x < box[2]; x += cell) {
+      const n = cellNoise((x - gx) / cell, (y - gy) / cell);
+      ctx.fillStyle = `rgb(${clampByte((r ?? 0) + n[0])}, ${clampByte((g ?? 0) + n[1])}, ${clampByte((b ?? 0) + n[2])})`;
+      ctx.fillRect(x * scale, y * scale, cell * scale + 0.5, cell * scale + 0.5);
+    }
+  }
   ctx.restore();
+}
+
+function clampByte(v: number): number {
+  return Math.max(0, Math.min(255, Math.round(v)));
+}
+
+/** A fixed noise per cell and channel in [-NOISE, NOISE] (a preview of draw.py's; the same per frame, never random). */
+function cellNoise(col: number, row: number): [number, number, number] {
+  const out: [number, number, number] = [0, 0, 0];
+  for (let ch = 0; ch < 3; ch++) {
+    let h = (Math.imul(col | 0, 73856093) ^ Math.imul(row | 0, 19349663) ^ Math.imul(ch + 1, 83492791)) >>> 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
+    out[ch] = (h % (2 * NOISE + 1)) - NOISE;
+  }
+  return out;
 }

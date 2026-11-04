@@ -2,8 +2,8 @@
 
 * ``solid`` and ``person_solid``: an opaque fill over the region (the box, or the mask when the entry has one).
 * ``pixelate``: a mosaic on the item's locked grid (``[x0, y0, cell]``): every cell takes the mean colour of the
-  whole cell in the source frame plus a fixed per-cell noise, so a still object renders identical cells frame
-  after frame (a shifting grid leaks detail, DESIGN §2.7) and the cell means can't be read back exactly.
+  whole region in the source frame plus a fixed per-cell noise, so a still object renders identical cells frame
+  after frame (a shifting grid leaks detail, DESIGN §2.7) and no cell carries the face's own light and dark.
 * crowd fills: opaque, drawn last.
 
 An entry never paints inside its ``keep_clear`` boxes (kept participants' faces, DESIGN §2.6).
@@ -28,7 +28,7 @@ Frame = NDArray[np.uint8]
 #: The fill colour, BGR (a dark slate: reads as "removed", never as a shadow or a dark garment).
 FILL_BGR = (40, 32, 28)
 #: Per-cell noise amplitude, in levels per channel (DESIGN §2.7: "plus per-block noise").
-NOISE = 12
+NOISE = 24
 
 
 def region_mask(entry: PlanEntry, height: int, width: int) -> tuple[slice, slice, BoolMask]:
@@ -91,19 +91,13 @@ def _pixelate(out: Frame, source_integral: NDArray[np.float64], entry: PlanEntry
     row0, row1 = (y_lo - gy) // cell, (y_hi - 1 - gy) // cell
     cols = np.arange(col0, col1 + 1, dtype=np.int64)
     rows = np.arange(row0, row1 + 1, dtype=np.int64)
-    cx0 = np.clip(gx + cols * cell, 0, width)
-    cx1 = np.clip(gx + (cols + 1) * cell, 0, width)
-    cy0 = np.clip(gy + rows * cell, 0, height)
-    cy1 = np.clip(gy + (rows + 1) * cell, 0, height)
+    # Every cell takes the whole region's mean colour (never its own): the cover keeps no facial structure, not even
+    # the coarse light and dark of a face, and the fixed per-cell noise makes it read as a mosaic (DESIGN §2.7).
     integral = source_integral
-    sums = (
-        integral[cy1[:, None], cx1[None, :]]
-        - integral[cy0[:, None], cx1[None, :]]
-        - integral[cy1[:, None], cx0[None, :]]
-        + integral[cy0[:, None], cx0[None, :]]
+    total = (integral[y_hi, x_hi] - integral[y_lo, x_hi] - integral[y_hi, x_lo] + integral[y_lo, x_lo]) / max(
+        1, (y_hi - y_lo) * (x_hi - x_lo)
     )
-    counts = ((cy1 - cy0)[:, None] * (cx1 - cx0)[None, :]).astype(np.float64)
-    means = sums / np.maximum(counts, 1.0)[:, :, None]
+    means = np.broadcast_to(np.asarray(total, dtype=np.float64), (rows.size, cols.size, 3))
     colours = np.clip(np.rint(means) + _cell_noise(entry.item_id, rows, cols), 0, 255).astype(np.uint8)
     yy = (np.arange(y_lo, y_hi, dtype=np.int64) - gy) // cell - row0
     xx = (np.arange(x_lo, x_hi, dtype=np.int64) - gx) // cell - col0

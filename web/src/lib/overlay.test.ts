@@ -57,8 +57,8 @@ describe("overlayOps (UI-SPEC §3.6)", () => {
 
   it("covers a locally hidden person's face with the mosaic until the plan arrives, never their body (§2.7)", () => {
     const ops = overlayOps({ ...base, plan: { frames: {}, crowd_fills: [] }, unplanned: [{ itemId: "i_1", trackIds: ["face:2", "person:1"] }] });
-    // The face padded like the guard's (15 % + 8 px), on the grid the guard locks: 70 px wide → 12 px cells.
-    expect(ops).toEqual([{ kind: "cover", box: [391, 100, 499, 234], style: "pixelate", grid: [391, 100, 12] }]);
+    // The face padded like the guard's (15 % + 8 px), on the grid the guard locks: 70 px wide → 18 px cells (4 across).
+    expect(ops).toEqual([{ kind: "cover", box: [391, 100, 499, 234], style: "pixelate", grid: [391, 100, 18] }]);
   });
 
   it("covers a head estimate, not the body, where a hidden person's face isn't seen (§2.7)", () => {

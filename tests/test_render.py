@@ -82,7 +82,8 @@ def test_pixelate_cells_are_uniform_on_the_locked_grid_and_noise_is_bounded() ->
             ys, xs = slice(max(cy, 7), min(cy + 10, 37)), slice(max(cx, 5), min(cx + 10, 45))
             cell = out[ys, xs].reshape(-1, 3)
             assert (cell == cell[0]).all()
-            mean = img[max(cy, 0) : cy + 10, max(cx, 0) : cx + 10].reshape(-1, 3).mean(axis=0)
+            # every cell is the whole region's mean colour plus its fixed noise: no cell keeps its own light or dark
+            mean = img[7:37, 5:45].reshape(-1, 3).mean(axis=0)
             assert (np.abs(cell[0].astype(float) - mean) <= NOISE + 1).all()
     assert (out[:7] == img[:7]).all()
 
@@ -172,9 +173,14 @@ def test_reversibility_a_face_detector_finds_no_pixelated_face(rendered: Path) -
     fine = 0
     for f in visible[::5]:
         (e,) = [e for e in plan.frames[f] if e.item_id == "i_2"]
+        x1, y1, x2, y2 = e.box
         w = by["boxes"][str(f)][2] - by["boxes"][str(f)][0]
-        weak = e.model_copy(update={"grid": (e.grid[0], e.grid[1], max(2, math.ceil(w / 16)))}) if e.grid else e
-        fine += hits(apply(source[f], [weak], []), by["boxes"][str(f)]) > 0
+        cells = max(1, math.ceil((x2 - x1) / max(2, math.ceil(w / 16))))
+        rows = max(1, round(cells * (y2 - y1) / (x2 - x1)))
+        weak = source[f].copy()  # a classic fine mosaic: each of 16 cells across the face keeps its own mean
+        small = cv2.resize(weak[y1:y2, x1:x2], (cells, rows), interpolation=cv2.INTER_AREA)
+        weak[y1:y2, x1:x2] = cv2.resize(small, (x2 - x1, y2 - y1), interpolation=cv2.INTER_NEAREST)
+        fine += hits(weak, by["boxes"][str(f)]) > 0
     assert fine >= 1  # why DESIGN §2.7 bans fine mosaics
 
 

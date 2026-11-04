@@ -8,9 +8,9 @@ Remove person (``person_solid``) covers the whole body. No cover ever hides a ke
 of another item lists the kept faces it must leave clear (``keep_clear``), except a child's and an audit patch's.
 Crowded frames (a concept at SAM's 16-object cap) get a crowd fill over every tracked object there. A pixelated
 item keeps one grid for its whole life, anchored at its first face box with cells big enough that the face spans at
-most 6 blocks, so the mosaic never shifts between frames. An item a model read through (a flagged leak's
-``through_item``) renders solid from then on, and every audit patch is rebuilt from its decision item, so no re-plan
-ever loses one.
+most 4 blocks (DESIGN's limit is 6), so the mosaic never shifts between frames. An item a model read through (a
+flagged leak's ``through_item``) renders solid from then on, and every audit patch is rebuilt from its decision item,
+so no re-plan ever loses one.
 """
 
 from __future__ import annotations
@@ -47,8 +47,9 @@ EXTEND = 8
 GAP_HOLD_S = 2.0
 #: DESIGN §2.6: the back-fill before a track's first box, in seconds (a late detection, held still).
 BACKFILL_S = 0.5
-#: DESIGN §2.7: a face spans at most 6 mosaic blocks.
-MAX_BLOCKS = 6
+#: DESIGN §2.7: a face spans at most 6 mosaic blocks; we use 4 (coarser is always allowed, finer never): with 6, the
+#: demo's bystander still left a trace the entry gate's pixel check (E3) could read on a few edge frames.
+MAX_BLOCKS = 4
 
 Grid = tuple[int, int, int]
 
@@ -60,7 +61,7 @@ def backfill_frames(job: Job) -> int:
 
 def locked_grid(item: DecisionItem, by_id: dict[str, Track], job: Job) -> Grid | None:
     """``[x0, y0, cell]`` for a pixelated item: origin at its earliest face's first padded box, cell from its widest
-    face box (≤ 6 blocks across), fixed for the item's whole life (DESIGN §2.7)."""
+    face box (≤ 4 blocks across), fixed for the item's whole life (DESIGN §2.7)."""
     faces = [by_id[t] for t in item.track_ids if t in by_id and by_id[t].concept == "face"]
     if not faces:
         return None

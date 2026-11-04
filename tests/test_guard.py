@@ -160,7 +160,7 @@ def test_the_pixelate_grid_is_locked_to_the_first_face_and_sized_for_6_blocks() 
     ts = tracks(track("face:1", 0, 30, (100, 60, 136, 96), step=(1, 1)))
     p = plan(JOB, ts, hide_all(ts))
     grids = {e.grid for es in p.frames.values() for e in es}
-    assert grids == {(86, 46, 6)}  # 36 px wide: 6 px cells, origin at the first padded box
+    assert grids == {(86, 46, 9)}  # 36 px wide: 9 px cells (4 across), origin at the first padded box
 
 
 def test_a_face_that_grows_gets_cells_from_its_widest_box() -> None:
@@ -170,7 +170,7 @@ def test_a_face_that_grows_gets_cells_from_its_widest_box() -> None:
     ts = tracks(t)
     (e,) = entries(plan(JOB, ts, hide_all(ts)), 1, "i_1")
     assert e.grid is not None
-    assert e.grid[2] == 7  # ceil(42 / 6)
+    assert e.grid[2] == 11  # ceil(42 / 4)
 
 
 def test_an_item_read_through_renders_solid_from_then_on() -> None:
