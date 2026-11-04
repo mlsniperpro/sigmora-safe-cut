@@ -6,12 +6,11 @@ everything else 8 % plus 8 px. Outside the frames SAM saw the object, the guard 
 * **anchors** (a box from SAM): the padded box, or the padded SAM mask when one exists;
 * **between anchors**, within SAM's own sampling step: the interpolated box, or both neighbouring masks shifted to
   it (API-NOTES §12), padded;
-* **gaps** (SAM lost the object between anchors): the box on each side held and grown 2 % a frame (forward from
-  where it was lost, backward from where it came back), joined with the interpolated box, so a box that moved
-  during the gap is still covered;
-* **back-fill** (``backfill`` frames before the first detection, SAM's late confirmation) and **extend** (8 frames
-  after the last): the edge box held, grown 2 % a frame, and swept along the track's own motion at its edge (an
-  object SAM confirmed late was usually already moving the same way).
+* **gaps** (SAM lost the object between anchors): the interpolated box, grown 2 % a frame from the nearer anchor
+  (at most 25 % each side);
+* **back-fill** (``backfill`` frames, half a second, before the first detection) and **extend** (8 frames after the
+  last): the edge box held still, grown 2 % a frame (at most 10 % each side before, 25 % after). Nothing is swept
+  along the track's motion: a cover never runs ahead of its object into empty space or over someone else.
 
 A mask region must still span its track box the way the contract checks it (80 % of its width and height, a
 quarter of its area); a mask that doesn't (an empty or sliver SAM mask, PRE-A §2.6) falls back to the box.
@@ -40,16 +39,12 @@ from safecut.decide.geometry import (
     union,
 )
 
-#: DESIGN §2.6: a held box grows 2 % of its size per frame on each side...
+#: DESIGN §2.6: a held box grows 2 % of its size per frame on each side, never moving (no motion sweep)...
 GROW_PER_FRAME = 0.02
-#: ...up to its own size again on each side, so a long hold stays a region, not the whole frame.
-MAX_GROWTH = 1.0
-#: The fastest edge motion the sweep follows, as a share of the box's size per frame. The sweep is a union, so a
-#: higher cap only widens the cover; one box size a frame follows a small, far face through a fast head turn, and
-#: anchor jitter, measured over up to 8 frames, stays far below it.
-MAX_SPEED = 1.0
-#: How far inward the edge velocity is measured (frames).
-VELOCITY_SPAN = 8
+#: ...up to a quarter of its size on each side after the last detection and through gaps...
+MAX_GROWTH = 0.25
+#: ...and up to a tenth before the first: the back-fill only covers a late detection, never where it isn't yet.
+MAX_GROWTH_BEFORE = 0.10
 
 
 @dataclass(frozen=True)
@@ -68,33 +63,9 @@ def _expand(box: BoxT, share: float, width: int, height: int) -> BoxT:
     return out if out is not None else box
 
 
-def edge_velocity(track: Track, at_start: bool) -> tuple[float, float]:
-    """The track's (dx, dy) per frame at its first (or last) anchor, measured over up to 8 frames inward and capped
-    at the box's own size per frame."""
-    keys = sorted(track.boxes)
-    edge = keys[0] if at_start else keys[-1]
-    target = edge + VELOCITY_SPAN if at_start else edge - VELOCITY_SPAN
-    inward = [k for k in keys if k != edge and (k <= target if at_start else k >= target)]
-    if not inward:
-        inward = [k for k in keys if k != edge]
-    if not inward:
-        return 0.0, 0.0
-    other = inward[-1] if at_start else inward[0]
-    a, b = track.boxes[edge], track.boxes[other]
-    span = other - edge
-    cx = ((b[0] + b[2]) - (a[0] + a[2])) / 2 / span
-    cy = ((b[1] + b[3]) - (a[1] + a[3])) / 2 / span
-    w, h = a[2] - a[0], a[3] - a[1]
-    return max(-MAX_SPEED * w, min(MAX_SPEED * w, cx)), max(-MAX_SPEED * h, min(MAX_SPEED * h, cy))
-
-
-def held_box(edge: BoxT, distance: int, velocity: tuple[float, float], width: int, height: int) -> BoxT:
-    """The edge box swept ``distance`` frames along ``velocity`` (signed: back in time for back-fill), joined with
-    itself and grown 2 % a frame (capped)."""
-    dx, dy = velocity[0] * distance, velocity[1] * distance
-    moved = clamp((edge[0] + dx, edge[1] + dy, edge[2] + dx, edge[3] + dy), width, height)
-    swept = union([edge, moved]) if moved is not None else edge
-    return _expand(swept, min(GROW_PER_FRAME * distance, MAX_GROWTH), width, height)
+def held_box(edge: BoxT, distance: int, cap: float, width: int, height: int) -> BoxT:
+    """The edge box held in place ``distance`` frames away, grown 2 % a frame on each side up to ``cap``."""
+    return _expand(edge, min(GROW_PER_FRAME * distance, cap), width, height)
 
 
 def mask_ok(mask: BoolMask, box: BoxT) -> bool:
@@ -170,8 +141,6 @@ class TrackRegions:
         self.interp_gap = interp_gap
         self.keys = sorted(track.boxes)
         self.mask_keys = sorted(track.masks)
-        self.start_v = edge_velocity(track, at_start=True)
-        self.end_v = edge_velocity(track, at_start=False)
         self._decoded = lru_cache(maxsize=8)(self._decode)
 
     def _decode(self, frame: int) -> Patch | None:
@@ -212,11 +181,10 @@ class TrackRegions:
         """The region on ``frame`` (which the caller keeps inside ``first - backfill … last + extend``)."""
         t = self.track
         if frame < t.first:
-            box = held_box(t.boxes[t.first], t.first - frame, (-self.start_v[0], -self.start_v[1]), self.width,
-                           self.height)  # fmt: skip
+            box = held_box(t.boxes[t.first], t.first - frame, MAX_GROWTH_BEFORE, self.width, self.height)
             return Region(self._pad(box))
         if frame > t.last:
-            box = held_box(t.boxes[t.last], frame - t.last, self.end_v, self.width, self.height)
+            box = held_box(t.boxes[t.last], frame - t.last, MAX_GROWTH, self.width, self.height)
             return Region(self._pad(box))
         box = t.boxes.get(frame)
         if box is not None:
@@ -240,8 +208,7 @@ class TrackRegions:
                 if region is not None:
                     return region
             return Region(self._pad(interpolated))
-        # A long gap is held from both ends: growing forward from where it was lost and backward from where it
-        # came back, plus the straight path between, so a reappearance far from the loss is covered too.
-        held = held_box(t.boxes[before], frame - before, (0.0, 0.0), self.width, self.height)
-        back = held_box(t.boxes[after], after - frame, (0.0, 0.0), self.width, self.height)
-        return Region(self._pad(union([held, back, interpolated])))
+        # A long gap (SAM lost the object): the interpolated box, grown 2 % a frame from the nearer anchor (capped),
+        # never stretched between where it was lost and where it came back.
+        distance = min(frame - before, after - frame)
+        return Region(self._pad(held_box(interpolated, distance, MAX_GROWTH, self.width, self.height)))

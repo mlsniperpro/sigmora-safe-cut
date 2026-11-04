@@ -18,7 +18,7 @@ import os
 import re
 import tempfile
 from collections import Counter
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal, cast, overload
@@ -493,6 +493,33 @@ class Roles(Contract):
 Hold = Literal["no_scene", "no_speech", "no_roles", "unmatched_child", "no_speech_link"]
 Style = Literal["solid", "pixelate", "person_solid"]
 
+#: DESIGN §2.7: a head estimate is the top of a body box, its full width and ``min(0.22·h, 0.9·w)`` tall.
+HEAD_SHARE, HEAD_ASPECT = 0.22, 0.9
+
+
+def head_box(box: Box) -> Box:
+    """The head estimate of a body ``box`` (DESIGN §2.7): what an identity-only cover hides where no face is seen."""
+    x1, y1, x2, y2 = box
+    tall = math.ceil(min(HEAD_SHARE * (y2 - y1), HEAD_ASPECT * (x2 - x1)))
+    return (x1, y1, x2, min(y2, y1 + max(1, tall)))
+
+
+def identity_only(kind: str, style: Style | None) -> bool:
+    """DESIGN §2.7: a hidden person or child is covered face/head only (a mosaic, or solid with no face to size
+    one); only the creator's Remove person (``person_solid``) covers the whole person."""
+    return kind in ("person", "child") and style is not None and style != "person_solid"
+
+
+def face_frames(item_tracks: Iterable[Track], *, backfill: int, extend: int, frames: int) -> frozenset[int]:
+    """The frames an identity-only item's face tracks are planned on (``first − backfill`` … ``last + extend``):
+    there its face cover hides the identity, so its body tracks draw nothing; elsewhere they draw a head estimate."""
+    return frozenset(
+        f
+        for t in item_tracks
+        if t.concept == "face"
+        for f in range(max(0, t.first - backfill), min(frames, t.last + extend + 1))
+    )
+
 
 class DecisionItem(Contract):
     item_id: str = Field(pattern=r"^[ip]_[0-9]+$")
@@ -601,6 +628,17 @@ class PlanEntry(Contract):
     style: Style
     grid: tuple[NonNegativeInt, NonNegativeInt, PositiveInt] | None
     source: Literal["decision", "audit_patch"] = "decision"
+    #: DESIGN §2.6: kept participants' padded face boxes on this frame that this entry leaves untouched (its pixels
+    #: inside them are not drawn). Never on a child's entry or an audit patch (a child always wins). Left out of the
+    #: file while empty, so plans written before it existed read and hash the same.
+    keep_clear: list[Box] = Field(default_factory=list[Box])
+
+    @model_serializer(mode="wrap")
+    def _omit_no_clear(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data = cast(dict[str, Any], handler(self))
+        if not data.get("keep_clear"):
+            data.pop("keep_clear", None)
+        return data
 
     @model_validator(mode="after")
     def _shape(self) -> PlanEntry:
@@ -608,6 +646,8 @@ class PlanEntry(Contract):
             raise ValueError("mask is set exactly when shape is mask")
         if (self.style == "pixelate") != (self.grid is not None):
             raise ValueError("grid is set exactly when style is pixelate")
+        if self.keep_clear and self.source == "audit_patch":
+            raise ValueError("an audit patch is never clipped (keep_clear)")
         return self
 
 
@@ -1639,7 +1679,7 @@ def _check_crowd_fills(plan: Plan, tracks: Tracks, hidden: set[str]) -> None:
             if len(objects) < SAM_OBJECT_CAP:
                 continue
             # Only what's hidden must be under a fill: a kept participant in the crowd stays visible.
-            boxes = [b for t in objects if t.track_id in hidden and (b := _box_near(t, frame)) is not None]
+            boxes = [b for t in objects if t.track_id in hidden and (b := nearest_box(t, frame)) is not None]
             # Fills may be split into tiles (DESIGN §2.6): each object lies inside some fill on this frame.
             frame_fills = fills.get(frame, [])
             outside = [b for b in boxes if not any(_contains(fill, b) for fill in frame_fills)]
@@ -1661,12 +1701,11 @@ def _check_plan_geometry(plan: Plan, decisions: Decisions, tracks: Tracks, job: 
         raise ContractError(f"plan.json: crowded frames {unfilled[:5]} have no crowd fill")
     hidden = {tid for i in decisions.items if i.decision in ("hide", "needs_you") for tid in i.track_ids}
     _check_crowd_fills(plan, tracks, hidden)
-    want = math.ceil(15 * job.fps / min(tracks.sam_fps, job.fps))
+    want = math.ceil(0.5 * job.fps)
     if plan.temporal.backfill != want:
-        raise ContractError(
-            f"plan.json: temporal.backfill {plan.temporal.backfill} != ceil(15 x fps / sam_fps) = {want}"
-        )
+        raise ContractError(f"plan.json: temporal.backfill {plan.temporal.backfill} != ceil(0.5 x fps) = {want}")
     by_track = {t.track_id: t for t in tracks.tracks}
+    _check_keep_clear(plan, decisions, by_track)
     fills_on = _fills_by_frame(plan)
     on = _entries_by_frame_item(plan)
     item_grids: dict[str, set[tuple[int, int, int]]] = {}
@@ -1677,12 +1716,54 @@ def _check_plan_geometry(plan: Plan, decisions: Decisions, tracks: Tracks, job: 
     for item in decisions.items:
         if item.decision not in ("hide", "needs_you"):
             continue
+        faced = _faced(plan, item, by_track, job)
         for track in (by_track[tid] for tid in item.track_ids if tid in by_track):
-            _check_track_geometry(plan, job, item, track, fills_on=fills_on, on=on)
+            _check_track_geometry(plan, job, item, track, fills_on=fills_on, on=on, faced=faced)
         # A shifting grid leaks detail across frames (DESIGN §2.7): one fixed grid per track of the item.
         grids = item_grids.get(item.item_id, set())
         if len(grids) > max(1, len(item.track_ids)):
             raise ContractError(f"plan.json: {item.item_id}'s pixelate grid moves between frames ({len(grids)} grids)")
+
+
+def _check_keep_clear(plan: Plan, decisions: Decisions, by_track: Mapping[str, Track]) -> None:
+    """DESIGN §2.6: a ``keep_clear`` box is a kept participant's padded face on that frame, never on a child's entry
+    or an audit patch, and never on the kept person's own entries: it overlaps one of their face boxes around the
+    frame (the anchors either side) and is no bigger than that face's padded box allows (held growth included)."""
+    items = {i.item_id: i for i in decisions.items}
+    faces = [
+        by_track[tid]
+        for i in decisions.items
+        if i.decision == "keep" and i.kind == "person"
+        for tid in i.track_ids
+        if tid in by_track and by_track[tid].concept == "face"
+    ]
+    for frame, entries in plan.frames.items():
+        for entry in (e for e in entries if e.keep_clear):
+            item = items.get(entry.item_id)
+            if item is None or item.kind == "child" or item.origin == "audit_patch" or item.decision == "keep":
+                raise ContractError(f"plan.json frame {frame}: {entry.item_id} may not leave anything clear")
+            for clear in entry.keep_clear:
+                near = [b for t in faces if t.first <= frame <= t.last for b in _anchors_around(t, frame)]
+                if not any(boxes_overlap(clear, b) and _area(clear) <= 6 * _area(b) + 64 * plan.padding.px**2
+                           for b in near):  # fmt: skip
+                    raise ContractError(
+                        f"plan.json frame {frame}: {entry.item_id} leaves {list(clear)} clear, not a kept face"
+                    )
+
+
+def _anchors_around(track: Track, frame: int) -> list[Box]:
+    """The track's box on ``frame``, or its anchors either side of it, joined (the face moved in between)."""
+    if frame in track.boxes:
+        return [track.boxes[frame]]
+    keys = sorted(track.boxes)
+    i = bisect.bisect_left(keys, frame)
+    around = [track.boxes[k] for k in keys[max(0, i - 1) : i + 1]]
+    return [(min(b[0] for b in around), min(b[1] for b in around), max(b[2] for b in around),
+             max(b[3] for b in around))]  # fmt: skip
+
+
+def _area(box: Box) -> int:
+    return max(0, box[2] - box[0]) * max(0, box[3] - box[1])
 
 
 def _check_track_geometry(
@@ -1693,20 +1774,26 @@ def _check_track_geometry(
     *,
     fills_on: dict[int, list[Box]],
     on: dict[tuple[int, str], list[PlanEntry]],
+    faced: frozenset[int] | None = None,
 ) -> None:
     """One hidden track against what the plan draws: its padded box held on every frame it has a box, a face
-    pixelated at most 6 blocks across under one fixed grid, and the frames between its anchors covered."""
-    ratio = plan.padding.face if track.concept == "face" else plan.padding.default
+    pixelated at most 6 blocks across under one fixed grid, and the frames between its anchors covered. An
+    identity-only item's body track (``faced`` set) is held as its padded head estimate, and only on frames where
+    no face track of the item is planned (DESIGN §2.7)."""
+    heads = faced is not None and track.concept == "person"
+    ratio = plan.padding.face if track.concept == "face" or heads else plan.padding.default
     grids: set[tuple[int, int, int]] | None = None  # the grids that could be this track's on every frame
-    for frame, box in sorted(track.boxes.items()):
+    for frame, raw in sorted(track.boxes.items()):
         entries = on.get((frame, item.item_id), [])
-        if not entries:
-            continue  # coverage is _check_plan_covers'
+        if not entries or (heads and faced is not None and frame in faced):
+            continue  # coverage is _check_plan_covers'; a faced frame's identity is under the face cover
+        box = head_box(raw) if heads else raw
+        sam = None if heads else track.masks.get(frame)
         fills = fills_on.get(frame, [])
         # DESIGN §2.6: the guard pads by the kind's ratio plus `padding.px` (clamped to the frame). Whether
         # the ratio is per side or in total isn't fixed, so the check takes the smaller reading (half
         # of it each side); a mask is SAM's own outline of the object, so it spans the track box.
-        if not _held(entries, fills, box, _pad(box, ratio, plan.padding.px, job), track.masks.get(frame)):
+        if not _held(entries, fills, box, _pad(box, ratio, plan.padding.px, job), sam):
             raise ContractError(
                 f"plan.json frame {frame}: {item.item_id} doesn't cover {track.track_id}'s padded box {list(box)}"
             )
@@ -1726,7 +1813,7 @@ def _check_track_geometry(
     if grids is not None and not grids:
         # A shifting grid leaks detail across frames (DESIGN §2.7): each track keeps one fixed grid.
         raise ContractError(f"plan.json: {item.item_id}'s pixelate grid for {track.track_id} moves between frames")
-    _check_between_anchors(plan, item, track, fills_on, on)
+    _check_between_anchors(plan, item, track, fills_on, on, faced=faced if heads else None)
 
 
 def _check_between_anchors(
@@ -1735,6 +1822,8 @@ def _check_between_anchors(
     track: Track,
     fills_on: dict[int, list[Box]],
     on: dict[tuple[int, str], list[PlanEntry]],
+    *,
+    faced: frozenset[int] | None = None,
 ) -> None:
     """A track with boxes only on some frames (SAM anchors; gaps the guard holds through): on the frames in
     between, the item's entry must at least overlap the box interpolated between the neighbouring anchors. The
@@ -1742,9 +1831,11 @@ def _check_between_anchors(
     keys = sorted(track.boxes)
     for before, after in itertools.pairwise(keys):
         a, b = track.boxes[before], track.boxes[after]
+        if faced is not None:  # an identity-only body track: its head estimate (DESIGN §2.7)
+            a, b = head_box(a), head_box(b)
         for frame in range(before + 1, after):
             entries = on.get((frame, item.item_id), [])
-            if not entries:
+            if not entries or (faced is not None and frame in faced):
                 continue  # coverage (and a crowd fill instead) is _check_plan_covers'
             w = (frame - before) / (after - before)
             box = cast(Box, tuple(round(a[i] + (b[i] - a[i]) * w) for i in range(4)))
@@ -1906,7 +1997,7 @@ def _check_plan_covers(plan: Plan, decisions: Decisions, tracks: Tracks | None, 
         def filled(f: int, owners: list[Track]) -> bool:
             if not owners or f not in fills:
                 return False  # an audit patch is always planned itself
-            boxes = [_box_near(t, f) for t in owners]
+            boxes = [nearest_box(t, f) for t in owners]
             return all(b is not None and any(_contains(fill, b) for fill in fills[f]) for b in boxes)
 
         missing = [
@@ -1933,12 +2024,14 @@ def _check_held_boxes(
     if item.box is not None and item.first is not None and item.last is not None:
         for f in range(item.first, item.last + 1):
             held.setdefault(f, []).append(item.box)
+    faced = _faced(plan, item, by_track, job)
     for track in (by_track[tid] for tid in item.track_ids if tid in by_track):
         edges = range(max(0, track.first - temporal.backfill), min(job.frames, track.last + temporal.extend + 1))
+        heads = faced is not None and track.concept == "person"
         for f in (f for f in edges if not track.first <= f <= track.last):
-            box = _box_near(track, f)
-            if box is not None:
-                held.setdefault(f, []).append(box)
+            box = nearest_box(track, f)
+            if box is not None and not (heads and faced is not None and f in faced):
+                held.setdefault(f, []).append(head_box(box) if heads else box)
     for f, boxes in sorted(held.items()):
         if f >= job.frames:
             continue
@@ -1949,7 +2042,15 @@ def _check_held_boxes(
                 raise ContractError(f"plan.json frame {f}: {item.item_id} doesn't cover its held box {list(box)}")
 
 
-def _box_near(track: Track, frame: int) -> Box | None:
+def _faced(plan: Plan, item: DecisionItem, by_track: Mapping[str, Track], job: Job) -> frozenset[int] | None:
+    """An identity-only item's face frames (:func:`face_frames`); None for an item covered whole."""
+    if not identity_only(item.kind, item.style):
+        return None
+    tracks = (by_track[tid] for tid in item.track_ids if tid in by_track)
+    return face_frames(tracks, backfill=plan.temporal.backfill, extend=plan.temporal.extend, frames=job.frames)
+
+
+def nearest_box(track: Track, frame: int) -> Box | None:
     """The track's box on ``frame``, or at its nearest keyframe (the guard holds the edge box when padding)."""
     if frame in track.boxes:
         return track.boxes[frame]  # the common case for a densified track: no search

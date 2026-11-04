@@ -6,6 +6,8 @@
   after frame (a shifting grid leaks detail, DESIGN §2.7) and the cell means can't be read back exactly.
 * crowd fills: opaque, drawn last.
 
+An entry never paints inside its ``keep_clear`` boxes (kept participants' faces, DESIGN §2.6).
+
 Solid regions are drawn after mosaics, so where both overlap the stronger one wins. :func:`hidden_mask` is the
 same union of regions, so the coverage metric (``coverage.py``) scores exactly what the video shows.
 """
@@ -30,13 +32,18 @@ NOISE = 12
 
 
 def region_mask(entry: PlanEntry, height: int, width: int) -> tuple[slice, slice, BoolMask]:
-    """The entry's box as slices and the pixels it covers inside that box."""
+    """The entry's box as slices and the pixels it covers inside that box: its mask (or the whole box), less the kept
+    faces it leaves clear (``keep_clear``, DESIGN §2.6)."""
     x1, y1 = max(0, entry.box[0]), max(0, entry.box[1])
     x2, y2 = min(width, entry.box[2]), min(height, entry.box[3])
     ys, xs = slice(y1, y2), slice(x1, x2)
     if entry.mask is None:
-        return ys, xs, np.ones((max(0, y2 - y1), max(0, x2 - x1)), dtype=np.bool_)
-    return ys, xs, decode(entry.mask)[ys, xs]
+        region = np.ones((max(0, y2 - y1), max(0, x2 - x1)), dtype=np.bool_)
+    else:
+        region = decode(entry.mask)[ys, xs].copy()
+    for cx1, cy1, cx2, cy2 in entry.keep_clear:
+        region[max(0, cy1 - y1) : max(0, cy2 - y1), max(0, cx1 - x1) : max(0, cx2 - x1)] = False
+    return ys, xs, region
 
 
 def hidden_mask(entries: list[PlanEntry], fills: list[CrowdFill], height: int, width: int) -> BoolMask:

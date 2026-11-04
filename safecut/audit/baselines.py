@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 
 from safecut.audit.detectors import Detector
-from safecut.contracts import Job, Tracks, dump, load
+from safecut.contracts import Job, dump, load
 from safecut.decide.geometry import BoxT
 from safecut.guard.baselines import detector_plan
 from safecut.guard.plan import backfill_frames
@@ -29,9 +29,7 @@ def detector_baseline(job_dir: Path, detector: Detector) -> Path:
         found = [d.box for d in detector.detect(frame)]
         if found:
             detections[index] = found
-    tracks_path = job_dir / "tracks.json"
-    backfill = backfill_frames(job, load(tracks_path, Tracks)) if tracks_path.exists() else 15
-    decisions, plan = detector_plan(job, detections, backfill=backfill)
+    decisions, plan = detector_plan(job, detections, backfill=backfill_frames(job))
     dump(decisions, job_dir / "decisions.json")
     (job_dir / BASELINE).write_text(json.dumps({"variant": "egoblur", "detector": detector.model,
                                                 "frames_with_detections": len(detections)}))  # fmt: skip

@@ -66,8 +66,8 @@ def test_keep_and_hide_are_the_creators() -> None:
     hide = edits({"type": "hide", "edit_id": "b", "item_id": "i_1"})
     got = by_id(apply_review(base(), hide, tracks=base_tracks(), job=job()).decisions)  # exactly the policy's style
     assert (got["i_1"].decision, got["i_1"].decided_by, got["i_1"].style) == ("hide", "creator", "pixelate")
-    got = by_id(apply_review(base(), hide).decisions)  # without the tracks nothing rules out a close-up: whole person
-    assert got["i_1"].style == "person_solid"
+    got = by_id(apply_review(base(), hide).decisions)  # without the tracks: its face track id says mosaic
+    assert got["i_1"].style == "pixelate"
 
 
 def test_a_locked_child_can_not_be_kept_or_merged() -> None:
@@ -294,9 +294,9 @@ def test_a_stale_last_edit_never_aborts_the_decide_stage(tmp_path: Path) -> None
     contracts.validate_job_dir(dst)
 
 
-def test_a_kept_prominent_person_hidden_again_is_covered_whole() -> None:
-    """DESIGN §2.7b: a hidden person whose body is over 25 % of the frame height gets the whole-person mask; the
-    creator re-hiding a policy-kept one gets the same style the policy would have given it."""
+def test_a_kept_prominent_person_hidden_again_is_covered_face_only() -> None:
+    """DESIGN §2.7 (owner, 11-04): however prominent, a re-hidden person gets the face mosaic, the policy's style;
+    only Remove person covers the whole person."""
     face = track("face:1", 0, 20, (20, 10, 40, 30))
     body = track("person:1", 0, 20, (10, 5, 60, 170))
     ts = tracks(face, body)
@@ -307,8 +307,10 @@ def test_a_kept_prominent_person_hidden_again_is_covered_whole() -> None:
     assert decided.items[0].decision == "keep"
     hide = edits({"type": "hide", "edit_id": "h", "item_id": "i_1"})
     exact = apply_review(decided, hide, tracks=ts, job=job()).decisions.items[0]
-    assert exact.style == "person_solid"
-    assert apply_review(decided, hide).decisions.items[0].style == "person_solid"  # no tracks: the body is covered
+    assert exact.style == "pixelate"
+    assert apply_review(decided, hide).decisions.items[0].style == "pixelate"  # no tracks: from the face track id
+    remove = edits({"type": "remove_person", "edit_id": "r", "item_id": "i_1"})
+    assert apply_review(decided, remove).decisions.items[0].style == "person_solid"
     small = tracks(face, track("person:1", 0, 20, (10, 5, 60, 40)))
     decided_small = decide(Inputs(job=job(), tracks=small, roles=inputs.roles, scene=scene(), transcript=transcript()))
     assert apply_review(decided_small, hide, tracks=small, job=job()).decisions.items[0].style == "pixelate"

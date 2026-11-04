@@ -38,8 +38,6 @@ PERSON_CONCEPTS = frozenset({"face", "person"})
 #: API-NOTES §12 (PR #2 UI-SPEC §0): exactly these concepts; anything else is ``other``.
 SCREEN_CONCEPTS = frozenset({"screen", "phone"})
 DOCUMENT_CONCEPTS = frozenset({"document", "name badge"})
-#: DESIGN §2.7b: a bystander whose box is taller than this share of the frame gets a whole-person mask.
-PROMINENT_HEIGHT = 0.25
 #: API-NOTES §12: when several holds apply, the first in this order is written.
 HOLD_ORDER: tuple[Hold, ...] = ("no_scene", "no_speech", "no_roles", "unmatched_child", "no_speech_link")
 #: A face and a body grouping couldn't pair are still linked for the child lock when the face is inside the body on at
@@ -335,29 +333,13 @@ def _child_closure(
     }
 
 
-def style_for(kind: Kind, group: Sequence[Track], job: Job) -> Style:
-    """DESIGN §2.7/§2.7b: objects solid; a child or a prominent person gets a whole-person solid mask; other
-    people a locked-grid mosaic sized from the face (or solid with no face to size it)."""
-    has_person = any(t.concept == "person" for t in group)
-    has_face = any(t.concept == "face" for t in group)
-    if kind == "child":
-        # The whole child: a body mask, or (face only) the face and a body under it (the guard estimates one).
-        return "person_solid" if has_person or has_face else "solid"
-    if kind != "person":
+def style_for(kind: Kind, group: Sequence[Track]) -> Style:
+    """DESIGN §2.7: objects solid; a person or a child is covered face/head only, by a locked-grid mosaic sized from
+    the face (or solid, over a head estimate, with no face to size it). The whole person (``person_solid``) is only
+    ever the creator's Remove person."""
+    if kind not in ("person", "child"):
         return "solid"
-    prominent = any(
-        t.concept == "person" and max(b[3] - b[1] for b in t.boxes.values()) > PROMINENT_HEIGHT * job.height
-        for t in group
-    )
-    # A face taller than that share is a close-up: whole person, with a body under the face wherever no body track
-    # holds it (SAM missed the body, or lost it early; the guard estimates one per frame).
-    close_up = any(
-        t.concept == "face" and max(b[3] - b[1] for b in t.boxes.values()) > PROMINENT_HEIGHT * job.height
-        for t in group
-    )
-    if (prominent and has_person) or close_up:
-        return "person_solid"
-    return "pixelate" if has_face else "solid"
+    return "pixelate" if any(t.concept == "face" for t in group) else "solid"
 
 
 def _rows(tracks: Sequence[RoleTrack]) -> dict[str, RoleTrack]:
@@ -412,7 +394,7 @@ def decide(inputs: Inputs) -> Decisions:
                 decision=verdict.decision,
                 reason=short_reason(verdict.reason),
                 evidence_frames=sorted(frames),
-                style=None if verdict.decision == "keep" else style_for(kind, group, inputs.job),
+                style=None if verdict.decision == "keep" else style_for(kind, group),
                 decided_by=verdict.decided_by,
                 locked=verdict.child,
                 hold=verdict.hold if verdict.decision == "needs_you" else None,

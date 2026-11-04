@@ -136,6 +136,8 @@ export const regionSchema = z.object({
   mask: rleSchema.nullable().optional(),
   style: styleSchema,
   grid: z.tuple([z.number(), z.number(), z.number().positive()]).nullable().optional(),
+  /** Kept participants' padded faces this region leaves untouched (DESIGN §2.6). */
+  keep_clear: z.array(boxSchema).optional(),
 });
 export type Region = z.infer<typeof regionSchema>;
 

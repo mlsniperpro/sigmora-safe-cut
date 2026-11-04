@@ -133,17 +133,16 @@ def _reverted(unique: list[ReviewEdit]) -> set[str]:
     return reverted
 
 
-def _default_style(item: DecisionItem, tracks: Tracks | None, job: Job | None) -> Style:
-    """A kept item hidden again gets the style the policy gives a hidden person (DESIGN §2.7/§2.7b): with the tracks,
-    exactly (a prominent body or close-up face whole-person solid, else the mosaic); without them, the person is
-    covered whole (they may be prominent). Anything else is solid."""
-    if item.kind != "person":
+def _default_style(item: DecisionItem, tracks: Tracks | None) -> Style:
+    """A kept item hidden again gets the style the policy gives it (DESIGN §2.7): a person or child face/head only,
+    the mosaic when it has a face track (with the tracks, from their concepts; without, from the track ids), else
+    solid. Never the whole person: that is only the creator's Remove person."""
+    if item.kind not in ("person", "child"):
         return "solid"
-    if tracks is not None and job is not None:
+    if tracks is not None:
         by_id = {t.track_id: t for t in tracks.tracks}
-        return style_for("person", [by_id[t] for t in item.track_ids if t in by_id], job)
-    # Without the tracks nothing says the person isn't prominent (or a close-up): cover them whole.
-    return "person_solid" if any(t.startswith(("person:", "face:")) for t in item.track_ids) else "solid"
+        return style_for(item.kind, [by_id[t] for t in item.track_ids if t in by_id])
+    return "pixelate" if any(t.startswith("face:") for t in item.track_ids) else "solid"
 
 
 def _patch_kind(leaks: list[Leak]) -> Literal["person", "plate", "other"]:
@@ -201,7 +200,7 @@ class _Fold:
                 item = self.get(edit.edit_id, edit.item_id)
                 if item.locked:  # already hidden, and its decider (the policy) isn't the creator's to take over
                     raise ReviewError("locked", edit.edit_id, f"{item.item_id} is locked hidden ({item.kind})")
-                style = item.style or _default_style(item, self.tracks, self.job)
+                style = item.style or _default_style(item, self.tracks)
                 update = {"decision": "hide", "style": style, "decided_by": "creator", "hold": None}
                 self.put(item.model_copy(update=update))
             case RemovePersonEdit():
@@ -308,7 +307,7 @@ def apply_review(
     """Fold the review log over ``decisions`` (the policy's, plus any audit patches).
 
     ``frames`` (``job.frames``) and ``audit`` are needed only for ``cover_spot``; ``tracks`` and ``job`` let a re-hidden
-    person get the policy's exact style (without them a body is covered whole); ``extend`` is the plan's
+    person get the policy's exact style (without them, the mosaic when it has a face track); ``extend`` is the plan's
     ``temporal.extend``. A ``cover_spot`` already in force (its patch present) replays as a no-op, and an undone one
     removes its patch and reopens the spot. An edit that can't apply raises :class:`ReviewError` when it is the last
     entry of the log (the one just sent) and ``strict``; any other inapplicable edit (one an undo or a re-analysis

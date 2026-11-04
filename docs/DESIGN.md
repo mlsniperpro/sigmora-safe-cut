@@ -79,7 +79,9 @@ A point → pixels → inside the dilated (10%) track mask on that frame? Otherw
 ### 2.6 Leak guard
 SAM 3 confirms new tracks only after about 15 frames and **zeroes masks for low-score masklets while the object is still there**, which causes leaked frames ([arXiv 2511.16719 App. B/C.3](https://arxiv.org/html/2511.16719)). So:
 - **Spatial padding:** faces 15% + 8 px (Sigmora's default padding today is 8%; raise it for faces).
-- **Temporal padding:** extend ±8 frames, **back-fill 15 frames before first detection**, hold the last box through gaps ≤2 s while growing it 2% per frame.
+- **Temporal padding:** extend 8 frames after the last detection, **back-fill half a second (`ceil(0.5 × fps)` frames) before the first**, hold the last box through gaps ≤2 s while growing it 2% per frame.
+- **Held boxes never move (owner, 2026-11-04).** A held box is the edge box held still: no sweep along the track's motion. It grows 2 % a frame on each side, at most **10 % before the first detection** and **25 % after the last and through gaps** (a gap holds the interpolated box, never a cover stretched from where the object was lost to where it came back). So a held cover stays under 4× its edge box's padded area. Why: the live street-interview review showed a 45-frame motion sweep grown 100 % each side turning a plate or a far bystander (0.1 % of the frame) into a cover over 80–95 % of the frame, "masks randomly placed everywhere", and pre-emptive covers sitting where nothing was yet, sometimes over the presenter. The half-second back-fill still catches SAM's late confirmation of an object already in view; the audit (§2.8) catches anything earlier.
+- **A kept participant is never covered by someone else's cover.** Each plan entry of another item lists the kept participants' padded face boxes it overlaps on that frame (`keep_clear`); the renderer, the coverage metric and the web preview leave those pixels untouched. A child's cover and an audit patch are never clipped (a child always wins; a leak the audit found stays covered). Nor is a hidden face ever uncovered for it: where an item's own face box meets a kept face, that kept face isn't cut from the item's entries (its padding, a body or an object gives way elsewhere), since the audit would only patch the uncovered face back over both.
 - **Crowd fallback:** if a frame hits the 16-object cap, fill the whole crowded region, and split into tiles or windows for a second pass.
 
 ### 2.7 Redaction style (change Sigmora's defaults)
@@ -89,14 +91,16 @@ Research says Gaussian blur and fine pixelation are **reversible**:
 - Pixelated text is fully recoverable ([Unredacter](https://bishopfox.com/blog/unredacter-tool-never-pixelation)).
 
 Safe Cut therefore uses:
-- **Text, screens, plates, documents → `solid`** (always).
-- **Faces/people → `solid` mask-shaped** (stretch) or **coarse pixelate (≤6 blocks across the face) + per-block noise, grid locked to the track box** (a shifting grid leaks detail across frames).
+- **Text, screens, plates, documents → `solid`** (always), on the object's own mask or box. Mosaics are reversible for text.
+- **People and children → identity only: the face/head, never the body** (owner, 2026-11-04). A hidden, held or "Needs you" person, and every child, gets the **coarse locked-grid mosaic (`pixelate`): ≤6 blocks across the face + fixed per-block noise, grid locked to the track** (a shifting grid leaks detail across frames), over the **face region only**, padded like a face (15 % + 8 px). On frames where the item's face isn't planned (missed, turned away, between detections) its body track draws only a **head estimate**: the top of the body box, its full width × `min(0.22·h, 0.9·w)` tall, padded like a face, in the item's mosaic grid (or `solid` when the item has no face track to size a grid). Children stay locked hidden; only the style changed.
+- Why: production videos cover only enough to hide identity. The whole-body slate silhouettes we drew before (a "blanket" over half the frame for a held interviewer) made the result look broken, not edited. The mosaic stays unreadable: the cells are coarse and noisy, and a test checks the live audit detector (YuNet) doesn't see a face under it (if it ever did, cells get coarser, never finer). The audit (§2.8) still runs on every rendered frame and patches any leak.
+- **`person_solid` (the whole person)** is only the creator's explicit **Remove person** (§2.7b).
 - Blur is offered only as an explicitly labelled "cosmetic (reversible)" style, never in Safe Cut.
 
 ⚠️ This also matters for Sigmora today: `COMPOSITION_REDACT_DEFAULT_STYLE = 'blur'` in `packages/shared/src/composition-redact.ts`. That is ordinary product work (not hackathon code), and the owner decides whether to change it now.
 
 ### 2.7b Identifiability is more than a face (Reddit pass)
-A creator had a privacy complaint upheld *despite blurring faces 100%* (r/PartneredYoutube). So: bystanders who are **prominent** (box height > 25% of the frame, or within 3 m) get a **whole-person** solid mask from SAM `person`, not just `face`. And a **remove person** action (hide + optional cut of their segments) handles "don't put me in the video" requests, recorded in the receipt.
+A creator had a privacy complaint upheld *despite blurring faces 100%* (r/PartneredYoutube). Blur is reversible (§2.7); our face cover is the coarse noisy mosaic, not blur, and an identifiable person who asks not to appear gets the **remove person** action: a **whole-person** solid mask from SAM `person` (with an estimated body under the face where no body is tracked), recorded in the receipt. That is the only path to `person_solid`. (Until 2026-11-04 the policy also gave prominent bystanders, over 25 % of the frame height, and close-up faces a whole-person mask by default; the owner replaced that with identity-only covers, §2.7.)
 
 ### 2.8 Audit (the second look; this is what makes it production-grade)
 After rendering, before publishing:

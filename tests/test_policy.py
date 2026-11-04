@@ -396,10 +396,11 @@ def test_hidden_bodies_combine_their_deciders() -> None:
         ([track("face:1", 0, 5, (20, 10, 40, 30))], "pixelate"),
         ([track("person:1", 0, 5, (10, 5, 60, 40))], "solid"),
         ([track("face:1", 0, 5, (20, 10, 40, 30)), track("person:1", 0, 5, (10, 5, 60, 40))], "pixelate"),
-        ([track("person:1", 0, 5, (10, 5, 60, 5 + H // 4 + 1))], "person_solid"),  # DESIGN §2.7b: prominent
+        # DESIGN §2.7 (owner, 11-04): identity only, however prominent: never the whole person from the policy.
+        ([track("person:1", 0, 5, (10, 5, 60, 5 + H // 4 + 1))], "solid"),
         (
             [track("face:1", 0, 5, (20, 10, 40, 30)), track("person:1", 0, 5, (10, 5, 60, 5 + H // 4 + 1))],
-            "person_solid",
+            "pixelate",
         ),
     ],
 )
@@ -408,11 +409,11 @@ def test_styles(ts: list[Any], style: str) -> None:
     assert [i.style for i in got.items] == [style]
 
 
-def test_a_child_with_a_body_gets_a_whole_person_mask() -> None:
+def test_a_child_with_a_body_is_locked_hidden_under_the_face_mosaic() -> None:
     face = track("face:1", 0, 20, (20, 10, 40, 30))
     body = track("person:1", 0, 20, (10, 5, 60, 100))
     got = run(face, body, rs=[row("face:1", "child", "child", "child")])
-    assert (got.items[0].kind, got.items[0].style) == ("child", "person_solid")
+    assert (got.items[0].kind, got.items[0].style, got.items[0].locked) == ("child", "pixelate", True)
 
 
 @pytest.mark.parametrize(
@@ -605,10 +606,10 @@ def test_duplicate_role_rows_fail_closed() -> None:
     assert only(run(track("face:1", 0, 20), rs=rs), "face:1")["decision"] == "hide"
 
 
-def test_a_close_up_face_without_a_body_is_hidden_whole() -> None:
-    """WP3 step 3 / DESIGN §2.7b: prominent (over a quarter of the frame height); SAM found no body."""
+def test_a_close_up_face_without_a_body_is_mosaicked() -> None:
+    """DESIGN §2.7: a close-up (over a quarter of the frame height) is still covered face only."""
     got = only(run(track("face:1", 0, 20, (100, 20, 160, 130)), rs=[row("face:1", *("bystander",) * 3)]), "face:1")
-    assert got["style"] == "person_solid"
+    assert got["style"] == "pixelate"
 
 
 def test_a_childs_body_is_locked_when_their_face_pairs_with_the_adult_holding_them() -> None:
@@ -636,19 +637,20 @@ def test_one_child_split_across_items_counts_once_for_the_scene() -> None:
     assert only(got, "face:1")["hold"] == "unmatched_child"
 
 
-def test_a_face_only_child_is_covered_whole() -> None:
+def test_a_face_only_child_is_locked_under_the_face_mosaic() -> None:
     got = only(run(track("face:4", 0, 20, (100, 20, 120, 40)), rs=[row("face:4", "child", "child", "child")]), "face:4")
-    assert (got["kind"], got["style"]) == ("child", "person_solid")
+    assert (got["kind"], got["style"], got["locked"]) == ("child", "pixelate", True)
 
 
-def test_a_close_up_face_whose_body_track_ends_early_is_hidden_whole() -> None:
-    """The body track is lost after 10 frames while the face grows past a quarter of the frame height."""
+def test_a_close_up_face_whose_body_track_ends_early_is_mosaicked() -> None:
+    """The body track is lost after 10 frames while the face grows past a quarter of the frame height: one item,
+    face only (DESIGN §2.7)."""
     boxes = {f: (130, 40, 150 + f // 2, 60 + f // 2 * 2) for f in range(60)}  # up to 59 px tall
     face = Track.model_validate({**track("face:1", 0, 59).model_dump(), "boxes": boxes})
     body = track("person:1", 0, 10, (110, 30, 190, 75))
     by = ("bystander",) * 3
     got = only(run(face, body, rs=[row("face:1", *by), row("person:1", *by)]), "face:1")
-    assert (got["track_ids"], got["style"]) == (["face:1", "person:1"], "person_solid")
+    assert (got["track_ids"], got["style"]) == (["face:1", "person:1"], "pixelate")
 
 
 def test_a_duplicate_object_ruling_fails_closed() -> None:
