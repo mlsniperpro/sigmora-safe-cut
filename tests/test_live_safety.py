@@ -10,15 +10,14 @@ import json
 import os
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 from safecut.audit.leaks import bar_height, grid_box
 from safecut.audit.redteam import Answer, LiveRedTeam
 from safecut.config import load_settings
-from safecut.contracts import read_cost_lines
+from safecut.contracts import PlanEntry, read_cost_lines
 from safecut.meta.session import job_client
-from safecut.render.draw import FILL_BGR
+from safecut.render.draw import apply
 from tests.safety_jobs import H, Scenario, W, frame_image
 
 pytestmark = [
@@ -34,7 +33,8 @@ def test_the_red_team_finds_an_exposed_face_and_not_a_covered_one(tmp_path: Path
     job_dir.mkdir()
     exposed = frame_image(Scenario(), 30)
     covered = exposed.copy()
-    covered[40:200, 20:160] = np.array(FILL_BGR, dtype=np.uint8)  # the host's face under a solid block
+    host = PlanEntry(item_id="i_1", shape="box", box=(20, 40, 160, 200), mask=None, style="solid", grid=None)
+    covered = apply(covered, [host], [])  # the host's face under a frosted cover
 
     async def ask() -> Answer:
         async with job_client(job_dir, settings) as client:

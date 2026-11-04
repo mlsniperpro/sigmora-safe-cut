@@ -64,7 +64,7 @@ def identity_box(
     by_id = {x.track_id: x for x in ts.tracks}
     faced = contracts.face_frames((by_id[x] for x in item.track_ids), backfill=p.temporal.backfill,
                                   extend=p.temporal.extend, frames=FRAMES)  # fmt: skip
-    return None if frame in faced else contracts.head_box(box)
+    return None if frame in faced else contracts.head_box(box, W)
 
 
 def disk(cx: int, cy: int, r: int) -> contracts.Rle:

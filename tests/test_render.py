@@ -23,7 +23,7 @@ from safecut.decide.review import HideEdit, apply_review
 from safecut.guard import run as guard_run
 from safecut.render import REDACTED, THUMBS, RenderError, fills_by_frame, render
 from safecut.render.coverage import ObjectScore, coverage, passes_e3, score
-from safecut.render.draw import FILL_BGR, NOISE, apply, hidden_mask
+from safecut.render.draw import HAZE, HAZE_LEVEL, NOISE, apply, hidden_mask
 from safecut.render.video import cut_thumb, probe_streams, read_frames
 from tests.safety_jobs import POSTER, Scenario, frame_image, make_job
 
@@ -53,11 +53,32 @@ def decoded(job_dir: Path) -> list[np.ndarray]:
 # ---------------------------------------------------------------------------------------------- draw (exact pixels)
 
 
-def test_solid_fills_the_box_and_nothing_else() -> None:
+def frosted(region: np.ndarray) -> bool:
+    """A frosted cover: light (never a dark block) and soft (no hard detail)."""
+    lum = region.astype(float).mean(axis=-1)
+    return float(lum.mean()) >= 40 and float(np.abs(np.diff(lum, axis=-1)).max(initial=0)) < 40
+
+
+def test_a_solid_cover_is_frosted_never_a_dark_block() -> None:
     out = apply(GREY, [entry((10, 10, 30, 20))], [])
-    assert (out[10:20, 10:30] == FILL_BGR).all()
-    assert (out[0:10] == 128).all()
-    assert (out[:, 30:] == 128).all()
+    assert frosted(out[10:20, 10:30])
+    assert not (out[10:20, 10:30] == 128).all()  # it changed
+    ring = 10  # the feathered edge reaches about three sigmas out
+    assert (out[:, 30 + ring :] == 128).all()
+    assert (out[20 + ring :] == 128).all()
+
+
+def test_a_cover_keeps_no_detail_of_what_it_hides() -> None:
+    """Two different regions with the same mean frost to the same pixels: nothing of either survives."""
+    rng = np.random.default_rng(1)
+    a = np.full((60, 80, 3), 128, dtype=np.uint8)
+    b = a.copy()
+    detail = rng.integers(0, 256, size=(10, 20, 3), dtype=np.uint8)
+    a[10:20, 10:30] = detail
+    b[10:20, 10:30] = detail[::-1, ::-1]  # the same pixels rearranged: the same mean, other detail
+    for style in ("solid", "pixelate"):
+        e = entry((10, 10, 30, 20), style, (10, 10, 5) if style == "pixelate" else None)  # type: ignore[arg-type]
+        assert (apply(a, [e], [])[10:20, 10:30] == apply(b, [e], [])[10:20, 10:30]).all()
 
 
 def test_mask_entries_fill_only_the_mask() -> None:
@@ -66,26 +87,21 @@ def test_mask_entries_fill_only_the_mask() -> None:
     e = PlanEntry.model_validate({"item_id": "i_1", "shape": "mask", "box": (10, 10, 30, 20),
                                   "mask": encode(mask), "style": "person_solid", "grid": None})  # fmt: skip
     out = apply(GREY, [e], [])
-    assert (out[mask] == FILL_BGR).all()
-    assert (out[~mask] == 128).all()
+    assert frosted(out[12:18, 12:16])
+    far = np.ones((60, 80), dtype=np.bool_)
+    far[2:28, 2:26] = False  # the mask and its feathered ring
+    assert (out[far] == 128).all()
     assert (hidden_mask([e], [], 60, 80) == mask).all()
 
 
-def test_pixelate_cells_are_uniform_on_the_locked_grid_and_noise_is_bounded() -> None:
+def test_a_mosaic_is_the_hazed_region_mean_within_its_noise() -> None:
     rng = np.random.default_rng(0)
     img = rng.integers(0, 256, size=(60, 80, 3), dtype=np.uint8)
     out = apply(img, [entry((5, 7, 45, 37), "pixelate", (3, 1, 10))], [])
-    for y0 in range(7, 37, 10):
-        for x0 in range(5, 45, 10):
-            # cells start on the grid (origin 3,1; 10 px): within one cell, the colour is one value
-            cy, cx = (y0 - 1) // 10 * 10 + 1, (x0 - 3) // 10 * 10 + 3
-            ys, xs = slice(max(cy, 7), min(cy + 10, 37)), slice(max(cx, 5), min(cx + 10, 45))
-            cell = out[ys, xs].reshape(-1, 3)
-            assert (cell == cell[0]).all()
-            # every cell is the whole region's mean colour plus its fixed noise: no cell keeps its own light or dark
-            mean = img[7:37, 5:45].reshape(-1, 3).mean(axis=0)
-            assert (np.abs(cell[0].astype(float) - mean) <= NOISE + 1).all()
-    assert (out[:7] == img[:7]).all()
+    mean = img[7:37, 5:45].reshape(-1, 3).mean(axis=0)
+    haze = (1 - HAZE) * mean + HAZE * HAZE_LEVEL
+    assert (np.abs(out[7:37, 5:45].reshape(-1, 3).astype(float) - haze) <= NOISE + 1).all()
+    assert (out[50:] == img[50:]).all()  # beyond the feathered ring nothing changes
 
 
 def test_a_still_object_renders_identical_cells_in_every_frame() -> None:
@@ -98,8 +114,8 @@ def test_a_still_object_renders_identical_cells_in_every_frame() -> None:
 def test_solid_wins_over_a_mosaic_and_crowd_fills_go_last() -> None:
     mosaic = entry((0, 0, 40, 40), "pixelate", (0, 0, 8))
     out = apply(GREY, [mosaic, entry((10, 10, 20, 20))], [CrowdFill(frames=[0], box=(50, 0, 80, 10))])
-    assert (out[10:20, 10:20] == FILL_BGR).all()
-    assert (out[0:10, 50:80] == FILL_BGR).all()
+    assert frosted(out[10:20, 10:20])
+    assert frosted(out[0:10, 50:80])
 
 
 def test_fills_by_frame() -> None:
@@ -131,7 +147,7 @@ def test_the_hidden_bystander_is_mosaicked_and_the_host_is_untouched(rendered: P
     assert np.abs(frames[30][by1:by2, bx1:bx2].astype(int) - source[30][by1:by2, bx1:bx2].astype(int)).mean() > 5
 
 
-def test_a_solid_region_decodes_to_the_fill_colour(tmp_path: Path) -> None:
+def test_a_solid_region_decodes_frosted(tmp_path: Path) -> None:
     job_dir = make_job(tmp_path)
     decide_run(job_dir)
     decisions = load(job_dir / "decisions.json", Decisions)
@@ -143,10 +159,8 @@ def test_a_solid_region_decodes_to_the_fill_colour(tmp_path: Path) -> None:
     plan = load(job_dir / "plan.json", Plan)
     (e,) = [e for e in plan.frames[30] if e.item_id == "i_2"]
     x1, y1, x2, y2 = e.box
-    inner = decoded(job_dir)[30][y1 + 4 : y2 - 4, x1 + 4 : x2 - 4].reshape(-1, 3).astype(int)
-    error = np.abs(inner - np.array(FILL_BGR))
-    assert error.max() <= 12  # x264 at CRF 18 with 4:2:0 chroma: a few levels near block edges
-    assert error.mean() <= 3
+    inner = decoded(job_dir)[30][y1 + 4 : y2 - 4, x1 + 4 : x2 - 4]
+    assert frosted(inner)  # frosted through the encoder too: light and soft, never a dark block
 
 
 def test_reversibility_a_face_detector_finds_no_pixelated_face(rendered: Path) -> None:

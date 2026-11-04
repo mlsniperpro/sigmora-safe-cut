@@ -23,7 +23,7 @@ Safe Cut decides from context what shouldn't be published in the picture, and pr
 2. **Muse Voice Transcribe** hears who speaks.
 3. **Muse Spark** watches the whole clip, then rules three times, independently, on numbered keyframes, about who is part of the story. Disputes escalate once at maximum effort, and a miss loop asks what the tracker didn't catch.
 4. A deny-by-default policy hides everything uncertain. Children are always hidden, and a person the tracker loses and finds again comes back hidden.
-5. A leak guard pads and holds every cover so nothing flickers through, and covers only what identifies: faces and heads hidden with a coarse mosaic; plates, screens and documents covered solid. Bodies stay in the shot, covers never run ahead of their object, and a kept participant's face is never covered by someone else's cover.
+5. A leak guard pads and holds every cover so nothing flickers through, and covers only what identifies, with one frosted look: faces and heads (never bodies) and plates, screens and documents, under a coarse mosaic of the region's mean colour, blurred, so nothing underneath can be recovered and nothing is a dark box. Bodies stay in the shot, covers never run ahead of their object, and a kept participant's face is never covered by someone else's cover.
 6. The creator reviews every item, sees why each was decided, and approves.
 7. Before anything is published, an independent detector checks every rendered frame and a Muse Spark red team checks sampled frames. Leaks are patched automatically.
 8. A hash-chained privacy receipt records every decision, who made it, and how the data was handled.

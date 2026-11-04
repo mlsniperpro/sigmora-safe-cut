@@ -497,28 +497,41 @@ Style = Literal["solid", "pixelate", "person_solid"]
 HEAD_SHARE, HEAD_ASPECT = 0.22, 0.9
 
 
-def head_box(box: Box) -> Box:
-    """The head estimate of a body ``box`` (DESIGN §2.7): what an identity-only cover hides where no face is seen."""
+def head_box(box: Box, width: int = 0) -> Box:
+    """The head estimate of a body ``box`` (DESIGN §2.7): what an identity-only cover hides where no face is seen.
+    A box cut by the frame's left or right edge (``width``, the frame's) has lost width, not height: no width cap."""
     x1, y1, x2, y2 = box
-    tall = math.ceil(min(HEAD_SHARE * (y2 - y1), HEAD_ASPECT * (x2 - x1)))
+    cut = x1 <= 0 or (width > 0 and x2 >= width)
+    tall = math.ceil(HEAD_SHARE * (y2 - y1) if cut else min(HEAD_SHARE * (y2 - y1), HEAD_ASPECT * (x2 - x1)))
     return (x1, y1, x2, min(y2, y1 + max(1, tall)))
 
 
 def identity_only(kind: str, style: Style | None) -> bool:
-    """DESIGN §2.7: a hidden person or child is covered face/head only (a mosaic, or solid with no face to size
-    one); only the creator's Remove person (``person_solid``) covers the whole person."""
-    return kind in ("person", "child") and style is not None and style != "person_solid"
+    """DESIGN §2.7: a hidden person is covered face/head only (a mosaic, or solid with no face to size one); only
+    the creator's Remove person (``person_solid``) covers the whole person. A child is always covered whole, on
+    every frame it is tracked (owner, 2026-11-04: a small child's body box is too loose for a head estimate)."""
+    return kind == "person" and style is not None and style != "person_solid"
 
 
 def face_frames(item_tracks: Iterable[Track], *, backfill: int, extend: int, frames: int) -> frozenset[int]:
-    """The frames an identity-only item's face tracks are planned on (``first − backfill`` … ``last + extend``):
-    there its face cover hides the identity, so its body tracks draw nothing; elsewhere they draw a head estimate."""
-    return frozenset(
-        f
-        for t in item_tracks
-        if t.concept == "face"
-        for f in range(max(0, t.first - backfill), min(frames, t.last + extend + 1))
-    )
+    """The frames on which an identity-only item's face cover hides the identity, so its body tracks draw nothing:
+    where a face track is tracked (``first … last``), and where a face is held (its back-fill or extend) while no
+    body track is tracked. Where the body is tracked and the face isn't, the body draws a head estimate that follows
+    it (a held face box can sit far from where the person is)."""
+    tracks = list(item_tracks)
+    faces = [t for t in tracks if t.concept == "face"]
+    tracked = {f for t in faces for f in range(t.first, min(frames, t.last + 1))}
+    bodies = live_frames(t for t in tracks if t.concept != "face")
+    held = {
+        f for t in faces for f in range(max(0, t.first - backfill), min(frames, t.last + extend + 1)) if f not in bodies
+    }
+    return frozenset(tracked | held)
+
+
+def live_frames(item_tracks: Iterable[Track]) -> frozenset[int]:
+    """The frames on which at least one of an item's tracks is tracked (``first … last``). A track's held box (its
+    back-fill or extend) isn't drawn on these: the live track's own box is where the object is (DESIGN §2.6)."""
+    return frozenset(f for t in item_tracks for f in range(t.first, t.last + 1))
 
 
 class DecisionItem(Contract):
@@ -1787,7 +1800,7 @@ def _check_track_geometry(
         entries = on.get((frame, item.item_id), [])
         if not entries or (heads and faced is not None and frame in faced):
             continue  # coverage is _check_plan_covers'; a faced frame's identity is under the face cover
-        box = head_box(raw) if heads else raw
+        box = head_box(raw, job.width) if heads else raw
         sam = None if heads else track.masks.get(frame)
         fills = fills_on.get(frame, [])
         # DESIGN §2.6: the guard pads by the kind's ratio plus `padding.px` (clamped to the frame). Whether
@@ -1813,7 +1826,7 @@ def _check_track_geometry(
     if grids is not None and not grids:
         # A shifting grid leaks detail across frames (DESIGN §2.7): each track keeps one fixed grid.
         raise ContractError(f"plan.json: {item.item_id}'s pixelate grid for {track.track_id} moves between frames")
-    _check_between_anchors(plan, item, track, fills_on, on, faced=faced if heads else None)
+    _check_between_anchors(plan, item, track, fills_on, on, faced=faced if heads else None, width=job.width)
 
 
 def _check_between_anchors(
@@ -1824,6 +1837,7 @@ def _check_between_anchors(
     on: dict[tuple[int, str], list[PlanEntry]],
     *,
     faced: frozenset[int] | None = None,
+    width: int = 0,
 ) -> None:
     """A track with boxes only on some frames (SAM anchors; gaps the guard holds through): on the frames in
     between, the item's entry must at least overlap the box interpolated between the neighbouring anchors. The
@@ -1832,7 +1846,7 @@ def _check_between_anchors(
     for before, after in itertools.pairwise(keys):
         a, b = track.boxes[before], track.boxes[after]
         if faced is not None:  # an identity-only body track: its head estimate (DESIGN §2.7)
-            a, b = head_box(a), head_box(b)
+            a, b = head_box(a, width), head_box(b, width)
         for frame in range(before + 1, after):
             entries = on.get((frame, item.item_id), [])
             if not entries or (faced is not None and frame in faced):
@@ -2028,10 +2042,12 @@ def _check_held_boxes(
     for track in (by_track[tid] for tid in item.track_ids if tid in by_track):
         edges = range(max(0, track.first - temporal.backfill), min(job.frames, track.last + temporal.extend + 1))
         heads = faced is not None and track.concept == "person"
-        for f in (f for f in edges if not track.first <= f <= track.last):
+        # Where another track of the item is tracked, the guard draws that live box, not this one held (DESIGN §2.6).
+        others = live_frames(by_track[t] for t in item.track_ids if t in by_track and t != track.track_id)
+        for f in (f for f in edges if not track.first <= f <= track.last and f not in others):
             box = nearest_box(track, f)
             if box is not None and not (heads and faced is not None and f in faced):
-                held.setdefault(f, []).append(head_box(box) if heads else box)
+                held.setdefault(f, []).append(head_box(box, job.width) if heads else box)
     for f, boxes in sorted(held.items()):
         if f >= job.frames:
             continue
@@ -2205,7 +2221,9 @@ def _check_patches(audit: Audit, decisions: Decisions, tracks: Tracks | None, pl
                 raise ContractError(
                     f"audit.json {name} at frame {entry.frame}: excluded_by {item.item_id}, which isn't a kept item"
                 )
-            if spans and entry.frame not in _present_frames(item, spans):
+            if spans and not _present_frames(item, spans) & set(
+                range(entry.frame - EXCUSE_FRAMES, entry.frame + EXCUSE_FRAMES + 1)
+            ):
                 raise ContractError(
                     f"audit.json {name} at frame {entry.frame}: excluded_by {item.item_id}, absent on that frame"
                 )
@@ -2258,11 +2276,20 @@ def _excludes(kind: LeakKind, concept: str) -> bool:
             return False  # misaligned_redaction and other are never excluded
 
 
+#: The audit lets a kept track's nearest box within one second stand in where it has none on the hit's frame
+#: (``safecut.audit.leaks.EXCUSE_WINDOW_S``): one second at the highest frame rate a job may have.
+EXCUSE_FRAMES = 30
+
+
 def _check_exclusion(hit: RedteamHit, item: DecisionItem, tracks: Tracks, where: str) -> None:
     """A kept item excludes a hit only through one of its tracks on that frame whose concept matches the hit's
     kind and whose box overlaps the hit's (IoU > 0.3 needs a positive overlap; the visible region is inside
     the track's box, so the IoU itself is WP4's to compute)."""
-    present = [t for t in tracks.tracks if t.track_id in item.track_ids and t.first <= hit.frame <= t.last]
+    present = [
+        t
+        for t in tracks.tracks
+        if t.track_id in item.track_ids and t.first - EXCUSE_FRAMES <= hit.frame <= t.last + EXCUSE_FRAMES
+    ]
     matching = [t for t in present if _excludes(hit.kind, t.concept)]
     if not matching:
         concepts = sorted({t.concept for t in present})

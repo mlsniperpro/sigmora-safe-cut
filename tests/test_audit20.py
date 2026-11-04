@@ -123,11 +123,14 @@ def test_a_kept_item_present_on_the_frame_excludes_a_hit(tmp_path: Path) -> None
 # Only the current red team's exclusions: `redteam_open` is copied verbatim on a re-run (redteam.md "Re-runs"), so
 # its `excluded_by` isn't held to today's decisions (audit #72 L1; test_audit24's copied-exclusion test).
 @pytest.mark.parametrize("name", ["redteam"])
-def test_a_kept_item_absent_on_the_frame_cannot_exclude(tmp_path: Path, name: str) -> None:
+def test_a_kept_item_within_a_second_of_the_frame_may_exclude(tmp_path: Path, name: str) -> None:
+    """The audit lets a kept track's nearest box within one second stand in where SAM has none on the hit's frame
+    (owner, 11-04: the kept presenter was patched on frames SAM hadn't picked them up yet); the contract follows."""
     job_dir = _example(tmp_path)
 
     def add(d: Any) -> None:
-        d.setdefault(name, []).append(HIT | {"frame": 11, "excluded_by": "i_1"})  # face:1 spans 1-9
+        hit = {"frame": 11, "kind": "face", "box": [620, 110, 700, 200], "excluded_by": "i_1"}  # face:1 spans 1-9
+        d.setdefault(name, []).append(HIT | hit)
         if name == "redteam_open":
             d["open_weight"] = {"model": "m", "status": "ok", "frames": 1, "findings": 1}
 
@@ -135,5 +138,4 @@ def test_a_kept_item_absent_on_the_frame_cannot_exclude(tmp_path: Path, name: st
     if name == "redteam_open":  # the second opinion runs only on a consented job, attempted once (PRE-A §3.8)
         job = json.loads((job_dir / "job.json").read_text())
         (job_dir / "job.json").write_text(json.dumps(job | {"consented": True, "open_weight_attempted": True}))
-    with pytest.raises(c.ContractError, match="excluded_by i_1, absent on that frame"):
-        c.validate_job_dir(job_dir)
+    assert "audit.json" in c.validate_job_dir(job_dir)

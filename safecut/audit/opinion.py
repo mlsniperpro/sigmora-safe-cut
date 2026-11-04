@@ -76,7 +76,9 @@ def entries_for(
             placed = mapped not in (None, "in_bar")
             box = mapped if isinstance(mapped, tuple) else (0, 0, job.width, job.height)
             # A whole-frame box stands for a finding we couldn't place (fail closed): nothing kept excuses it.
-            exclude = rules.excluded_by(finding.kind, box, frame.frame, decisions, by_track) if placed else None
+            exclude = (
+                rules.excluded_by(finding.kind, box, frame.frame, decisions, by_track, fps=job.fps) if placed else None
+            )
             entries.append(RedteamHit(frame=frame.frame, finding="hit", kind=finding.kind, text=finding.text,
                                       detail=finding.detail, box=box, confidence=finding.confidence,
                                       excluded_by=exclude))  # fmt: skip

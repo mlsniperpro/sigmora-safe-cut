@@ -34,6 +34,7 @@ from safecut.contracts import (
     face_frames,
     head_box,
     identity_only,
+    live_frames,
     nearest_box,
 )
 from safecut.decide.geometry import BoxT, area, box_at, clamp, grow, intersection, union
@@ -185,10 +186,10 @@ def _heads(
     for frame in range(start, end):
         if frame in faced:
             continue
-        heads = [head_box(raw.at(frame).box)]
-        seen = nearest_box(track, frame)
-        if seen is not None:
-            heads.append(head_box(seen))
+        heads = [head_box(raw.at(frame).box, job.width)]
+        for seen in (nearest_box(track, frame), box_at(track, frame)):  # where SAM saw it, and between anchors
+            if seen is not None:
+                heads.append(head_box(seen, job.width))
         yield frame, Region(grow(union(heads), PADDING.face, PADDING.px, job.width, job.height))
 
 
@@ -248,8 +249,11 @@ def _item_regions(
         for t in (by_id[t] for t in item.track_ids if by_id[t].concept == "person"):
             b_start, b_end = max(0, t.first - backfill), min(job.frames, hold_until(t, by_id, job) + 1)
             b_regions = _regions(t, b_start, b_end, job=job, interp_gap=interp_gap, cache=cache)
+            # Only where the body is drawn: its held box gives way to another live track of the item (below).
+            others = live_frames(by_id[x] for x in item.track_ids if x != t.track_id)
             for frame, region in enumerate(b_regions, start=b_start):
-                bodies.setdefault(frame, []).append(region.box)
+                if t.first <= frame <= t.last or frame not in others:
+                    bodies.setdefault(frame, []).append(region.box)
     # DESIGN §2.7: a hidden person or child is covered face/head only. Its body tracks draw nothing where a face
     # track of the item is planned, and a head estimate elsewhere (face missed, turned away, between detections).
     identity = identity_only(item.kind, item.style)
@@ -269,7 +273,10 @@ def _item_regions(
             if item.style == "person_solid" and track.concept == "face":
                 regions = _with_body(track, start, regions, bodies=bodies, job=job, interp_gap=interp_gap)
             placed = zip(range(start, end), regions, strict=True)
-        yield from placed
+        # A held box (back-fill, extend, re-entry hold) stays still while the object moves: where another track of the
+        # item is tracked, that track's live box is drawn instead (DESIGN §2.6).
+        others = live_frames(by_id[t] for t in item.track_ids if t != track_id)
+        yield from ((f, r) for f, r in placed if track.first <= f <= track.last or f not in others)
 
 
 def plan(

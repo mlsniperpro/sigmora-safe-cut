@@ -3,7 +3,10 @@
 * **Exclusion:** a finding is not a leak only when it overlaps (IoU > 0.3) a *kept* track of the matching concept on
   that frame: a face only a kept ``face:`` track, a person only a kept ``person:`` track, text or a screen only a
   kept object track, a plate only a kept ``license plate:`` track; misaligned redactions and "other" never. An
-  EgoBlur face is never excused by a kept ``person:`` box (L12).
+  EgoBlur face is never excused by a kept ``person:`` box (L12). Where the kept track has no box on that frame (SAM
+  picks a face up a few frames in, loses it at the clip's end or in a gap), its nearest box within one second
+  stands in, and a face whose centre lies inside the kept face's box padded 15 % is excused too: the kept
+  presenter's own face is never patched as a leak. Children are never kept, so never excuse anything.
 * **Read-through:** red-team text, screen or plate findings on a hidden item's planned region are leaks flagged
   ``redaction_too_weak``; the item covering the largest share of the finding is the ``through_item`` and is
   re-rendered solid (L7, L14).
@@ -61,18 +64,61 @@ def visible_iou(track: Track, frame: int, box: BoxT) -> float:
     return iou(kept, box) if kept is not None else 0.0
 
 
+#: How far from a frame a kept track's nearest box still stands in for it, in seconds (one second: SAM's late pickup
+#: at the clip's start, its loss at the end, and short gaps).
+EXCUSE_WINDOW_S = 1.0
+#: A detected face whose centre lies inside a kept face's box grown by this share of its size on each side is that
+#: kept face (the detector's box and SAM's differ in size; DESIGN §2.6's face padding).
+EXCUSE_PAD = 0.15
+
+
+def near_box(track: Track, frame: int, window: int) -> BoxT | None:
+    """The track's box on ``frame`` (interpolated between anchors), else its nearest box within ``window`` frames."""
+    found = box_at(track, frame)
+    if found is not None:
+        return found
+    near = [k for k in track.boxes if abs(k - frame) <= window]
+    if not near:
+        return None
+    return track.boxes[min(near, key=lambda k: (abs(k - frame), k))]
+
+
+def excuses(kind: LeakKind, track: Track, frame: int, box: BoxT, window: int) -> bool:
+    """Whether kept ``track`` (of a matching concept) accounts for a finding at ``box`` on ``frame``."""
+    if frame in track.masks:  # SAM's own outline decides: a stranger in the box's empty corners isn't the kept one
+        return visible_iou(track, frame, box) > EXCLUDE_IOU
+    kept = near_box(track, frame, window)
+    if kept is None:
+        return False
+    if iou(kept, box) > EXCLUDE_IOU:
+        return True
+    if kind != "face" or track.concept != "face":
+        return False
+    cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+    dx, dy = EXCUSE_PAD * (kept[2] - kept[0]), EXCUSE_PAD * (kept[3] - kept[1])
+    return kept[0] - dx <= cx <= kept[2] + dx and kept[1] - dy <= cy <= kept[3] + dy
+
+
 def excluded_by(
-    kind: LeakKind, box: BoxT, frame: int, decisions: Decisions, by_track: Mapping[str, Track]
+    kind: LeakKind,
+    box: BoxT,
+    frame: int,
+    decisions: Decisions,
+    by_track: Mapping[str, Track],
+    *,
+    fps: int = 0,
 ) -> str | None:
-    """The kept item that excuses a finding on ``frame``, or None (then it's a leak)."""
+    """The kept item that excuses a finding on ``frame``, or None (then it's a leak). ``fps`` sets the one-second
+    window in which a kept track's nearest box stands in for a frame it has none on."""
+    window = math.ceil(EXCUSE_WINDOW_S * fps)
     for item in decisions.items:
-        if item.decision != "keep":
+        if item.decision != "keep" or item.kind == "child":
             continue
         for track_id in item.track_ids:
             track = by_track.get(track_id)
             if track is None or not concept_matches(kind, track.concept):
                 continue
-            if visible_iou(track, frame, box) > EXCLUDE_IOU:
+            if excuses(kind, track, frame, box, window):
                 return item.item_id
     return None
 

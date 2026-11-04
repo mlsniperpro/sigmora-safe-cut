@@ -330,3 +330,128 @@ def test_a_hidden_face_is_never_uncovered_to_keep_a_kept_face_clear() -> None:
     for f in (0, 30, 59):
         assert drawn(p, f, "i_2")[40:75, 172:202].all()  # the bystander's face is fully covered
         assert not any(e.keep_clear for e in p.frames[f] if e.item_id == "i_2")
+
+
+# ---------------------------------------------------------------- the live café and street (second run) jobs
+
+
+def live(name: str) -> tuple[Job, Tracks, Decisions, list[dict[str, Any]]]:
+    data = json.loads((FIXTURE.parent / name).read_text(encoding="utf-8"))
+    raw = data["job"]
+    j = Job(job_id=data["job_id"], source="clip.mp4", source_sha256="0" * 64, prepared="prepared.mp4",
+            fps=raw["fps"], width=raw["width"], height=raw["height"], frames=raw["frames"], times=raw["times"],
+            audio=raw["audio"], created_at=raw["created_at"])  # fmt: skip
+    ts = [
+        Track(
+            track_id=t["track_id"],
+            concept=t["concept"],
+            first=t["first"],
+            last=t["last"],
+            boxes={int(k): tuple(v) for k, v in t["boxes"].items()},
+            reentry_of=t.get("reentry_of"),
+            source="sam-3.1",
+            prompt=t["concept"],
+        )
+        for t in data["tracks"]
+    ]
+    tracks_ = Tracks(concepts=sorted({t.concept for t in ts}), sam_fps=8, sam_frames=j.frames, tracks=ts)
+    return j, tracks_, Decisions.model_validate({"items": data["items"]}), data["leaks"]
+
+
+@pytest.mark.parametrize(
+    ("name", "frames"),
+    [("live_cafe_2026_11_04.json", {0, 287, 288}), ("live_street_audit_2026_11_04.json", {0})],
+)
+def test_a_kept_face_is_never_a_leak_where_sam_has_no_box_for_it(name: str, frames: set[int]) -> None:
+    """The live audit patched the kept presenter (café) and the kept guest and interviewer (street) on frames where
+    SAM had no box for them yet or any more; the kept track's nearest box within a second now excuses them, while a
+    stranger's face on the same frames is still a leak."""
+    from safecut.audit import leaks as rules  # noqa: PLC0415 -- the unit under test
+
+    j, ts, d, leaks = live(name)
+    by_track = {t.track_id: t for t in ts.tracks}
+    kept = {i.item_id for i in d.items if i.decision == "keep"}
+    excused = {
+        leak["frame"]
+        for leak in leaks
+        if rules.excluded_by(leak["kind"], tuple(leak["box"]), leak["frame"], d, by_track, fps=j.fps) in kept
+    }
+    assert excused == frames
+    for f in frames:  # a stranger in the far corner on the same frames
+        assert rules.excluded_by("face", (0, j.height - 20, 16, j.height), f, d, by_track, fps=j.fps) is None
+
+
+def test_the_street_child_is_covered_on_every_frame_it_is_tracked() -> None:
+    """The live render left the child walking with the woman uncovered at 3.5-7.5 s: its face's half-second back-fill
+    held the face's first box far ahead of the child and switched the body's head estimate off. Now every frame
+    the child is tracked, its face (where tracked) or its head estimate is under the cover."""
+    j, ts, d, _ = live("live_street_audit_2026_11_04.json")
+    p = plan(j, ts, d)
+    check(p, d, ts, j)
+    by_id = {t.track_id: t for t in ts.tracks}
+    for item in (i for i in d.items if i.kind == "child"):
+        faces = [by_id[t] for t in item.track_ids if by_id[t].concept == "face"]
+        for t in (by_id[x] for x in item.track_ids):
+            for f, box in t.boxes.items():
+                face = next((x.boxes[f] for x in faces if f in x.boxes), None)
+                if t.concept != "face" and face is not None:
+                    continue  # the face is tracked here: its own cover is the one checked
+                target = box if t.concept == "face" else c.head_box(box, j.width)
+                x1, y1, x2, y2 = target
+                hidden = hidden_mask(p.frames.get(f, []), [], j.height, j.width)
+                assert hidden[y1:y2, x1:x2].mean() >= 0.95, (item.item_id, t.track_id, f, target)
+
+
+def test_no_cover_is_a_dark_block_on_the_live_jobs() -> None:
+    """Owner, 11-04: one frosted look everywhere, never a dark solid box (plates, screens, patches included)."""
+    for name in ("live_cafe_2026_11_04.json", "live_street_audit_2026_11_04.json"):
+        j, ts, d, _ = live(name)
+        p = plan(j, ts, d)
+        frame = np.full((j.height, j.width, 3), 90, dtype=np.uint8)
+        frame[::7] = 30  # some texture, and dark stripes a dark cover would hide in
+        for f in range(0, j.frames, 40):
+            entries = p.frames.get(f, [])
+            out = apply(frame, entries, [])
+            for e in entries:
+                x1, y1, x2, y2 = e.box
+                lum = out[y1:y2, x1:x2].astype(float).mean(axis=-1)
+                assert not (lum.mean() < 40 and lum.std() < 2), (name, f, e.item_id)
+
+
+def test_kept_faces_are_untouched_on_every_frame_of_the_live_jobs() -> None:
+    """No cover lands on a kept participant's face (only a child's cover or another hidden face could)."""
+    for name in ("live_cafe_2026_11_04.json", "live_street_audit_2026_11_04.json"):
+        j, ts, d, _ = live(name)
+        p = plan(j, ts, d)
+        by_id = {t.track_id: t for t in ts.tracks}
+        exempt = {i.item_id for i in d.items if i.kind == "child"}
+        hidden_faces = {
+            i.item_id: [by_id[t] for t in i.track_ids if by_id[t].concept == "face"]
+            for i in d.items
+            if i.decision != "keep"
+        }
+        for item in (i for i in d.items if i.decision == "keep"):
+            for t in (by_id[x] for x in item.track_ids if by_id[x].concept == "face"):
+                for f, box in t.boxes.items():
+                    others = [
+                        e
+                        for e in p.frames.get(f, [])
+                        if e.item_id not in exempt
+                        and not any(
+                            g.intersection(box, b) for h in hidden_faces.get(e.item_id, []) if (b := h.boxes.get(f))
+                        )
+                    ]
+                    x1, y1, x2, y2 = box
+                    assert not hidden_mask(others, [], j.height, j.width)[y1:y2, x1:x2].any(), (name, t.track_id, f)
+
+
+def test_the_street_leaks_left_unresolved_are_now_under_a_childs_cover() -> None:
+    """The live audit ended with two unresolved small faces (frames 144 and 243), both on a child whose loose body
+    box put the head estimate above the face. A child is covered whole now, so both are under its cover."""
+    j, ts, d, leaks = live("live_street_audit_2026_11_04.json")
+    p = plan(j, ts, d)
+    unresolved = [leak for leak in leaks if leak["unresolved"]]
+    assert [leak["frame"] for leak in unresolved] == [144, 243]
+    for leak in unresolved:
+        x1, y1, x2, y2 = leak["box"]
+        assert hidden_mask(p.frames[leak["frame"]], [], j.height, j.width)[y1:y2, x1:x2].all()

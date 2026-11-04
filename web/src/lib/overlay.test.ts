@@ -41,14 +41,19 @@ describe("overlayOps (UI-SPEC §3.6)", () => {
     expect(at(region({ shape: "box" }))).not.toHaveProperty("mask");
   });
 
-  it("draws a masked cover run by run, not as its box", () => {
-    const rects: number[][] = [];
-    const ctx = { canvas: { width: 8, height: 8 }, clearRect: () => undefined, fillRect: (...r: number[]) => rects.push(r), fillStyle: "" } as unknown as CanvasRenderingContext2D;
+  it("draws a masked cover frosted inside its mask runs, never as a dark block", () => {
+    const calls: string[] = [];
+    const ctx = {
+      canvas: { width: 8, height: 8 }, clearRect: () => undefined, save: () => undefined, restore: () => undefined, beginPath: () => undefined, clip: () => calls.push("clip"),
+      rect: (...r: number[]) => calls.push(`rect ${r.join(",")}`), fillRect: () => calls.push("fill"), fillStyle: "", filter: "",
+    } as unknown as CanvasRenderingContext2D;
     drawOverlay(ctx, null, [{ kind: "cover", box: [0, 0, 4, 4], style: "solid", grid: null, mask: [[1, 1, 2], [2, 0, 1]] }], 2);
-    expect(rects).toEqual([
-      [2, 2, 2.5, 4.5],
-      [4, 0, 2.5, 2.5],
-    ]);
+    // Clipped to the mask's runs (one rect per run, a pixel wide, slightly overdrawn), then frosted cells.
+    expect(calls.slice(0, 3)).toEqual(["rect 2,2,2.5,4.5", "rect 4,0,2.5,2.5", "clip"]);
+    expect(calls.filter((c) => c === "fill").length).toBeGreaterThan(0);
+    expect(ctx.filter).toMatch(/^blur\(/);
+    const [r, g, b] = (ctx.fillStyle as string).match(/\d+/g)!.map(Number);
+    expect((r! + g! + b!) / 3).toBeGreaterThan(150); // the haze: light, never the old dark slate
   });
 
   it("draws nothing on a frame the plan leaves out", () => {
@@ -80,7 +85,8 @@ describe("overlayOps (UI-SPEC §3.6)", () => {
     const ops = overlayOps({ ...base, width: 8, height: 8, plan: { frames: { "9": [r] }, crowd_fills: [] } });
     expect(ops).toEqual([{ kind: "cover", box: [0, 0, 8, 8], style: "solid", grid: null, clear: [[2, 2, 4, 4]] }]);
     const calls: string[] = [];
-    const lctx = { fillRect: (...a: number[]) => calls.push(`fill ${a.join(",")}`), clearRect: (...a: number[]) => calls.push(`clear ${a.join(",")}`), fillStyle: "" };
+    const noop = () => undefined;
+    const lctx = { save: noop, restore: noop, beginPath: noop, rect: noop, clip: noop, fillRect: () => calls.push("fill"), clearRect: (...a: number[]) => calls.push(`clear ${a.join(",")}`), fillStyle: "", filter: "" };
     const layer = { width: 0, height: 0, getContext: () => lctx };
     const original = document.createElement.bind(document);
     document.createElement = ((tag: string) => (tag === "canvas" ? layer : original(tag))) as typeof document.createElement;
@@ -90,7 +96,8 @@ describe("overlayOps (UI-SPEC §3.6)", () => {
     } finally {
       document.createElement = original;
     }
-    expect(calls).toEqual(["fill 0,0,16,16", "clear 4,4,4,4", "lay"]);
+    expect(calls.filter((c) => c !== "fill")).toEqual(["clear 4,4,4,4", "lay"]);
+    expect(calls).not.toContain("direct");
   });
 
   it("in Raw mode outlines items instead of covering, and rings the selection", () => {

@@ -13,6 +13,11 @@ const PAD_PX = 8;
 const MAX_BLOCKS = 4;
 /** The renderer's per-cell noise amplitude (draw.py `NOISE`), in levels. */
 const NOISE = 24;
+/** draw.py's frosted finish: haze share and level, blur sigma (px), cells across an object. */
+const HAZE = 0.35;
+const HAZE_LEVEL = 225;
+const FROST_SIGMA = 4;
+const OBJECT_BLOCKS = 4;
 /** DESIGN §2.7: a head estimate is the top of a body box, min(0.22·h, 0.9·w) tall. */
 const HEAD_SHARE = 0.22;
 const HEAD_ASPECT = 0.9;
@@ -200,35 +205,37 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, video: CanvasImageSou
   }
 }
 
-/** One cover or crowd fill, as the renderer paints it: a mosaic on the item's grid in its mask's shape (or box), or
- * the dark fill over its mask runs (or box). */
+/** One cover or crowd fill, as the renderer paints it (draw.py, owner 2026-11-04): frosted. Cells on the item's
+ * locked grid (else about 4 across the region) take the region's mean colour lifted toward a light haze plus a fixed
+ * per-cell noise, blurred, inside the region's mask runs (or box). Never a dark block. */
 function paint(ctx: CanvasRenderingContext2D, video: CanvasImageSource | null, op: OverlayOp, scale: number): void {
-  if (op.kind === "cover" && op.style === "pixelate" && op.grid && video) {
-    drawPixelated(ctx, video, op.box, op.grid, scale, op.mask ?? null);
-    return;
-  }
-  ctx.fillStyle = "#18181b";
-  if (op.kind === "cover" && op.mask) {
-    // One rect per vertical run, a pixel wide, slightly overdrawn so scaled runs leave no seams.
-    for (const [x, y, h] of op.mask) ctx.fillRect(x * scale, y * scale, Math.ceil(scale) + 0.5, h * scale + 0.5);
-  } else if (op.kind === "cover" || op.kind === "fill") {
-    const [x1, y1, x2, y2] = op.box;
-    ctx.fillRect(x1 * scale, y1 * scale, (x2 - x1) * scale, (y2 - y1) * scale);
-  }
+  if (op.kind !== "cover" && op.kind !== "fill") return;
+  const box = op.box;
+  const grid = op.kind === "cover" && op.style === "pixelate" && op.grid ? op.grid : null;
+  drawFrosted(ctx, video, box, grid, scale, op.kind === "cover" ? (op.mask ?? null) : null);
 }
 
-/** Coarse cells locked to the item's grid, so they don't shift between frames (DESIGN §2.7), as the renderer draws
- * them: every cell is the region's mean colour plus a fixed per-cell noise (no cell keeps the face's own light and
- * dark), clipped to the region's mask runs when it has them. */
-function drawPixelated(ctx: CanvasRenderingContext2D, video: CanvasImageSource, box: Box, [gx, gy, cell]: Grid, scale: number, mask: Run[] | null): void {
-  scratch ??= document.createElement("canvas");
-  scratch.width = 1;
-  scratch.height = 1;
-  const small = scratch.getContext("2d", { willReadFrequently: true });
-  if (!small) return;
-  small.imageSmoothingEnabled = true;
-  small.drawImage(video, box[0], box[1], Math.max(1, box[2] - box[0]), Math.max(1, box[3] - box[1]), 0, 0, 1, 1);
-  const [r, g, b] = small.getImageData(0, 0, 1, 1).data;
+/** The region's mean colour (from the video when it has a frame), lifted toward the haze. */
+function hazeOf(video: CanvasImageSource | null, box: Box): [number, number, number] {
+  let mean: [number, number, number] = [HAZE_LEVEL, HAZE_LEVEL, HAZE_LEVEL];
+  if (video) {
+    scratch ??= document.createElement("canvas");
+    scratch.width = 1;
+    scratch.height = 1;
+    const small = scratch.getContext("2d", { willReadFrequently: true });
+    if (small) {
+      small.imageSmoothingEnabled = true;
+      small.drawImage(video, box[0], box[1], Math.max(1, box[2] - box[0]), Math.max(1, box[3] - box[1]), 0, 0, 1, 1);
+      const [r, g, b] = small.getImageData(0, 0, 1, 1).data;
+      mean = [r ?? HAZE_LEVEL, g ?? HAZE_LEVEL, b ?? HAZE_LEVEL];
+    }
+  }
+  return [0, 1, 2].map((i) => (1 - HAZE) * (mean[i] ?? HAZE_LEVEL) + HAZE * HAZE_LEVEL) as [number, number, number];
+}
+
+function drawFrosted(ctx: CanvasRenderingContext2D, video: CanvasImageSource | null, box: Box, grid: Grid | null, scale: number, mask: Run[] | null): void {
+  const [gx, gy, cell] = grid ?? [box[0], box[1], Math.max(2, Math.ceil(Math.min(box[2] - box[0], box[3] - box[1]) / OBJECT_BLOCKS))];
+  const [r, g, b] = hazeOf(video, box);
   const x0 = gx + Math.floor((box[0] - gx) / cell) * cell;
   const y0 = gy + Math.floor((box[1] - gy) / cell) * cell;
   ctx.save();
@@ -236,10 +243,11 @@ function drawPixelated(ctx: CanvasRenderingContext2D, video: CanvasImageSource, 
   if (mask) for (const [x, y, h] of mask) ctx.rect(x * scale, y * scale, Math.ceil(scale) + 0.5, h * scale + 0.5);
   else ctx.rect(box[0] * scale, box[1] * scale, (box[2] - box[0]) * scale, (box[3] - box[1]) * scale);
   ctx.clip();
+  ctx.filter = `blur(${Math.max(1, FROST_SIGMA * scale)}px)`;
   for (let y = y0; y < box[3]; y += cell) {
     for (let x = x0; x < box[2]; x += cell) {
       const n = cellNoise((x - gx) / cell, (y - gy) / cell);
-      ctx.fillStyle = `rgb(${clampByte((r ?? 0) + n[0])}, ${clampByte((g ?? 0) + n[1])}, ${clampByte((b ?? 0) + n[2])})`;
+      ctx.fillStyle = `rgb(${clampByte(r + n[0])}, ${clampByte(g + n[1])}, ${clampByte(b + n[2])})`;
       ctx.fillRect(x * scale, y * scale, cell * scale + 0.5, cell * scale + 0.5);
     }
   }

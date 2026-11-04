@@ -133,7 +133,7 @@ def scan(state: State, job_dir: Path, detector: Detector, wanted: set[int], *, c
                     state.faces += 1
                 elif first:
                     state.plates += 1
-                if rules.excluded_by(d.kind, d.box, index, state.decisions, by_track) is None:
+                if rules.excluded_by(d.kind, d.box, index, state.decisions, by_track, fps=state.job.fps) is None:
                     found.append(Leak(frame=index, box=d.box, kind=d.kind, detector="egoblur", patched_item=None))
             # Scanned only once its detections are all judged: a crash part-way leaves the frame unscanned.
             state.scanned.add(index)
@@ -186,7 +186,9 @@ async def red_team(
             box = (0, 0, job.width, job.height) if mapped in (None, "in_bar") else mapped
             # A whole-frame box stands for a finding we couldn't place (fail closed): nothing kept excuses it.
             placed = mapped not in (None, "in_bar")
-            exclude = rules.excluded_by(finding.kind, box, frame, state.decisions, by_track) if placed else None
+            exclude = (
+                rules.excluded_by(finding.kind, box, frame, state.decisions, by_track, fps=job.fps) if placed else None
+            )
             state.redteam.append(
                 RedteamHit(
                     frame=frame,
