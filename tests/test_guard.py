@@ -75,10 +75,10 @@ def disk(cx: int, cy: int, r: int) -> contracts.Rle:
 # ---------------------------------------------------------------------------------------------- table tests
 
 
-def test_backfill_is_half_a_second() -> None:
-    assert backfill_frames(job(fps=30)) == 15  # DESIGN §2.6: ceil(0.5 x fps)
-    assert backfill_frames(job(fps=24)) == 12
-    assert backfill_frames(job(fps=25)) == 13
+def test_backfill_is_0_3_s() -> None:
+    assert backfill_frames(job(fps=30)) == 9  # DESIGN §2.6 (owner, 11-04): ceil(0.3 x fps)
+    assert backfill_frames(job(fps=24)) == 8
+    assert backfill_frames(job(fps=25)) == 8
 
 
 def test_a_hidden_face_is_padded_15_percent_plus_8_px_on_each_side() -> None:
@@ -87,7 +87,7 @@ def test_a_hidden_face_is_padded_15_percent_plus_8_px_on_each_side() -> None:
     (e,) = entries(p, 25, "i_1")
     assert e.box == (86, 36, 154, 104)  # 40 px: 6 + 8 each side
     assert p.padding == PADDING
-    assert (p.temporal.extend, p.temporal.backfill) == (8, 15)
+    assert (p.temporal.extend, p.temporal.backfill) == (8, 9)
 
 
 def test_objects_are_padded_8_percent() -> None:
@@ -111,9 +111,9 @@ def test_backfill_and_extend_hold_the_edge_box_still() -> None:
     t = track("face:1", 40, 50, (100, 60, 120, 80), step=(2, 0))  # moving right 2 px a frame
     ts = tracks(t)
     p = plan(JOB, ts, hide_all(ts))
-    assert min(p.frames) == 40 - 15
+    assert min(p.frames) == 40 - 9
     assert max(p.frames) == 50 + EXTEND
-    for frame in range(25, 40):
+    for frame in range(31, 40):
         assert covered(p, frame, "i_1", (100, 60, 120, 80)), frame  # the first box, held still
         (e,) = entries(p, frame, "i_1")
         assert e.box[0] >= 100 - 2 - 3 - 8 - 1  # grown at most 10 % (2 px) each side, then padded (3 + 8 px)
@@ -366,12 +366,13 @@ def test_a_sliver_mask_in_a_small_box_falls_back_to_the_box() -> None:
 
 
 def test_a_reentry_gap_is_held_up_to_2_s() -> None:
-    """DESIGN §2.6's gap hold survives SAM splitting a lost object into a re-entry (a new track)."""
+    """DESIGN §2.6's gap hold survives SAM splitting a lost object into a re-entry (a new track): a person who stays
+    half out of frame while SAM has lost them (the entry gate's E3 demo) stays covered."""
     first = track("face:1", 0, 5, (40, 40, 60, 60))
     again = track("face:2", 50, 59, (40, 40, 60, 60), reentry_of="face:1")
     ts = tracks(first, again, sam_fps=30)
     p = plan(JOB, ts, hide_all(ts))
-    assert p.temporal.backfill == 15
+    assert p.temporal.backfill == 9
     for frame in range(6, 50):  # extend, then the hold, then the re-entry's back-fill: never bare
         assert covered(p, frame, "i_1", (40, 40, 60, 60)) or covered(p, frame, "i_2", (40, 40, 60, 60)), frame
 
@@ -479,7 +480,7 @@ def test_a_merged_face_away_from_the_items_body_still_gets_a_body() -> None:
         "person:1", "face:2"], "style": "person_solid", "decision": "hide", "decided_by": "creator",
         "removed_by_creator": True})])  # fmt: skip
     p = plan(JOB, ts, merged)
-    for frame in (25, 30):  # face:2's back-fill, person:1's extend/hold region elsewhere
+    for frame in (32, 36):  # face:2's back-fill (0.3 s before it is seen)
         assert covered(p, frame, "i_1", (245, 40, 275, H)), frame
 
 
@@ -489,8 +490,8 @@ def test_back_fill_of_a_fast_moving_face_stays_at_its_first_box() -> None:
     t = track("face:1", 20, 28, (200, 80, 220, 100), step=(10, 0), anchors=[20, 24, 28])
     ts = tracks(t)
     p = plan(job(fps=30), ts, hide_all(ts))
-    assert min(p.frames) == 20 - 15
-    for frame in range(5, 20):
+    assert min(p.frames) == 20 - 9
+    for frame in range(11, 20):
         assert covered(p, frame, "i_1", (200, 80, 220, 100)), frame
         (e,) = entries(p, frame, "i_1")
         assert e.box[0] >= 200 - 2 - 3 - 8 - 1, (frame, e.box)

@@ -650,8 +650,8 @@ def test_every_crowded_frame_has_a_crowd_fill(tmp_path: Path) -> None:
 
 def test_the_backfill_is_half_a_second_in_prepared_frames(tmp_path: Path) -> None:
     job_dir = _example(tmp_path)
-    _edit(job_dir, "plan.json", lambda d: d["temporal"].update({"backfill": 57}))
-    with pytest.raises(c.ContractError, match=r"backfill 57 != ceil\(0.5 x fps\) = 15"):
+    _edit(job_dir, "plan.json", lambda d: d["temporal"].update({"backfill": 15}))
+    with pytest.raises(c.ContractError, match=r"backfill 15 != ceil\(0.3 x fps\) = 9"):
         c.validate_job_dir(job_dir)
 
 
@@ -1336,7 +1336,7 @@ def test_an_audit_patch_spans_its_finding(tmp_path: Path) -> None:
         {"last": 10}))  # fmt: skip
     _edit(job_dir, "plan.json", lambda d: d["frames"].update(
         {"11": [e for e in d["frames"]["11"] if e["item_id"] != "p_1"]}))  # fmt: skip
-    with pytest.raises(c.ContractError, match="audit patch for frame 10 spans at least 0-11, not 10-10"):
+    with pytest.raises(c.ContractError, match="audit patch for frame 10 spans at least 1-11, not 10-10"):
         c.validate_job_dir(job_dir)
 
 

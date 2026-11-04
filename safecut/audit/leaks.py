@@ -92,8 +92,12 @@ def excuses(kind: LeakKind, track: Track, frame: int, box: BoxT, window: int) ->
         return False
     if iou(kept, box) > EXCLUDE_IOU:
         return True
-    if kind != "face" or track.concept != "face":
+    if track.concept != "face" or kind not in ("face", "person"):
         return False
+    if kind == "person":  # a red-team "person" mostly inside the kept face is that face (never a body box, L12)
+        dx, dy = EXCUSE_PAD * (kept[2] - kept[0]), EXCUSE_PAD * (kept[3] - kept[1])
+        padded = (int(kept[0] - dx), int(kept[1] - dy), int(kept[2] + dx) + 1, int(kept[3] + dy) + 1)
+        return intersection(padded, box) >= 0.5 * area(box)
     cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
     dx, dy = EXCUSE_PAD * (kept[2] - kept[0]), EXCUSE_PAD * (kept[3] - kept[1])
     return kept[0] - dx <= cx <= kept[2] + dx and kept[1] - dy <= cy <= kept[3] + dy
@@ -116,7 +120,8 @@ def excluded_by(
             continue
         for track_id in item.track_ids:
             track = by_track.get(track_id)
-            if track is None or not concept_matches(kind, track.concept):
+            face_for_person = kind == "person" and track is not None and track.concept == "face"
+            if track is None or not (concept_matches(kind, track.concept) or face_for_person):
                 continue
             if excuses(kind, track, frame, box, window):
                 return item.item_id
@@ -268,8 +273,20 @@ def next_numbers(decisions: Decisions) -> tuple[int, int]:
     return max(patches, default=0) + 1, max(labels, default=0) + 1
 
 
-def make_patch(group: Group, number: int, label: int, *, frames: int, sample_step: int, extend: int) -> DecisionItem:
-    half = math.ceil(sample_step / 2)
+#: How long an audit patch is held around the frame its leak was seen on, in seconds (owner, 11-04): long enough to
+#: bridge a detector's missed frame, short enough that a patch never floats where its subject has walked or the
+#: camera has panned away. Each leak frame gets its own patch at that frame's box, so patches follow their subject.
+PATCH_HOLD_S = 0.3
+#: A patch over more of the frame than this is never painted (a model's vague finding, not a face): its leak stays
+#: unresolved, a spot for the creator to look at in review.
+PATCH_MAX_SHARE = 0.06
+
+
+def patch_hold(fps: int) -> int:
+    return math.ceil(PATCH_HOLD_S * fps)
+
+
+def make_patch(group: Group, number: int, label: int, *, frames: int, hold: int) -> DecisionItem:
     return DecisionItem(
         item_id=f"p_{number}",
         track_ids=[],
@@ -283,8 +300,8 @@ def make_patch(group: Group, number: int, label: int, *, frames: int, sample_ste
         origin="audit_patch",
         audit_label=f"A{label}",
         box=group.box,
-        first=max(0, group.first - half - extend),
-        last=min(frames - 1, group.last + half + extend),
+        first=max(0, group.first - hold),
+        last=min(frames - 1, group.last + hold),
     )
 
 

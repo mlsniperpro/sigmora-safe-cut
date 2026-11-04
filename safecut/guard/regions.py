@@ -8,7 +8,7 @@ everything else 8 % plus 8 px. Outside the frames SAM saw the object, the guard 
   it (API-NOTES §12), padded;
 * **gaps** (SAM lost the object between anchors): the interpolated box, grown 2 % a frame from the nearer anchor
   (at most 25 % each side);
-* **back-fill** (``backfill`` frames, half a second, before the first detection) and **extend** (8 frames after the
+* **back-fill** (``backfill`` frames, 0.3 s, before the first detection) and **extend** (8 frames after the
   last): the edge box held still, grown 2 % a frame (at most 10 % each side before, 25 % after). Nothing is swept
   along the track's motion: a cover never runs ahead of its object into empty space or over someone else.
 

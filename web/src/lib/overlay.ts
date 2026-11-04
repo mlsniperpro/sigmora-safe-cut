@@ -14,7 +14,7 @@ const MAX_BLOCKS = 4;
 /** The renderer's per-cell noise amplitude (draw.py `NOISE`), in levels. */
 const NOISE = 24;
 /** draw.py's frosted finish: haze share and level, blur sigma (px), cells across an object. */
-const HAZE = 0.35;
+const HAZE = 0.2;
 const HAZE_LEVEL = 225;
 const FROST_SIGMA = 4;
 const OBJECT_BLOCKS = 4;
@@ -250,8 +250,8 @@ function drawFrosted(ctx: CanvasRenderingContext2D, video: CanvasImageSource | n
   ctx.filter = `blur(${Math.max(1, FROST_SIGMA * scale)}px)`;
   for (let y = y0; y < box[3]; y += cell) {
     for (let x = x0; x < box[2]; x += cell) {
-      const n = cellNoise((x - gx) / cell, (y - gy) / cell);
-      ctx.fillStyle = `rgb(${clampByte(r + n[0])}, ${clampByte(g + n[1])}, ${clampByte(b + n[2])})`;
+      const n = cellNoise((x - gx) / cell, (y - gy) / cell)[0]; // grey grain: one value for all channels
+      ctx.fillStyle = `rgb(${clampByte(r + n)}, ${clampByte(g + n)}, ${clampByte(b + n)})`;
       ctx.fillRect(x * scale, y * scale, cell * scale + 0.5, cell * scale + 0.5);
     }
   }

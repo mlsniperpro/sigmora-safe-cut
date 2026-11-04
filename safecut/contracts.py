@@ -642,8 +642,9 @@ class PlanEntry(Contract):
     grid: tuple[NonNegativeInt, NonNegativeInt, PositiveInt] | None
     source: Literal["decision", "audit_patch"] = "decision"
     #: DESIGN §2.6: kept participants' padded face boxes on this frame that this entry leaves untouched (its pixels
-    #: inside them are not drawn). Never on a child's entry or an audit patch (a child always wins). Left out of the
-    #: file while empty, so plans written before it existed read and hash the same.
+    #: inside them are not drawn). Never on a child's entry (a child always wins); audit patches too (owner, 11-04:
+    #: no patch ever paints a kept face). Left out of the file while empty, so plans written before it existed read
+    #: and hash the same.
     keep_clear: list[Box] = Field(default_factory=list[Box])
 
     @model_serializer(mode="wrap")
@@ -659,8 +660,6 @@ class PlanEntry(Contract):
             raise ValueError("mask is set exactly when shape is mask")
         if (self.style == "pixelate") != (self.grid is not None):
             raise ValueError("grid is set exactly when style is pixelate")
-        if self.keep_clear and self.source == "audit_patch":
-            raise ValueError("an audit patch is never clipped (keep_clear)")
         return self
 
 
@@ -1624,16 +1623,17 @@ def _check_receipt_cost(receipt: Receipt, job: Job, cost_path: Path) -> None:
 
 
 def _check_patch_spans(decisions: Decisions | None, audit: Audit | None, plan: Plan | None, job: Job) -> None:
-    """redteam.md: an audit patch is held over `f − half − extend … f + half + extend` (clamped; a merged run or a
-    covered spot spans wider), `half = ceil(sample_step / 2)`, with `f` its evidence frame."""
+    """An audit patch is held over `f − hold … f + hold` (clamped; a merged run or a covered spot spans wider),
+    `hold = ceil(0.3 × fps)` (owner, 11-04: a patch never floats where its subject has gone), `f` its evidence
+    frame."""
     if decisions is None or audit is None or plan is None:
         return
-    half = math.ceil(audit.sample_step / 2)
+    hold = math.ceil(0.3 * job.fps)
     for item in decisions.items:
         if item.origin != "audit_patch" or item.first is None or item.last is None or not item.evidence_frames:
             continue
         f = item.evidence_frames[0]
-        first, last = max(0, f - half - plan.temporal.extend), min(job.frames - 1, f + half + plan.temporal.extend)
+        first, last = max(0, f - hold), min(job.frames - 1, f + hold)
         if item.first > first or item.last < last:
             raise ContractError(
                 f"decisions.json {item.item_id}: an audit patch for frame {f} spans at least {first}-{last}, not"
@@ -1714,9 +1714,9 @@ def _check_plan_geometry(plan: Plan, decisions: Decisions, tracks: Tracks, job: 
         raise ContractError(f"plan.json: crowded frames {unfilled[:5]} have no crowd fill")
     hidden = {tid for i in decisions.items if i.decision in ("hide", "needs_you") for tid in i.track_ids}
     _check_crowd_fills(plan, tracks, hidden)
-    want = math.ceil(0.5 * job.fps)
+    want = math.ceil(0.3 * job.fps)
     if plan.temporal.backfill != want:
-        raise ContractError(f"plan.json: temporal.backfill {plan.temporal.backfill} != ceil(0.5 x fps) = {want}")
+        raise ContractError(f"plan.json: temporal.backfill {plan.temporal.backfill} != ceil(0.3 x fps) = {want}")
     by_track = {t.track_id: t for t in tracks.tracks}
     _check_keep_clear(plan, decisions, by_track)
     fills_on = _fills_by_frame(plan)
@@ -1753,7 +1753,7 @@ def _check_keep_clear(plan: Plan, decisions: Decisions, by_track: Mapping[str, T
     for frame, entries in plan.frames.items():
         for entry in (e for e in entries if e.keep_clear):
             item = items.get(entry.item_id)
-            if item is None or item.kind == "child" or item.origin == "audit_patch" or item.decision == "keep":
+            if item is None or item.kind == "child" or item.decision == "keep":
                 raise ContractError(f"plan.json frame {frame}: {entry.item_id} may not leave anything clear")
             for clear in entry.keep_clear:
                 near = [b for t in faces if t.first <= frame <= t.last for b in _anchors_around(t, frame)]

@@ -1,7 +1,7 @@
 """The leak guard: decisions + tracks → ``plan.json`` (DESIGN §2.6, WP3 step 5, ARCHITECTURE §3.7).
 
 Every hidden or ``needs_you`` item is planned on every frame of each of its tracks, widened in time by the
-back-fill before the first detection (half a second, ``ceil(0.5 x fps)`` frames, the first box held still) and 8
+back-fill before the first detection (0.3 s, ``ceil(0.3 x fps)`` frames, the first box held still) and 8
 frames after the last, and padded in space (``regions``). A person or child is covered face/head only (DESIGN
 §2.7): its face tracks, and its body tracks as a head estimate where no face track is planned; only the creator's
 Remove person (``person_solid``) covers the whole body. No cover ever hides a kept participant's face: each entry
@@ -47,7 +47,7 @@ EXTEND = 8
 #: DESIGN §2.6: hold the last box through gaps up to 2 s.
 GAP_HOLD_S = 2.0
 #: DESIGN §2.6: the back-fill before a track's first box, in seconds (a late detection, held still).
-BACKFILL_S = 0.5
+BACKFILL_S = 0.3
 #: DESIGN §2.7: a face spans at most 6 mosaic blocks; we use 4 (coarser is always allowed, finer never): with 6, the
 #: demo's bystander still left a trace the entry gate's pixel check (E3) could read on a few edge frames.
 MAX_BLOCKS = 4
@@ -56,7 +56,7 @@ Grid = tuple[int, int, int]
 
 
 def backfill_frames(job: Job) -> int:
-    """``ceil(0.5 x job.fps)``: half a second before a track's first box (DESIGN §2.6, ARCHITECTURE §3.7)."""
+    """``ceil(0.3 x job.fps)``: 0.3 s before a track's first box (DESIGN §2.6, ARCHITECTURE §3.7)."""
     return math.ceil(BACKFILL_S * job.fps)
 
 
@@ -193,7 +193,9 @@ def _heads(
         yield frame, Region(grow(union(heads), PADDING.face, PADDING.px, job.width, job.height))
 
 
-def kept_faces(job: Job, tracks: Tracks, decisions: Decisions, *, interp_gap: int) -> dict[int, list[BoxT]]:
+def kept_faces(
+    job: Job, tracks: Tracks, decisions: Decisions, *, interp_gap: int, padded: bool = True
+) -> dict[int, list[BoxT]]:
     """Every kept participant's padded face box, by frame (DESIGN §2.6): from each face track of a kept person, on
     the frames SAM saw it (``first … last``, gaps held), padded like any face cover."""
     by_id = {t.track_id: t for t in tracks.tracks}
@@ -202,37 +204,35 @@ def kept_faces(job: Job, tracks: Tracks, decisions: Decisions, *, interp_gap: in
         if item.decision != "keep" or item.kind != "person":
             continue
         for track in (by_id[t] for t in item.track_ids if t in by_id and by_id[t].concept == "face"):
-            regions = TrackRegions(track.model_copy(update={"masks": {}}), ratio=PADDING.face, px=PADDING.px,
-                                   width=job.width, height=job.height, interp_gap=interp_gap)  # fmt: skip
+            regions = TrackRegions(track.model_copy(update={"masks": {}}), ratio=PADDING.face if padded else 0.0,
+                                   px=PADDING.px if padded else 0, width=job.width, height=job.height,
+                                   interp_gap=interp_gap)  # fmt: skip
             for frame in range(track.first, min(job.frames, track.last + 1)):
                 out.setdefault(frame, []).append(regions.at(frame).box)
     return out
 
 
 def _clip_kept(
-    frames: dict[int, list[PlanEntry]], kept: dict[int, list[BoxT]], decisions: Decisions, by_id: dict[str, Track]
+    frames: dict[int, list[PlanEntry]],
+    kept: dict[int, list[BoxT]],
+    faces_only: dict[int, list[BoxT]],
+    decisions: Decisions,
+    by_id: dict[str, Track],
 ) -> None:
-    """Leave every kept participant's face clear of every other item's cover (``keep_clear``), except a child's (a
-    child always wins), an audit patch (a leak the audit found stays covered), and where the item's own face is
-    inside that kept face on the frame: a hidden face is never uncovered to keep another face clear (the audit would
-    only patch it back over both), so only its padding, a body or an object's cover gives way."""
-    unclipped = {i.item_id for i in decisions.items if i.kind == "child" or i.origin == "audit_patch"}
-    hidden_faces = {
-        i.item_id: [by_id[t] for t in i.track_ids if t in by_id and by_id[t].concept == "face"]
-        for i in decisions.items
-        if i.decision != "keep"
-    }
+    """Leave every kept participant's face clear of every other item's cover (``keep_clear``), audit patches
+    included, except a child's: a child always wins; otherwise a kept face always wins (owner, 11-04: a hidden track
+    that switched onto a kept face, or a patch over it, must never paint it). What is cleared is the kept face's own
+    box (``faces_only``, unpadded): whatever is inside it is the kept face, in front (a hidden track that switched
+    onto it included); a leak right beside it stays covered."""
+    del by_id
+    unclipped = {i.item_id for i in decisions.items if i.kind == "child"}
     for frame, entries in frames.items():
-        faces = kept.get(frame)
-        if not faces:
+        if not kept.get(frame):
             continue
         for n, entry in enumerate(entries):
-            if entry.item_id in unclipped or entry.source == "audit_patch":
+            if entry.item_id in unclipped:
                 continue
-            own = [b for t in hidden_faces.get(entry.item_id, []) if (b := nearest_box(t, frame)) is not None]
-            clear = [
-                f for f in faces if intersection(f, entry.box) > 0 and not any(intersection(f, b) > 0 for b in own)
-            ]
+            clear = [f for f in faces_only.get(frame, []) if intersection(f, entry.box) > 0]
             if clear:
                 entries[n] = entry.model_copy(update={"keep_clear": clear})
 
@@ -319,7 +319,9 @@ def plan(
                 grid=grid,
             )
             frames.setdefault(frame, []).append(entry)
-    _clip_kept(frames, kept_faces(job, tracks, decisions, interp_gap=interp_gap), decisions, by_id)
+    kept = kept_faces(job, tracks, decisions, interp_gap=interp_gap)
+    own_boxes = kept_faces(job, tracks, decisions, interp_gap=interp_gap, padded=False)
+    _clip_kept(frames, kept, own_boxes, decisions, by_id)
     return Plan(
         padding=PADDING,
         temporal=Temporal(extend=EXTEND, backfill=backfill, gap_hold_s=GAP_HOLD_S),

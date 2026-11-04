@@ -1,11 +1,11 @@
 """Draw one frame's redactions (DESIGN §2.7): what the renderer paints, and exactly which pixels it changes.
 
-One look for every cover (owner, 2026-11-04): **frosted**. Each cover's cells (the item's locked grid for a face
-mosaic, else about 4 cells across the region) take the region's mean colour, lifted toward a light haze, plus a fixed
-per-cell noise; then the covered pixels become a strong blur of those cells alone, and the edge is feathered outward.
-No cell carries any of the region's own detail (two regions with the same mean frost identically), a still object
-renders the same pixels frame after frame, and nothing is ever a dark block: faces, plates, screens, documents,
-whole persons, crowd fills and audit patches alike.
+One look for every cover (owner, 2026-11-04): **frosted**, like a production blur. Each connected blob of covers
+takes the source's average colour over the blob, lifted slightly toward a light haze, plus a fixed grey grain per
+cell (the item's locked grid for a face, else about 4 cells across the region); then the covered pixels become a
+strong blur of those cells alone, and the edge is feathered outward. No cell carries any of the region's own detail
+(two regions with the same average render identically), a still object renders the same pixels frame after frame,
+and nothing is ever a dark block: faces, plates, screens, documents, whole persons, crowd fills and audit patches.
 
 An entry never paints inside its ``keep_clear`` boxes (kept participants' faces, DESIGN §2.6). :func:`hidden_mask`
 is the union of the regions (the feathered ring outside them only softens the edge), so the coverage metric
@@ -83,20 +83,19 @@ FEATHER_SIGMA = 3.0
 #: across its shorter side; every cell is the region's mean colour plus its noise, so no text or detail survives.
 OBJECT_BLOCKS = 4
 #: The haze: each cover's colour is this share of the way from its region's mean to a light grey (frosted glass).
-HAZE, HAZE_LEVEL = 0.35, 225.0
+HAZE, HAZE_LEVEL = 0.2, 225.0
 
 
 def _frosted(
-    out: Frame,
+    out: NDArray[np.int16],
     region: BoolMask,
     *,
     at: tuple[slice, slice],
     grid: tuple[int, int, int] | None,
     item_id: str,
-    integral: NDArray[np.float64],
 ) -> None:
-    """Paint one cover's cells: the region's mean colour plus a fixed per-cell noise on its grid (the item's locked
-    grid, else one anchored at the box)."""
+    """Paint one cover's grain: a fixed grey value per cell on its grid (the item's locked grid, else one anchored at
+    the box). The colour under it is set per covered blob in :func:`apply`."""
     if region.size == 0 or not bool(region.any()):
         return
     ys, xs = at
@@ -109,28 +108,23 @@ def _frosted(
     row0, row1 = (y_lo - gy) // cell, (y_hi - 1 - gy) // cell
     cols = np.arange(col0, col1 + 1, dtype=np.int64)
     rows = np.arange(row0, row1 + 1, dtype=np.int64)
-    total = (integral[y_hi, x_hi] - integral[y_lo, x_hi] - integral[y_hi, x_lo] + integral[y_lo, x_lo]) / max(
-        1, (y_hi - y_lo) * (x_hi - x_lo)
-    )
-    # Frosted glass: the region's mean lifted toward a light haze, never a dark block.
-    haze = (1 - HAZE) * np.asarray(total, dtype=np.float64) + HAZE * HAZE_LEVEL
-    means = np.broadcast_to(haze, (rows.size, cols.size, 3))
-    colours = np.clip(np.rint(means) + _cell_noise(item_id, rows, cols), 0, 255).astype(np.uint8)
+    grain = _cell_noise(item_id, rows, cols)[:, :, 0].astype(np.int16)  # one grey value per cell: grain, not colour
     yy = (np.arange(y_lo, y_hi, dtype=np.int64) - gy) // cell - row0
     xx = (np.arange(x_lo, x_hi, dtype=np.int64) - gx) // cell - col0
     view = out[ys, xs]
-    view[region] = colours[yy[:, None], xx[None, :]][region]
+    view[region] = grain[yy[:, None], xx[None, :]][region]
 
 
 def apply(frame: Frame, entries: list[PlanEntry], fills: list[CrowdFill]) -> Frame:
-    """The redacted copy of a BGR ``frame``: every cover frosted (owner, 2026-11-04). Each cover's cells take its
-    region's mean colour plus a fixed noise (from the untouched source), then the covered pixels are replaced by a
-    strong blur of those cells, with the edge feathered outward. Nothing inside a cover keeps any of its source."""
+    """The redacted copy of a BGR ``frame``: every cover frosted (owner, 2026-11-04). Each connected blob of covers
+    takes the source's average colour over the whole blob (overlapping covers share one colour: no seam inside a
+    blob traces what is under it; a cell's own average would keep a face's light and dark), lifted slightly toward a
+    light haze, plus a fixed grey grain per cell; then the covered pixels are replaced by a strong blur of those
+    cells alone, with the edge feathered outward. Nothing inside a cover keeps any of its source's detail."""
     height, width = frame.shape[:2]
     if not entries and not fills:
         return frame.copy()
-    integral = np.asarray(cv2.integral(frame, sdepth=cv2.CV_64F), dtype=np.float64)
-    out = frame.copy()
+    grain = np.zeros((height, width), dtype=np.int16)
     covered = np.zeros((height, width), dtype=np.bool_)
     kept = np.zeros((height, width), dtype=np.bool_)  # kept faces: not even the feathered edge reaches them
     for entry in entries:
@@ -138,15 +132,25 @@ def apply(frame: Frame, entries: list[PlanEntry], fills: list[CrowdFill]) -> Fra
             kept[max(0, y1) : max(0, y2), max(0, x1) : max(0, x2)] = True
         ys, xs, region = region_mask(entry, height, width)
         grid = entry.grid if entry.style == "pixelate" else None
-        _frosted(out, region, at=(ys, xs), grid=grid, item_id=entry.item_id, integral=integral)
+        _frosted(grain, region, at=(ys, xs), grid=grid, item_id=entry.item_id)
         covered[ys, xs] |= region
     for n, fill in enumerate(fills):
         ys, xs = slice(fill.box[1], fill.box[3]), slice(fill.box[0], fill.box[2])
         region = np.ones((max(0, fill.box[3] - fill.box[1]), max(0, fill.box[2] - fill.box[0])), dtype=np.bool_)
-        _frosted(out, region, at=(ys, xs), grid=None, item_id=f"crowd_{n}", integral=integral)
+        _frosted(grain, region, at=(ys, xs), grid=None, item_id=f"crowd_{n}")
         covered[ys, xs] = True
     if not covered.any():
-        return out
+        return frame.copy()
+    count, found = cv2.connectedComponents(covered.astype(np.uint8), connectivity=8)
+    labels = np.asarray(found, dtype=np.int64)
+    flat: NDArray[np.int64] = labels.ravel()
+    sizes = np.bincount(flat, minlength=int(count)).astype(np.float64)
+    channels = frame.reshape(-1, 3).astype(np.float64)
+    sums = np.stack([np.bincount(flat, weights=channels[:, ch], minlength=int(count)) for ch in range(3)], axis=1)
+    means = sums / np.maximum(sizes, 1.0)[:, None]
+    base = (1 - HAZE) * means + HAZE * HAZE_LEVEL
+    out = np.clip(np.rint(base[labels]) + grain[:, :, None], 0, 255).astype(np.uint8)
+    out = np.where(covered[:, :, None], out, frame)
     # A normalised blur of the cells alone: no source pixel from around a cover bleeds into it.
     cells = np.where(covered[:, :, None], out, 0).astype(np.float32)
     inside = covered.astype(np.float32)

@@ -44,6 +44,7 @@ from safecut.contracts import (
     dump,
     load,
 )
+from safecut.decide.geometry import area
 from safecut.guard import region_cache
 from safecut.guard.plan import plan as make_plan
 from safecut.guard.plan import read_through
@@ -233,9 +234,14 @@ def patch(state: State, found: list[Leak]) -> list[Leak]:
     number, label = rules.next_numbers(state.decisions)
     new_items: list[DecisionItem] = []
     patched: list[Leak] = []
-    for group in rules.group_leaks(found, job.fps):
-        item = rules.make_patch(group, number, label, frames=job.frames, sample_step=job.fps,
-                                extend=plan.temporal.extend)  # fmt: skip
+    del plan
+    for group in rules.group_leaks(found, 0):  # one patch per leak frame, at that frame's box: patches follow
+        flagged = any(leak.through_item is not None for leak in group.leaks)  # a read-through: its item goes solid
+        if not flagged and area(group.box) > rules.PATCH_MAX_SHARE * job.width * job.height:
+            # Too big to be a face: never painted (it would hide the scene, a kept face too); the creator sees it.
+            patched += [leak.model_copy(update={"unresolved": True}) for leak in group.leaks]
+            continue
+        item = rules.make_patch(group, number, label, frames=job.frames, hold=rules.patch_hold(job.fps))
         new_items.append(item)
         number, label = number + 1, label + 1
         patched += [leak.model_copy(update={"patched_item": item.item_id}) for leak in group.leaks]

@@ -143,15 +143,15 @@ def test_the_checker_refuses_a_body_left_bare_where_no_face_is_planned() -> None
 # ----------------------------------------------------------------------------------------- held covers (§2.6)
 
 
-def test_a_track_first_seen_at_frame_100_has_no_cover_before_its_half_second() -> None:
+def test_a_track_first_seen_at_frame_100_has_no_cover_before_its_0_3_s() -> None:
     j = job(200)
     plate = track("license plate:1", 100, 150, (100, 100, 140, 120), step=(1, 0))
     ts = tracks(plate)
     d = Decisions(items=[item("i_1", ["license plate:1"], kind="plate")])
     p = plan(j, ts, d)
     check(p, d, ts, j)
-    lead = math.ceil(0.5 * j.fps)
-    assert p.temporal.backfill == lead == 15
+    lead = math.ceil(0.3 * j.fps)
+    assert p.temporal.backfill == lead == 9
     assert min(f for f, es in p.frames.items() if es) == 100 - lead
     # Held still (no sweep along the motion), grown at most 10 % each side before the first box.
     edge = g.grow(g.grow((100, 100, 140, 120), 0, 0, W, H), 0, 0, W, H)
@@ -205,7 +205,7 @@ def test_a_bystander_cover_leaves_the_kept_presenters_face_untouched() -> None:
     d = Decisions(items=[kept, hidden, child])
     p = plan(j, ts, d)
     check(p, d, ts, j)
-    face = g.grow((130, 30, 170, 80), PADDING.face, PADDING.px, W, H)
+    face = (130, 30, 170, 80)  # the kept face's own box: what is inside it is the kept face, in front
     frame = np.full((H, W, 3), 128, dtype=np.uint8)
     frame[face[1] : face[3], face[0] : face[2]] = (10, 200, 30)
     for f in (0, 30, 59):
@@ -315,12 +315,12 @@ def test_the_street_job_covers_only_where_its_objects_are() -> None:
     assert float(hidden_mask(p.frames.get(210, []), [], j.height, j.width).mean()) < 0.25  # was ~95 % live
 
 
-def test_a_hidden_face_is_never_uncovered_to_keep_a_kept_face_clear() -> None:
-    """A bystander's face slides into the presenter's padded face: its padding gives way, its face never does (the
-    audit would only patch it back over both)."""
+def test_a_kept_face_wins_over_a_hidden_face_overlapping_it() -> None:
+    """Owner, 11-04: a kept face always wins. A bystander's face overlaps the presenter's own face box: that box is
+    left clear (the presenter is in front there); the rest of the bystander's face stays covered."""
     j = job()
     presenter = track("face:1", 0, 59, (130, 30, 170, 80))
-    bystander = track("face:2", 0, 59, (172, 40, 202, 75))  # right beside the presenter's face, inside its padding
+    bystander = track("face:2", 0, 59, (160, 40, 190, 75))
     ts = tracks(presenter, bystander)
     kept = item("i_1", ["face:1"], decision="keep", style=None, decided_by="model", reason="participant")
     hidden = item("i_2", ["face:2"], style="pixelate")
@@ -328,8 +328,9 @@ def test_a_hidden_face_is_never_uncovered_to_keep_a_kept_face_clear() -> None:
     p = plan(j, ts, d)
     check(p, d, ts, j)
     for f in (0, 30, 59):
-        assert drawn(p, f, "i_2")[40:75, 172:202].all()  # the bystander's face is fully covered
-        assert not any(e.keep_clear for e in p.frames[f] if e.item_id == "i_2")
+        assert any(e.keep_clear for e in p.frames[f] if e.item_id == "i_2")
+        assert not drawn(p, f, "i_2")[30:80, 130:170].any()  # the kept face's own box: the kept face is in front
+        assert drawn(p, f, "i_2")[40:75, 170:190].all()  # the rest of the bystander's face stays covered
 
 
 # ---------------------------------------------------------------- the live café and street (second run) jobs
@@ -455,3 +456,19 @@ def test_the_street_leaks_left_unresolved_are_now_under_a_childs_cover() -> None
     for leak in unresolved:
         x1, y1, x2, y2 = leak["box"]
         assert hidden_mask(p.frames[leak["frame"]], [], j.height, j.width)[y1:y2, x1:x2].all()
+
+
+def test_no_cover_lands_on_a_kept_face_in_the_final_street_job() -> None:
+    """Owner, 11-04: in j_C8St9Tb5K40DyidG5adQtg the hoodie man's face track switched onto the guest's face and an
+    audit patch sat over it. A kept face always wins now (every cover type, audit patches included): no frame
+    leaves more than 5 % of a kept face box under any cover but a child's."""
+    j, ts, d, _ = live("live_street_final_2026_11_04.json")
+    p = plan(j, ts, d)
+    by_id = {t.track_id: t for t in ts.tracks}
+    children = {i.item_id for i in d.items if i.kind == "child"}
+    for item in (i for i in d.items if i.decision == "keep"):
+        for t in (by_id[x] for x in item.track_ids if by_id[x].concept == "face"):
+            for f, box in t.boxes.items():
+                others = [e for e in p.frames.get(f, []) if e.item_id not in children]
+                x1, y1, x2, y2 = box
+                assert hidden_mask(others, [], j.height, j.width)[y1:y2, x1:x2].mean() <= 0.05, (t.track_id, f)

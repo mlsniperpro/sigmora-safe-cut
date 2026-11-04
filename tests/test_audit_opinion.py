@@ -200,14 +200,17 @@ def test_a_crash_during_the_opinion_is_recorded_as_failed_not_off(tmp_path: Path
 
 
 def test_a_copied_opinion_leak_is_rejudged_when_the_creator_hides_what_it_lies_on(tmp_path: Path) -> None:
-    """The opinion's text leak lay on the kept host (patched, unflagged). The creator then hides the host: on the
-    re-run the copied leak reads through a hidden item, so it is flagged and the host renders solid, and the job
-    still validates and seals."""
+    """The opinion's text leak lay just under the kept host's face (patched, unflagged). The creator then hides the
+    host: on the re-run the copied leak reads through a hidden item, so it is flagged and the host renders solid,
+    and the job still validates and seals."""
     job_dir = consented_job(tmp_path)
     job = load(job_dir / "job.json", Job)
     host = next(i for i in load(job_dir / "decisions.json", Decisions).items if i.decision == "keep")
     tracks = {t.track_id: t for t in load(job_dir / "tracks.json", contracts.Tracks).tracks}
     x1, y1, x2, y2 = tracks[host.track_ids[0]].boxes[30]
+    # Just under the host's face (a name tag, say): a patch never paints the kept face itself (owner, 11-04), and
+    # this text lies inside the host's padded cover once the creator hides them.
+    y1, y2 = y2, min(job.height, y2 + 8)
     bar = bar_height(job.height)
     grid = (x1 * 1000 // job.width + 1, (y1 + bar) * 1000 // (job.height + bar) + 1,
             x2 * 1000 // job.width - 1, (y2 + bar) * 1000 // (job.height + bar) - 1)  # fmt: skip

@@ -166,10 +166,12 @@ def test_leaks_that_touch_within_a_step_share_a_patch() -> None:
            leak(11, (200, 10, 230, 40), "plate")]  # fmt: skip
     groups = rules.group_leaks(run, step=30)
     assert [(g.first, g.last, g.box) for g in groups] == [(10, 40, (10, 10, 34, 30)), (11, 11, (200, 10, 230, 40))]
-    patch = rules.make_patch(groups[0], 3, 5, frames=60, sample_step=30, extend=8)
+    patch = rules.make_patch(groups[0], 3, 5, frames=60, hold=rules.patch_hold(30))
     assert patch.model_dump(include={"item_id", "audit_label", "first", "last", "evidence_frames", "kind"}) == {
-        "item_id": "p_3", "audit_label": "A5", "first": 0, "last": 59, "evidence_frames": [10], "kind": "person"
+        "item_id": "p_3", "audit_label": "A5", "first": 1, "last": 49, "evidence_frames": [10], "kind": "person"
     }  # fmt: skip
+    # The audit itself patches each leak frame on its own (step 0): a moving face never gets one static union box.
+    assert [(g.first, g.last) for g in rules.group_leaks(run, step=0)] == [(10, 10), (11, 11), (11, 11), (40, 40)]
     assert rules.patch_kind(["plate", "text"]) == "plate"
     assert rules.patch_kind(["text"]) == "other"
 
