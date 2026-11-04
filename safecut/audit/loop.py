@@ -45,7 +45,7 @@ from safecut.contracts import (
     load,
 )
 from safecut.decide.geometry import area
-from safecut.guard import region_cache
+from safecut.guard import camera_for, region_cache
 from safecut.guard.plan import plan as make_plan
 from safecut.guard.plan import read_through
 from safecut.receipt import retire
@@ -383,6 +383,12 @@ def carried(previous: Audit | list[Leak] | None, decisions: Decisions, detector:
     ]  # fmt: skip
 
 
+def plan_camera(state: State, job_dir: Path) -> list[tuple[int, int]] | None:
+    """The camera every re-plan keeps: the one the current ``plan.json`` records (the guard measured it), else the
+    clip's own (measured once per process; None when there is no clip or it never moved)."""
+    return state.plan.camera if state.plan.camera is not None else camera_for(job_dir, state.job)
+
+
 async def settle(
     state: State,
     job_dir: Path,
@@ -406,7 +412,7 @@ async def settle(
         fixed = patch(state, found)
         state.leaks += fixed
         state.plan = make_plan(job, tracks, state.decisions, solid=read_through(state.leaks),
-                               cache=region_cache(job_dir))  # fmt: skip
+                               cache=region_cache(job_dir), camera=plan_camera(state, job_dir))  # fmt: skip
         save_pending(job_dir, state.leaks)  # before the patches land: a crash from here on keeps them on record
         # The plan first: a crash before the decisions land leaves a plan that hides more, never one that hides less
         # than decisions.json says (and the next audit re-plans; see ``planned_in_full``).
@@ -456,7 +462,7 @@ async def audit_job(
     state.leaks, newly = rejudged(state.leaks, state.decisions, state.plan)
     if newly or not planned_in_full(state.decisions, state.plan):  # read through now, or a crash between the files
         state.plan = make_plan(job, tracks, state.decisions, solid=read_through(state.leaks),
-                               cache=region_cache(job_dir))  # fmt: skip
+                               cache=region_cache(job_dir), camera=plan_camera(state, job_dir))  # fmt: skip
         dump(state.plan, job_dir / "plan.json")
     reopen = reopened(earlier, state.plan, state.decisions, height=job.height, width=job.width)
     save_pending(job_dir, state.leaks + [leak.model_copy(update={"unresolved": True}) for leak in reopen])

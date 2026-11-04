@@ -18,7 +18,7 @@ import cv2
 import numpy as np
 from numpy.typing import NDArray
 
-from safecut.contracts import Rle, Track
+from safecut.contracts import Rle, Track, lerp_box
 
 BoxT = tuple[int, int, int, int]
 BoolMask = NDArray[np.bool_]
@@ -99,10 +99,7 @@ def box_at(track: Track, frame: int) -> BoxT | None:
     keys = sorted(track.boxes)
     i = bisect.bisect_left(keys, frame)
     before, after = keys[i - 1], keys[i]  # first and last are anchors (contract), so both exist
-    a, b = track.boxes[before], track.boxes[after]
-    w = (frame - before) / (after - before)
-    x1, y1, x2, y2 = (a[k] + (b[k] - a[k]) * w for k in range(4))
-    return (round(x1), round(y1), max(round(x2), round(x1) + 1), max(round(y2), round(y1) + 1))
+    return lerp_box(track.boxes[before], track.boxes[after], (frame - before) / (after - before))
 
 
 # ---------------------------------------------------------------------------------------------------- masks

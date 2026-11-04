@@ -144,6 +144,11 @@ export type Region = z.infer<typeof regionSchema>;
 export const planSchema = z.object({
   frames: z.record(z.string(), z.array(regionSchema)),
   crowd_fills: z.array(z.object({ frames: z.array(frame), box: boxSchema })).default([]),
+  /**
+   * The camera's cumulative [dx, dy] per frame (DESIGN §2.6): the guard moved held boxes (back-fill, extend, gap
+   * holds, audit patches) with it, so `frames` already follows a pan. Left out of the file while there is none.
+   */
+  camera: z.array(z.tuple([z.number(), z.number()])).nullable().optional(),
 });
 export type Plan = z.infer<typeof planSchema>;
 

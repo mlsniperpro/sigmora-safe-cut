@@ -18,7 +18,7 @@ import os
 import re
 import tempfile
 from collections import Counter
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal, cast, overload
@@ -689,6 +689,19 @@ class Plan(Contract):
     temporal: Temporal
     frames: dict[Frame, list[PlanEntry]]
     crowd_fills: list[CrowdFill] = Field(default_factory=list[CrowdFill])
+    #: DESIGN §2.6: the camera's cumulative translation on every prepared frame (``len == job.frames``, ``(dx, dy)``
+    #: in pixels: where the scene sits on that frame relative to frame 0), which the guard used to move held boxes
+    #: (back-fill, extend, gap and re-entry holds, audit patches) with the scene instead of holding them still. Left
+    #: out of the file while None (no clip to measure, or a camera that never moved), so plans written before it
+    #: existed read and hash the same.
+    camera: list[tuple[int, int]] | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_no_camera(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data = cast(dict[str, Any], handler(self))
+        if data.get("camera") is None:
+            data.pop("camera", None)
+        return data
 
 
 # ---------------------------------------------------------------------------
@@ -1297,6 +1310,8 @@ def _check_transcript(transcript: Transcript, job: Job) -> None:
 
 def _check_plan(plan: Plan, job: Job, decisions: Decisions | None) -> None:
     known = None if decisions is None else {i.item_id for i in decisions.items}
+    if plan.camera is not None and len(plan.camera) != job.frames:
+        raise ContractError(f"plan.json camera has {len(plan.camera)} offsets, the job {job.frames} frames")
     for frame, entries in plan.frames.items():
         _check_frame(frame, job, "plan.json frames")
         for e in entries:
@@ -1864,7 +1879,9 @@ def _check_track_geometry(
     if grids is not None and not grids:
         # A shifting grid leaks detail across frames (DESIGN §2.7): each track keeps one fixed grid.
         raise ContractError(f"plan.json: {item.item_id}'s pixelate grid for {track.track_id} moves between frames")
-    _check_between_anchors(plan, item, track, fills_on, on, faced=faced if heads else None, width=job.width)
+    _check_between_anchors(
+        plan, item, track, fills_on, on, faced=faced if heads else None, width=job.width, height=job.height
+    )
 
 
 def _check_between_anchors(
@@ -1876,11 +1893,15 @@ def _check_between_anchors(
     *,
     faced: frozenset[int] | None = None,
     width: int = 0,
+    height: int = 0,
 ) -> None:
     """A track with boxes only on some frames (SAM anchors; gaps the guard holds through): on the frames in
     between, the item's entry must at least overlap the box interpolated between the neighbouring anchors. The
-    guard's held or grown box may differ, so containment would refuse valid output; a box moved away won't pass."""
+    guard's held or grown box may differ, so containment would refuse valid output; a box moved away won't pass.
+    With a ``plan.camera`` the box a long gap holds is the interpolation of the anchors each moved with the camera to
+    that frame (and so are the anchors themselves), which also counts."""
     keys = sorted(track.boxes)
+    camera = plan.camera
     for before, after in itertools.pairwise(keys):
         a, b = track.boxes[before], track.boxes[after]
         if faced is not None:  # an identity-only body track: its head estimate (DESIGN §2.7)
@@ -1893,7 +1914,11 @@ def _check_between_anchors(
             box = cast(Box, tuple(round(a[i] + (b[i] - a[i]) * w) for i in range(4)))
             fills = fills_on.get(frame, [])
             # The guard may hold an anchor's box (growing it) through a gap, so either anchor also counts.
-            near = (box, a, b)
+            near = [box, a, b]
+            if camera is not None:
+                a_moved = translate(a, *camera_delta(camera, frame, before))
+                b_moved = translate(b, *camera_delta(camera, frame, after))
+                near += [lerp_box(a_moved, b_moved, w), a_moved, b_moved]
             if not any(_near(e, n) for e in entries for n in near) and not any(_contains(f, box) for f in fills):
                 raise ContractError(
                     f"plan.json frame {frame}: {item.item_id} is nowhere near {track.track_id} (about {list(box)})"
@@ -2055,9 +2080,30 @@ def _check_plan_covers(plan: Plan, decisions: Decisions, tracks: Tracks | None, 
         missing = [
             f for f, owners in sorted(needed.items()) if (f, item.item_id) not in planned and not filled(f, owners)
         ]
+        if plan.camera is not None and missing:
+            # Where the camera carried every held box of the item out of the frame the guard draws nothing (§2.6).
+            gap = sam_interp_gap(job.fps, tracks.sam_fps) if tracks is not None else 0
+            missing = [f for f in missing if not _carried_off(plan.camera, item, needed[f], f, job=job, gap=gap)]
         if missing:
             raise ContractError(f"plan.json: hidden item {item.item_id} has no entry on frames {missing[:10]}")
         _check_held_boxes(plan, item, by_track, job, fills_on=fills, on=on)
+
+
+def _carried_off(camera: Camera, item: DecisionItem, owners: list[Track], frame: int, *, job: Job, gap: int) -> bool:
+    """Every box the guard would hold for ``item`` on ``frame`` (an audit patch's, each owner track's) has been carried
+    out of the frame by the camera, and there is at least one."""
+    carried: list[bool] = [
+        camera_hidden(t, frame, camera, width=job.width, height=job.height, interp_gap=gap) for t in owners
+    ]
+    if item.box is not None and item.first is not None and item.last is not None and item.first <= frame <= item.last:
+        moved = patch_source(item, frame, camera, plan_hold(job), job.frames)
+        carried.append(moved is not None and clip_box(moved, job.width, job.height) is None)
+    return bool(carried) and all(carried)
+
+
+def plan_hold(job: Job) -> int:
+    """``ceil(0.3 × fps)``: the back-fill, and the margin of an audit patch around the frames it was made for."""
+    return math.ceil(0.3 * job.fps)
 
 
 def _check_held_boxes(
@@ -2072,10 +2118,18 @@ def _check_held_boxes(
     temporal = plan.temporal
     # Where the guard holds a box the tracks don't carry (back-fill and extend frames, which hold the edge box;
     # an audit patch's static box), the entry must still cover it: these frames are where leaks happen.
+    # With a plan.camera the guard moves each held box with the scene, so the box to cover is the shifted one (clipped
+    # to the frame), and a frame where the shift took it out of the frame needs nothing.
+    camera = plan.camera
     held: dict[int, list[Box]] = {}
     if item.box is not None and item.first is not None and item.last is not None:
         for f in range(item.first, item.last + 1):
-            held.setdefault(f, []).append(item.box)
+            box = item.box
+            if camera is not None and f < job.frames:
+                moved = patch_source(item, f, camera, plan_hold(job), job.frames)
+                box = None if moved is None else clip_box(moved, job.width, job.height)
+            if box is not None:
+                held.setdefault(f, []).append(box)
     faced = _faced(plan, item, by_track, job)
     for track in (by_track[tid] for tid in item.track_ids if tid in by_track):
         edges = range(max(0, track.first - temporal.backfill), min(job.frames, track.last + temporal.extend + 1))
@@ -2084,6 +2138,9 @@ def _check_held_boxes(
         others = live_frames(by_track[t] for t in item.track_ids if t in by_track and t != track.track_id)
         for f in (f for f in edges if not track.first <= f <= track.last and f not in others):
             box = nearest_box(track, f)
+            if box is not None and camera is not None:
+                edge = track.first if f < track.first else track.last
+                box = clip_box(translate(box, *camera_delta(camera, f, edge)), job.width, job.height)
             if box is not None and not (heads and faced is not None and f in faced):
                 held.setdefault(f, []).append(head_box(box, job.width) if heads else box)
     for f, boxes in sorted(held.items()):
@@ -2113,6 +2170,89 @@ def nearest_box(track: Track, frame: int) -> Box | None:
     keys = sorted(track.boxes)
     i = bisect.bisect_left(keys, frame)
     return track.boxes[min(keys[max(0, i - 1) : i + 1], key=lambda k: (abs(k - frame), k))]
+
+
+#: A camera: the scene's cumulative ``(dx, dy)`` translation on every prepared frame (``Plan.camera``).
+Camera = Sequence[tuple[int, int]]
+
+
+def camera_delta(camera: Camera, frame: int, ref: int) -> tuple[int, int]:
+    """How far the scene moved between frame ``ref`` and ``frame``: what a box held from ``ref`` is shifted by."""
+    return camera[frame][0] - camera[ref][0], camera[frame][1] - camera[ref][1]
+
+
+def translate(box: Box, dx: int, dy: int) -> Box:
+    """``box`` moved by ``(dx, dy)``; it may lie partly or wholly outside the frame."""
+    return (box[0] + dx, box[1] + dy, box[2] + dx, box[3] + dy)
+
+
+def clip_box(box: Box, width: int, height: int) -> Box | None:
+    """``box`` cut to a ``width`` x ``height`` frame; None when none of it is inside."""
+    x1, y1, x2, y2 = max(0, box[0]), max(0, box[1]), min(width, box[2]), min(height, box[3])
+    return (x1, y1, x2, y2) if x2 > x1 and y2 > y1 else None
+
+
+def lerp_box(a: Box, b: Box, w: float) -> Box:
+    """The box ``w`` of the way from ``a`` to ``b`` (rounded, never empty)."""
+    x1, y1, x2, y2 = (a[k] + (b[k] - a[k]) * w for k in range(4))
+    return (round(x1), round(y1), max(round(x2), round(x1) + 1), max(round(y2), round(y1) + 1))
+
+
+def sam_interp_gap(fps: int, sam_fps: int) -> int:
+    """Within SAM's own sampling step a missing box is interpolation, not a gap the object vanished in."""
+    return math.ceil(fps / min(sam_fps, fps))
+
+
+def is_held(track: Track, frame: int, interp_gap: int) -> bool:
+    """Whether the guard holds a box for ``track`` on ``frame`` rather than drawing one SAM gave or interpolated:
+    before its first box, after its last, or in a gap longer than SAM's sampling step (DESIGN §2.6)."""
+    if frame < track.first or frame > track.last:
+        return True
+    if frame in track.boxes:
+        return False
+    keys = sorted(track.boxes)
+    i = bisect.bisect_left(keys, frame)
+    return keys[i] - keys[i - 1] - 1 > interp_gap
+
+
+def held_source(track: Track, frame: int, camera: Camera) -> Box:
+    """The (unpadded, unclipped) box a held ``frame`` starts from once the camera moves it: the edge box shifted by the
+    camera's motion since that edge frame, or, in a gap, the interpolation between the neighbouring anchors each
+    shifted to this frame (a person fixed in the world is the same box from either side)."""
+    if frame < track.first:
+        return translate(track.boxes[track.first], *camera_delta(camera, frame, track.first))
+    if frame > track.last:
+        return translate(track.boxes[track.last], *camera_delta(camera, frame, track.last))
+    keys = sorted(track.boxes)
+    i = bisect.bisect_left(keys, frame)
+    before, after = keys[i - 1], keys[i]
+    a = translate(track.boxes[before], *camera_delta(camera, frame, before))
+    b = translate(track.boxes[after], *camera_delta(camera, frame, after))
+    return lerp_box(a, b, (frame - before) / (after - before))
+
+
+def camera_hidden(track: Track, frame: int, camera: Camera, *, width: int, height: int, interp_gap: int) -> bool:
+    """The guard draws nothing for ``track`` on ``frame``: it holds a box there and the camera has carried it out of
+    the frame (DESIGN §2.6)."""
+    return is_held(track, frame, interp_gap) and clip_box(held_source(track, frame, camera), width, height) is None
+
+
+def patch_reference(item: DecisionItem, frame: int, hold: int, frames: int) -> int:
+    """The frame an audit patch's box is held from on ``frame`` (``hold = ceil(0.3 × fps)``): its evidence frame before
+    it, and after the frames the patch's leaks were seen on (its span's last ``hold``, or all of it when the span runs
+    to the clip's end, where the margin is unknown) the last of those; on the leak frames themselves the box stays where
+    the leaks are, so a patch always contains what it was made for."""
+    first = item.evidence_frames[0] if item.evidence_frames else (item.first or 0)
+    last = item.last if item.last is not None else first
+    core_end = last if last >= frames - 1 else max(first, last - hold)
+    return min(max(frame, first), core_end)
+
+
+def patch_source(item: DecisionItem, frame: int, camera: Camera, hold: int, frames: int) -> Box | None:
+    """An audit patch's box on ``frame`` moved with the camera from its reference frame; None without a box."""
+    if item.box is None:
+        return None
+    return translate(item.box, *camera_delta(camera, frame, patch_reference(item, frame, hold, frames)))
 
 
 def _check_links(
