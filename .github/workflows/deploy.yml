@@ -6,6 +6,8 @@ name: deploy
 # EgoBlur GPU function on the weights Volume), deploys, then proves a replay job end to end through the deployed app
 # with its audit on the GPU, and checks the live URLs, starting with a cold wake of the scale-to-zero API.
 # Without the Modal secrets (an owner input, BLOCKED.md) it skips with a notice instead of failing.
+# SAFECUT_DEPLOY_GPU=0 (a repository variable; empty means GPU on) deploys with no GPU function at all, for a Modal
+# workspace without a payment method: every GPU step and check is skipped and the audit runs YuNet in the API.
 
 on:
   # A red main is never deployed: the checks below run first, in this job.
@@ -38,6 +40,8 @@ jobs:
       SAFECUT_WEB_URL: ${{ vars.SAFECUT_WEB_URL }}
       # "1" only for a hotfix during a GPU outage: every GPU check warns instead of failing (BLOCKED.md).
       SAFECUT_DEPLOY_GPU_OPTIONAL: ${{ vars.SAFECUT_DEPLOY_GPU_OPTIONAL }}
+      # "0": no GPU function is defined (Modal refuses the whole app otherwise without a card); empty: GPU on.
+      SAFECUT_DEPLOY_GPU: ${{ vars.SAFECUT_DEPLOY_GPU }}
     steps:
       - name: Check for the Modal secrets
         id: gate
@@ -66,7 +70,7 @@ jobs:
           uv run pyright
           uv run pytest -m "not live"
           uv run python eval/report.py --check
-      - name: Smoke-test the image before it goes live (the demo job replayed, the ledger, EgoBlur on the GPU)
+      - name: Smoke-test the image before it goes live (the demo job replayed, the ledger, EgoBlur on the GPU unless SAFECUT_DEPLOY_GPU=0)
         if: steps.gate.outputs.run == 'true'
         run: uv run modal run deploy/modal_app.py
       - name: Deploy the API, the GPU auditor, the worker smoke and the deletion cron (only after the smoke passed)
@@ -75,7 +79,7 @@ jobs:
         # a new one's start resumed the same job (two writers, paid twice). Recreate publishes, then stops the old
         # containers (waiting up to 40 s), which exit without waiting for their jobs: the new one resumes them once.
         run: uv run modal deploy --strategy recreate deploy/modal_app.py
-      - name: Prove one replay job end to end on the deployed app, audited by EgoBlur on the GPU
+      - name: Prove one replay job end to end on the deployed app, audited by EgoBlur on the GPU (YuNet if SAFECUT_DEPLOY_GPU=0)
         if: steps.gate.outputs.run == 'true'
         run: uv run python -m deploy.verify_deploy
       - name: Check the live URLs (the first request wakes the API from zero)
@@ -83,7 +87,8 @@ jobs:
         env:
           # Nothing has called the new API yet, and it keeps no warm container: its first answer must be a cold wake.
           DEPLOY_EXPECT_COLD: "1"
-          DEPLOY_YUNET_OK: ${{ vars.SAFECUT_DEPLOY_GPU_OPTIONAL }}
+          # A YuNet audit is the expected one with no GPU deployed, and accepted during a GPU outage's hotfix.
+          DEPLOY_YUNET_OK: ${{ (vars.SAFECUT_DEPLOY_GPU == '0' || vars.SAFECUT_DEPLOY_GPU_OPTIONAL == 'nogpu') && '1' || vars.SAFECUT_DEPLOY_GPU_OPTIONAL }}
         run: |
           # A deploy is green only once its live URLs pass: the variables are an owner step (BLOCKED.md).
           if [ -z "$SAFECUT_API_URL" ] || [ -z "$SAFECUT_WEB_URL" ]; then

@@ -32,7 +32,11 @@ It is a production service: an API with access codes, service keys for Sigmora, 
 
 ## Meta models used
 
-SAM 3.1 · Muse Spark (`muse-spark-1.3`, and `muse-spark-1.2` as the speech fallback) · Muse Voice Transcribe · ⟨owner: keep only if the Baseten steps in BLOCKED.md are done and it ran: Muse Spark Open on Baseten (`meta-models/muse-spark-open-1026`, the optional open-weight audit opinion)⟩ · EgoBlur Gen 2 (Meta's open face and plate detector, the every-frame auditor of the rendered video, on a Modal GPU; if the GPU can't answer, the bundled YuNet face detector runs instead with plates left to the red team, and `audit.json` and the receipt name the detector, and the GPU, that actually ran). What each one does: README, "What each Meta model does here".
+SAM 3.1 · Muse Spark (`muse-spark-1.3`, and `muse-spark-1.2` as the speech fallback) · Muse Voice Transcribe · ⟨owner: keep only if the Baseten steps in BLOCKED.md are done and it ran: Muse Spark Open on Baseten (`meta-models/muse-spark-open-1026`, the optional open-weight audit opinion)⟩ · ⟨owner: paste ONE of the two EgoBlur variants below, matching the deploy: variant A if the live service was deployed with the GPU (the default), variant B if the repository variable `SAFECUT_DEPLOY_GPU` is `0`. A live receipt's audit line names the detector that ran, so check one before pasting⟩. What each one does: README, "What each Meta model does here".
+
+EgoBlur variant A (GPU on): · EgoBlur Gen 2 (Meta's open face and plate detector, the every-frame auditor of the rendered video, on a Modal GPU; if the GPU can't answer, the bundled YuNet face detector runs instead with plates left to the red team, and `audit.json` and the receipt name the detector, and the GPU, that actually ran).
+
+EgoBlur variant B (GPU off): · EgoBlur Gen 2 (Meta's open face and plate detector) runs in the GPU deployment path (`egoblur_detect`, a Modal GPU function with Meta's hash-checked weights). The hackathon's live service audits every frame with the bundled YuNet face detector instead, plates left to the Muse Spark red team, because our Modal workspace couldn't enable GPU functions in time; `audit.json` and every receipt name YuNet as the detector that ran.
 
 ## Links
 

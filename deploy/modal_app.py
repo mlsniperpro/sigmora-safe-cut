@@ -19,6 +19,12 @@
 - ``pipeline_worker_smoke`` and ``ledger_smoke``: the deploy workflow's checks (``modal run`` before the deploy,
   ``deploy/verify_deploy.py`` after it).
 
+``SAFECUT_DEPLOY_GPU=0`` on the deploying machine (a repository variable; unset or ``1`` is the default, GPU on)
+deploys the app with no GPU function at all: Modal refuses a whole app that merely defines one while the workspace
+has no payment method. ``egoblur_detect`` is then left off the app, the API image sets ``SAFECUT_AUDIT_GPU=0`` (the
+audit runs the bundled YuNet face detector in the API container, plates left to the red team, and names it), and
+the smoke reports ``gpu: none`` instead of probing. ``SAFECUT_DEPLOY_GPU_OPTIONAL=nogpu`` means the same.
+
 Secrets come only from the Modal secret ``safecut-secrets`` (``MODEL_API_KEY``, ``SAFECUT_ACCESS_CODES``,
 ``SAFECUT_SERVICE_KEYS``, ``SAFECUT_URL_SECRET``, ``SAFECUT_PUBLIC_URL``, ``SAFECUT_CORS_ORIGINS``); see
 ``BLOCKED.md``. Job directories live on the Volume ``safecut-jobs`` at ``/data/jobs``; the EgoBlur weights on
@@ -29,6 +35,7 @@ and their cost: ``docs/DEPLOY-COSTS.md``.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable, Mapping
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, cast
@@ -48,6 +55,21 @@ WEIGHTS = "/models/egoblur"
 AUDIT = "/audit"
 APP_NAME = "safecut"
 
+
+def deploy_gpu(env: Mapping[str, str]) -> bool:
+    """Whether this deploy defines the GPU function: ``SAFECUT_DEPLOY_GPU`` unset, empty or ``1`` (the default) yes;
+    ``0`` (or ``SAFECUT_DEPLOY_GPU_OPTIONAL=nogpu``) no. Anything else is refused, never guessed."""
+    value = env.get("SAFECUT_DEPLOY_GPU", "").strip()
+    if value not in ("", "0", "1"):
+        raise ValueError(f"SAFECUT_DEPLOY_GPU must be 0 or 1 (or unset), not {value!r}")
+    return value != "0" and env.get("SAFECUT_DEPLOY_GPU_OPTIONAL", "").strip() != "nogpu"
+
+
+#: Read at import, on the deploying machine; the images carry it, so a container importing this module agrees.
+DEPLOY_GPU = deploy_gpu(os.environ)
+#: The smoke's GPU probe record without a GPU function (``deploy.checks.NO_GPU``; that module isn't in the image).
+NO_GPU = "none (SAFECUT_DEPLOY_GPU=0)"
+
 #: What the image leaves out of the source packages: bytecode only; every data file ships.
 SOURCE_IGNORE = ["**/__pycache__", "**/*.pyc"]
 
@@ -57,9 +79,14 @@ API_SCALEDOWN_S = 300
 #: The GPU container's (``SAFECUT_AUDIT_GPU_IDLE_S`` prices it): an audit's passes run back to back, seconds apart.
 GPU_SCALEDOWN_S = 30
 
+#: The API image's environment. With no GPU function the audit runs YuNet in the API container (and says so).
+API_ENV = {"SAFECUT_JOBS_DIR": JOBS, "SAFECUT_TRUST_PROXY": "1", "SAFECUT_AUDIT_GPU": "1"}
+if not DEPLOY_GPU:
+    API_ENV |= {"SAFECUT_AUDIT_GPU": "0", "SAFECUT_DEPLOY_GPU": "0"}
+
 image = (
     modal.Image.debian_slim(python_version="3.12")
-    .env({"SAFECUT_JOBS_DIR": JOBS, "SAFECUT_TRUST_PROXY": "1", "SAFECUT_AUDIT_GPU": "1"})
+    .env(API_ENV)
     .uv_sync(str(ROOT), frozen=True)
     # The default ignore keeps only .py files: the prompt templates (safecut/scout/prompts/*.txt) and the bundled
     # YuNet weights (safecut/audit/weights/*.onnx) would be missing, and scene, roles and the audit would fail.
@@ -180,7 +207,17 @@ def cleanup() -> dict[str, list[str]]:
 _server: Any = None
 
 
-@app.function(
+def _not_deployed(**_: object) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """``@app.function`` for a deploy without the GPU: the function stays a plain local one, never on the app."""
+    return lambda function: function
+
+
+#: ``@app.function``, or nothing at all when ``SAFECUT_DEPLOY_GPU=0`` (Modal refuses an app defining a GPU function
+#: while the workspace has no payment method, even one it never calls).
+gpu_function: Callable[..., Any] = app.function if DEPLOY_GPU else _not_deployed
+
+
+@gpu_function(
     image=gpu_image,
     gpu=["L4", "T4"],  # L4 first (faster per dollar here, docs/DEPLOY-COSTS.md); T4 when no L4 is free
     volumes={AUDIT: audit, "/models": models},
@@ -248,7 +285,9 @@ def pipeline_worker_smoke(audit_gpu: bool = False) -> dict[str, object]:
         "auditor_device": receipt["audit"].get("auditor_device") if receipt else None,
         "gpu_fallback": json.loads(gpu_record.read_text()).get("fallback") if gpu_record.is_file() else None,
     }
-    if not audit_gpu and audited is not None:
+    if not DEPLOY_GPU:
+        result["gpu_probe"] = {"gpu": NO_GPU}  # nothing to probe: no GPU function on this app
+    elif not audit_gpu and audited is not None:
         handoff = Handoff(Path(AUDIT), audit.commit)
         try:
             result["gpu_probe"] = _probe_gpu(handoff, out, file_sha256(out / "redacted.mp4"))
@@ -325,8 +364,10 @@ def smoke() -> None:
     result = pipeline_worker_smoke.remote()
     print(result)
     # SAFECUT_DEPLOY_GPU_OPTIONAL=1 (a repository variable): a GPU outage warns instead of blocking a hotfix; the
-    # deployed audit then runs YuNet and says so, until the GPU answers again.
-    problems = pre_deploy_problems(result, gpu_required=os.environ.get("SAFECUT_DEPLOY_GPU_OPTIONAL") != "1")
+    # deployed audit then runs YuNet and says so, until the GPU answers again. SAFECUT_DEPLOY_GPU=0: no GPU at all.
+    problems = pre_deploy_problems(
+        result, gpu_required=os.environ.get("SAFECUT_DEPLOY_GPU_OPTIONAL") != "1", deploy_gpu=DEPLOY_GPU
+    )
     ledger = ledger_smoke.remote()
     print(ledger)
     problems += ledger_problems(ledger)
