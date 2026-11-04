@@ -25,6 +25,11 @@ export const mediaUrl = z
   .refine((u) => !/[\\\s\u0000-\u001f\u007f]/.test(u) && (u.startsWith("https://") || /^\/(?!\/)/.test(u) || fromLocalApi(u)), { message: "must be an https URL or a same-origin path" });
 /** The presigned upload URL; the mock backend's `mock://` scheme is accepted only in its unit tests. */
 const uploadUrl = z.string().refine((u) => u.startsWith("https://") || u.startsWith("mock://") || fromLocalApi(u), { message: "must be an https URL" });
+/** A keyframe's frame number from its key: `som/000024.jpg` → "24"; a bare frame number ("24") is kept as is. */
+export function keyframeKey(key: string): string {
+  const m = /(\d+)(?:\.\w+)?$/.exec(key);
+  return m ? String(Number(m[1])) : key;
+}
 
 export const roleSchema = z.enum(["participant", "bystander", "child", "unsure"]);
 export type Role = z.infer<typeof roleSchema>;
@@ -332,7 +337,12 @@ export const jobResponseSchema = z.object({
   transcript: transcriptSchema.optional(),
   scene: sceneSchema.optional(),
   keyframe_geometry: keyframeGeometrySchema.optional(),
-  keyframe_urls: z.record(z.string(), mediaUrl).default({}),
+  // The API keys each keyframe by its file name (`som/000024.jpg`); every screen looks one up by frame number
+  // ("24"). Normalize here, once: a key that is already a frame number passes through unchanged.
+  keyframe_urls: z
+    .record(z.string(), mediaUrl)
+    .default({})
+    .transform((urls) => Object.fromEntries(Object.entries(urls).map(([key, url]) => [keyframeKey(key), url]))),
   audit: auditSchema.nullable().optional(),
   audit_budget_cause: budgetCauseSchema.nullable().optional(),
   result: z.object({ video_url: mediaUrl }).nullable().optional(),
