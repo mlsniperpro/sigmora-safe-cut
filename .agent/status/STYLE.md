@@ -42,3 +42,9 @@ Frame 105: 81.7 % → 7.6 %. Frame 210: 94.9 % → 2.8 %. Frame 285: 94.2 % → 
 
 - The audit patches kept faces at the clip ends (café j_nHnMijG4M64lroDQadni-w, street j_iK6xyjgwe5qE_6ixbN67uA).
 - The street job's child is uncovered at about 3.5–7.5 s, and patches are scattered after about 8 s.
+
+## Follow-ups pushed after the lane (owner requests, 11-04 evening)
+
+- `9bf9b22` (after `b9a330f`/`f3ca863`): kept faces excused by the audit within 1 s of SAM's box, children covered whole, covers follow the live box, frosted look, web preview fix for cross-origin video. Deploy green, fresh-clone ENTRY: PASS.
+- `02e9199`: a kept face always wins (all covers, audit patches too), per-frame audit patches held ±0.3 s, patches over 6 % of the frame left as review spots, 0.3 s back-fill, scene-coloured frosted look. Full suite 1670 passed; deploy run 41909723984 in progress at 20:46Z.
+- Not done: camera-motion compensation for the 2 s gap hold, realigning misaligned covers, auto-keep conversation partner / auto-merge re-entries.
