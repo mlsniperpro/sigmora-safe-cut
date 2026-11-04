@@ -9,8 +9,9 @@ frame ``f`` moves by ``camera[f] - camera[e]``.
 The estimate is global and cheap: each frame is reduced to a small grey image and ``cv2.phaseCorrelate`` (Hanning
 windowed) finds the shift from the frame before, cell by cell over a grid so that people moving through the shot
 don't read as the camera moving (the cells vote, ``_pair_shift``). A weak or contradictory correlation (a blank or
-featureless frame, a cut, a crowd) counts as no motion, and one frame's shift is clamped to a quarter of the frame. It is a pure function over a frame iterator, so it
-tests on synthetic shifted images; :func:`camera_for` reads the job's prepared clip.
+featureless frame, a cut, a crowd) counts as no motion, and one frame's shift is clamped to a quarter of the frame.
+It is a pure function over a frame iterator, so it tests on synthetic shifted images; :func:`camera_for` reads the
+job's prepared clip.
 """
 
 from __future__ import annotations
