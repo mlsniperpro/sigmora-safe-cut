@@ -7,8 +7,9 @@ frame 0 sits near ``p + camera[f]`` on frame ``f`` when it is fixed in the world
 frame ``f`` moves by ``camera[f] - camera[e]``.
 
 The estimate is global and cheap: each frame is reduced to a small grey image and ``cv2.phaseCorrelate`` (Hanning
-windowed) finds the shift from the frame before. A weak correlation (a blank or featureless frame, a cut) counts as no
-motion, and one frame's shift is clamped to a quarter of the frame. It is a pure function over a frame iterator, so it
+windowed) finds the shift from the frame before, cell by cell over a grid so that people moving through the shot
+don't read as the camera moving (the cells vote, ``_pair_shift``). A weak or contradictory correlation (a blank or
+featureless frame, a cut, a crowd) counts as no motion, and one frame's shift is clamped to a quarter of the frame. It is a pure function over a frame iterator, so it
 tests on synthetic shifted images; :func:`camera_for` reads the job's prepared clip.
 """
 
@@ -28,12 +29,23 @@ from safecut.contracts import Job, load
 from safecut.render.video import RenderError, read_frames
 
 #: Frames are shrunk to this width (never enlarged) before correlating: a pan is a global shift, so little is lost.
-ANALYSIS_WIDTH = 160
+ANALYSIS_WIDTH = 320
 #: A frame-to-frame shift is at most this share of the frame's side; a larger estimate is clamped to it.
 MAX_SHIFT_SHARE = 0.25
 #: ``cv2.phaseCorrelate``'s response below this is a poor match (a blank frame scores 0, a clean shift about 1):
 #: that pair of frames counts as no motion.
 MIN_RESPONSE = 0.1
+
+#: The grid of cells that vote on one pair of frames: (rows, columns); cells smaller than this many pixels are not used;
+#: at least this many cells must vote, and this share of them agree within this many (analysis) pixels of their median;
+#: a per-axis shift under ``_DEAD_PX`` (analysis pixels) is noise.
+_GRID = (3, 4)
+_MIN_CELL = 16
+_MIN_VOTES = 3
+_AGREE_SHARE = 0.5
+_AGREE_PX = 1.0
+_DEAD_PX = 0.15
+_UP = 3
 
 Image = NDArray[np.uint8] | NDArray[np.float32]
 
@@ -44,6 +56,47 @@ def _grey(frame: Image, size: tuple[int, int]) -> NDArray[np.float32]:
     if (grey.shape[1], grey.shape[0]) != size:
         grey = cv2.resize(grey, size, interpolation=cv2.INTER_AREA)
     return np.asarray(grey, dtype=np.float32)
+
+
+def _pair_shift(
+    previous: NDArray[np.float32], current: NDArray[np.float32], *, min_response: float
+) -> tuple[float, float] | None:
+    """The scene's shift between two grey frames in their own pixels, or None when there is no reliable one.
+
+    A whole-frame correlation is led by whatever moves most (a passer-by, a bus), not by the scene, so each cell of a
+    grid is correlated on its own (``cv2.phaseCorrelate``, Hanning windowed) and the cells vote: a cell that matches
+    poorly (flat, blank, a cut) is dropped, and the camera moved only when at least half of the rest (and three) agree
+    within a pixel of their median. A moving subject is a minority of the cells; a flat or contradictory frame gives
+    no shift, so the guard falls back to holding boxes still."""
+    rows, cols = _GRID
+    height, width = previous.shape
+    cell_h, cell_w = height // rows, width // cols
+    if cell_w < _MIN_CELL or cell_h < _MIN_CELL:
+        return None
+    window = np.asarray(cv2.createHanningWindow((cell_w * _UP, cell_h * _UP), cv2.CV_32F), dtype=np.float32)
+    votes: list[tuple[float, float]] = []
+    for r in range(rows):
+        for c in range(cols):
+            area = (slice(r * cell_h, (r + 1) * cell_h), slice(c * cell_w, (c + 1) * cell_w))
+            # OpenCV reads a shift of a pixel or two low from a small cell (its sub-pixel centroid); on a cell
+            # enlarged a few times over it is right to a tenth of a pixel.
+            before = cv2.resize(previous[area], None, fx=_UP, fy=_UP, interpolation=cv2.INTER_CUBIC)
+            after = cv2.resize(current[area], None, fx=_UP, fy=_UP, interpolation=cv2.INTER_CUBIC)
+            (sx, sy), response = cv2.phaseCorrelate(before, after, window)
+            sx, sy = sx / _UP, sy / _UP
+            finite = math.isfinite(sx) and math.isfinite(sy) and math.isfinite(response)
+            if finite and response >= min_response and abs(sx) < cell_w / 2 and abs(sy) < cell_h / 2:
+                votes.append((sx, sy))
+    if len(votes) < _MIN_VOTES:
+        return None
+    mid_x, mid_y = float(np.median([v[0] for v in votes])), float(np.median([v[1] for v in votes]))
+    agreeing = [v for v in votes if abs(v[0] - mid_x) <= _AGREE_PX and abs(v[1] - mid_y) <= _AGREE_PX]
+    if len(agreeing) < max(_MIN_VOTES, math.ceil(_AGREE_SHARE * len(votes))):
+        return None
+    # The median, not the mean, of the cells that agree: a cell a subject partly fills must not tug a still camera.
+    shift_x, shift_y = float(np.median([v[0] for v in agreeing])), float(np.median([v[1] for v in agreeing]))
+    # Below a fraction of a pixel a still scene's correlation noise would add up to a drift over a long clip.
+    return (shift_x if abs(shift_x) >= _DEAD_PX else 0.0), (shift_y if abs(shift_y) >= _DEAD_PX else 0.0)
 
 
 def estimate_camera(
@@ -58,21 +111,17 @@ def estimate_camera(
     """
     out: list[tuple[int, int]] = []
     previous: NDArray[np.float32] | None = None
-    window: NDArray[np.float32] | None = None
     total_x = total_y = 0.0
     for frame in frames:
         height, full = frame.shape[:2]
         size = (min(width, full), max(1, round(height * min(width, full) / full)))
         scale_x, scale_y = full / size[0], height / size[1]
         grey = _grey(frame, size)
-        if previous is not None and previous.shape == grey.shape:
-            if window is None or window.shape != grey.shape:
-                window = np.asarray(cv2.createHanningWindow((size[0], size[1]), cv2.CV_32F), dtype=np.float32)
-            (sx, sy), response = cv2.phaseCorrelate(previous, grey, window)
-            if math.isfinite(sx) and math.isfinite(sy) and math.isfinite(response) and response >= min_response:
-                limit_x, limit_y = max_shift * full, max_shift * height
-                total_x += min(max(sx * scale_x, -limit_x), limit_x)
-                total_y += min(max(sy * scale_y, -limit_y), limit_y)
+        found = _pair_shift(previous, grey, min_response=min_response) if previous is not None else None
+        if found is not None and previous is not None and previous.shape == grey.shape:
+            limit_x, limit_y = max_shift * full, max_shift * height
+            total_x += min(max(found[0] * scale_x, -limit_x), limit_x)
+            total_y += min(max(found[1] * scale_y, -limit_y), limit_y)
         out.append((round(total_x), round(total_y)))
         previous = grey
     return out

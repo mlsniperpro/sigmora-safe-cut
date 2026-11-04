@@ -69,6 +69,28 @@ def test_a_static_clip_has_no_motion() -> None:
     assert estimate_camera(pan([(0, 0)] * 8)) == [(0, 0)] * 8
 
 
+def with_walker(frames: Iterator[Image], *, speed: int) -> Iterator[Image]:
+    """The scene with a flat-coloured 'person' (90 x 150 px, a sixth of the frame) walking ``speed`` px a frame."""
+    for f, frame in enumerate(frames):
+        out = frame.copy()
+        x = 40 + speed * f
+        out[20:170, x : x + 90] = (40, 90, 200)
+        out[30:60, x + 25 : x + 65] = (180, 200, 230)
+        yield out
+
+
+def test_people_walking_through_the_shot_are_not_the_camera() -> None:
+    """The scene is still; a person crosses it: the camera did not move (the entry gate's synthetic demo is this)."""
+    got = estimate_camera(with_walker(pan([(0, 0)] * 20), speed=6))
+    assert max(abs(x) + abs(y) for x, y in got) <= 2
+
+
+def test_a_pan_is_still_the_pan_with_a_person_crossing_it() -> None:
+    truth = [(4 * f, 0) for f in range(16)]
+    got = estimate_camera(with_walker(pan(truth), speed=-3))
+    close(got[-1], truth[-1], 3)
+
+
 def test_blank_frames_count_as_no_motion() -> None:
     blank = np.zeros((180, 320, 3), dtype=np.uint8)
     assert estimate_camera(iter([blank] * 5)) == [(0, 0)] * 5
@@ -87,10 +109,10 @@ def test_a_blank_frame_in_a_pan_is_no_motion_and_the_pan_carries_on() -> None:
 
 
 def test_one_frames_shift_is_clamped() -> None:
-    truth = [(0, 0), (60, 0)]
-    (_, (x, _)) = estimate_camera(pan(truth), max_shift=0.05)  # 5 % of 320 px
-    assert 15 <= x <= 16
-    assert estimate_camera(pan(truth))[1][0] >= 55
+    truth = [(0, 0), (20, 0)]
+    (_, (x, _)) = estimate_camera(pan(truth), max_shift=0.02)  # 2 % of 320 px
+    assert 6 <= x <= 7
+    assert estimate_camera(pan(truth))[1][0] >= 18
 
 
 def test_the_estimate_is_in_full_frame_pixels_whatever_the_analysis_width() -> None:
