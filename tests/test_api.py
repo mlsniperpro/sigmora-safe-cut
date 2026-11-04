@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import shutil
 import threading
 import time
@@ -586,6 +587,11 @@ def test_the_24h_deletion_job(tmp_path: Path) -> None:
     broken = store.path("j_" + "b" * 22)
     broken.mkdir()
     (broken / "state.json").write_text("{not json")
+    # An unreadable state is aged by its directory's mtime: date it to the test's clock, not the wall clock (the
+    # real mtime made this pass only before 2026-11-04 12:00 UTC, 24 h before the fixed `now`).
+    stale = (now - timedelta(hours=25)).timestamp()
+    os.utime(broken / "state.json", (stale, stale))
+    os.utime(broken, (stale, stale))
     assert fresh.deletes_at == fresh.created_at + timedelta(hours=24, minutes=15)
     removed = store.sweep(now=now)
     assert sorted(removed) == sorted([old.job_id, broken.name])
