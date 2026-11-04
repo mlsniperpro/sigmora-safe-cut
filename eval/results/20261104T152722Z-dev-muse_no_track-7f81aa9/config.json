@@ -1,0 +1,20 @@
+{
+ "run_id": "20261104T152722Z-dev-muse_no_track-7f81aa9",
+ "split": "dev",
+ "variant": "muse_no_track",
+ "replay": true,
+ "synthetic": true,
+ "git_sha": "7f81aa9a2a1a80d53b777c0b7bda11177cc0cdff",
+ "split_hash": "077fb6caa9f0f0b655d4d15e187c7bd5f051e9e4781b93188a3920fcffb28939",
+ "created_at": "2026-11-04T15:27:22.305906Z",
+ "clips": [
+  "fixtures/clips/SC-A-91-synthetic-20261030.mp4"
+ ],
+ "models": {
+  "keyframe_boxes": "muse-spark-1.3"
+ },
+ "models_note": "synthetic recordings replayed: no Meta model was called",
+ "detail": {
+  "keyframe_boxes": "muse-spark-1.3"
+ }
+}

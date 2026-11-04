@@ -6,7 +6,7 @@
  },
  "temporal": {
   "extend": 8,
-  "backfill": 57,
+  "backfill": 15,
   "gap_hold_s": 2.0
  },
  "frames": {

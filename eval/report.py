@@ -159,6 +159,7 @@ def render(runs: list[dict[str, Any]], settings: Settings | None = None) -> str:
                 + ".",
                 "",
             ]
+    lines += ["## Changes", "", *(f"- {change}" for change in CHANGES), ""]
     lines += [
         "## Service limits (from `safecut/config.py` defaults)",
         "",
@@ -178,6 +179,14 @@ def render(runs: list[dict[str, Any]], settings: Settings | None = None) -> str:
 
 README = ROOT / "README.md"
 README_START, README_END = "<!-- results:start -->", "<!-- results:end -->"
+#: What changed in the code behind the runs, newest first: one line each, written by hand, rendered as is.
+CHANGES = (
+    "2026-11-04: covers hide identity, not the shot: a person or child gets the face/head mosaic (the whole person "
+    "only on the creator's Remove person); held covers stay at their object (half a second of back-fill, no motion "
+    "sweep, bounded growth); a kept participant's face is never covered by another item (DESIGN §2.6, §2.7). The "
+    "owner's call after the live street-interview review. Every dev run was re-run on that code; the synthetic dev "
+    "clip's figures did not change.",
+)
 
 
 def readme_table(runs: list[dict[str, Any]]) -> str:

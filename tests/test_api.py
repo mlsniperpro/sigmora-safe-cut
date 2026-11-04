@@ -307,7 +307,21 @@ def test_a_transient_failure_retries_once_later(
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture
+def before_the_judge_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The judge window opens 2026-11-05: the access check reads its clock as the day before, so the tests that
+    expect it shut still hold when they run after it opens (judges run them later)."""
+
+    class DayBefore(datetime):
+        @classmethod
+        def now(cls, tz: Any = None) -> DayBefore:
+            return cls(2026, 11, 4, 12, tzinfo=UTC)
+
+    monkeypatch.setattr("safecut.api.access.datetime", DayBefore)
+
+
 @pytest.mark.entry("E5:auth_access_code")
+@pytest.mark.usefixtures("before_the_judge_window")
 def test_access_codes(make_client: Callable[..., tuple[TestClient, Service]], tmp_path: Path) -> None:
     client, _ = make_client(code_windows={"pilot": OPEN, "service": OPEN})  # judge keeps its Nov 5 window
     assert client.post("/v1/codes/check", json={"code": "nope-nope"}).status_code == 401
@@ -347,6 +361,7 @@ def test_a_revoked_code_stops_paid_work_but_not_reading_or_deleting(
 
 
 @pytest.mark.entry("E5:auth_service_key")
+@pytest.mark.usefixtures("before_the_judge_window")
 def test_service_keys(make_client: Callable[..., tuple[TestClient, Service]]) -> None:
     client, svc = make_client()
     job_id = upload_clip(client, code=None, headers={"Authorization": f"Bearer {SERVICE_KEY}"})

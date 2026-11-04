@@ -38,6 +38,8 @@ IntBox = tuple[int, int, int, int]
 class Region:
     box: IntBox
     mask: Rle | None = None
+    #: Kept faces the region leaves untouched (the plan entry's ``keep_clear``, DESIGN §2.6).
+    clear: tuple[IntBox, ...] = ()
 
 
 def frame_regions(plan: Plan) -> dict[int, list[Region]]:
@@ -46,7 +48,8 @@ def frame_regions(plan: Plan) -> dict[int, list[Region]]:
     for frame, entries in plan.frames.items():
         for entry in entries:
             mask = entry.mask if entry.shape == "mask" else None
-            regions.setdefault(int(frame), []).append(Region(tuple(entry.box), mask))  # type: ignore[arg-type] -- a 4-int box
+            clear = tuple(tuple(b) for b in entry.keep_clear)
+            regions.setdefault(int(frame), []).append(Region(tuple(entry.box), mask, clear))  # type: ignore[arg-type] -- 4-int boxes
     for fill in plan.crowd_fills:
         for frame in fill.frames:
             regions.setdefault(frame, []).append(Region(tuple(fill.box)))  # type: ignore[arg-type] -- a 4-int box
@@ -76,10 +79,12 @@ def coverage(gt: Box, regions: Sequence[Region], *, width: int, height: int) -> 
         if ix1 <= ix0 or iy1 <= iy0:
             continue
         if region.mask is None:
-            canvas[iy0 - y0 : iy1 - y0, ix0 - x0 : ix1 - x0] = True
+            drawn = np.ones((iy1 - iy0, ix1 - ix0), dtype=bool)
         else:
-            fg = _decode(region.mask)
-            canvas[iy0 - y0 : iy1 - y0, ix0 - x0 : ix1 - x0] |= fg[iy0:iy1, ix0:ix1]
+            drawn = _decode(region.mask)[iy0:iy1, ix0:ix1].copy()
+        for cx0, cy0, cx1, cy1 in region.clear:
+            drawn[max(0, cy0 - iy0) : max(0, cy1 - iy0), max(0, cx0 - ix0) : max(0, cx1 - ix0)] = False
+        canvas[iy0 - y0 : iy1 - y0, ix0 - x0 : ix1 - x0] |= drawn
     return float(canvas.mean())
 
 

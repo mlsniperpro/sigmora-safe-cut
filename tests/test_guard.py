@@ -54,6 +54,19 @@ def covered(p: Plan, frame: int, item_id: str, box: tuple[int, int, int, int]) -
     return bool((have | ~want).all())
 
 
+def identity_box(
+    t: Track, box: tuple[int, int, int, int], item: DecisionItem, *, ts: Tracks, p: Plan, frame: int
+) -> tuple[int, int, int, int] | None:
+    """What of ``box`` must be hidden (DESIGN §2.7): an identity-only item's body track is hidden as its head estimate,
+    and only where none of the item's face tracks is planned (there the face cover hides the identity); else ``box``."""
+    if t.concept != "person" or not contracts.identity_only(item.kind, item.style):
+        return box
+    by_id = {x.track_id: x for x in ts.tracks}
+    faced = contracts.face_frames((by_id[x] for x in item.track_ids), backfill=p.temporal.backfill,
+                                  extend=p.temporal.extend, frames=FRAMES)  # fmt: skip
+    return None if frame in faced else contracts.head_box(box)
+
+
 def disk(cx: int, cy: int, r: int) -> contracts.Rle:
     yy, xx = np.mgrid[0:H, 0:W]
     return g.encode((xx - cx) ** 2 + (yy - cy) ** 2 <= r * r)
@@ -62,9 +75,10 @@ def disk(cx: int, cy: int, r: int) -> contracts.Rle:
 # ---------------------------------------------------------------------------------------------- table tests
 
 
-def test_backfill_is_sams_hotstart_in_prepared_frames() -> None:
-    assert backfill_frames(job(fps=30), tracks(track("face:1", 0, 1), sam_fps=8)) == 57  # PRE-A §5b T10
-    assert backfill_frames(job(fps=24), tracks(track("face:1", 0, 1), sam_fps=30)) == 15  # sam_fps capped at fps
+def test_backfill_is_half_a_second() -> None:
+    assert backfill_frames(job(fps=30)) == 15  # DESIGN §2.6: ceil(0.5 x fps)
+    assert backfill_frames(job(fps=24)) == 12
+    assert backfill_frames(job(fps=25)) == 13
 
 
 def test_a_hidden_face_is_padded_15_percent_plus_8_px_on_each_side() -> None:
@@ -73,7 +87,7 @@ def test_a_hidden_face_is_padded_15_percent_plus_8_px_on_each_side() -> None:
     (e,) = entries(p, 25, "i_1")
     assert e.box == (86, 36, 154, 104)  # 40 px: 6 + 8 each side
     assert p.padding == PADDING
-    assert (p.temporal.extend, p.temporal.backfill) == (8, 57)
+    assert (p.temporal.extend, p.temporal.backfill) == (8, 15)
 
 
 def test_objects_are_padded_8_percent() -> None:
@@ -92,46 +106,41 @@ def test_kept_items_are_not_planned() -> None:
     assert plan(JOB, ts, keep).frames == {}
 
 
-def test_backfill_and_extend_follow_the_motion_at_the_edges() -> None:
+def test_backfill_and_extend_hold_the_edge_box_still() -> None:
+    """DESIGN §2.6: no sweep along the motion: a cover never runs ahead of its object into where it isn't yet."""
     t = track("face:1", 40, 50, (100, 60, 120, 80), step=(2, 0))  # moving right 2 px a frame
     ts = tracks(t)
     p = plan(JOB, ts, hide_all(ts))
-    assert min(p.frames) == 0  # 40 - 57, clamped
+    assert min(p.frames) == 40 - 15
     assert max(p.frames) == 50 + EXTEND
-    for frame in range(40):  # where the square would have been, had SAM seen it earlier
-        x = 100 - 2 * (40 - frame)
-        if x >= 0:
-            assert covered(p, frame, "i_1", (x, 60, x + 20, 80)), frame
+    for frame in range(25, 40):
+        assert covered(p, frame, "i_1", (100, 60, 120, 80)), frame  # the first box, held still
+        (e,) = entries(p, frame, "i_1")
+        assert e.box[0] >= 100 - 2 - 3 - 8 - 1  # grown at most 10 % (2 px) each side, then padded (3 + 8 px)
     for frame in range(51, 59):
-        x = 120 + 2 * (frame - 50)
-        assert covered(p, frame, "i_1", (x, 60, x + 20, 80)), frame
+        assert covered(p, frame, "i_1", (120, 60, 140, 80)), frame  # the last box, held still
+        (e,) = entries(p, frame, "i_1")
+        assert e.box[2] <= 140 + 5 + 4 + 8 + 1  # grown at most 25 % (5 px) each side, then padded
 
 
 def test_held_box_grows_2_percent_a_frame_and_is_capped() -> None:
-    assert held_box((100, 100, 200, 200), 10, (0.0, 0.0), 1280, 720) == (80, 80, 220, 220)
-    assert held_box((100, 100, 200, 200), 500, (0.0, 0.0), 1280, 720) == (0, 0, 300, 300)
+    assert held_box((100, 100, 200, 200), 10, 0.25, 1280, 720) == (80, 80, 220, 220)
+    assert held_box((100, 100, 200, 200), 500, 0.25, 1280, 720) == (75, 75, 225, 225)  # 25 % after the last box
+    assert held_box((100, 100, 200, 200), 500, 0.10, 1280, 720) == (90, 90, 210, 210)  # 10 % before the first
 
 
-def test_a_gap_up_to_2_s_holds_the_last_box_and_the_resumed_one() -> None:
+def test_a_gap_holds_the_interpolated_box_never_the_whole_path() -> None:
+    """SAM lost the object for 41 frames while it moved 84 px: each gap frame covers the interpolated box (grown from
+    the nearer anchor), not a cover stretched from where it was lost to where it came back."""
     t = track("face:1", 0, 50, (40, 40, 60, 60), step=(2, 0), anchors=[0, 1, 2, 3, 45, 46, 47, 48, 49, 50])
     ts = tracks(t)
     p = plan(JOB, ts, hide_all(ts))
     for frame in range(4, 45):
-        assert covered(p, frame, "i_1", (46, 40, 66, 60)), frame  # the box SAM last saw, held
         interp = g.box_at(t, frame)
         assert interp is not None
         assert covered(p, frame, "i_1", interp), frame
-
-
-def test_a_gap_is_held_from_both_ends() -> None:
-    """The object came back at frame 45 near its resumed box: the frames just before are covered around it too,
-    not only around where it was lost and the straight path between."""
-    t = track("face:1", 0, 50, (40, 40, 60, 60), step=(2, 0), anchors=[0, 1, 2, 3, 45, 46, 47, 48, 49, 50])
-    ts = tracks(t)
-    p = plan(JOB, ts, hide_all(ts))
-    resumed = t.boxes[45]
-    for frame in range(4, 45):
-        assert covered(p, frame, "i_1", held_box(resumed, 45 - frame, (0.0, 0.0), W, H)), frame
+        (e,) = entries(p, frame, "i_1")
+        assert e.box[2] - e.box[0] <= 20 * 1.5 + 2 * (5 + 8), (frame, e.box)  # grown 25 %, then face-padded
 
 
 def test_crowded_frames_get_a_fill_over_every_hidden_object() -> None:
@@ -271,14 +280,20 @@ def test_property_every_visible_frame_of_a_hidden_track_is_covered_by_its_padded
 ) -> None:
     ts, d, p = case
     owner = {t: i.item_id for i in d.items for t in i.track_ids}
+    items = {i.item_id: i for i in d.items}
     for t in ts.tracks:
-        ratio = PADDING.face if t.concept == "face" else PADDING.default
-        for frame, box in t.boxes.items():
+        item = items[owner[t.track_id]]
+        heads = t.concept == "person" and contracts.identity_only(item.kind, item.style)
+        ratio = PADDING.face if t.concept == "face" or heads else PADDING.default
+        for frame, raw in t.boxes.items():
+            box = identity_box(t, raw, item, ts=ts, p=p, frame=frame)
+            if box is None:
+                continue  # its face cover hides the identity on this frame
             # The contract's reading of the padding (half the ratio each side + px) must be fully under the plan.
             dx, dy = int(ratio / 2 * (box[2] - box[0])) + PADDING.px, int(ratio / 2 * (box[3] - box[1])) + PADDING.px
             padded = (max(0, box[0] - dx), max(0, box[1] - dy), min(W, box[2] + dx), min(H, box[3] + dy))
             es = entries(p, frame, owner[t.track_id])
-            if any(e.mask is not None for e in es):
+            if any(e.mask is not None for e in es) and not heads:
                 # Mask-shaped: SAM's own outline of the object (padded outward) is under what the plan hides on that
                 # frame: every entry of the item (a body's box as much as a face's mask) and any crowd fill.
                 if frame in t.masks:
@@ -299,14 +314,21 @@ def test_property_every_visible_frame_of_a_hidden_track_is_covered_by_its_padded
 def test_property_backfill_and_gap_hold_hold(case: tuple[Tracks, Decisions, Plan]) -> None:
     ts, d, p = case
     owner = {t: i.item_id for i in d.items for t in i.track_ids}
+    items = {i.item_id: i for i in d.items}
     hold = int(2.0 * FPS)
     for t in ts.tracks:
         item = owner[t.track_id]
+
+        def want(box: tuple[int, int, int, int], frame: int) -> tuple[int, int, int, int] | None:
+            return identity_box(t, box, items[item], ts=ts, p=p, frame=frame)  # noqa: B023 -- used within this iteration
+
         first_box, last_box = t.boxes[t.first], t.boxes[t.last]
         for frame in range(max(0, t.first - p.temporal.backfill), t.first):
-            assert covered(p, frame, item, first_box), ("backfill", t.track_id, frame)
+            if (b := want(first_box, frame)) is not None:
+                assert covered(p, frame, item, b), ("backfill", t.track_id, frame)
         for frame in range(t.last + 1, min(FRAMES, t.last + p.temporal.extend + 1)):
-            assert covered(p, frame, item, last_box), ("extend", t.track_id, frame)
+            if (b := want(last_box, frame)) is not None:
+                assert covered(p, frame, item, b), ("extend", t.track_id, frame)
         keys = sorted(t.boxes)
         for before, after in itertools.pairwise(keys):
             if after - before - 1 > hold:
@@ -314,8 +336,9 @@ def test_property_backfill_and_gap_hold_hold(case: tuple[Tracks, Decisions, Plan
             for frame in range(before + 1, after):
                 interp = g.box_at(t, frame)
                 assert interp is not None
-                if all(e.mask is None for e in entries(p, frame, item)):
-                    assert covered(p, frame, item, interp), ("gap", t.track_id, frame)
+                b = want(interp, frame)
+                if b is not None and all(e.mask is None for e in entries(p, frame, item)):
+                    assert covered(p, frame, item, b), ("gap", t.track_id, frame)
 
 
 @pytest.mark.entry("E4:locked_grid_fixed")
@@ -412,17 +435,24 @@ def test_the_guard_stage_reuses_regions_until_the_tracks_change(tmp_path: Path) 
     assert guard_run(job_dir).read_text() == first
 
 
-def test_a_whole_person_item_covers_a_body_where_only_its_face_is_tracked() -> None:
-    """DESIGN §2.7b: a prominent person is hidden whole. The body track (frames 10-30) is shorter than the face's
-    (0-50): outside the body's span the face entry still carries an estimated body, never just the face."""
+def test_a_prominent_bystander_is_hidden_by_the_face_and_only_remove_person_covers_the_body() -> None:
+    """DESIGN §2.7: identity only. A prominent bystander's face is mosaicked and their body stays in the shot; the
+    creator's Remove person covers the whole person, with an estimated body where the body track (10-30) is shorter
+    than the face's (0-50)."""
     face = track("face:1", 0, 50, (130, 25, 160, 55))
     body = track("person:1", 10, 30, (100, 20, 200, 170))
     ts = tracks(face, body)
     by = ("bystander",) * 3
     decided = decide(Inputs(job=JOB, tracks=ts, roles=roles(row("face:1", *by), row("person:1", *by))))
     (item,) = decided.items
-    assert (item.style, item.track_ids) == ("person_solid", ["face:1", "person:1"])
+    assert (item.style, item.track_ids) == ("pixelate", ["face:1", "person:1"])
     p = plan(JOB, ts, decided)
+    for frame in (0, 5, 20, 45, 50):
+        assert covered(p, frame, "i_1", (130, 25, 160, 55)), frame
+        assert not hidden_mask(entries(p, frame, "i_1"), [], H, W)[80:].any(), frame  # the body stays in the shot
+    removed = apply_review(decided, [EDIT.validate_python({"type": "remove_person", "edit_id": "r",
+                                                            "item_id": "i_1"})]).decisions  # fmt: skip
+    p = plan(JOB, ts, removed)
     for frame in (0, 5, 20, 45, 50):
         assert covered(p, frame, "i_1", (120, 55, 170, H)), frame  # below the face, to the frame's bottom
 
@@ -453,14 +483,14 @@ def test_a_merged_face_away_from_the_items_body_still_gets_a_body() -> None:
         assert covered(p, frame, "i_1", (245, 40, 275, H)), frame
 
 
-def test_back_fill_follows_a_fast_moving_face() -> None:
-    """A small face crossing the frame at half its width a frame (a fast head turn on glasses footage): every
-    back-filled frame before SAM confirmed it is covered where the face really was."""
+def test_back_fill_of_a_fast_moving_face_stays_at_its_first_box() -> None:
+    """DESIGN §2.6 (owner, 11-04): a cover never runs ahead of its object. A small face crossing the frame fast gets
+    half a second of back-fill at its first box, held still, and nothing before that or along its path."""
     t = track("face:1", 20, 28, (200, 80, 220, 100), step=(10, 0), anchors=[20, 24, 28])
     ts = tracks(t)
     p = plan(job(fps=30), ts, hide_all(ts))
-    for frame in range(20):
-        x1 = 200 + 10 * (frame - 20)
-        truth = g.clamp((x1, 80, x1 + 20, 100), W, H)
-        if truth is not None:
-            assert covered(p, frame, "i_1", truth), frame
+    assert min(p.frames) == 20 - 15
+    for frame in range(5, 20):
+        assert covered(p, frame, "i_1", (200, 80, 220, 100)), frame
+        (e,) = entries(p, frame, "i_1")
+        assert e.box[0] >= 200 - 2 - 3 - 8 - 1, (frame, e.box)

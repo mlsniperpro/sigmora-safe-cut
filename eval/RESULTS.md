@@ -9,16 +9,20 @@ Recall: the share of should-hide entities covered (≥ 95 % of the box) on at le
 
 | Method | Recall | Exposure | Leak bursts | Over-blur | Needs-you items / min | Run |
 |---|---|---|---|---|---|---|
-| Blur every face (SAM 3.1 `face`, all hidden) | 40.0% | 59.3% | 3 | 100.0% | 0.00 | [20261030T202914Z-dev-blur_all-9bf457d](results/20261030T202914Z-dev-blur_all-9bf457d/metrics.json) |
-| OpenCV YuNet face detector on every frame (EgoBlur weights not installed) | 0.0% | 100.0% | 5 | 0.0% | 0.00 | [20261030T202938Z-dev-egoblur-9bf457d](results/20261030T202938Z-dev-egoblur-9bf457d/metrics.json) |
-| Detector only (SAM 3.1 classes, no Muse Spark) | 80.0% | 10.1% | 1 | 100.0% | 0.00 | [20261030T202946Z-dev-detector_only-9bf457d](results/20261030T202946Z-dev-detector_only-9bf457d/metrics.json) |
-| Muse Spark keyframe boxes, no tracking | 60.0% | 37.5% | 12 | 100.0% | 0.00 | [20261030T203011Z-dev-muse_no_track-9bf457d](results/20261030T203011Z-dev-muse_no_track-9bf457d/metrics.json) |
-| **Safe Cut (full)** | 100.0% | 0.0% | 0 | 0.0% | 10.00 | [20261030T202808Z-dev-full-9bf457d](results/20261030T202808Z-dev-full-9bf457d/metrics.json) |
-| Safe Cut without the audit pass | 100.0% | 0.0% | 0 | 0.0% | 10.00 | [20261030T202845Z-dev-no_audit-9bf457d](results/20261030T202845Z-dev-no_audit-9bf457d/metrics.json) |
+| Blur every face (SAM 3.1 `face`, all hidden) | 40.0% | 59.3% | 3 | 100.0% | 0.00 | [20261104T152647Z-dev-blur_all-7f81aa9](results/20261104T152647Z-dev-blur_all-7f81aa9/metrics.json) |
+| OpenCV YuNet face detector on every frame (EgoBlur weights not installed) | 0.0% | 100.0% | 5 | 0.0% | 0.00 | [20261104T152702Z-dev-egoblur-7f81aa9](results/20261104T152702Z-dev-egoblur-7f81aa9/metrics.json) |
+| Detector only (SAM 3.1 classes, no Muse Spark) | 80.0% | 10.1% | 1 | 100.0% | 0.00 | [20261104T152707Z-dev-detector_only-7f81aa9](results/20261104T152707Z-dev-detector_only-7f81aa9/metrics.json) |
+| Muse Spark keyframe boxes, no tracking | 60.0% | 37.5% | 12 | 100.0% | 0.00 | [20261104T152722Z-dev-muse_no_track-7f81aa9](results/20261104T152722Z-dev-muse_no_track-7f81aa9/metrics.json) |
+| **Safe Cut (full)** | 100.0% | 0.0% | 0 | 0.0% | 10.00 | [20261104T152603Z-dev-full-7f81aa9](results/20261104T152603Z-dev-full-7f81aa9/metrics.json) |
+| Safe Cut without the audit pass | 100.0% | 0.0% | 0 | 0.0% | 10.00 | [20261104T152630Z-dev-no_audit-7f81aa9](results/20261104T152630Z-dev-no_audit-7f81aa9/metrics.json) |
 
 1 clip(s), 5 should-hide and 2 should-keep entities, 0.20 min of footage. Chart: [charts/dev-synthetic.png](results/charts/dev-synthetic.png).
 
 Cost: none measured; replay runs make no API calls.
+
+## Changes
+
+- 2026-11-04: covers hide identity, not the shot: a person or child gets the face/head mosaic (the whole person only on the creator's Remove person); held covers stay at their object (half a second of back-fill, no motion sweep, bounded growth); a kept participant's face is never covered by another item (DESIGN §2.6, §2.7). The owner's call after the live street-interview review. Every dev run was re-run on that code; the synthetic dev clip's figures did not change.
 
 ## Service limits (from `safecut/config.py` defaults)
 

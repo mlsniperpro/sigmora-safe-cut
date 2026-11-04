@@ -541,7 +541,7 @@ export function ReviewPanel({ jobId, job, viewReview, onPatchJob, onResume, onRe
           const d = effectiveDecision(state, id);
           return (d === "hide" || d === "needs_you") && !plannedItems.has(id);
         })
-        .map(([id]) => ({ itemId: id, trackIds: tracksShown(state, id) })),
+        .map(([id]) => ({ itemId: id, trackIds: tracksShown(state, id), whole: state.items[id]?.removed === true })),
       items: visible.map(([id, i]) => ({ itemId: id, label: i.label, trackIds: tracksShown(state, id) })),
       tracks: new Map(job.tracks.map((t) => [t.track_id, t])),
       spots: Object.entries(state.spots)

@@ -234,6 +234,9 @@ def test_coverage_scores_what_the_renderer_hides(rendered: Path) -> None:
         for f, b in t["boxes"].items():
             truth.setdefault(int(f), {})[t["track_id"]] = (b[0], b[1], b[2], b[3])
     scores = score(plan, truth, {"face:1": False, "face:2": True}, width=320, height=240)
+    # From frame 51 the bystander's padded cover reaches the kept participant's padded face, which it leaves clear
+    # (DESIGN §2.6), yet never so far as to uncover the bystander's own face: still fully covered.
+    assert sorted(f for f, es in plan.frames.items() if any(e.keep_clear for e in es))
     assert scores["face:2"].share == 1.0
     assert scores["face:1"].share == 0.0
     assert passes_e3(scores)

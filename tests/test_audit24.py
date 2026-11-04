@@ -648,10 +648,10 @@ def test_every_crowded_frame_has_a_crowd_fill(tmp_path: Path) -> None:
     assert "plan.json" in c.validate_job_dir(job_dir)
 
 
-def test_the_backfill_is_the_hotstart_in_prepared_frames(tmp_path: Path) -> None:
+def test_the_backfill_is_half_a_second_in_prepared_frames(tmp_path: Path) -> None:
     job_dir = _example(tmp_path)
-    _edit(job_dir, "plan.json", lambda d: d["temporal"].update({"backfill": 15}))
-    with pytest.raises(c.ContractError, match=r"backfill 15 != ceil\(15 x fps / sam_fps\) = 57"):
+    _edit(job_dir, "plan.json", lambda d: d["temporal"].update({"backfill": 57}))
+    with pytest.raises(c.ContractError, match=r"backfill 57 != ceil\(0.5 x fps\) = 15"):
         c.validate_job_dir(job_dir)
 
 

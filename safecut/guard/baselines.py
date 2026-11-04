@@ -46,7 +46,7 @@ def blur_all(job: Job, tracks: Tracks) -> tuple[Decisions, Plan]:
             frames.setdefault(frame, []).append(
                 PlanEntry(item_id=item_id, shape="box", box=padded, mask=None, style="solid", grid=None)
             )
-    return Decisions(items=items), _plan(frames, backfill_frames(job, tracks))
+    return Decisions(items=items), _plan(frames, backfill_frames(job))
 
 
 def detector_plan(job: Job, detections: Mapping[int, Sequence[BoxT]], *, backfill: int) -> tuple[Decisions, Plan]:
