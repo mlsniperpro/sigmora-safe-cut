@@ -56,6 +56,19 @@ describe("overlayOps (UI-SPEC §3.6)", () => {
     expect((r! + g! + b!) / 3).toBeGreaterThan(150); // the haze: light, never the old dark slate
   });
 
+  it("frosts in the plain haze when the video can't be read (a cross-origin, tainted canvas)", () => {
+    const tainted = { width: 0, height: 0, getContext: () => ({ drawImage: () => undefined, getImageData: () => { throw new DOMException("tainted", "SecurityError"); } }) };
+    const original = document.createElement.bind(document);
+    document.createElement = ((tag: string) => (tag === "canvas" ? tainted : original(tag))) as typeof document.createElement;
+    const noop = () => undefined;
+    const ctx = { canvas: { width: 8, height: 8 }, clearRect: noop, save: noop, restore: noop, beginPath: noop, clip: noop, rect: noop, fillRect: noop, fillStyle: "", filter: "" } as unknown as CanvasRenderingContext2D;
+    try {
+      expect(() => drawOverlay(ctx, {} as CanvasImageSource, [{ kind: "cover", box: [0, 0, 4, 4], style: "solid", grid: null }], 2)).not.toThrow();
+    } finally {
+      document.createElement = original;
+    }
+  });
+
   it("draws nothing on a frame the plan leaves out", () => {
     expect(overlayOps({ ...base, frame: 3, plan: { ...plan, crowd_fills: [] } })).toEqual([]);
   });

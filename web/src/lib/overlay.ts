@@ -224,10 +224,14 @@ function hazeOf(video: CanvasImageSource | null, box: Box): [number, number, num
     scratch.height = 1;
     const small = scratch.getContext("2d", { willReadFrequently: true });
     if (small) {
-      small.imageSmoothingEnabled = true;
-      small.drawImage(video, box[0], box[1], Math.max(1, box[2] - box[0]), Math.max(1, box[3] - box[1]), 0, 0, 1, 1);
-      const [r, g, b] = small.getImageData(0, 0, 1, 1).data;
-      mean = [r ?? HAZE_LEVEL, g ?? HAZE_LEVEL, b ?? HAZE_LEVEL];
+      try {
+        small.imageSmoothingEnabled = true;
+        small.drawImage(video, box[0], box[1], Math.max(1, box[2] - box[0]), Math.max(1, box[3] - box[1]), 0, 0, 1, 1);
+        const [r, g, b] = small.getImageData(0, 0, 1, 1).data;
+        mean = [r ?? HAZE_LEVEL, g ?? HAZE_LEVEL, b ?? HAZE_LEVEL];
+      } catch {
+        // A cross-origin video taints the canvas (no pixel reads): the preview frosts in the plain haze instead.
+      }
     }
   }
   return [0, 1, 2].map((i) => (1 - HAZE) * (mean[i] ?? HAZE_LEVEL) + HAZE * HAZE_LEVEL) as [number, number, number];
