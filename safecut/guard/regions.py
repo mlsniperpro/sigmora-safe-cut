@@ -9,8 +9,12 @@ everything else 8 % plus 8 px. Outside the frames SAM saw the object, the guard 
 * **gaps** (SAM lost the object between anchors): the interpolated box, grown 2 % a frame from the nearer anchor
   (at most 25 % each side);
 * **back-fill** (``backfill`` frames, 0.3 s, before the first detection) and **extend** (8 frames after the
-  last): the edge box held still, grown 2 % a frame (at most 10 % each side before, 25 % after). Nothing is swept
-  along the track's motion: a cover never runs ahead of its object into empty space or over someone else.
+  last): the edge box held, grown 2 % a frame (at most 10 % each side before, 25 % after). Nothing is swept
+  along the track's motion: a cover never runs ahead of its object into empty space or over someone else. With a
+  camera (``safecut.guard.motion``: the scene's cumulative translation per frame) a held box is not held still but
+  moved with the scene by the camera's motion since its edge frame, so a pan doesn't carry it off its person; a gap
+  holds the interpolation of its two anchors each moved the same way. Where that takes the box out of the frame,
+  nothing is drawn on that frame.
 
 A mask region must still span its track box the way the contract checks it (80 % of its width and height, a
 quarter of its area); a mask that doesn't (an empty or sliver SAM mask, PRE-A §2.6) falls back to the box.
@@ -25,7 +29,7 @@ from functools import lru_cache
 
 import numpy as np
 
-from safecut.contracts import Rle, Track
+from safecut.contracts import Camera, Rle, Track, camera_delta, clip_box, held_source, translate
 from safecut.decide.geometry import (
     BoolMask,
     BoxT,
@@ -134,11 +138,22 @@ def join(patches: list[Patch]) -> Patch:
 class TrackRegions:
     """Regions for one track, frame by frame (masks decoded once per anchor)."""
 
-    def __init__(self, track: Track, *, ratio: float, px: int, width: int, height: int, interp_gap: int) -> None:
+    def __init__(
+        self,
+        track: Track,
+        *,
+        ratio: float,
+        px: int,
+        width: int,
+        height: int,
+        interp_gap: int,
+        camera: Camera | None = None,
+    ) -> None:
         self.track = track
         self.ratio, self.px = ratio, px
         self.width, self.height = width, height
         self.interp_gap = interp_gap
+        self.camera = camera
         self.keys = sorted(track.boxes)
         self.mask_keys = sorted(track.masks)
         self._decoded = lru_cache(maxsize=8)(self._decode)
@@ -177,15 +192,27 @@ class TrackRegions:
                 moved.append(patch.moved(box[0] - anchor[0], box[1] - anchor[1]))
         return join(moved) if moved else None
 
+    def edge(self, box: BoxT, frame: int, ref: int) -> BoxT | None:
+        """``box``, an edge box of the track seen on frame ``ref``, held on ``frame``: moved with the camera when there
+        is one (None when that puts it wholly outside the frame), else as it is."""
+        if self.camera is None:
+            return box
+        moved = translate(box, *camera_delta(self.camera, frame, ref))
+        return moved if clip_box(moved, self.width, self.height) is not None else None
+
     def at(self, frame: int) -> Region:
-        """The region on ``frame`` (which the caller keeps inside ``first - backfill … last + extend``)."""
+        """The region on ``frame``, which has one whenever there is no camera (see :meth:`region`)."""
+        found = self.region(frame)
+        if found is None:
+            raise ValueError(f"{self.track.track_id} has no region on frame {frame}")
+        return found
+
+    def region(self, frame: int) -> Region | None:
+        """The region on ``frame`` (which the caller keeps inside ``first - backfill … last + extend``); None only
+        where the camera has carried a held box out of the frame."""
         t = self.track
-        if frame < t.first:
-            box = held_box(t.boxes[t.first], t.first - frame, MAX_GROWTH_BEFORE, self.width, self.height)
-            return Region(self._pad(box))
-        if frame > t.last:
-            box = held_box(t.boxes[t.last], frame - t.last, MAX_GROWTH, self.width, self.height)
-            return Region(self._pad(box))
+        if frame < t.first or frame > t.last:
+            return self._held_edge(frame)
         box = t.boxes.get(frame)
         if box is not None:
             if frame in t.masks:
@@ -210,5 +237,20 @@ class TrackRegions:
             return Region(self._pad(interpolated))
         # A long gap (SAM lost the object): the interpolated box, grown 2 % a frame from the nearer anchor (capped),
         # never stretched between where it was lost and where it came back.
+        if self.camera is not None:
+            interpolated = held_source(t, frame, self.camera)  # each anchor moved to this frame, then interpolated
+            if clip_box(interpolated, self.width, self.height) is None:
+                return None
         distance = min(frame - before, after - frame)
         return Region(self._pad(held_box(interpolated, distance, MAX_GROWTH, self.width, self.height)))
+
+    def _held_edge(self, frame: int) -> Region | None:
+        """Back-fill (before the first box) or extend (after the last): the edge box held, moved with the camera."""
+        t = self.track
+        before = frame < t.first
+        ref = t.first if before else t.last
+        edge = self.edge(t.boxes[ref], frame, ref)
+        if edge is None:
+            return None
+        grown = held_box(edge, abs(frame - ref), MAX_GROWTH_BEFORE if before else MAX_GROWTH, self.width, self.height)
+        return Region(self._pad(grown))

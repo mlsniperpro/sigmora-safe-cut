@@ -11,14 +11,20 @@ item keeps one grid for its whole life, anchored at its first face box with cell
 most 4 blocks (DESIGN's limit is 6), so the mosaic never shifts between frames. An item a model read through (a
 flagged leak's ``through_item``) renders solid from then on, and every audit patch is rebuilt from its decision item,
 so no re-plan ever loses one.
+
+Held boxes move with the camera (``safecut.guard.motion``, ``plan(..., camera=...)``, stored in ``plan.json``): the
+back-fill, extend, a re-entry or gap hold and an audit patch follow the scene's pan instead of staying still where the
+person no longer is, and draw nothing on a frame where that carries them out of the frame.
 """
 
 from __future__ import annotations
 
+import bisect
 import math
 from collections.abc import Iterable, MutableMapping
 
 from safecut.contracts import (
+    Camera,
     CrowdFill,
     DecisionItem,
     Decisions,
@@ -31,11 +37,17 @@ from safecut.contracts import (
     Temporal,
     Track,
     Tracks,
+    camera_delta,
+    clip_box,
     face_frames,
     head_box,
     identity_only,
+    is_held,
     live_frames,
     nearest_box,
+    patch_source,
+    sam_interp_gap,
+    translate,
 )
 from safecut.decide.geometry import BoxT, area, box_at, clamp, grow, intersection, union
 from safecut.guard.regions import Region, TrackRegions, ratio_for
@@ -124,50 +136,80 @@ def hold_until(track: Track, by_id: dict[str, Track], job: Job) -> int:
     return end
 
 
-def _patch_entries(item: DecisionItem, job: Job) -> Iterable[tuple[int, PlanEntry]]:
+def _patch_entries(item: DecisionItem, job: Job, camera: Camera | None = None) -> Iterable[tuple[int, PlanEntry]]:
     """An audit patch: its raw box padded by its kind's spatial padding over its own span, no temporal padding
-    (API-NOTES §12)."""
+    (API-NOTES §12). With a camera the box moves with the scene from its evidence frame (``patch_source``), and a
+    frame where that carries it out of the frame draws nothing."""
     if item.box is None or item.first is None or item.last is None:
         return
     ratio = PADDING.face if item.kind == "person" else PADDING.default
-    box = grow(item.box, ratio, PADDING.px, job.width, job.height)
-    entry = PlanEntry(item_id=item.item_id, shape="box", box=box, mask=None, style="solid", grid=None,
+    hold = backfill_frames(job)
+    still = grow(item.box, ratio, PADDING.px, job.width, job.height)
+    entry = PlanEntry(item_id=item.item_id, shape="box", box=still, mask=None, style="solid", grid=None,
                       source="audit_patch")  # fmt: skip
     for frame in range(item.first, min(job.frames, item.last + 1)):
-        yield frame, entry
+        if camera is None:
+            yield frame, entry
+            continue
+        moved = patch_source(item, frame, camera, hold, job.frames)
+        if moved is None or clip_box(moved, job.width, job.height) is None:
+            continue
+        box = grow(moved, ratio, PADDING.px, job.width, job.height)
+        yield frame, entry if box == still else entry.model_copy(update={"box": box})
 
 
-#: Regions of one track over a frame range, keyed by (track_id, first frame, last frame): they depend only on the track
-#: and the job, never on the decisions, so a re-plan after a review edit can reuse them.
-RegionCache = MutableMapping[tuple[str, int, int], list[Region]]
+#: Regions of one track over a frame range, keyed by (track_id, first frame, last frame, camera): they depend only on
+#: the track, the job and the camera, never on the decisions, so a re-plan after a review edit can reuse them. The
+#: camera part is None without one, else a hash of its offsets (a new camera never finds the old regions).
+RegionCache = MutableMapping[tuple[str, int, int, int | None], list[Region | None]]
 
 
 def _regions(
-    track: Track, start: int, end: int, *, job: Job, interp_gap: int, cache: RegionCache | None
-) -> list[Region]:
-    """The track's region on each frame ``start … end - 1`` (from the cache when it has them)."""
-    key = (track.track_id, start, end)
+    track: Track,
+    start: int,
+    end: int,
+    *,
+    job: Job,
+    interp_gap: int,
+    cache: RegionCache | None,
+    camera: Camera | None = None,
+) -> list[Region | None]:
+    """The track's region on each frame ``start … end - 1`` (from the cache when it has them); None on a frame where
+    the camera carried a held box out of the frame."""
+    key = (track.track_id, start, end, None if camera is None else hash(tuple(camera)))
     found = cache.get(key) if cache is not None else None
     if found is None:
         regions = TrackRegions(track, ratio=ratio_for(track.concept, PADDING.face, PADDING.default), px=PADDING.px,
-                               width=job.width, height=job.height, interp_gap=interp_gap)  # fmt: skip
-        found = [regions.at(frame) for frame in range(start, end)]
+                               width=job.width, height=job.height, interp_gap=interp_gap, camera=camera)  # fmt: skip
+        found = [regions.region(frame) for frame in range(start, end)]
         if cache is not None:
             cache[key] = found
     return found
 
 
 def _with_body(
-    face: Track, start: int, regions: list[Region], *, bodies: dict[int, list[BoxT]], job: Job, interp_gap: int
-) -> list[Region]:
+    face: Track,
+    start: int,
+    regions: list[Region | None],
+    *,
+    bodies: dict[int, list[BoxT]],
+    job: Job,
+    interp_gap: int,
+    camera: Camera | None = None,
+) -> list[Region | None]:
     """A whole-person item's face regions, with an estimated body under the face on every frame where none of the
     item's body regions holds this face (a face-only item, a face seen longer than its body track, or a merged
-    face elsewhere in the frame). The body grows from the padded face *box* (a mask outline can sit inside it)."""
+    face elsewhere in the frame). The body grows from the padded face *box* (a mask outline can sit inside it).
+    Where the camera carried the held face out of the frame, nothing is drawn."""
     boxed = TrackRegions(face.model_copy(update={"masks": {}}), ratio=PADDING.face, px=PADDING.px, width=job.width,
-                         height=job.height, interp_gap=interp_gap)  # fmt: skip
-    out: list[Region] = []
+                         height=job.height, interp_gap=interp_gap, camera=camera)  # fmt: skip
+    out: list[Region | None] = []
     for frame, held in enumerate(regions, start=start):
-        padded = boxed.at(frame).box
+        face_box = boxed.region(frame)
+        if held is None or face_box is None:
+            out.append(None)
+            continue
+        padded = face_box.box
         if any(intersection(padded, b) >= 0.5 * area(padded) for b in bodies.get(frame, [])):
             out.append(held)
         else:
@@ -176,21 +218,47 @@ def _with_body(
 
 
 def _heads(
-    track: Track, start: int, end: int, *, faced: frozenset[int], job: Job, interp_gap: int
+    track: Track,
+    start: int,
+    end: int,
+    *,
+    faced: frozenset[int],
+    job: Job,
+    interp_gap: int,
+    camera: Camera | None = None,
 ) -> Iterable[tuple[int, Region]]:
     """An identity-only item's body track as a head estimate (DESIGN §2.7) on each frame ``start … end - 1`` no face
     track of the item is planned on: the top of the body box (where the guard holds it, and where SAM last saw it),
-    padded like a face. Never the whole body."""
+    padded like a face. Never the whole body. With a camera a held box moves with the scene, and a frame where it
+    is carried out of the frame draws nothing."""
     raw = TrackRegions(track.model_copy(update={"masks": {}}), ratio=0.0, px=0, width=job.width, height=job.height,
-                       interp_gap=interp_gap)  # fmt: skip
+                       interp_gap=interp_gap, camera=camera)  # fmt: skip
+    keys = sorted(track.boxes)
     for frame in range(start, end):
         if frame in faced:
             continue
-        heads = [head_box(raw.at(frame).box, job.width)]
-        for seen in (nearest_box(track, frame), box_at(track, frame)):  # where SAM saw it, and between anchors
-            if seen is not None:
-                heads.append(head_box(seen, job.width))
-        yield frame, Region(grow(union(heads), PADDING.face, PADDING.px, job.width, job.height))
+        held = raw.region(frame)
+        heads = [] if held is None else [head_box(held.box, job.width)]
+        moving = camera is not None and is_held(track, frame, interp_gap)
+        near = nearest_box(track, frame)  # where SAM saw it: the keyframe nearest (the edge box when held)
+        if near is not None:
+            if moving and camera is not None:
+                moved = clip_box(translate(near, *camera_delta(camera, frame, _nearest_key(keys, frame))),
+                                 job.width, job.height)  # fmt: skip
+                near = moved
+            if near is not None:
+                heads.append(head_box(near, job.width))
+        between = box_at(track, frame)  # between anchors: the interpolated box (not through a held gap's pan)
+        if between is not None and not moving:
+            heads.append(head_box(between, job.width))
+        if heads:
+            yield frame, Region(grow(union(heads), PADDING.face, PADDING.px, job.width, job.height))
+
+
+def _nearest_key(keys: list[int], frame: int) -> int:
+    """The keyframe :func:`nearest_box` reads on ``frame`` (the earlier on a tie)."""
+    i = bisect.bisect_left(keys, frame)
+    return min(keys[max(0, i - 1) : i + 1], key=lambda k: (abs(k - frame), k))
 
 
 def kept_faces(
@@ -238,9 +306,17 @@ def _clip_kept(
 
 
 def _item_regions(
-    item: DecisionItem, by_id: dict[str, Track], job: Job, *, backfill: int, interp_gap: int, cache: RegionCache | None
+    item: DecisionItem,
+    by_id: dict[str, Track],
+    job: Job,
+    *,
+    backfill: int,
+    interp_gap: int,
+    cache: RegionCache | None,
+    camera: Camera | None = None,
 ) -> Iterable[tuple[int, Region]]:
-    """Every (frame, region) one hidden item draws, over each of its tracks' padded frame range."""
+    """Every (frame, region) one hidden item draws, over each of its tracks' padded frame range (none on a frame
+    where the camera carried a held box out of the frame)."""
     # A whole-person item covers an estimated body under its face on every frame no body track of the item covers
     # (a face-only item, or a face seen longer than its body track): DESIGN §2.7b's whole person, never a face.
     # Body regions of the item, by frame: a face is covered whole on a frame where one of them holds it.
@@ -248,11 +324,11 @@ def _item_regions(
     if item.style == "person_solid":  # the item's own style: a read-through re-render solid never shrinks it
         for t in (by_id[t] for t in item.track_ids if by_id[t].concept == "person"):
             b_start, b_end = max(0, t.first - backfill), min(job.frames, hold_until(t, by_id, job) + 1)
-            b_regions = _regions(t, b_start, b_end, job=job, interp_gap=interp_gap, cache=cache)
+            b_regions = _regions(t, b_start, b_end, job=job, interp_gap=interp_gap, cache=cache, camera=camera)
             # Only where the body is drawn: its held box gives way to another live track of the item (below).
             others = live_frames(by_id[x] for x in item.track_ids if x != t.track_id)
             for frame, region in enumerate(b_regions, start=b_start):
-                if t.first <= frame <= t.last or frame not in others:
+                if region is not None and (t.first <= frame <= t.last or frame not in others):
                     bodies.setdefault(frame, []).append(region.box)
     # DESIGN §2.7: a hidden person or child is covered face/head only. Its body tracks draw nothing where a face
     # track of the item is planned, and a head estimate elsewhere (face missed, turned away, between detections).
@@ -265,18 +341,22 @@ def _item_regions(
     for track_id in item.track_ids:
         track = by_id[track_id]
         start, end = max(0, track.first - backfill), min(job.frames, hold_until(track, by_id, job) + 1)
-        placed: Iterable[tuple[int, Region]]
+        placed: Iterable[tuple[int, Region | None]]
         if identity and track.concept == "person":
-            placed = _heads(track, start, end, faced=faced, job=job, interp_gap=interp_gap)
+            placed = _heads(track, start, end, faced=faced, job=job, interp_gap=interp_gap, camera=camera)
         else:
-            regions = _regions(track, start, end, job=job, interp_gap=interp_gap, cache=cache)
+            regions = _regions(track, start, end, job=job, interp_gap=interp_gap, cache=cache, camera=camera)
             if item.style == "person_solid" and track.concept == "face":
-                regions = _with_body(track, start, regions, bodies=bodies, job=job, interp_gap=interp_gap)
+                regions = _with_body(track, start, regions, bodies=bodies, job=job, interp_gap=interp_gap,
+                                     camera=camera)  # fmt: skip
             placed = zip(range(start, end), regions, strict=True)
-        # A held box (back-fill, extend, re-entry hold) stays still while the object moves: where another track of the
-        # item is tracked, that track's live box is drawn instead (DESIGN §2.6).
+        # A held box (back-fill, extend, re-entry hold) is held where the object was last seen (moved with the camera,
+        # when there is one) while the object moves: where another track of the item is tracked, that track's live box
+        # is drawn instead (DESIGN §2.6).
         others = live_frames(by_id[t] for t in item.track_ids if t != track_id)
-        yield from ((f, r) for f, r in placed if track.first <= f <= track.last or f not in others)
+        for f, r in placed:
+            if r is not None and (track.first <= f <= track.last or f not in others):
+                yield f, r
 
 
 def plan(
@@ -286,12 +366,16 @@ def plan(
     *,
     solid: Iterable[str] = (),
     cache: RegionCache | None = None,
+    camera: Camera | None = None,
 ) -> Plan:
     """The plan for every hidden item; the items in ``solid`` (read through, :func:`read_through`) render solid.
-    ``cache`` must belong to exactly these ``job`` and ``tracks`` (``safecut.guard.run`` scopes it)."""
+    ``cache`` must belong to exactly these ``job`` and ``tracks`` (``safecut.guard.run`` scopes it). ``camera`` is the
+    scene's cumulative translation on every frame (``safecut.guard.motion``): held boxes move with it, and the plan
+    records it; without one they are held still, as before."""
+    if camera is not None and len(camera) != job.frames:
+        raise ValueError(f"camera has {len(camera)} offsets, the job {job.frames} frames")
     backfill = backfill_frames(job)
-    # Within SAM's own sampling step a missing box is interpolation, not a gap the object vanished in.
-    interp_gap = math.ceil(job.fps / min(tracks.sam_fps, job.fps))
+    interp_gap = sam_interp_gap(job.fps, tracks.sam_fps)  # within SAM's own sampling step a gap is interpolation
     solid = set(solid)
     by_id = {t.track_id: t for t in tracks.tracks}
     frames: dict[int, list[PlanEntry]] = {}
@@ -299,7 +383,7 @@ def plan(
         if item.decision == "keep" or item.style is None:
             continue
         if item.origin == "audit_patch":
-            for frame, entry in _patch_entries(item, job):
+            for frame, entry in _patch_entries(item, job, camera):
                 frames.setdefault(frame, []).append(entry)
             continue
         style: Style = "solid" if item.item_id in solid else item.style
@@ -307,7 +391,9 @@ def plan(
         if style == "pixelate" and grid is None:
             # contracts._check_decisions refuses this: a mosaic is sized from a face track.
             raise ValueError(f"{item.item_id} is pixelated but has no face track to size its grid")
-        for frame, region in _item_regions(item, by_id, job, backfill=backfill, interp_gap=interp_gap, cache=cache):
+        for frame, region in _item_regions(
+            item, by_id, job, backfill=backfill, interp_gap=interp_gap, cache=cache, camera=camera
+        ):
             # Built unvalidated (thousands per clip): every field comes from validated inputs or the round-trip
             # tested encoder, and every reader of plan.json validates it on load.
             entry = PlanEntry.model_construct(
@@ -327,4 +413,5 @@ def plan(
         temporal=Temporal(extend=EXTEND, backfill=backfill, gap_hold_s=GAP_HOLD_S),
         frames=dict(sorted(frames.items())),
         crowd_fills=_crowd_fills(tracks, job),
+        camera=None if camera is None else [(int(x), int(y)) for x, y in camera],
     )
