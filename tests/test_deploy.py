@@ -209,7 +209,11 @@ def decorator_kwargs(node: ast.FunctionDef | ast.ClassDef, name: str, tree: ast.
     """The keyword arguments of ``@app.<name>(...)`` on ``node``, module constants resolved."""
     known = constants(tree)
     for deco in node.decorator_list:
-        if isinstance(deco, ast.Call) and isinstance(deco.func, ast.Attribute) and deco.func.attr == name:
+        called = deco.func if isinstance(deco, ast.Call) else None
+        # ``@gpu_function(...)`` is ``@app.function(...)`` unless the deploy leaves the GPU out (SAFECUT_DEPLOY_GPU=0).
+        if isinstance(called, ast.Name) and called.id == "gpu_function" and name == "function":
+            called = ast.Attribute(value=ast.Name("app"), attr="function")
+        if isinstance(deco, ast.Call) and isinstance(called, ast.Attribute) and called.attr == name:
             out: dict[str, Any] = {}
             for kw in deco.keywords:
                 assert kw.arg is not None
@@ -317,7 +321,7 @@ def test_egoblur_runs_on_a_gpu_function_with_the_weights_and_the_handoff_volume(
     assert decorator_kwargs(api, "cls", modal_tree())["volumes"] == "{'/data': jobs, AUDIT: audit}"
     source = MODAL_APP.read_text()
     assert 'uv_sync(str(ROOT), groups=["audit"], frozen=True)' in source  # torch only in the GPU image
-    api_image = source.split("gpu_image = (")[0].split("image = (", 1)[1]
+    api_image = source.split("gpu_image = (")[0].split("API_ENV = ", 1)[1]  # its env, then the image
     assert ".uv_sync(str(ROOT), frozen=True)" in api_image  # the API container stays slim: no audit group, no torch
     assert "groups=" not in api_image
     assert '"SAFECUT_AUDIT_GPU": "1"' in api_image
@@ -621,7 +625,7 @@ def test_the_gpu_optional_switch_reaches_every_gpu_check() -> None:
 
     workflow = (ROOT / ".github" / "workflows" / "deploy.yml").read_text()
     assert "SAFECUT_DEPLOY_GPU_OPTIONAL: ${{ vars.SAFECUT_DEPLOY_GPU_OPTIONAL }}" in workflow
-    assert "DEPLOY_YUNET_OK: ${{ vars.SAFECUT_DEPLOY_GPU_OPTIONAL }}" in workflow
+    assert "|| vars.SAFECUT_DEPLOY_GPU_OPTIONAL }}" in workflow  # DEPLOY_YUNET_OK: the switch, or no GPU deployed
     assert 'os.environ.get("SAFECUT_DEPLOY_GPU_OPTIONAL")' in (ROOT / "deploy" / "verify_deploy.py").read_text()
     assert 'os.environ.get("SAFECUT_DEPLOY_GPU_OPTIONAL")' in MODAL_APP.read_text()
     ran = {"exit": 0, "unresolved": 0, "receipt": True, "redacted": True}
@@ -1142,3 +1146,208 @@ def test_the_worker_smoke_reaches_the_deployed_gpu_only_when_asked(
         assert events == [("handoff", modal_app.AUDIT, smoke.commit), ("probe", True, True, render_sha), ("close",)]
         assert result["gpu_probe"] == {"refused": None, "gpu": "NVIDIA L4", "frames": 3}
         assert pre_deploy_problems(result) == []
+
+
+# ------------------------------------------------------------------------- lane NOGPU: a deploy with no GPU function
+
+
+@pytest.mark.parametrize(
+    ("env", "gpu"),
+    [
+        ({}, True),
+        ({"SAFECUT_DEPLOY_GPU": ""}, True),
+        ({"SAFECUT_DEPLOY_GPU": "1"}, True),
+        ({"SAFECUT_DEPLOY_GPU": " 0 "}, False),
+        ({"SAFECUT_DEPLOY_GPU": "0"}, False),
+        ({"SAFECUT_DEPLOY_GPU_OPTIONAL": "1"}, True),  # a GPU outage's hotfix still deploys the GPU function
+        ({"SAFECUT_DEPLOY_GPU_OPTIONAL": "nogpu"}, False),
+        ({"SAFECUT_DEPLOY_GPU": "1", "SAFECUT_DEPLOY_GPU_OPTIONAL": "nogpu"}, False),
+    ],
+)
+def test_the_deploy_gpu_switch_defaults_to_on(env: dict[str, str], gpu: bool) -> None:
+    from deploy.modal_app import deploy_gpu  # noqa: PLC0415 -- the deploy group, imported where it is used
+
+    assert deploy_gpu(env) is gpu
+
+
+@pytest.mark.parametrize("value", ["false", "off", "no", "2", "true"])
+def test_the_deploy_gpu_switch_refuses_anything_but_0_or_1(value: str) -> None:
+    from deploy.modal_app import deploy_gpu  # noqa: PLC0415 -- the deploy group, imported where it is used
+
+    with pytest.raises(ValueError, match="SAFECUT_DEPLOY_GPU must be 0 or 1"):
+        deploy_gpu({"SAFECUT_DEPLOY_GPU": value})
+
+
+APP_SHAPE = """
+import json, warnings
+warnings.simplefilter("ignore")  # modal 1.6.2 marks the build-phase layout deprecated (for 1.7); it's what deploys
+from deploy import modal_app as m
+functions = {name: list(f._spec_.gpus or []) for name, f in m.app.registered_functions.items()}
+print(json.dumps({"functions": functions, "classes": sorted(m.app.registered_classes), "env": m.API_ENV,
+                  "deploy_gpu": m.DEPLOY_GPU}))
+"""
+
+
+def deployed_app(**env: str) -> dict[str, Any]:
+    """``deploy/modal_app.py`` imported fresh, as ``modal deploy`` imports it on the runner, with ``env`` set."""
+    base = {k: v for k, v in os.environ.items() if not k.startswith("SAFECUT_DEPLOY_GPU")}
+    proc = subprocess.run(  # noqa: S603 -- this interpreter, a fixed script
+        [sys.executable, "-c", APP_SHAPE], cwd=ROOT, env={**base, **env}, capture_output=True, text=True,
+        timeout=120, check=False,
+    )  # fmt: skip
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    return json.loads(proc.stdout.strip().splitlines()[-1])
+
+
+def test_without_the_switch_the_app_keeps_its_gpu_auditor() -> None:
+    shape = deployed_app()
+    assert shape["deploy_gpu"] is True
+    assert shape["functions"]["egoblur_detect"]  # a GPU function, as before this switch existed
+    assert shape["env"]["SAFECUT_AUDIT_GPU"] == "1"
+    assert "SAFECUT_DEPLOY_GPU" not in shape["env"]  # the API image is unchanged: no rebuild for the default
+    assert {"cleanup", "pipeline_worker_smoke", "ledger_smoke"} <= shape["functions"].keys()
+    assert shape["classes"] == ["SafeCutApi"]
+
+
+@pytest.mark.parametrize("env", [{"SAFECUT_DEPLOY_GPU": "0"}, {"SAFECUT_DEPLOY_GPU_OPTIONAL": "nogpu"}])
+def test_with_the_switch_off_no_function_asks_for_a_gpu(env: dict[str, str]) -> None:
+    """Modal refuses a whole app that defines a GPU function while the workspace has no payment method: with the
+    switch off nothing on the app asks for one, and the API's audit runs YuNet in its own container."""
+    shape = deployed_app(**env)
+    assert shape["deploy_gpu"] is False
+    assert "egoblur_detect" not in shape["functions"]
+    assert all(not gpus for gpus in shape["functions"].values()), shape["functions"]
+    assert {"cleanup", "pipeline_worker_smoke", "ledger_smoke"} <= shape["functions"].keys()
+    assert shape["classes"] == ["SafeCutApi"]  # the API, its volumes, scale-to-zero and the cron are unchanged
+    # Containers import this module too: the image carries the switch, so they agree with the deploy.
+    assert shape["env"] == {"SAFECUT_JOBS_DIR": "/data/jobs", "SAFECUT_TRUST_PROXY": "1", "SAFECUT_AUDIT_GPU": "0",
+                            "SAFECUT_DEPLOY_GPU": "0"}  # fmt: skip
+
+
+def test_the_checks_and_the_smoke_agree_on_the_no_gpu_record() -> None:
+    from deploy import checks, modal_app  # noqa: PLC0415 -- the deploy group, imported where it is used
+
+    assert checks.NO_GPU == modal_app.NO_GPU == "none (SAFECUT_DEPLOY_GPU=0)"
+
+
+def test_the_worker_smoke_reports_no_gpu_instead_of_probing(monkeypatch: pytest.MonkeyPatch) -> None:
+    from deploy import modal_app  # noqa: PLC0415 -- the deploy group, imported where it is used
+    from deploy.checks import pre_deploy_problems  # noqa: PLC0415 -- the checks it feeds
+
+    monkeypatch.setattr(modal_app, "DEPLOY_GPU", False)
+    smoke = run_worker_smoke(monkeypatch, audit_gpu=False, run_ok=True)
+    assert smoke.result["gpu_probe"] == {"gpu": modal_app.NO_GPU}
+    assert smoke.events == []  # no handoff, no probe: there is no GPU function to call
+    assert smoke.kwargs["env"]["SAFECUT_AUDIT_GPU"] == "0"
+    assert pre_deploy_problems(smoke.result, deploy_gpu=False) == []
+
+
+def test_the_pre_deploy_check_without_a_gpu_skips_it_and_never_warns(capsys: pytest.CaptureFixture[str]) -> None:
+    from deploy.checks import NO_GPU, pre_deploy_problems  # noqa: PLC0415 -- imported here, used here
+
+    ran = {"exit": 0, "unresolved": 0, "receipt": True, "redacted": True}
+    assert pre_deploy_problems({**ran, "gpu_probe": {"gpu": NO_GPU}}, deploy_gpu=False) == []
+    out = capsys.readouterr().out
+    assert f"gpu: {NO_GPU}" in out
+    assert "::warning" not in out
+    # A smoke container that still probed a GPU disagrees with the deploy: that is a problem, not a pass.
+    probed = {**ran, "gpu_probe": {"refused": None, "gpu": "NVIDIA L4", "frames": 3}}
+    assert pre_deploy_problems(probed, deploy_gpu=False)
+    assert pre_deploy_problems(ran, deploy_gpu=False)
+    # The job itself must still have run, whatever the GPU.
+    assert pre_deploy_problems({**ran, "exit": 1, "gpu_probe": {"gpu": NO_GPU}}, deploy_gpu=False)
+    assert pre_deploy_problems({**ran, "unresolved": 2, "gpu_probe": {"gpu": NO_GPU}}, deploy_gpu=False)
+
+
+@pytest.mark.parametrize(
+    ("change", "fails"),
+    [
+        ({}, False),
+        ({"auditor": "egoblur-gen2", "auditor_device": "cuda:NVIDIA L4"}, True),  # not what this deploy can run
+        ({"gpu_fallback": "error: function not found"}, True),  # the audit reached for a GPU that isn't there
+        ({"unresolved": 1}, True),  # YuNet's audit of the demo must be clear, as the pre-deploy smoke's is
+        ({"exit": 1}, True),
+        ({"receipt": False}, True),
+    ],
+)
+def test_the_post_deploy_check_without_a_gpu_wants_a_clear_yunet_audit(
+    capsys: pytest.CaptureFixture[str], change: dict[str, object], fails: bool
+) -> None:
+    from deploy.checks import post_deploy_problems  # noqa: PLC0415 -- imported here, used here
+
+    yunet = {"exit": 0, "unresolved": 0, "receipt": True, "redacted": True, "auditor": "yunet-face",
+             "auditor_device": "cpu", "gpu_fallback": None}  # fmt: skip
+    for optional in (True, False):  # the GPU-outage switch doesn't change this mode
+        assert bool(post_deploy_problems({**yunet, **change}, gpu_required=optional, deploy_gpu=False)) is fails
+    assert "::warning" not in capsys.readouterr().out
+
+
+def test_the_post_deploy_check_without_a_gpu_runs_the_job_without_one(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import modal  # noqa: PLC0415 -- the deploy group, imported where it is used
+
+    from deploy import verify_deploy  # noqa: PLC0415 -- the deploy group, imported where it is used
+
+    calls: list[dict[str, object]] = []
+    answer = {"exit": 0, "unresolved": 0, "receipt": True, "redacted": True, "auditor": "yunet-face",
+              "auditor_device": "cpu", "gpu_fallback": None}  # fmt: skip
+
+    class Smoke:
+        def __init__(self, app: str, name: str) -> None:
+            del app, name
+
+        def remote(self, **kwargs: object) -> dict[str, Any]:
+            calls.append(kwargs)
+            return answer
+
+    monkeypatch.setattr(modal.Function, "from_name", Smoke)
+    monkeypatch.setattr(verify_deploy, "DEPLOY_GPU", False)
+    monkeypatch.delenv("SAFECUT_DEPLOY_GPU_OPTIONAL", raising=False)
+    assert verify_deploy.main() == 0
+    assert calls == [{"audit_gpu": False}]  # no GPU function deployed: the job audits the way the API does
+    assert "audited by yunet-face on cpu" in capsys.readouterr().out
+
+
+def test_the_pre_deploy_smoke_without_a_gpu_passes_on_a_clear_yunet_run(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from types import SimpleNamespace  # noqa: PLC0415 -- stand-ins, local to this test
+
+    from deploy import modal_app  # noqa: PLC0415 -- the deploy group, imported where it is used
+
+    worker = {"exit": 0, "unresolved": 0, "receipt": True, "redacted": True, "gpu_probe": {"gpu": modal_app.NO_GPU}}
+    monkeypatch.setattr(modal_app, "DEPLOY_GPU", False)
+    monkeypatch.setattr(modal_app, "pipeline_worker_smoke", SimpleNamespace(remote=lambda: worker))
+    monkeypatch.setattr(modal_app, "ledger_smoke", SimpleNamespace(remote=lambda: {"ok": True}))
+    monkeypatch.delenv("SAFECUT_DEPLOY_GPU_OPTIONAL", raising=False)
+    smoke = modal_app.smoke.info.raw_f
+    assert smoke is not None
+    assert smoke() is None
+    out = capsys.readouterr().out
+    assert f"gpu: {modal_app.NO_GPU}" in out
+    assert "::warning" not in out
+
+
+def test_the_workflow_passes_the_deploy_gpu_switch_to_every_gpu_step() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "deploy.yml").read_text()
+    assert "SAFECUT_DEPLOY_GPU: ${{ vars.SAFECUT_DEPLOY_GPU }}" in workflow  # job env: the smoke, deploy and verify
+    yunet = next(line for line in workflow.splitlines() if "DEPLOY_YUNET_OK:" in line)
+    # The URL check accepts the YuNet audit with no GPU deployed (either spelling), and keeps the outage switch.
+    assert "vars.SAFECUT_DEPLOY_GPU == '0'" in yunet
+    assert "vars.SAFECUT_DEPLOY_GPU_OPTIONAL == 'nogpu'" in yunet
+    assert "&& '1' ||" in yunet
+    assert "vars.SAFECUT_DEPLOY_GPU_OPTIONAL }}" in yunet
+
+
+def test_the_docs_never_claim_egoblur_ran_live_with_the_gpu_off() -> None:
+    blocked = (ROOT / "BLOCKED.md").read_text()
+    assert "`SAFECUT_DEPLOY_GPU` to `0`" in blocked
+    assert "Billing" in blocked
+    submission = (ROOT / "docs" / "SUBMISSION.md").read_text()
+    assert "EgoBlur variant A (GPU on)" in submission
+    assert "EgoBlur variant B (GPU off)" in submission
+    off = submission.split("EgoBlur variant B (GPU off):", 1)[1].split("\n", 1)[0]
+    assert "YuNet" in off
+    assert "live service audits every frame with the bundled YuNet" in off
+    assert "SAFECUT_DEPLOY_GPU=0" in (ROOT / "README.md").read_text()

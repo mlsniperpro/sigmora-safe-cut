@@ -12,6 +12,15 @@ GPU. This page is the reasoning and the arithmetic; the code's own comments say 
 | `egoblur_detect` (EgoBlur Gen 2, torch) | L4 (T4 when no L4 is free), 2 cores, 6 GiB; `scaledown_window=30` | One call per audit scan, reading the render from the handoff Volume `safecut-audit` |
 | `cleanup` (24 h deletion, wakes stranded jobs) | 0.125 core, 128 MiB (Modal's default request, the smallest), `scaledown_window=2` | Every 15 minutes |
 
+**Without a GPU (`SAFECUT_DEPLOY_GPU=0`).** For a Modal workspace that can't enable GPU functions (Modal refuses a
+whole app that merely defines one without a payment method), the deploy leaves `egoblur_detect` off the app and the
+API image sets `SAFECUT_AUDIT_GPU=0`: every audit runs YuNet in `SafeCutApi` itself, at the same size. Measured
+2026-11-04 in the sandbox, pinned to one core (`taskset -c 0`): the whole synthetic demo job replayed (12 s, 360
+frames, every stage, YuNet on all 360 frames, the render) took 35 s wall, at a peak of 197 MiB resident plus 138 MiB
+for ffmpeg. YuNet reads frame by frame, so memory doesn't grow with the clip; a 60 s clip is about five times the
+frames, a few minutes of one core per job. Two workers at once stay well inside 2 GiB and the 60-minute container
+timeout, so the API keeps its size; no GPU seconds are reserved or billed in this mode.
+
 ## Cost
 
 Estimates from `modal billing rates` (<https://modal.com/pricing>, read 2026-10-31: CPU $0.0473 per core-hour,
