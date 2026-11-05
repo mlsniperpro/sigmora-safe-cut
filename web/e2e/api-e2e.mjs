@@ -329,8 +329,9 @@ try {
     }
 
     // Hide/keep toggle with undo, on an item waiting for the creator.
+    // Owner, 11-04: the policy decides the obvious cases itself, so the demo may leave nothing in Needs you.
     const needs = job.items.find((i) => i.decision === "needs_you" && !i.locked);
-    check(`${v}: the demo job has an item that needs the creator`, !!needs);
+    if (!needs) check(`${v}: nothing in the demo waits on the creator (every item decided)`, job.items.every((i) => i.decision !== "needs_you"));
     if (needs) {
       await openColumn(/Needs you/);
       const name = label(needs);
@@ -344,9 +345,14 @@ try {
 
     // Merge a re-entered person (a new ID) into the participant it is.
     const trackById = Object.fromEntries(job.tracks.map((t) => [t.track_id, t]));
-    const reentry = job.items.find((i) => i.decision !== "keep" && !i.locked && i.track_ids.some((t) => trackById[t]?.reentry_of));
-    if (reentry) {
-      await openColumn(new RegExp(reentry.decision === "needs_you" ? "Needs you" : "Hidden"));
+    // A re-entry of a kept person comes back kept, and one of a hidden person stays hidden (owner, 11-04): only a
+    // re-entry still waiting in Needs you offers a merge.
+    const reentry = job.items.find((i) => i.decision === "needs_you" && !i.locked && i.track_ids.some((t) => trackById[t]?.reentry_of));
+    const reentered = job.items.filter((i) => i.track_ids.some((t) => trackById[t]?.reentry_of));
+    if (!reentry && reentered.length) {
+      check(`${v}: every re-entered ID was decided without the creator`, reentered.every((i) => i.decision !== "needs_you"));
+    } else if (reentry) {
+      await openColumn(/Needs you/);
       const merge = page.getByRole("button", { name: /^Same as .+…$/ }).first();
       if ((await merge.count()) > 0) {
         await merge.click();
